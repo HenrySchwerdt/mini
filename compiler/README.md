@@ -24,6 +24,7 @@ compiler/jvm-bridge/build/install/minic/bin/minic build hello.kt -o build/hello
 minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
             [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
             [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [-Werror]
+            [--stats] [--no-rc-opt]
 minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
 ```
 
@@ -38,6 +39,10 @@ minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
   (warnings do not fail, unless `-Werror`; `build` accepts `-Werror` too). `minic build` runs the same checker after the frontend and before the C backend:
   errors stop the build (exit 1), warnings are printed.
 
+* `--stats`: build with `-DMK_STATS`: the program counts allocations / frees / retains / releases (split into atomic,
+  non-atomic and no-op) and the peak of live objects and bytes, and prints `mk-stats:` lines to stderr at exit
+  (runtime/include/minirt.h, block D1; `docs/benchmarks.md`). Without the flag the runtime has no counters at all.
+* `--no-rc-opt`: skip the reference-count elision pass (RcOpt, below): the baseline code generation.
 * `--emit-c <path>`: keep the generated C file there (otherwise a temporary file is used).
 * `--runtime-src <dir>`: directory whose `*.c` files (recursively) are linked in. Default:
   `runtime/src` in the repository root (found by walking up from the current
@@ -69,8 +74,8 @@ Tests: `gradle -p compiler test`.
 |---|---|---|
 | `compiler/backend` | MIR data model (`Mir.kt`), name mangling (`Mangling.kt`), MIR → C emitter (`CEmitter.kt`) | **No** |
 | `compiler/native-driver` | B1: `main(args)` that reads a `.mir` file, runs `CEmitter`, writes the `.c` file (runs on the JVM via Gradle, natively once minic can compile the backend) | **No** (file access through `mini.io`) |
-| `compiler/frontend` | B2-1: own Kotlin frontend: lexer, lossless CST parser, typed AST, outline renderer (`mini.frontend`); `driver/` holds the self-compilation driver | **No** (PurityTest) |
-| `compiler/frontend-oracle` | Test-only: compares the frontend with the K2 PSI parser, hosts the native self-compilation test | Yes (tests) |
+| `compiler/frontend` | B2-1: own Kotlin frontend: lexer, lossless CST parser, typed AST, outline renderer (`mini.frontend`); B2-2: symbols, types, inference, call resolution, smart casts (`mini.frontend.sema`); `driver/` holds the self-compilation driver | **No** (PurityTest) |
+| `compiler/frontend-oracle` | Test-only: compares the frontend with the K2 PSI parser and the semantic analysis with K2's FIR resolution, hosts the native self-compilation tests | Yes (tests) |
 | `compiler/jvm-bridge` | Runs K2 (`FrontendDriver`), converts Kotlin IR to MIR (`Ir2Mir*.kt`, see the source layout below), CLI (`Cli`, `Main`), starts clang | Yes, and the only module allowed to touch compiler internals |
 
 ### How the IR is obtained
@@ -199,8 +204,8 @@ backend never emits C for IR it does not understand.
 
 ## Reference counting (Managed mode)
 
-Rules implemented by `Ir2Mir` (ownership shape) and `CEmitter` (retain/release placement). No
-elision pass exists yet.
+Rules implemented by `Ir2Mir` (ownership shape) and `CEmitter` (retain/release placement). These are the
+baseline rules (`--no-rc-opt`); the elision pass RcOpt (next section) removes most of the pairs they produce.
 
 1. Every reference-typed local owns one reference. It is `NULL`-initialised at the top of the C scope
    that contains its declaration and released at every exit of that scope: normal end, `break`,
@@ -221,6 +226,73 @@ elision pass exists yet.
 All non-cyclic test programs are verified leak-free and ASan/UBSan-clean (see Tests). **Reference
 cycles leak** (no cycle collector; `weak` references do not exist yet) and the leak check programs avoid
 them.
+
+## RC elision (RcOpt)
+
+`compiler/backend/.../RcOpt.kt` (pure Kotlin, on by default; `minic build --no-rc-opt` and
+`native-driver --no-rc-opt` give the baseline). It does not rewrite the MIR: per function it computes an
+`RcPlan` (borrowing locals, moves, takes, owned parameters, ...) that `CEmitter` consults when it places
+retain/release. The result is a deterministic function of the MIR module, so the JVM backend and the native
+`minic-backend` produce byte-identical C (SelfHostTest). Method: Perceus-style ("reference counting with reuse")
+ownership inference, restricted to what is provably safe for our object model (mutable fields, no GC, one
+reference convention for virtual calls).
+
+**Effects.** `RcEffects` computes, as a fixpoint over the call graph (like `ThrowAnalysis`), which functions may
+*overwrite a reference stored in the heap*: a reference field store, a `mk_ref_array_set`-like runtime call, or a
+call of such a function (virtual and interface calls through the union over all implementations of that vtable
+slot / itable entry; runtime calls not on an allow-list count as mutating). Only such an operation can free an
+object that a borrowed alias still points to. Stores into the object a constructor is initialising do not count
+for that constructor (the object is invisible to everybody else).
+
+**Rules** (each has unit tests in `backend/src/test/kotlin/RcOptTest.kt`, and end-to-end programs under ASan/UBSan
+in `testdata/rcopt_*.kt`):
+
+1. *Borrowed locals.* A reference local whose every definition is a plain read (`val t = p`, `val t = o.f`,
+   `x = x.next`, casts and `!!` of those, `object` singletons, constants) does not own a reference: no retain at the
+   definition, no release at any exit, and `Assign` is a plain C assignment. It is valid for its whole lifetime when
+   (a) the roots of its definitions are parameters (kept alive by the caller for the whole call), owned locals that are
+   not reassigned in the lifetime (and whose scope encloses the borrower), or immortal objects; and (b) if a field was
+   read on the way, no heap-mutating operation runs between the first definition and the last use. A call that
+   receives the borrower as an argument counts as running at its end (the callee itself may overwrite the field
+   while it still uses its parameter). The lifetime is extended to the end of every loop that contains a use but not
+   the declaration. The set of borrowers is the greatest fixpoint of these conditions.
+2. *Moves of the last use.* A statement that consumes the last use of an owned local - `Declare`/`Assign`/field store
+   of the local (also through `Cast`/`!!`, or through a plain-copy borrower of it) or `return` of it - takes its
+   reference instead of retaining a second one. "Last use" is exact liveness over the structured MIR (branches,
+   loops with fixpoint, `break`/`continue`, `try` handlers: everything live in a handler is live in the whole
+   `try` body); uses through borrowers of the local count as uses of it. A moved local is cleared (`x = NULL`) so
+   the scope-exit releases on other paths stay correct, except in the closed case of rule 5.
+3. *Owned constructor parameters.* A constructor parameter that the initialiser always gives away at its top level
+   (stored into a field, returned, passed to another constructor) has the *owned* convention: the callee releases
+   it at every exit unless it moved it, the caller passes a reference it owns - the last use of a local moves, anything
+   else is retained for the call. Arguments are evaluated first (into C temporaries, left to right), then the
+   references are handed over, so an exit while evaluating an argument still finds every local intact; an
+   exception inside the constructor releases the parameter on its exit path. Calls through vtables/itables keep the
+   borrowed convention (one ABI per slot). The conventions are a fixpoint over constructor delegation (max 4 rounds).
+4. *Self takes.* `x = Foo(x)`: the old value of `x` dies at the assignment, so it can be handed to the callee and
+   the release of the old value is skipped.
+5. *Closed moves.* When the consuming statement is a direct child of the list that declares the local, the local is
+   never reassigned, and no `continue` can jump past the statement to the end of the loop body, nothing can release
+   the local on any later path: the emitter neither clears it nor releases it at later exits.
+6. *Not-yet-declared locals.* Exits (`return`, `break`, `continue`, exception exits) that precede the `Declare` of a
+   local of an enclosing scope do not release it (it is still `NULL`).
+7. *Fresh stores.* The first store into each reference field of `this` in the top-level statements of a
+   constructor, as long as `this` has not been handed to other code, overwrites the zeroed field: no old value to
+   release.
+8. *Inline NULL test.* With RcOpt, releases of references that are often `NULL` (old field values, scope-exit
+   releases of conditionally assigned locals, fields in `dispose`) are emitted as `MKH_REL(x)`: the test is inline
+   and the runtime is only called for a real object.
+
+**Exception paths.** The exit code of every call that can throw releases the owned locals of the scopes it leaves.
+Borrowing locals are not in that list; a moved local was cleared (or is dead) before anything after the move can
+throw; an owned parameter is released by the callee's own exit path. `finally` is lowered by `Ir2Mir` into catch-all
+clauses and copies of the finalizer, which RcOpt sees as ordinary MIR.
+
+**Not done (ideas).** Owned parameters for non-constructor functions and vtable slots (needs one convention per
+slot, so a fixpoint over slot groups), reuse analysis (an object that dies at a constructor call donates its memory:
+`Tree(l, r)` after the last use of an old `Tree`), a cycle-free "unique" bit, inlined retain/release fast paths in
+`minirt.h`, thread-sharing awareness (borrowed aliases of fields of `MK_FLAG_SHARED` objects assume the
+program is data-race free, like the baseline's field-read retain).
 
 ## Memory-model checker (Strict mode)
 
@@ -488,3 +560,54 @@ mutation/truncation fuzz, hostile nesting); native self-compilation (`FrontendSe
 Known gaps: no semantic checks; no `.kts` script statements; PSI quirks not modelled (declaration used as operand, `>>=`, etc.);
 non-ASCII characters are all treated as identifier characters; recovery is coarse (skip to next declaration/statement).
 Native parse speed is ~70k lines/s against ~900k (JVM warm), dominated by reference counting traffic.
+
+
+## Bootstrap B2-2: own semantic analysis (resolution and type checking)
+
+`mini.frontend.sema` (in `compiler/frontend`, pure Kotlin, compiled by minic itself) resolves names and computes the type of every
+expression, plus the callee of every call and reference, for the Kotlin subset that the compiler, the standard library and the test
+programs use. The standard library is just another input (the `@file:kotlin.internal.Builtin` sources declare `Any`, `Int`, `String`, ...),
+exactly like in the K2 run of `jvm-bridge`. Entry point: `analyzeSources(listOf(SourceInput(path, text), ...))` returns a `Sema`
+(`records` hold type and callee per AST node, `diags` the diagnostics, `dumpText(file)` the canonical text used by the tests).
+
+| File | Concern |
+|---|---|
+| `Types.kt` | type model: class types with variance projections, type parameters (also `T & Any`), function types with receivers, intersection (smart casts), captured types, integer literal types; canonical rendering |
+| `Symbols.kt`, `Collector.kt` | symbols (classes, functions, properties, type parameters, enum entries, typealiases), scopes (file / class / type parameters / local / receiver), pass 1 that creates the symbols from the AST |
+| `Sema.kt` | package tables, imports and default imports with K2's priority order, type resolution (typealias expansion, function types, qualified types), supertypes, lazily resolved signatures |
+| `TypeOps.kt`, `Members.kt` | substitution, supertype closure, subtyping with variance, common supertype, smart-cast narrowing; member lookup with override filtering, data/enum synthesized members (`componentN`, `copy`, `values`, `valueOf`, `entries`) |
+| `Infer.kt` | constraint system per call (lower / upper / equality bounds, incorporation, fixation); simplified from K2's `NewConstraintSystemImpl` / `ResultTypeResolver` |
+| `Calls.kt`, `Names.kt` | candidate collection per scope level (locals, implicit receivers incl. companions and extension receivers, imports), argument binding (named, default, vararg, trailing lambda), applicability, most specific candidate, completion with postponed lambdas (simplified `FirCallCompleter` / `ConeOverloadConflictResolver`), operator conventions, `invoke`, SAM constructors |
+| `Exprs.kt`, `Lambdas.kt`, `DataFlow.kt` | expression and statement checking, string templates, `if` / `when` (exhaustiveness for sealed, enum, Boolean) / `try` / loops, elvis, `!!`, safe calls, lambdas with expected-type inference, callable references, anonymous objects; flow-sensitive smart casts (`is`, null checks, `&&` / `||` / `!`, early exit, assignments, loop kills, boolean aliases) |
+| `Declarations.kt` | class bodies (super constructor calls, init blocks, enum entries, secondary constructors), implicit return / property types with cycle detection, accessors and delegates |
+
+Unsupported constructs (unsigned literals, `dynamic`, local typealiases, ...) produce an `unsupported: ...` diagnostic and an error type, never a
+guessed type. Resolution problems produce `unresolved reference` / `type mismatch` diagnostics.
+
+### The oracle
+
+`frontend-oracle` runs K2's FIR resolution on the same inputs (the `FrontendDriver` configuration: our stdlib sources, `-no-stdlib -no-jdk
+-Xallow-kotlin-package`; a FIR file checker dumps the resolved type of every expression / declaration and the fully qualified signature of
+every callee, with fake overrides unwrapped, see `FirOracle.kt` / `FirDumper.kt`) and compares it position by position (source range) with our
+records (`SemaOracle.kt`). `SemaOracleTest` writes `build/reports/sema-oracle.txt` (agreement per file, area and expression kind, first mismatches,
+top mismatch categories), `sema-oracle-mismatches.txt` (all mismatches) and `sema-oracle-diagnostics.txt` (our diagnostics on code that K2 accepts, must be empty).
+`src/test/resources/sema-oracle-baseline.txt` is the checked-in baseline: no file may lose positions, and our analysis may not report
+any diagnostic on the corpus. `MINI_SEMA_UPDATE=1` rewrites the baseline, `MINI_SEMA_AREAS=testdata,stdlib,...` selects areas. K2 results are cached
+in `build/sema-oracle-cache` (keyed by the content of all inputs).
+Developer tools: `SemaProbeTest` (env `MINI_FIR_PROBE=<file>`, with `MINI_SEMA_COMPARE=1` or `MINI_SEMA_DUMP=1`).
+
+Agreement (positions where K2 resolved a type or callee / positions): all of `compiler/testdata/*.kt`, `stdlib/**`, `compiler/backend`,
+`compiler/native-driver`, `compiler/frontend/src/main` (including this analysis), `compiler/selfhost`, `examples` and `compiler/testdata/memory*`:
+**86658 of 86668 (99.99%)**. Mismatches left: blocks (comment attached to a block), `x ?: y` with an intersection least upper bound,
+smart casts after loops that reassign a variable.
+
+### Native
+
+`SemaSelfHostTest`: minic builds the frontend including `mini.frontend.sema` and the driver (`--sema <inputs> --report <files>`) with `-Werror`;
+the native dump of every test program (analysed together with the stdlib) and of stdlib + backend + native driver + frontend sources
+(77k dump lines) is identical to the JVM run, and an ASan/UBSan build reports nothing. Speed on 22k lines (parse, resolve, type check, dump): about 1.2 s on
+the JVM (cold), 0.5 s warm, 1.7 s native.
+
+Known gaps: only the subset the corpus needs (no Java interop, no coroutines / `suspend` typing beyond the type, no contracts, no context
+receivers beyond function types, no `kotlin.js` / multiplatform `expect`/`actual`); inference is a simplified constraint solver (no PCLA, arguments are resolved
+independently of the callee except for single candidates); K2's flexible loop analysis for smart casts is approximated by killing facts of reassigned variables.

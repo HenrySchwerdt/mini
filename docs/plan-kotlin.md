@@ -350,6 +350,10 @@ genau die Features herbei, die echter Kotlin-Code braucht:
 **Status:** v1/B1 ist erreicht. `SelfHostTest` baut `native-driver` und Backend nativ als
 `minic-backend`. Für alle Testprogramme ist dessen C byte-identisch zur JVM-Ausgabe.
 
+**Status B2:** B2-1 (Lexer, Parser, AST) und B2-2 (Namensauflösung, Typprüfung, Inferenz, Smart Casts in
+`compiler/frontend`, Paket `mini.frontend.sema`) sind erreicht; K2 (FIR) ist das Orakel und stimmt auf Stdlib, Compiler-Quellen und Testprogrammen in
+99,99 % der Positionen überein, nativ gebaut ergibt sich dasselbe Ergebnis wie auf der JVM. Siehe `compiler/README.md`. Offen: Ir/MIR-Erzeugung aus dem eigenen Frontend (B2-3).
+
 **Bootstrap-Stufen danach:**
 1. **B1 (= v1):** Backend self-hosted. Native `minic-backend` liest serialisiertes MIR
    (vom JVM-Frontend als Datei geschrieben) und erzeugt C. Damit läuft der halbe Compiler nativ.
@@ -380,6 +384,10 @@ Sobald der Compiler nativ läuft, ist er unser größtes Testprogramm. Ablauf:
 5. **Bewerten:** Zeit, Speicher und Anzahl RC-Operationen vorher/nachher. Und vor allem: Wie viele
    Annotationen und `free()`s waren nötig, und welche Diagnosen haben gestört? Diese Erfahrungen
    fließen zurück in `docs/memory-model.md` (Ergonomie, Inferenz von `@Owned`).
+
+**Stand D1 (Schritte 1 und 2):** Zähler (`minic build --stats`, `-DMK_STATS`), Benchmarks (`compiler/bench`) und die
+RC-Elision `RcOpt` (Borrow-Inferenz, Move der letzten Nutzung, Konstruktor-Parameter mit Ownership) sind umgesetzt;
+Zahlen vorher/nachher in `docs/benchmarks.md`, Regeln in `compiler/README.md` (Abschnitt "RC elision").
 
 ### 10c. Runtime in Kotlin (nach v1)
 

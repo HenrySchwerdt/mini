@@ -16,14 +16,15 @@ import mini.io.writeTextFile
  * program with status 1 in both worlds).
  */
 
-const val USAGE = "usage: native-driver <in.mir> -o <out.c>"
+const val USAGE = "usage: native-driver <in.mir> -o <out.c> [--no-rc-opt]"
 
-/** MIR text to C text. */
-fun mirToC(mirText: String): String = CEmitter.emit(MirReader.read(mirText))
+/** MIR text to C text; [rcOpt] runs the reference-count elision pass (default). */
+fun mirToC(mirText: String, rcOpt: Boolean = true): String = CEmitter.emit(MirReader.read(mirText), rcOpt)
 
 fun main(args: Array<String>) {
     var input: String? = null
     var output: String? = null
+    var rcOpt = true
     var i = 0
     while (i < args.size) {
         val a = args[i]
@@ -31,6 +32,9 @@ fun main(args: Array<String>) {
             if (i + 1 >= args.size) throw IllegalArgumentException("missing value for -o\n" + USAGE)
             output = args[i + 1]
             i += 2
+        } else if (a == "--no-rc-opt") {
+            rcOpt = false
+            i += 1
         } else {
             if (input != null) throw IllegalArgumentException("more than one input file\n" + USAGE)
             input = a
@@ -38,5 +42,5 @@ fun main(args: Array<String>) {
         }
     }
     if (input == null || output == null) throw IllegalArgumentException(USAGE)
-    writeTextFile(output, mirToC(readTextFile(input)))
+    writeTextFile(output, mirToC(readTextFile(input), rcOpt))
 }

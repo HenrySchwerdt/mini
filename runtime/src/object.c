@@ -10,11 +10,16 @@ static bool is_plain(const MkObject *o) {
 }
 
 void mk_retain(MkObject *object) {
-    if (object == NULL || is_plain(object)) return;
+    if (object == NULL || is_plain(object)) {
+        MK_STAT_RETAIN(0);
+        return;
+    }
     if (object->flags & MK_FLAG_SHARED) {
+        MK_STAT_RETAIN(2);
         uint32_t old = mk_atomic_fetch_add(&object->refcount, 1u);
         if (old == 0u || old == UINT32_MAX) mk_panic("reference count overflow or resurrection");
     } else {
+        MK_STAT_RETAIN(1);
         if (object->refcount == 0u || object->refcount == UINT32_MAX)
             mk_panic("reference count overflow or resurrection");
         object->refcount++;
@@ -22,11 +27,16 @@ void mk_retain(MkObject *object) {
 }
 
 void mk_release(MkObject *object) {
-    if (object == NULL || is_plain(object)) return;
+    if (object == NULL || is_plain(object)) {
+        MK_STAT_RELEASE(0);
+        return;
+    }
     uint32_t old;
     if (object->flags & MK_FLAG_SHARED) {
+        MK_STAT_RELEASE(2);
         old = mk_atomic_fetch_add(&object->refcount, UINT32_MAX); /* -1 */
     } else {
+        MK_STAT_RELEASE(1);
         old = object->refcount;
         if (old != 0u) object->refcount = old - 1u;
     }

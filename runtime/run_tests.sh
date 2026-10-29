@@ -43,6 +43,7 @@ for t in "$here"/tests/test_*.c; do
     case "$name" in
     test_threads) continue ;; # handled below (ASan + TSan)
     test_entry) build_run "$name" "$san" "$entry_src" ;;
+    test_stats) build_run "$name" "$san" -DMK_STATS ;; # D1: runtime statistics are compile-time opt-in
     *) build_run "$name" "$san" ;;
     esac
     echo "== $name ($san)"
@@ -67,6 +68,15 @@ set -e
 [ "$status" -ne 0 ] || { echo "FAIL: panic did not abort" >&2; fail=1; }
 printf 'null\n' | diff -u - "$out/panic.out" >&2 || { echo "FAIL: panic stdout not flushed" >&2; fail=1; }
 grep -qx 'fatal: boom' "$out/panic.err" || { echo "FAIL: panic stderr" >&2; fail=1; }
+
+# D1: without -DMK_STATS the runtime must not contain any statistics code.
+echo "== stats off (zero cost)"
+for f in object alloc stats; do
+    "$CC" "${cflags[@]}" -c "$here/src/$f.c" -o "$out/off_$f.o"
+done
+if nm "$out"/off_object.o "$out"/off_alloc.o "$out"/off_stats.o | grep -q 'mk_stats'; then
+    echo "FAIL: statistics code present without MK_STATS" >&2; fail=1
+fi
 
 if [ "$fail" -ne 0 ]; then echo "minirt: TESTS FAILED" >&2; exit 1; fi
 echo "minirt: all tests passed"

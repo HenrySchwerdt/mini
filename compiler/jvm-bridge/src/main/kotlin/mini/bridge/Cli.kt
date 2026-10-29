@@ -14,7 +14,7 @@ object Cli {
     private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-             [--stdlib <dir> | --no-stdlib]"""
+             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt]"""
 
     class Options(
         val sources: List<File>,
@@ -30,6 +30,10 @@ object Cli {
         val extraSrc: List<File> = emptyList(),
         /** `-Werror`: memory-checker warnings fail the build. */
         val werror: Boolean = false,
+        /** `--stats`: build with `-DMK_STATS` (allocation / retain / release counters, printed to stderr at exit). */
+        val stats: Boolean = false,
+        /** `--no-rc-opt`: skip the reference-count elision pass (RcOpt). */
+        val noRcOpt: Boolean = false,
     )
 
     /** Returns the process exit code. */
@@ -117,6 +121,8 @@ object Cli {
         val sources = mutableListOf<File>()
         val extra = mutableListOf<File>()
         var werror = false
+        var stats = false
+        var noRcOpt = false
         var stdlib: File? = null
         var noStdlib = false
         var out: File? = null
@@ -142,6 +148,8 @@ object Cli {
                 "--no-stdlib" -> noStdlib = true
                 "--extra-src" -> extra += File(next(x) ?: return null)
                 "-Werror" -> werror = true
+                "--stats" -> stats = true
+                "--no-rc-opt" -> noRcOpt = true
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     sources += File(x)
@@ -150,7 +158,7 @@ object Cli {
             i++
         }
         if (sources.isEmpty() || out == null) { System.err.println(USAGE); return null }
-        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror)
+        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -215,7 +223,7 @@ object Cli {
         if (mainCount != 1) throw BuildFailure("${module.sourceName}: expected exactly one `fun main()`, found $mainCount")
 
         // 3. MIR -> C
-        val c = CEmitter.emit(module)
+        val c = CEmitter.emit(module, rcOpt = !o.noRcOpt)
         val cFile = o.emitC ?: File.createTempFile("minic-", ".c")
         cFile.absoluteFile.parentFile?.mkdirs()
         cFile.writeText(c)
@@ -223,6 +231,7 @@ object Cli {
         // 4. clang
         o.output.absoluteFile.parentFile?.mkdirs()
         val cmd = mutableListOf(o.cc, "-std=c17", "-O1", "-Wall", "-Wno-unused-label", "-Wno-unused-variable", "-Wno-unused-but-set-variable", "-I", include.path)
+        if (o.stats) cmd += "-DMK_STATS"
         cmd += o.cflags
         cmd += cFile.path
         runtimeFiles.forEach { cmd += it.path }

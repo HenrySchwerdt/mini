@@ -73,6 +73,23 @@ void mk_free_object_memory(MkObject *object);
 /* The prefix in front of every heap object (see alloc.c). */
 #define MK_PREFIX_SIZE MK_MAX_ALIGN
 
+/* ---- Statistics hooks (-DMK_STATS, see the D1 block of minirt.h; stats.c) --------------- */
+#ifdef MK_STATS
+void mk_stats_on_alloc(size_t bytes);
+void mk_stats_on_free(size_t bytes);
+void mk_stats_on_retain(int kind);  /* 0 = no-op (NULL / static / stack), 1 = plain, 2 = atomic */
+void mk_stats_on_release(int kind);
+#define MK_STAT_ALLOC(bytes) mk_stats_on_alloc(bytes)
+#define MK_STAT_FREE(bytes) mk_stats_on_free(bytes)
+#define MK_STAT_RETAIN(kind) mk_stats_on_retain(kind)
+#define MK_STAT_RELEASE(kind) mk_stats_on_release(kind)
+#else
+#define MK_STAT_ALLOC(bytes) ((void)0)
+#define MK_STAT_FREE(bytes) ((void)0)
+#define MK_STAT_RETAIN(kind) ((void)0)
+#define MK_STAT_RELEASE(kind) ((void)0)
+#endif
+
 /* ---- ASan integration (arena poisons unused / reset memory) --------------- */
 #if defined(__SANITIZE_ADDRESS__)
 #define MK_HAS_ASAN 1
