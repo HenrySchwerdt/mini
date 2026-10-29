@@ -74,8 +74,8 @@ Tests: `gradle -p compiler test`.
 |---|---|---|
 | `compiler/backend` | MIR data model (`Mir.kt`), name mangling (`Mangling.kt`), MIR → C emitter (`CEmitter.kt`) | **No** |
 | `compiler/native-driver` | B1: `main(args)` that reads a `.mir` file, runs `CEmitter`, writes the `.c` file (runs on the JVM via Gradle, natively once minic can compile the backend) | **No** (file access through `mini.io`) |
-| `compiler/frontend` | B2-1: own Kotlin frontend: lexer, lossless CST parser, typed AST, outline renderer (`mini.frontend`); `driver/` holds the self-compilation driver | **No** (PurityTest) |
-| `compiler/frontend-oracle` | Test-only: compares the frontend with the K2 PSI parser, hosts the native self-compilation test | Yes (tests) |
+| `compiler/frontend` | B2-1: own Kotlin frontend: lexer, lossless CST parser, typed AST, outline renderer (`mini.frontend`); B2-2: symbols, types, inference, call resolution, smart casts (`mini.frontend.sema`); `driver/` holds the self-compilation driver | **No** (PurityTest) |
+| `compiler/frontend-oracle` | Test-only: compares the frontend with the K2 PSI parser and the semantic analysis with K2's FIR resolution, hosts the native self-compilation tests | Yes (tests) |
 | `compiler/jvm-bridge` | Runs K2 (`FrontendDriver`), converts Kotlin IR to MIR (`Ir2Mir*.kt`, see the source layout below), CLI (`Cli`, `Main`), starts clang | Yes, and the only module allowed to touch compiler internals |
 
 ### How the IR is obtained
@@ -560,3 +560,54 @@ mutation/truncation fuzz, hostile nesting); native self-compilation (`FrontendSe
 Known gaps: no semantic checks; no `.kts` script statements; PSI quirks not modelled (declaration used as operand, `>>=`, etc.);
 non-ASCII characters are all treated as identifier characters; recovery is coarse (skip to next declaration/statement).
 Native parse speed is ~70k lines/s against ~900k (JVM warm), dominated by reference counting traffic.
+
+
+## Bootstrap B2-2: own semantic analysis (resolution and type checking)
+
+`mini.frontend.sema` (in `compiler/frontend`, pure Kotlin, compiled by minic itself) resolves names and computes the type of every
+expression, plus the callee of every call and reference, for the Kotlin subset that the compiler, the standard library and the test
+programs use. The standard library is just another input (the `@file:kotlin.internal.Builtin` sources declare `Any`, `Int`, `String`, ...),
+exactly like in the K2 run of `jvm-bridge`. Entry point: `analyzeSources(listOf(SourceInput(path, text), ...))` returns a `Sema`
+(`records` hold type and callee per AST node, `diags` the diagnostics, `dumpText(file)` the canonical text used by the tests).
+
+| File | Concern |
+|---|---|
+| `Types.kt` | type model: class types with variance projections, type parameters (also `T & Any`), function types with receivers, intersection (smart casts), captured types, integer literal types; canonical rendering |
+| `Symbols.kt`, `Collector.kt` | symbols (classes, functions, properties, type parameters, enum entries, typealiases), scopes (file / class / type parameters / local / receiver), pass 1 that creates the symbols from the AST |
+| `Sema.kt` | package tables, imports and default imports with K2's priority order, type resolution (typealias expansion, function types, qualified types), supertypes, lazily resolved signatures |
+| `TypeOps.kt`, `Members.kt` | substitution, supertype closure, subtyping with variance, common supertype, smart-cast narrowing; member lookup with override filtering, data/enum synthesized members (`componentN`, `copy`, `values`, `valueOf`, `entries`) |
+| `Infer.kt` | constraint system per call (lower / upper / equality bounds, incorporation, fixation); simplified from K2's `NewConstraintSystemImpl` / `ResultTypeResolver` |
+| `Calls.kt`, `Names.kt` | candidate collection per scope level (locals, implicit receivers incl. companions and extension receivers, imports), argument binding (named, default, vararg, trailing lambda), applicability, most specific candidate, completion with postponed lambdas (simplified `FirCallCompleter` / `ConeOverloadConflictResolver`), operator conventions, `invoke`, SAM constructors |
+| `Exprs.kt`, `Lambdas.kt`, `DataFlow.kt` | expression and statement checking, string templates, `if` / `when` (exhaustiveness for sealed, enum, Boolean) / `try` / loops, elvis, `!!`, safe calls, lambdas with expected-type inference, callable references, anonymous objects; flow-sensitive smart casts (`is`, null checks, `&&` / `||` / `!`, early exit, assignments, loop kills, boolean aliases) |
+| `Declarations.kt` | class bodies (super constructor calls, init blocks, enum entries, secondary constructors), implicit return / property types with cycle detection, accessors and delegates |
+
+Unsupported constructs (unsigned literals, `dynamic`, local typealiases, ...) produce an `unsupported: ...` diagnostic and an error type, never a
+guessed type. Resolution problems produce `unresolved reference` / `type mismatch` diagnostics.
+
+### The oracle
+
+`frontend-oracle` runs K2's FIR resolution on the same inputs (the `FrontendDriver` configuration: our stdlib sources, `-no-stdlib -no-jdk
+-Xallow-kotlin-package`; a FIR file checker dumps the resolved type of every expression / declaration and the fully qualified signature of
+every callee, with fake overrides unwrapped, see `FirOracle.kt` / `FirDumper.kt`) and compares it position by position (source range) with our
+records (`SemaOracle.kt`). `SemaOracleTest` writes `build/reports/sema-oracle.txt` (agreement per file, area and expression kind, first mismatches,
+top mismatch categories), `sema-oracle-mismatches.txt` (all mismatches) and `sema-oracle-diagnostics.txt` (our diagnostics on code that K2 accepts, must be empty).
+`src/test/resources/sema-oracle-baseline.txt` is the checked-in baseline: no file may lose positions, and our analysis may not report
+any diagnostic on the corpus. `MINI_SEMA_UPDATE=1` rewrites the baseline, `MINI_SEMA_AREAS=testdata,stdlib,...` selects areas. K2 results are cached
+in `build/sema-oracle-cache` (keyed by the content of all inputs).
+Developer tools: `SemaProbeTest` (env `MINI_FIR_PROBE=<file>`, with `MINI_SEMA_COMPARE=1` or `MINI_SEMA_DUMP=1`).
+
+Agreement (positions where K2 resolved a type or callee / positions): all of `compiler/testdata/*.kt`, `stdlib/**`, `compiler/backend`,
+`compiler/native-driver`, `compiler/frontend/src/main` (including this analysis), `compiler/selfhost`, `examples` and `compiler/testdata/memory*`:
+**86658 of 86668 (99.99%)**. Mismatches left: blocks (comment attached to a block), `x ?: y` with an intersection least upper bound,
+smart casts after loops that reassign a variable.
+
+### Native
+
+`SemaSelfHostTest`: minic builds the frontend including `mini.frontend.sema` and the driver (`--sema <inputs> --report <files>`) with `-Werror`;
+the native dump of every test program (analysed together with the stdlib) and of stdlib + backend + native driver + frontend sources
+(77k dump lines) is identical to the JVM run, and an ASan/UBSan build reports nothing. Speed on 22k lines (parse, resolve, type check, dump): about 1.2 s on
+the JVM (cold), 0.5 s warm, 1.7 s native.
+
+Known gaps: only the subset the corpus needs (no Java interop, no coroutines / `suspend` typing beyond the type, no contracts, no context
+receivers beyond function types, no `kotlin.js` / multiplatform `expect`/`actual`); inference is a simplified constraint solver (no PCLA, arguments are resolved
+independently of the callee except for single candidates); K2's flexible loop analysis for smart casts is approximated by killing facts of reassigned variables.

@@ -731,6 +731,12 @@ fun BodyChecker.condFacts(e0: Expr): BodyChecker.Cond {
                     val c = noFacts()
                     val adds = nonNullFacts(subject)
                     if (neg) c.onTrue.addAll(adds) else c.onFalse.addAll(adds)
+                    // the other branch knows the value is null
+                    val sk = stableKey(subject)
+                    if (sk != null) {
+                        val nf = FactAdd(sk.key, sk.root, sema.nullableNothing)
+                        if (neg) c.onFalse.add(nf) else c.onTrue.add(nf)
+                    }
                     return c
                 }
                 // x == <non-null expression>: x is non-null when equal
@@ -941,7 +947,10 @@ fun BodyChecker.returnExpr(e: ReturnExpr): Type {
     }
     val x = e.expr
     if (x != null) {
+        val sd = synthDepth
+        synthDepth = 0
         val t = expr(x, target?.expected)
+        synthDepth = sd
         if (target != null) target.returned.add(fin(t))
     } else {
         target?.returned?.add(sema.unitType)

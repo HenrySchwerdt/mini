@@ -34,6 +34,8 @@ class ConstraintSystem(private val sema: Sema) {
             for (b in v.tp.bounds) {
                 val sb = ops.substitute(b, into)
                 v.upper.add(sb)
+                // `T : S` also tells S that T is below it
+                if (sb is VarType && !sb.nullable) sb.v.lower.add(VarType(v, false))
             }
         }
     }
@@ -254,6 +256,15 @@ class ConstraintSystem(private val sema: Sema) {
         val r = compute(v)
         v.fixed = r
         v.solving = false
+        // incorporation: bounds that mention other variables become constraints on them
+        for (u in ArrayList(v.upper)) {
+            val ur = resolveFixed(u)
+            if (hasVars(ur)) addSub(r, ur)
+        }
+        for (l in ArrayList(v.lower)) {
+            val lr = resolveFixed(l)
+            if (hasVars(lr)) addSub(lr, r)
+        }
         return r
     }
 
@@ -270,18 +281,18 @@ class ConstraintSystem(private val sema: Sema) {
 
     private fun compute(v: TypeVariable): Type {
         val eqs = ArrayList<Type>()
-        for (e in v.equal) {
+        for (e in ArrayList(v.equal)) {
             val p = proper(e)
             if (p != null) eqs.add(p)
         }
         if (eqs.isNotEmpty()) return eqs[0]
         val lows = ArrayList<Type>()
-        for (l in v.lower) {
+        for (l in ArrayList(v.lower)) {
             val p = proper(l)
             if (p != null) lows.add(p)
         }
         val ups = ArrayList<Type>()
-        for (u in v.upper) {
+        for (u in ArrayList(v.upper)) {
             val p = proper(u)
             if (p != null) ups.add(p)
         }

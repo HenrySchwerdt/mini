@@ -30,6 +30,10 @@ class SemaOracleTest {
         out.add(Area("backend", listOf(Pair(stdlib + backend, backend))))
         out.add(Area("native-driver", listOf(Pair(stdlib + backend + nativeDriver, nativeDriver))))
         out.add(Area("frontend", listOf(Pair(stdlib + frontend, frontend))))
+        val ex = kt("examples")
+        out.add(Area("examples", ex.map { Pair(stdlib + it, listOf(it)) }))
+        val mem = kt("compiler/testdata/memory") + kt("compiler/testdata/memory-extra")
+        out.add(Area("memory", mem.filter { !File(it.path.removeSuffix(".kt") + ".cerr").exists() }.map { Pair(stdlib + it, listOf(it)) }))
         val selfhost = kt("compiler/selfhost")
         out.add(Area("selfhost", listOf(Pair(stdlib + backend + nativeDriver + selfhost, selfhost))))
         return out

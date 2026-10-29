@@ -325,7 +325,9 @@ fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {
     val outerTps = ArrayList<TypeParamSym>()
     while (sc != null) {
         if (sc is TypeParamScope) {
-            for (tp in sc.tps) if (!outerTps.contains(tp)) outerTps.add(0, tp)
+            val group = ArrayList<TypeParamSym>()
+            for (tp in sc.tps) if (!outerTps.contains(tp)) group.add(tp)
+            outerTps.addAll(0, group)
         }
         // the type parameters of an enclosing class are not accessible from one of its nested (not inner) classes
         if (sc is ClassScope && !sc.instance) break

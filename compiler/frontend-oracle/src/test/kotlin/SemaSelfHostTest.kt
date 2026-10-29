@@ -97,8 +97,17 @@ class SemaSelfHostTest {
         val exe = File(work, "frontend-driver2")
         build(exe, listOf("--cflag", "-Werror", "--cflag", "-O1"))
         val inputs = files.map { SourceInput(it.path, it.readText()) }
+        val j0 = System.nanoTime()
         val expected = describeSema(inputs, files.map { it.path }.toSet())
+        val jvmCold = (System.nanoTime() - j0) / 1e9
+        val j1 = System.nanoTime()
+        describeSema(inputs, files.map { it.path }.toSet())
+        val jvmWarm = (System.nanoTime() - j1) / 1e9
+        val n0 = System.nanoTime()
         val r = run(exe, listOf("--sema") + files.map { it.path } + listOf("--report") + files.map { it.path })
+        val nat = (System.nanoTime() - n0) / 1e9
+        val lines = files.sumOf { it.readText().count { c -> c == '\n' } }
+        println("SEMA SPEED on ${files.size} files / $lines lines (parse + resolve + type check + dump): JVM cold ${"%.1f".format(jvmCold)} s, JVM warm ${"%.1f".format(jvmWarm)} s, native ${"%.1f".format(nat)} s")
         assertEquals(0, r.code, "native sema driver failed:\n${r.err.take(2000)}")
         assertEquals("", r.err, "native sema driver wrote to stderr")
         val a = expected.lines()
@@ -106,5 +115,56 @@ class SemaSelfHostTest {
         for (i in 0 until minOf(a.size, b.size)) assertEquals(a[i], b[i], "line ${i + 1} of the sema dump differs")
         assertEquals(a.size, b.size, "dump length")
         println("SEMA SELF-COMPILATION: native output identical to the JVM on ${files.size} stdlib and compiler files (${a.size} dump lines)")
+    }
+
+    private val sanitizerCc: String? by lazy {
+        listOf("clang", "gcc").firstOrNull { cc ->
+            try {
+                val probe = File(work, "probe.c").also { it.writeText("int main(void){return 0;}\n") }
+                val p = ProcessBuilder(cc, "-fsanitize=address,undefined", probe.path, "-o", File(work, "probe").path)
+                    .redirectErrorStream(true).start()
+                p.inputStream.readBytes()
+                p.waitFor() == 0
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    /**
+     * ASan/UBSan build of the native analysis on a few programs: no memory error, no undefined behaviour, same output.
+     * (Leak detection is off: the symbol graph has reference cycles, and the runtime has no cycle collector.)
+     */
+    @Test
+    fun nativeSemaHasNoMemoryErrors() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(sanitizerCc != null, "no C compiler with sanitizer runtimes")
+        if (System.getenv("MINI_SEMA_NATIVE_FILES") != null) return
+        val cc = sanitizerCc!!
+        val stdlib = kt("stdlib")
+        val programs = listOf("closures.kt", "generics.kt", "patterns.kt").map { File(repoRoot, "compiler/testdata/$it") }
+        val exe = File(work, "frontend-driver.asan")
+        build(
+            exe,
+            listOf(
+                "--cc", cc, "--cflag", "-fsanitize=address,undefined", "--cflag", "-fno-sanitize-recover=undefined",
+                "--cflag", "-g", "--cflag", "-fno-omit-frame-pointer",
+            ),
+        )
+        for (p in programs) {
+            val expected = describeSema((stdlib + p).map { SourceInput(it.path, it.readText()) }, setOf(p.path))
+            val pb = ProcessBuilder(listOf(exe.path, "--sema") + stdlib.map { it.path } + listOf("--report", p.path))
+            pb.directory(repoRoot)
+            pb.environment()["ASAN_OPTIONS"] = "detect_leaks=0:exitcode=99"
+            val errFile = File(work, "asan.stderr")
+            pb.redirectError(errFile)
+            val outFile = File(work, "asan.stdout")
+            pb.redirectOutput(outFile)
+            val proc = pb.start()
+            assertTrue(proc.waitFor(1800, TimeUnit.SECONDS), "sanitizer build timed out")
+            val err = errFile.readText()
+            assertTrue("ERROR: AddressSanitizer" !in err && "runtime error" !in err, "memory error or UB on ${p.name}:\n${err.take(3000)}")
+            assertEquals(0, proc.exitValue(), "exit code on ${p.name}")
+            assertEquals(expected, outFile.readText(), "sanitizer build output on ${p.name}")
+        }
     }
 }

@@ -34,7 +34,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
 
     fun record(node: Ast, type: Type, callee: Sym?): ExprRec {
         val isNew = rec.get(node) == null
-        val r = rec.put(node, type, callee)
+        val r = rec.put(node, if (type is IntLiteralType) ops.literalDefault(type) else type, callee)
         if (isNew) {
             var l = sema.fileNodes[file.index]
             if (l == null) {
@@ -281,7 +281,10 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val init = d.initializer
         val deleg = d.delegate
         if (init != null) {
+            val sd = synthDepth
+            synthDepth = 0
             val it = expr(init, declared)
+            synthDepth = sd
             if (declared == null) {
                 // K2 keeps the declared type of the initializer; smart cast information is carried by the new variable
                 val orig = rec.get(AstWalk.unparen(init))?.type

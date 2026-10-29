@@ -75,7 +75,7 @@ Null-Safety, Lambdas und Closures, `inline`/`reified`, Generics, Exceptions, Ext
 `vararg`, Ranges, Collections und große Teile der stdlib. Der Strict-Checker erkennt den kompletten
 Speichermodell-Korpus.
 
-Als Nächstes: eigenes Frontend (B2) für einen komplett nativen, selbst-hostenden Compiler.
+Eigenes Frontend (B2): Lexer, Parser und Typprüfung (`compiler/frontend`) stimmen mit K2 überein; als Nächstes die Erzeugung von MIR aus dem eigenen Frontend für einen komplett nativen, selbst-hostenden Compiler.
 Danach Dogfooding des Speichermodells (RC-Elision, Arenas im Compiler), Coroutines und Async-IO auf
 libuv, LLVM-Backend und eine Runtime in Kotlin. Details in [docs/plan-kotlin.md](docs/plan-kotlin.md).
 

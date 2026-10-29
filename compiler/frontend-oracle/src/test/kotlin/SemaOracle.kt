@@ -113,7 +113,7 @@ object SemaOracle {
                 }
             }
             var re = r.end
-            if (decl) {
+            if (decl || blk) {
                 // ... and a trailing comment on the last line
                 val lineStart = text.lastIndexOf('\n', re - 1) + 1
                 val ci = text.indexOf("//", maxOf(lineStart, rs))

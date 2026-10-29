@@ -395,7 +395,8 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
                 return n == pt.params.size || (pt.receiver != null && n == pt.params.size + 1 && false)
             }
             if (u is AnonFunExpr) return u.fn.params.size == pt.params.size
-            return pt.params.size <= 1
+            // without an arrow: `it`, or the implicit context parameters of a context function type
+            return true
         }
         if (pt is ClassType) {
             if (pt.cls === sema.anyType.cls) return true
