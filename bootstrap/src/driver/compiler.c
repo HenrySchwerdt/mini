@@ -230,6 +230,11 @@ int mini_build_output_with_options(const char *source, const char *output, const
             }
             args[i++] = temporary;
             if (libuv && mode == MINI_BUILD_NATIVE) {
+#if defined(_WIN32) && !defined(__MINGW32__)
+                /* The xmake libuv package links the dynamic CRT (/MD); clang defaults to the
+                 * static one, which leaves libuv's __imp_ CRT imports unresolved. */
+                args[i++] = "-fms-runtime-lib=dll";
+#endif
                 if (library)
                     args[i++] = library;
                 for (size_t j = 0; mini_uv_link_flags[j]; j++) {
