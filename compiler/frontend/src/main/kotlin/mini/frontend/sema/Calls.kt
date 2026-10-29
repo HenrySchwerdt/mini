@@ -124,6 +124,13 @@ fun BodyChecker.extensionGroups(name: String, recv: Type, out: ArrayList<List<Ca
 fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boolean): List<List<Candidate>> {
     val groups = ArrayList<List<Candidate>>()
     val t = t0
+    if (name == "invoke") {
+        val ic = invokeCandidates(t0)
+        if (ic.isNotEmpty() && (ops.asFunType(t0) != null || t0 is FunType)) {
+            groups.add(ic)
+            return groups
+        }
+    }
     val mem = ArrayList<Candidate>()
     if (!ops.mayBeNull(t)) {
         for (m in members.funsNamed(t, name)) {
@@ -765,6 +772,8 @@ fun BodyChecker.finalizePostponed(a: Arg, cs: ConstraintSystem, pt: Type?) {
         // a lambda has the (resolved) function type it is checked against when its own type fits
         if (u is LambdaExpr && pt is FunType && !pt.nullable && t is FunType && !containsError(pt) && ops.isSubtype(t, pt)) t = pt
         r.type = t
+        val dr = r.declRec
+        if (dr != null && t is FunType) dr.type = t.ret
     }
 }
 

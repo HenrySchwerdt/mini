@@ -11,6 +11,7 @@ class ExprRec(var type: Type, var callee: Sym?) {
     /** for `is`/`as`/when-is: the resolved target type */
     var target: Type? = null
     var thisKey: String? = null
+    var declRec: ExprRec? = null
 }
 
 class Records {

@@ -43,6 +43,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
             if (names != null) {
                 val pv = VarSym("<destruct>", t, false, true, p.start)
                 destructure(names, t, l, p.start)
+                recordDeclAt(p.start, p.end, t)
             } else {
                 val v = VarSym(p.name ?: "_", t, false, true, p.start)
                 l.vars[v.name] = v
@@ -98,6 +99,15 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     }
     val ft = FunType(recvT, paramTypes, ret, false, false)
     record(lam, ft, null)
+    if (stmts.isNotEmpty()) {
+        val bn = BlockExpr(stmts)
+        bn.start = stmts[0].start
+        bn.end = stmts[stmts.size - 1].end
+        val coerced = expRet != null && ops.isUnit(cs?.resolveFixed(expRet) ?: expRet)
+        record(bn, if (lastIsExpr && !coerced) fin(last) else sema.unitType, null)
+    }
+    val dr = recordDeclAt(lam.start, lam.end, ret)
+    rec.get(lam)?.declRec = dr
     return ft
 }
 
@@ -138,11 +148,16 @@ fun BodyChecker.callableRefWith(e: CallableRefExpr, ef: FunType?, unused: Type?)
         val kc = sema.classNamed("kotlin.reflect.KClass") ?: return ErrType("KClass")
         if (r == null) return ErrType("class literal")
         val t: Type
+        var variance = Variance.INV
         val rr = resolveReceiver(r, null)
-        if (rr is ClassRecv) t = rr.cls.thisType().let { ClassType(it.cls, it.args.map { TArg(null, Variance.INV) }, false) }
-        else if (rr is ValueRecv) t = rr.type
-        else return ErrType("class literal")
-        val kt = ClassType(kc, listOf(TArg(t, Variance.INV)), false)
+        if (rr is ClassRecv) {
+            t = rr.cls.thisType().let { ClassType(it.cls, it.args.map { TArg(null, Variance.INV) }, false) }
+            rec.get(AstWalk.unparen(r))?.type = t
+        } else if (rr is ValueRecv) {
+            t = ops.approximate(rr.type)
+            variance = Variance.OUT
+        } else return ErrType("class literal")
+        val kt = ClassType(kc, listOf(TArg(t, variance)), false)
         record(e, kt, null)
         return kt
     }
@@ -306,6 +321,15 @@ fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {
     decl.end = e.end
     val c = sema.collector.collectClass(decl, null, file.pkg, file, scope, true)
     c.isAnonymous = true
+    var sc: Scope? = scope
+    val outerTps = ArrayList<TypeParamSym>()
+    while (sc != null) {
+        if (sc is TypeParamScope) {
+            for (tp in sc.tps) if (!outerTps.contains(tp)) outerTps.add(0, tp)
+        }
+        sc = sc.parent
+    }
+    c.typeParams.addAll(outerTps)
     sema.declSyms[decl] = c
     sema.checkClass(c)
     val t = c.thisType()

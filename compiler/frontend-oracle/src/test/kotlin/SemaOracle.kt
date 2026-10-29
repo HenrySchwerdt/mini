@@ -58,6 +58,18 @@ object SemaOracle {
         "decl:FirProperty" to "decl-property",
         "decl:FirValueParameter" to "decl-parameter",
         "decl:FirNamedFunction" to "decl-function",
+        "FirBlock" to "block",
+        "FirBreakExpression" to "jump",
+        "FirContinueExpression" to "jump",
+        "FirThrowExpression" to "throw",
+        "FirGetClassCall" to "class-literal",
+        "FirCallableReferenceAccess" to "callable-ref",
+        "FirAnonymousObjectExpression" to "object-literal",
+        "decl:FirEnumEntry" to "decl-enum-entry",
+        "decl:FirPrimaryConstructor" to "decl-constructor",
+        "decl:FirConstructor" to "decl-constructor",
+        "decl:FirPropertyAccessor" to "decl-accessor",
+        "decl:FirAnonymousFunction" to "decl-lambda",
     )
 
     fun lineOf(text: String, off: Int): Int {
@@ -74,16 +86,16 @@ object SemaOracle {
         val st = Stat()
         val ours = HashMap<String, Rec>()
         for (r in sema.dumpFile(f)) {
-            val decl = r.kind == "PropertyDecl" || r.kind == "FunDecl" || r.kind == "Param" || r.kind == "DestructEntry" || r.kind == "LambdaParam" || r.kind == "DestructuringDecl"
-            val key = "${r.start}-${r.end}-" + (if (decl) "d" else if (r.kind == "SmartCast") "s" else "e")
+            val decl = r.kind == "EnumEntryDecl" || r.kind == "PrimaryCtor" || r.kind == "SecondaryCtor" || r.kind == "AccessorDecl" || r.kind == "PropertyDecl" || r.kind == "FunDecl" || r.kind == "Param" || r.kind == "DestructEntry" || r.kind == "LambdaParam" || r.kind == "DestructuringDecl"
+            val key = "${r.start}-${r.end}-" + (if (decl) "d" else if (r.kind == "SmartCast") "s" else if (r.kind == "BlockExpr") "b" else "e")
             if (!ours.containsKey(key)) ours[key] = r
         }
         // group FIR records per key
         val groups = LinkedHashMap<String, ArrayList<FirRec>>()
         for (r in fir) {
             val cat = categories[r.kind] ?: continue
-            if (r.kind == "FirResolvedQualifier") continue // K2 specific: compared through its parent call
             val decl = r.kind.startsWith("decl:")
+            val blk = r.kind == "FirBlock"
             var rs = r.start
             if (decl) {
                 // PSI declarations include a leading KDoc comment
@@ -114,7 +126,10 @@ object SemaOracle {
                     }
                 }
             }
-            val key = "${rs}-${re}-" + (if (decl) "d" else "e")
+            if (r.kind == "decl:FirEnumEntry") {
+                while (re > rs && (text[re - 1] == ',' || text[re - 1] == ';')) re--
+            }
+            val key = "${rs}-${re}-" + (if (decl) "d" else if (blk) "b" else "e")
             groups.getOrPut(key) { ArrayList() }.add(if (rs == r.start && re == r.end) r else FirRec(rs, re, r.kind, r.type, r.callee, r.extra))
         }
         for ((key, list) in groups) {

@@ -205,8 +205,15 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
 
     /** checks a block used as a function body, returns the type of its last expression (Unit when none) */
     fun blockBody(b: Expr, expected: Type?): Type {
-        if (b is BlockExpr) return block(b.stmts, expected, false)
+        if (b is BlockExpr) return blockNode(b, expected, false)
         return expr(b, expected)
+    }
+
+    /** checks the statements of a block node and records the block with the type of its last statement */
+    fun blockNode(b: BlockExpr, expected: Type?, newScope: Boolean): Type {
+        val t = block(b.stmts, expected, newScope)
+        record(b, t, null)
+        return t
     }
 
     fun expectCompatible(node: Ast, actual: Type, expected: Type?) {
@@ -294,6 +301,16 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         sema.declSyms[d] = v
         record(d, v.type ?: ErrType("?"), v)
         declareVar(l, v)
+        if (init != null && !d.isVar) {
+            val ct = rec.get(init)?.type
+            if (ct is ClassType && ct.cls === sema.booleanType.cls) {
+                val cf = condFacts(init)
+                if (cf.onTrue.isNotEmpty() || cf.onFalse.isNotEmpty()) {
+                    v.condTrue = cf.onTrue
+                    v.condFalse = cf.onFalse
+                }
+            }
+        }
         if (init != null && !d.isVar && declared == null) {
             val k = stableKey(init)
             if (k != null) {

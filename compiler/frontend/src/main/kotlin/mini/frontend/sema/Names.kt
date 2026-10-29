@@ -204,7 +204,10 @@ fun BodyChecker.resolveReceiver(r0: Expr, selectorName: String?): RecvInfo? {
             val t = nameResult(r, res)
             return ValueRecv(t, r, false)
         }
-        if (isPackagePrefix(r.name)) return PkgRecv(r.name)
+        if (isPackagePrefix(r.name)) {
+            record(r, sema.unitType, null)
+            return PkgRecv(r.name)
+        }
         err(r.start, "unresolved reference '" + r.name + "'")
         record(r, ErrType("unresolved"), null)
         return null
@@ -241,7 +244,10 @@ fun BodyChecker.resolveReceiverChain(d: DotExpr): RecvInfo? {
                     return ValueRecv(t, d, false)
                 }
             }
-            if (isPackagePrefix(full)) return PkgRecv(full)
+            if (isPackagePrefix(full)) {
+                record(d, sema.unitType, null)
+                return PkgRecv(full)
+            }
             err(d.start, "unresolved reference '" + sel.name + "'")
             return null
         }

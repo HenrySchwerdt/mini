@@ -60,7 +60,7 @@ private fun BodyChecker.expr0(e: Expr, expected: Type?): Type {
         is CallableRefExpr -> return callableRef(e, expected)
         is LambdaExpr -> return lambdaStandalone(e, expected)
         is AnonFunExpr -> return anonFun(e, expected)
-        is BlockExpr -> return block(e.stmts, expected, true)
+        is BlockExpr -> return blockNode(e, expected, true)
         is IfExpr -> return ifExpr(e, expected)
         is WhenExpr -> return whenExpr(e, expected)
         is TryExpr -> return tryExpr(e, expected)
@@ -571,9 +571,13 @@ fun BodyChecker.assign(e: BinaryExpr): Type {
         return sema.unitType
     }
     val lt = fin(expr(l, null))
+    if (l is DotExpr && l.safe) rec.get(l)?.type = sema.unitType
     var declared = rec.get(l)?.type ?: lt
     // the declared type of a variable, without smart casts
+    val sd = synthDepth
+    synthDepth = 0
     val rt = expr(e.right, declared)
+    synthDepth = sd
     invalidate(l)
     // after an assignment the variable has the type of the assigned value (smart cast to it)
     val k = stableKey(l)
@@ -678,6 +682,14 @@ fun BodyChecker.condFacts(e0: Expr): BodyChecker.Cond {
             if (e.op == "!") {
                 val c = condFacts(e.expr)
                 return BodyChecker.Cond(c.onFalse, c.onTrue)
+            }
+        }
+        is NameExpr -> {
+            val v = rec.get(e)?.callee
+            if (v is VarSym) {
+                val ct = v.condTrue
+                val cf = v.condFalse
+                if (ct != null && cf != null) return BodyChecker.Cond(ArrayList(ct), ArrayList(cf))
             }
         }
         is IsExpr -> {
@@ -806,8 +818,20 @@ fun BodyChecker.recheck(b: Expr, hint: Type, base: Flow, facts: List<FactAdd>): 
 }
 
 fun BodyChecker.branchValue(b: Expr, expected: Type?): Type {
-    if (b is BlockExpr) return block(b.stmts, expected, true)
+    if (b is BlockExpr) return blockNode(b, expected, true)
     return expr(b, expected)
+}
+
+/** a loop body: K2 wraps a body that is not a block in a block of its own */
+fun BodyChecker.loopBody(b: Expr): Type {
+    val t = branchValue(b, null)
+    if (b !is BlockExpr) {
+        val bn = BlockExpr(listOf(b))
+        bn.start = b.start
+        bn.end = b.end
+        record(bn, rec.get(b)?.type ?: t, null)
+    }
+    return t
 }
 
 /**
@@ -871,7 +895,7 @@ private fun BodyChecker.tryBody(e: TryExpr, expected: Type?, top: Boolean): Type
     AstWalk.assignedNames(e.body, assigned)
     flow = before.copy()
     val types = ArrayList<Type>()
-    types.add(block(e.body.stmts, expected, true))
+    types.add(blockNode(e.body, expected, true))
     val bodyFlow = flow
     var merged = bodyFlow
     for (c in e.catches) {
@@ -883,7 +907,7 @@ private fun BodyChecker.tryBody(e: TryExpr, expected: Type?, top: Boolean): Type
         val v = VarSym(c.param.name, pt, false, false, c.param.start)
         declareVar(l, v)
         record(c.param, pt, v)
-        types.add(block(c.body.stmts, expected, true))
+        types.add(blockNode(c.body, expected, true))
         scope = saved
         merged = FlowOps.merge(ops, merged, flow)
     }
@@ -891,7 +915,7 @@ private fun BodyChecker.tryBody(e: TryExpr, expected: Type?, top: Boolean): Type
     val fin = e.finallyBlock
     if (fin != null) {
         for (n in assigned) flow.killRoot(n)
-        block(fin.stmts, null, true)
+        blockNode(fin, null, true)
     }
     return preferExpected(joinBranches(types), expected, e, top)
 }
@@ -941,7 +965,7 @@ fun BodyChecker.whileExpr(e: WhileExpr): Type {
     val base = flow
     flow = base.copy()
     flow.addAll(c.onTrue)
-    if (body != null) branchValue(body, null)
+    if (body != null) loopBody(body)
     flow = base
     return sema.unitType
 }
@@ -951,7 +975,7 @@ fun BodyChecker.doWhile(e: DoWhileExpr): Type {
     if (body != null) loopKill(body, e.cond)
     val base = flow
     flow = base.copy()
-    if (body != null) branchValue(body, null)
+    if (body != null) loopBody(body)
     expr(e.cond, sema.booleanType)
     flow = base
     loopKill(e.cond, null)
@@ -998,7 +1022,7 @@ fun BodyChecker.forExpr(e: ForExpr): Type {
         }
     }
     flow = savedFlow.copy()
-    if (body != null) branchValue(body, null)
+    if (body != null) loopBody(body)
     flow = savedFlow
     scope = saved
     return sema.unitType

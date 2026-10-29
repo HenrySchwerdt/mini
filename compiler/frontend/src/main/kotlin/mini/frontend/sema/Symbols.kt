@@ -97,7 +97,7 @@ class ClassSym(
 
     /** class name as the oracle renders it */
     fun renderName(): String {
-        if (isAnonymous) return "<anonymous>"
+        if (isAnonymous) return if (pkg.isEmpty()) "<anonymous>" else pkg + ".<anonymous>"
         if (isLocal) return "<local>." + name
         return fqName()
     }
@@ -136,6 +136,9 @@ class VarSym(name: String, var type: Type?, val isVar: Boolean, val isParam: Boo
     /** true for a `val` without initializer at declaration (assigned later) */
     var isLateInit = false
     var ownerFun: Any? = null
+    /** facts that hold when this boolean `val` is true / false (a condition stored in a variable) */
+    var condTrue: List<FactAdd>? = null
+    var condFalse: List<FactAdd>? = null
     /** the implicit `field` of an accessor */
     var isField = false
 }

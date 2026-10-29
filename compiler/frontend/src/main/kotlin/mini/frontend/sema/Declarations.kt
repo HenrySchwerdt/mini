@@ -136,6 +136,7 @@ fun Sema.checkProp(p: PropSym) {
             gc.blockBody(body, gt)
             t = ErrType("block getter")
         }
+        bc.record(g, gt ?: (if (g.expressionBody) gc.fin(t) else ErrType("getter")), null)
         if (needsInference && p.type == null) {
             if (g.expressionBody) {
                 val all = ArrayList<Type>()
@@ -164,6 +165,7 @@ fun Sema.checkProp(p: PropSym) {
         sc.scope = ls
         sc.targets.add(ReturnTarget(null, unitType, null, false))
         sc.blockBody(s.body, null)
+        bc.record(s, unitType, null)
     }
     bc.record(d, p.type ?: ErrType("?"), p)
 }
@@ -183,6 +185,8 @@ fun Sema.checkClass(c: ClassSym) {
     // primary constructor parameters and super constructor calls
     val pc = c.primaryCtor
     val bc = BodyChecker(this, file)
+    val pcd = d.primaryCtor
+    if (pcd != null) bc.record(pcd, c.thisType(), pc)
     if (pc != null) {
         ensureSig(pc)
         var i = 0
@@ -239,7 +243,7 @@ fun Sema.checkClass(c: ClassSym) {
                     val names = HashSet<String>()
                     AstWalk.capturedAssigned(b, names)
                     ic.capturedNames = names
-                    ic.block(b.stmts, null, true)
+                    ic.blockNode(b, null, true)
                 }
             }
             is SecondaryCtor -> {
@@ -259,6 +263,7 @@ fun Sema.checkSecondary(c: ClassSym, f: FunSym, m: SecondaryCtor) {
     val file = f.file ?: return
     ensureSig(f)
     val bc = BodyChecker(this, file)
+    bc.record(m, c.thisType(), f)
     val l = LocalScope(c.bodyScope)
     var i = 0
     for (p in m.params) {
@@ -282,7 +287,7 @@ fun Sema.checkSecondary(c: ClassSym, f: FunSym, m: SecondaryCtor) {
         val names = HashSet<String>()
         AstWalk.capturedAssigned(b, names)
         bc.capturedNames = names
-        bc.block(b.stmts, null, true)
+        bc.blockNode(b, null, true)
     }
 }
 
