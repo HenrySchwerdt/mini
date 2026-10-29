@@ -28,14 +28,14 @@ tasks.test {
     systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
     // Memory-model corpus (docs/memory-model.md) and the mini.memory API sources for MemoryCheckTest.
     systemProperty("mini.memoryCorpus", rootProject.file("testdata/memory").absolutePath)
-    systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("std/kotlin-mini/mini/memory").absolutePath)
+    systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("stdlib/mini/memory").absolutePath)
     systemProperty("mini.memoryExtra", rootProject.file("testdata/memory-extra").absolutePath)
     inputs.dir(rootProject.file("testdata/memory"))
     inputs.dir(rootProject.file("testdata/memory-extra"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("std/kotlin-mini/mini/memory"))
+    inputs.dir(rootProject.projectDir.parentFile.resolve("stdlib/mini/memory"))
     // Declared as inputs so edits to test programs or the runtime re-run the test instead of hitting the cache.
     inputs.dir(rootProject.file("testdata"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("runtime/minirt"))
+    inputs.dir(rootProject.projectDir.parentFile.resolve("runtime"))
     maxHeapSize = "2g"
     testLogging {
         events("passed", "failed", "skipped")

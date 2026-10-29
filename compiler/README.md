@@ -2,7 +2,7 @@
 
 Compiles real Kotlin source through the official **K2 frontend** (pinned to Kotlin
 **2.4.21**) into our own backend, which emits C17. clang compiles the C and links it with
-the C runtime (`libminirt`, ABI in `runtime/minirt/include/minirt.h`).
+the C runtime (`libminirt`, ABI in `runtime/include/minirt.h`).
 See `docs/plan-kotlin.md` (sections 2, 3, 10, 10a) for the why.
 
 ```
@@ -28,7 +28,7 @@ minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
 ```
 
 * Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.
-* The Mini standard library (`std/kotlin-mini`, found next to `runtime/` or via `--stdlib <dir>`) is compiled from source together
+* The Mini standard library (`stdlib`, found next to `runtime/` or via `--stdlib <dir>`) is compiled from source together
   with the user files; only the reachable part ends up in the C file. `--no-stdlib` uses the JVM kotlin-stdlib jar instead
   (no stdlib functions then have bodies). Details: `docs/stdlib.md`. The `mini.memory` API is part of it.
 * `--extra-src <file.kt>` (repeatable): additional Kotlin sources compiled together with the program, only
@@ -40,9 +40,9 @@ minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
 
 * `--emit-c <path>`: keep the generated C file there (otherwise a temporary file is used).
 * `--runtime-src <dir>`: directory whose `*.c` files (recursively) are linked in. Default:
-  `runtime/minirt/src` in the repository root (found by walking up from the current
+  `runtime/src` in the repository root (found by walking up from the current
   directory); error if it does not exist.
-* `--runtime-include <dir>`: directory with `minirt.h`. Default: `runtime/minirt/include`.
+* `--runtime-include <dir>`: directory with `minirt.h`. Default: `runtime/include`.
 * clang is invoked with `-std=c17 -O1 -Wall`; extra flags via `--cflag`.
 * Exit codes: 0 ok, 1 compile error (Kotlin error, unsupported construct, C compiler
   failure), 2 usage, 3 internal emitter error.
@@ -51,7 +51,7 @@ Tests: `gradle -p compiler test`.
 
 * `backend` tests: purity rule (below), mangling, emitter details.
 * `jvm-bridge` `EndToEndTest`: builds every `compiler/testdata/*.kt` with the CLI against the
-  real runtime `runtime/minirt` (sources compiled in), compiles with `-Werror`, runs the
+  real runtime `runtime` (sources compiled in), compiles with `-Werror`, runs the
   binary and compares stdout with `<name>.out`.
   * `<name>.err` (optional): substrings expected on stderr; the program must then exit non-zero (panic).
   * `<name>.cerr`: the build must fail with exit 1 and stderr must contain each line.
@@ -60,7 +60,7 @@ Tests: `gradle -p compiler test`.
 * `jvm-bridge` `EndToEndTest.leakCheck`: every program with a `.out` and no `.err`/`.cerr` is built a
   second time with `-fsanitize=address,undefined` (LeakSanitizer on) and must print the same output,
   exit 0 and report nothing. The C compiler is clang when it can link the sanitizer runtimes, else gcc
-  (as in `runtime/minirt/run_tests.sh`); the test is skipped when neither can. Set `MINIC_DEBUG=1` to get
+  (as in `runtime/run_tests.sh`); the test is skipped when neither can. Set `MINIC_DEBUG=1` to get
   stack traces for unsupported-construct errors.
 
 ## Module layout
@@ -281,7 +281,7 @@ K2 -> Kotlin IR --+--> Ir2Mir -> MIR -> C                      (code generation,
   delegated properties, no sealed-class exhaustiveness beyond what K2 lowers, no `Byte`/`Short`/`Float`,
   no top-level properties, no multi-file input, no `fun main(args)`, no `Any()` construction, no enum
   entries with bodies, no `values()`/`valueOf()`.
-* The stdlib is compiled from `std/kotlin-mini` (see `docs/stdlib.md`); what natively compiles today is its String/StringBuilder/Char/number
+* The stdlib is compiled from `stdlib` (see `docs/stdlib.md`); what natively compiles today is its String/StringBuilder/Char/number
   part. Collections and `map`/`filter` are written but need generics and lambdas in the backend.
 * Cycles leak (see above); RC elision (borrow inference, move on last use) is a later phase.
 * Generated names for members are long (`kc_Foo_Mbar_AI`); `Int?` fields cost a heap box per assignment.

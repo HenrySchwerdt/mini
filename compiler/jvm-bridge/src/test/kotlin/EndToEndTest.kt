@@ -10,7 +10,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /**
- * Builds each .kt file in compiler/testdata with the CLI against the real runtime (runtime/minirt)
+ * Builds each .kt file in compiler/testdata with the CLI against the real runtime (runtime)
  * and checks it:
  *  - `<name>.cerr` present: the build must fail (exit 1) and stderr must contain every line of the file.
  *  - otherwise `<name>.out` is the expected stdout; `<name>.err` (optional) lists substrings
@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 class EndToEndTest {
     private val testdata = File(System.getProperty("mini.testdata") ?: error("mini.testdata not set"))
     private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
-    private val runtime = File(repoRoot, "runtime/minirt")
+    private val runtime = File(repoRoot, "runtime")
     private val work = Files.createTempDirectory("minic-e2e-").toFile().also { it.deleteOnExit() }
 
     @TestFactory

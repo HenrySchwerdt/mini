@@ -295,6 +295,9 @@ internal fun Ir2Mir.allOverridden(f: IrSimpleFunction, acc: MutableSet<IrSimpleF
 internal fun Ir2Mir.topClass(f: IrSimpleFunction): IrSimpleFunction? {
     val viaClass = overridden(f).filter { parentClass(it)?.kind != ClassKind.INTERFACE }
     if (viaClass.isNotEmpty()) return viaClass.firstNotNullOfOrNull { topClass(it) }
+    // An Any member reached only through an interface (`data class Q : I` overriding toString):
+    // it still belongs to the fixed Any slots, not to a new vtable slot.
+    allOverridden(f).firstOrNull { anyMember(it) != null }?.let { return it }
     return if (parentClass(f)?.kind != ClassKind.INTERFACE) f else null
 }
 

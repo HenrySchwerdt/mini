@@ -1,148 +1,73 @@
-# Mini
+# Mini: Kotlin, nativ und mit prüfbarem Speichermanagement
 
-A C17 bootstrap compiler for a statically typed language with Kotlin-inspired
-classes and inheritance, interfaces, generics, packages/modules, annotations,
-and native `Optional<T>` / `Result<Res, Err>`. Memory management is explicit.
-There is no `null` literal; absent pointers use `Optional<*T>`.
+Mini ist **Kotlin**: gleiche Grammatik, gleiche Semantik, gleiche Standardbibliothek. Der Compiler
+`minic` übersetzt aber nicht für die JVM, sondern über C in **native Binaries** und bringt ein eigenes
+**Speichermodell** mit:
 
-Methods live in classes/interfaces, do not require `fn`, and receive `this` as an
-implicit instance pointer. `object.method()` automatically borrows class values.
-Classes default to `Object`; extending `AllocatableObject` enables typed heap
-allocation and explicit freeing. The executable entry is `class Main { static main() }`.
-Locals use `val`/`var` with inference, and semicolons are optional across lines.
-Function types and lambdas support typed callbacks, implicit `it`, trailing lambda
-arguments and immutable scalar captures; see [the example](examples/lambdas.mini).
-The first libuv-backed `Thread`/`Mutex` APIs provide native multithreading with
-typed errors and explicit cleanup; see [the parallel example](examples/threads.mini).
-libuv also backs a blocking TCP `mini.net` module (`TcpListener`/`TcpConnection`);
-see [the loopback example](examples/net.mini). Generics now include non-virtual
-generic instance methods (`box.map<R>(f)`; see
-[the example](examples/generic_methods.mini)), and the std adds `mini.math.Math`,
-`mini.core.Pair`/`Triple` and `mini.core.IntRange`.
-See the [implemented language reference](docs/language-v0.2.md), the
-[v0.3 freeze manifest](docs/freeze-v0.3.md) and [examples](examples).
+- **Managed** (Standard): Refcounting. Normaler Kotlin-Code läuft unverändert.
+- **Arena / Heap / Pool**: Allocatoren als Kotlin-Context-Parameter (`context(arena) { … }`).
+- **Strict** (`@file:MemoryMode(Mode.Strict)`): Jede Allokation braucht einen bewiesenen Besitzer.
+  Der Compiler findet Leaks, Double-Free, Use-after-free und Arena-Escapes zur Compile-Zeit.
 
-```mini
-class Main {
-    static answer(): Result<i32, bool> = Result.Ok(42)
+Jedes Mini-Programm ist gültiges Kotlin. Mini-spezifisches (Allocatoren, `@Owned`, `x.free()`) ist
+eine normale Kotlin-Bibliothek, die auch auf der JVM kompiliert.
 
-    static main(): i32 {
-        val answer = match Main.answer() {
-            Ok(value) => value
-            Err(error) => 0
-        }
-        print_i32(answer)
-        return 0
-    }
+```kotlin
+@file:MemoryMode(Mode.Strict)
+import mini.memory.*
+
+context(h: Heap)
+fun load(n: Int): @Owned Buffer? {
+    val buf = Buffer(n)
+    if (!fill(buf)) return null   // error[M0102]: allocation from `Heap` is never released
+    return buf
 }
 ```
 
-## Build and test
+## Schnellstart
 
-Install xmake, a C17 compiler and Clang. xmake resolves Unity 2.7.0 for tests
-and static libuv 1.52.1 for native concurrency.
-The optional direct LLVM backend additionally needs LLVM development headers,
-libraries, the native target and `llvm-config`.
+Voraussetzungen: JDK 21, clang (oder gcc), libuv nur für die Runtime-Tests.
 
 ```sh
-xmake f -c -y
-xmake
-xmake test
-xmake run mini0 --help
-xmake run mini0 build examples/kotlin.mini -o build/kotlin
+./minic build examples/hello.kt -o build/hello && ./build/hello
+./minic build examples/shapes.kt -o build/shapes && ./build/shapes
+./minic check examples/memory_leak.kt
 ```
 
-Run `build/kotlin` (`build/kotlin.exe` on Windows). The native example prints
-`42`, `2`. `xmake test` includes language regression tests and an end-to-end
-CLI suite that builds/runs examples, imports std modules, tests control flow, and
-emits C and LLVM IR. Clang must be available on PATH for those integration tests.
-The CLI also accepts `--cc /path/to/compiler` or `MINI_CC`.
+`./minic` baut den Compiler beim ersten Aufruf (Gradle) und ruft ihn dann auf.
 
-Compile/check without linking the optional LLVM C API backend:
+## Aufbau
+
+| Verzeichnis | Inhalt |
+|---|---|
+| `compiler/` | `minic`: K2-Frontend → Kotlin-IR → MIR → C17 → clang. Dazu der Ownership-Checker. [README](compiler/README.md) |
+| `runtime/` | libminirt (C17): Objektmodell, Refcounting, Strings, Allocatoren. [README](runtime/README.md) |
+| `stdlib/` | Mini-stdlib als Kotlin-Quelltext (portiert aus der Kotlin-stdlib, Apache-2.0) |
+| `stdlib-test/` | stdlib-Tests, die auf der JVM gegen die echte Kotlin-stdlib laufen |
+| `examples/` | Beispielprogramme |
+| `docs/` | [Plan und Roadmap](docs/plan-kotlin.md), [Speichermodell](docs/memory-model.md), [stdlib](docs/stdlib.md) |
+
+## Tests
 
 ```sh
-xmake f --llvm=n
-xmake
-xmake test
+runtime/run_tests.sh                 # Runtime unter ASan/UBSan/TSan (LIBUV_ROOT setzen, falls nötig)
+(cd compiler && ./gradlew test)      # Compiler: End-to-End, Leak-Check, Speichermodell-Korpus, stdlib
 ```
 
-The native compiler currently lowers through checked, monomorphized C17 and
-invokes Clang/LLVM. It supports `check`, `build`, `emit-c`, and `emit-llvm` commands.
-A GCC-compatible C17 compiler can compile emitted C; `emit-llvm` needs Clang.
-The separate direct LLVM C API backend is still incomplete. It is not the working
-CLI's code generator. Native macOS arm64 is verified locally; Linux/Windows code
-paths exist but their test matrix has not been run here. Cross-compilation still
-needs a target toolchain/runtime and is not implemented as a CLI option.
+Erwartete Ausgaben stammen immer aus echtem Kotlin auf der JVM.
 
-## LLVM installation selection
+## Stand
 
-With `--llvm=y` (default), the build queries the installed LLVM instead of pinning
-an incompatible Homebrew patch version or hardcoding an architecture. Discovery:
+Funktioniert nativ: Funktionen, Primitive, Strings und String-Templates, `when`, Schleifen und
+Ranges, Klassen, Vererbung, Interfaces, `object`/`companion`, `data class`, `enum class`,
+Null-Safety, Default-Argumente, Refcounting, String- und `StringBuilder`-Funktionen der stdlib.
+Der Strict-Checker erkennt den kompletten Speichermodell-Korpus.
 
-1. `xmake f --llvm_config=/path/to/llvm-config`.
-2. `LLVM_CONFIG` (full executable path).
-3. `LLVM_ROOT` (prefix containing `bin/llvm-config`, or `llvm-config.exe` on Windows).
-4. `llvm-config` on PATH.
-5. On macOS, `brew --prefix llvm` for keg-only installations.
+In Arbeit: Lambdas, Generics, Exceptions und damit Collections. Danach v1: `minic` kompiliert sein
+eigenes Backend. Danach kommen Bootstrap, Coroutines/Async-IO auf libuv, LLVM-Backend und eine
+Runtime in Kotlin. Details in [docs/plan-kotlin.md](docs/plan-kotlin.md).
 
-Invalid explicit selections fail. Shared LLVM linkage is the default;
-`xmake f --llvm_link=static` selects static libraries. Homebrew's extra dependency
-library directory is discovered and applied only to LLVM consumers. Both modes
-were verified with Homebrew LLVM 23.1.4. To select that Clang for generated code,
-pass its executable path using `mini0 --cc` after the subcommand.
+Plattformen: Linux und macOS (CI). Windows folgt später.
 
-Static LLVM's C++ runtime must match the toolchain (conventional libc++ on
-macOS/BSD, libstdc++ on Linux/MinGW). Windows development libraries must match the
-MSVC architecture/runtime; compiler-only LLVM distributions are insufficient.
-For shared LLVM on Windows its DLL directory must be on PATH when running.
-
-## Source modules and std foundation
-
-A package is a namespace; a module is a compilation/visibility boundary. The CLI
-accepts dependency sources explicitly, with no global search paths or downloads:
-
-```sh
-xmake run mini0 build examples/stdlib.mini \
-  --dep core=std/mini/core/value.mini \
-  --dep collections=std/mini/collections/cell.mini \
-  --dep memory=std/mini/memory/allocator.mini \
-  --dep io=std/mini/io/console.mini \
-  --depends collections=core -o build/stdlib
-```
-
-The example prints `42` and explicitly releases its allocation. `HeapAllocator`
-returns `Result<*u8, AllocationError>`; `ByteIO` returns `Result<usize, IOError>`.
-The first Kotlin-style collection slice includes
-`Collection<T>`, `List<T>`, `MutableCollection<T>`, `MutableList<T>`, `RandomAccess`
-and allocator-backed `ArrayList<T>` with indexed operations and typed errors.
-See [std APIs and ownership](std/README.md). It is not a completed
-collections/text/filesystem library or ownership system. Modules currently compile
-from sources together; binary metadata and a package manager remain future work.
-
-## VS Code / clangd
-
-Use the recommended clangd and xmake extensions. Both use `compile_commands.json`
-in the repository root. It contains local LLVM/Unity includes, C17 flags and SDK
-paths, is regenerated by xmake, and is not committed.
-
-```sh
-xmake project -k compile_commands --lsp=clangd .
-```
-
-If old diagnostics remain, run **clangd: Restart language server**. The executable
-is selected by your extension/user configuration; no machine-specific clangd path
-is committed.
-
-## Layout
-
-- `bootstrap/src/frontend`: lexer, parser, AST and legacy v0.1 checker.
-- `bootstrap/src/lowering`: project/module resolution, validation, concrete generic
-  instances, classes/dispatch, native variants, annotations and C17 output.
-- `bootstrap/src/driver`: platform process invocation and output generation.
-- `bootstrap/src/backend`: optional direct LLVM backend under construction.
-- `runtime`: small allocation/I/O C ABI.
-- `std`: initial class-based standard-library sources.
-- `tests/native.lua`: native CLI integration tests.
-
-The [v0.1 grammar](docs/grammar.md) is retained as historical bootstrap syntax;
-[the v0.2 document](docs/language-v0.2.md) describes the current language.
+Der frühere C-Bootstrap-Compiler `mini0` mit eigener Syntax ist entfernt. Sein letzter Stand ist
+der Merge-Commit `391270a` auf `main`.

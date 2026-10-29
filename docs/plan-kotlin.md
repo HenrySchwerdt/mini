@@ -83,7 +83,7 @@ in beiden Varianten dieselben.
 ```
 
 Der Compiler ist ein Gradle-Projekt in Kotlin unter `compiler/` mit gepinnter
-Kotlin-Version. Die Runtime bleibt C17 mit xmake unter `runtime/`.
+Kotlin-Version. Die Runtime bleibt C17 unter `runtime/` und wird von `minic` mitkompiliert.
 
 ## 4. Das Speichermodell
 
@@ -309,11 +309,9 @@ bestehenden KMP-Projekten einfach ein Target hinzufügen kann (spätere Phase).
 
 | Bestand | Zukunft |
 |---|---|
-| `bootstrap/` (mini0, C) | wird als `v0.3-legacy` getaggt und eingefroren, später entfernt |
-| `runtime/` + libuv-Anbindung aus `bootstrap/src/lowering/threading.c`, `std/mini/net` | wird zur Basis von `libminirt` (C17, xmake) |
-| `std/mini/*.mini` | als `.kt` neu geschrieben: Kotlin-Namen gibt es in der echten stdlib, Mini-Spezifisches kommt nach `mini.*` |
-| `examples/*.mini` | nach `.kt` portiert und Teil der Testsuite |
-| CI-Matrix, xmake | bleibt für die Runtime, Gradle kommt für den Compiler dazu |
+| `bootstrap/` (mini0, C), alte `std/*.mini`, `examples/*.mini`, Docs v0.2/v0.3 | **entfernt** (letzter Stand: Merge-Commit `391270a` auf `main`) |
+| `runtime/` | ist jetzt libminirt (C17), die libuv-Anbindung des alten Compilers diente als Vorlage |
+| CI, xmake | xmake entfernt; CI = Runtime-Suite (`runtime/run_tests.sh`) + Gradle-Tests auf Linux/macOS |
 | Docs v0.2/v0.3 | Archiv. Neue Referenz: „Kotlin + Mini-Speichermodell“ |
 
 ## 10. Phasen und Abnahmekriterien
@@ -381,7 +379,7 @@ härteste Praxistest unseres eigenen Speichermodells.
 
 Reihenfolge, jeweils mit den bestehenden C-Tests als Abnahme (dasselbe ABI aus `minirt.h`):
 Zahlen- und String-Formatierung → UTF-8/16 → Allocatoren (Heap, Arena, Pool, Debug) →
-Objektmodell und Refcounting → Konsole/Einstieg. Danach entfällt `runtime/minirt/src/*.c`.
+Objektmodell und Refcounting → Konsole/Einstieg. Danach entfällt `runtime/src/*.c`.
 Für den Bootstrap ist das ein Gewinn: Compiler, stdlib und Runtime sind dann alle Kotlin.
 
 ### 10a. Self-Hosting

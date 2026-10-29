@@ -19,7 +19,7 @@ import java.nio.file.Files
 /**
  * Corpus of docs/memory-model.md (test first, the analysis does not exist yet).
  *
- *  - Every program in testdata/memory plus std/kotlin-mini/mini/memory compiles with the real
+ *  - Every program in testdata/memory plus stdlib/mini/memory compiles with the real
  *    kotlinc (K2): the principle "every Mini program is a valid Kotlin program".
  *  - `name.diag` lists the expected Mini diagnostics (`line:col: code`, one per line). The same
  *    information is written in the source as caret lines (`//   ^ M0102`, caret under the

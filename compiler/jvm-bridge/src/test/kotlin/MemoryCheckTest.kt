@@ -20,7 +20,7 @@ class MemoryCheckTest {
     private val api = File(System.getProperty("mini.memoryApi") ?: error("mini.memoryApi not set"))
     private val apiFiles = api.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
     private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
-    // The Mini stdlib (std/kotlin-mini) already contains the mini.memory API; --extra-src copies are de-duplicated.
+    // The Mini stdlib (stdlib) already contains the mini.memory API; --extra-src copies are de-duplicated.
     private val stdlib = mini.bridge.Cli.defaultStdlib(null, repoRoot) ?: error("Mini stdlib not found")
     // additional programs written for the checker itself (the spec corpus above is read-only)
     private val extra = File(System.getProperty("mini.memoryExtra") ?: error("mini.memoryExtra not set"))
