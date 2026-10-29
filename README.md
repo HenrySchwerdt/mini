@@ -87,7 +87,7 @@ In Strict mode a separate checker runs before code generation.
 | **Own parser (B2-1)** | **Done.** 0 mismatches against K2's PSI tree on the repo sources, ~230 tricky snippets, 30k random expressions, 20k random declarations and ~12k mutated repo files. |
 | **Own type checker (B2-2)** | **Done.** 99.99 % agreement with K2 FIR (86658 of 86668 positions). Builds natively with the same result as on the JVM. |
 | **RC elision (D1)** | **Done.** `arraylist` 405 to 265 ms, `tree` retains 8.3M to 0, self-hosted backend 749 to 603 ms. See [docs/benchmarks.md](docs/benchmarks.md). |
-| **Own frontend to MIR without K2 (B2-3)** | In progress. |
+| **Own frontend to MIR without K2 (B2-3)** | In progress. On the working branch all 47 test programs already lower to MIR identical to the K2 path, also from a natively built, K2-free `minic-native`. |
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. |
 | **Full bootstrap, stage 2 == stage 3 (B3)** | Next. `minic` compiles itself without a JVM. |
 | Coroutines and async IO on libuv, LLVM backend, runtime written in Kotlin, Windows | Later. |
