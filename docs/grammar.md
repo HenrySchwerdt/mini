@@ -4,6 +4,11 @@ A small, statically typed, imperative language designed for straightforward pars
 
 **Status:** Draft specification. This defines the syntax and a minimal set of semantic conventions; it is not yet a complete language specification.
 
+This is the historical v0.1 draft. Its `null` literal and nullable heap APIs are
+obsolete and rejected by the current compiler; see the v0.2 Optional-pointer rules. The current project compiler implements
+[the v0.2 language](language-v0.2.md): class-only methods with implicit `this`,
+Kotlin-style inheritance, modules, annotations, generics, Optional and Result.
+
 ## 1. Example
 
 ```mini

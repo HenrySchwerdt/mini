@@ -1,0 +1,17 @@
+package examples.math
+
+import mini.math.Math
+
+class Main {
+    static main(): i32 {
+        if Math.min(3, 7) != 3 { return 1 }
+        if Math.max(3, 7) != 7 { return 2 }
+        if Math.sign(0 - 9) != 0 - 1 { return 3 }
+        if Math.pow(2, cast<usize>(10)) != 1024 { return 4 }
+        if Math.gcd(12, 18) != 6 { return 5 }
+        if Math.lcm(4, 6) != 12 { return 6 }
+        if Math.isqrt(cast<usize>(99)) != cast<usize>(9) { return 7 }
+        print_i32(Math.clamp(Math.abs(0 - 50), 0, 42))
+        return 0
+    }
+}

@@ -1,0 +1,21 @@
+package mini.io
+
+public enum IOError { System }
+
+public class Console {
+    public static print(value: i32): void = print_i32(value)
+}
+
+public class ByteIO {
+    public static read_bytes(fd: i32, buffer: *u8, count: usize): Result<usize, IOError> {
+        val n = read(fd, buffer, count)
+        if n < cast<isize>(0) { return Result.Err(IOError.System) }
+        return Result.Ok(cast<usize>(n))
+    }
+
+    public static write_bytes(fd: i32, buffer: *u8, count: usize): Result<usize, IOError> {
+        val n = write(fd, buffer, count)
+        if n < cast<isize>(0) { return Result.Err(IOError.System) }
+        return Result.Ok(cast<usize>(n))
+    }
+}

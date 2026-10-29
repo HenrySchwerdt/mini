@@ -1,0 +1,18 @@
+interface Value<T> { get(): T }
+
+class Box<T> : Value<T> {
+    val value: T
+    override get(): T = this.value
+}
+
+class Functions {
+    static identity<T>(value: T): T = value
+}
+
+class Main {
+    static main(): i32 {
+        val box = Box<i32> { value: 42 }
+        print_i32(Functions.identity<i32>(box.get()))
+        return 0
+    }
+}

@@ -1,6 +1,13 @@
 {
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}"
+    "--compile-commands-dir=${workspaceFolder}",
+    "--background-index"
   ],
-  "C_Cpp.intelliSenseEngine": "disabled"
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "xmake.compileCommandsBackend": "clangd",
+  "xmake.compileCommandsDirectory": ".",
+  "xmake.autoGenerateCompileCommands": "onFileChange",
+  "files.associations": {
+    "*.h": "c"
+  }
 }

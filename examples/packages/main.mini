@@ -1,0 +1,10 @@
+package examples.app
+
+import examples.math.Numbers as Math
+
+class Main {
+    static main(): i32 {
+        print_i32(Math.answer())
+        return 0
+    }
+}

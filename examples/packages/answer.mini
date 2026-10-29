@@ -1,0 +1,6 @@
+package examples.math
+
+public class Numbers {
+    internal static offset(): i32 = 2
+    public static answer(): i32 = 40 + Numbers.offset()
+}

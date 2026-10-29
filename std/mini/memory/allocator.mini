@@ -1,0 +1,19 @@
+package mini.memory
+
+public enum AllocationError { OutOfMemory }
+
+public interface Allocator {
+    allocate(bytes: usize): Result<*u8, AllocationError>
+    release(memory: *u8)
+}
+
+public class HeapAllocator : Allocator {
+    public override allocate(bytes: usize): Result<*u8, AllocationError> {
+        return match heap.alloc(bytes) {
+            Some(memory) => Result.Ok(memory)
+            None => Result.Err(AllocationError.OutOfMemory)
+        }
+    }
+
+    public override release(memory: *u8): void = heap.free(memory)
+}

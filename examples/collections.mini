@@ -1,0 +1,43 @@
+package examples.collections
+
+import mini.collections.ArrayList
+import mini.collections.Collection
+import mini.collections.List
+import mini.collections.MutableList
+
+class Main {
+    static first(values: *List<i32>): Result<i32, mini.collections.IndexError> = values.get(0)
+    static empty(values: *Collection<i32>): bool = values.isEmpty()
+
+    static main(): i32 {
+        val values = ArrayList<i32>.create()
+        if !Main.empty(&values) { return 1 }
+        val reserved = values.ensureCapacity(8)
+        val ready = match reserved { Ok(changed) => true, Err(error) => false }
+        if !ready { return 2 }
+        var index = 0
+        while index < 100 {
+            val added = values.add(index)
+            val success = match added { Ok(changed) => changed, Err(error) => false }
+            if !success { values.close(); return 3 }
+            index = index + 1
+        }
+        if values.size() != cast<usize>(100) { values.close(); return 4 }
+        val first = Main.first(&values)
+        if (match first { Ok(value) => value, Err(error) => -1 }) != 0 { values.close(); return 5 }
+        val previous = values.set(1, 42)
+        if (match previous { Ok(value) => value, Err(error) => -1 }) != 1 { values.close(); return 6 }
+        val removed = values.removeAt(0)
+        if (match removed { Ok(value) => value, Err(error) => -1 }) != 0 { values.close(); return 7 }
+        val answer = Main.first(&values)
+        print_i32(match answer { Ok(value) => value, Err(error) => -1 })
+        val missing = values.get(999)
+        val missingIndex = match missing { Ok(value) => cast<usize>(0), Err(error) => error.index }
+        if missingIndex != cast<usize>(999) { values.close(); return 8 }
+        values.clear()
+        if !Main.empty(&values) { values.close(); return 9 }
+        values.close()
+        values.close()
+        return 0
+    }
+}

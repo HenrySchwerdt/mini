@@ -1,0 +1,83 @@
+package mini.concurrent
+
+// Non-recursive, single-owner handle. Borrow it for concurrent locking; close
+// only after every worker and waiter has finished using it.
+public class Mutex {
+    private var handle: Optional<*u8>
+
+    private static initialized(handle: *u8): Result<Mutex, ConcurrencyError> = Result.Ok(Mutex { handle: Optional.Some(handle) })
+
+    public static create(): Result<Mutex, ConcurrencyError> {
+        var code: i32 = 0
+        return match runtime.mutexCreate(&code) {
+            Some(handle) => Mutex.initialized(handle)
+            None => Result.Err(ConcurrencyError.native(code))
+        }
+    }
+
+    private lockHandle(handle: *u8): Result<bool, ConcurrencyError> {
+        val code = runtime.mutexLock(handle)
+        if code != 0 { return Result.Err(ConcurrencyError.native(code)) }
+        return Result.Ok(true)
+    }
+
+    public lock(): Result<bool, ConcurrencyError> {
+        return match this.handle {
+            Some(handle) => this.lockHandle(handle)
+            None => Result.Err(ConcurrencyError.state(ConcurrencyErrorKind.Closed))
+        }
+    }
+
+    private unlockHandle(handle: *u8): Result<bool, ConcurrencyError> {
+        val code = runtime.mutexUnlock(handle)
+        if code != 0 { return Result.Err(ConcurrencyError.native(code)) }
+        return Result.Ok(true)
+    }
+
+    public unlock(): Result<bool, ConcurrencyError> {
+        return match this.handle {
+            Some(handle) => this.unlockHandle(handle)
+            None => Result.Err(ConcurrencyError.state(ConcurrencyErrorKind.Closed))
+        }
+    }
+
+    private tryHandle(handle: *u8): Result<bool, ConcurrencyError> {
+        val code = runtime.mutexTryLock(handle)
+        if code == 0 { return Result.Ok(true) }
+        if code == runtime.uvBusy() { return Result.Ok(false) }
+        return Result.Err(ConcurrencyError.native(code))
+    }
+
+    public tryLock(): Result<bool, ConcurrencyError> {
+        return match this.handle {
+            Some(handle) => this.tryHandle(handle)
+            None => Result.Err(ConcurrencyError.state(ConcurrencyErrorKind.Closed))
+        }
+    }
+
+    private runLocked(block: () -> void): Result<bool, ConcurrencyError> {
+        block()
+        return this.unlock()
+    }
+
+    public withLock(block: () -> void): Result<bool, ConcurrencyError> {
+        return match this.lock() {
+            Ok(locked) => this.runLocked(block)
+            Err(error) => Result.Err(error)
+        }
+    }
+
+    private closeHandle(handle: *u8): Result<bool, ConcurrencyError> {
+        val code = runtime.mutexClose(handle)
+        if code != 0 { return Result.Err(ConcurrencyError.native(code)) }
+        this.handle = Optional.None
+        return Result.Ok(true)
+    }
+
+    public close(): Result<bool, ConcurrencyError> {
+        return match this.handle {
+            Some(handle) => this.closeHandle(handle)
+            None => Result.Ok(false)
+        }
+    }
+}

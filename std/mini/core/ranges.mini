@@ -1,0 +1,34 @@
+package mini.core
+
+// Inclusive integer range.
+public class IntRange {
+    public val start: i32
+    public val endInclusive: i32
+
+    public static of(start: i32, end: i32): IntRange = IntRange { start: start, endInclusive: end }
+
+    public contains(value: i32): bool = value >= this.start && value <= this.endInclusive
+
+    public count(): i32 {
+        if this.endInclusive < this.start { return 0 }
+        return this.endInclusive - this.start + 1
+    }
+
+    public sum(): i32 {
+        var acc = 0
+        var i = this.start
+        while i <= this.endInclusive {
+            acc = acc + i
+            i = i + 1
+        }
+        return acc
+    }
+
+    public forEach(action: (i32) -> void): void {
+        var i = this.start
+        while i <= this.endInclusive {
+            action(i)
+            i = i + 1
+        }
+    }
+}

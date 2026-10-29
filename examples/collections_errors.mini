@@ -1,0 +1,120 @@
+package examples.collections
+
+import mini.collections.ArrayList
+import mini.collections.CollectionError
+import mini.memory.Allocator
+import mini.memory.AllocationError
+
+class ControlledAllocator : Allocator {
+    public var fail: bool
+    public var allocations: i32
+    public var attempts: i32
+    public var releases: i32
+
+    static create(): ControlledAllocator = ControlledAllocator {
+        fail: false,
+        allocations: 0,
+        attempts: 0,
+        releases: 0,
+    }
+
+    override allocate(bytes: usize): Result<*u8, AllocationError> {
+        this.attempts = this.attempts + 1
+        if this.fail { return Result.Err(AllocationError.OutOfMemory) }
+        return match heap.alloc(bytes) {
+            Some(memory) => this.allocated(memory)
+            None => Result.Err(AllocationError.OutOfMemory)
+        }
+    }
+
+    private allocated(memory: *u8): Result<*u8, AllocationError> {
+        this.allocations = this.allocations + 1
+        return Result.Ok(memory)
+    }
+
+    override release(memory: *u8): void {
+        this.releases = this.releases + 1
+        heap.free(memory)
+    }
+}
+
+class Item : AllocatableObject { public val value: i32 }
+
+class Main {
+    static main(): i32 {
+        val allocator = ControlledAllocator.create()
+        val values = ArrayList<i32>.withAllocator(&allocator)
+        var index = 0
+        while index < 4 {
+            val added = values.add(index)
+            if !(match added { Ok(changed) => changed, Err(error) => false }) {
+                values.close()
+                return 1
+            }
+            index = index + 1
+        }
+        allocator.fail = true
+        val failed = values.add(99)
+        val sawOOM = match failed {
+            Ok(changed) => false
+            Err(error) => error == CollectionError.OutOfMemory
+        }
+        if !sawOOM { values.close(); return 2 }
+        if values.size() != cast<usize>(4) { values.close(); return 3 }
+        val last = values.get(3)
+        if (match last { Ok(value) => value, Err(error) => -1 }) != 3 {
+            values.close()
+            return 4
+        }
+        val attempts = allocator.attempts
+        val overflow = values.ensureCapacity(cast<usize>(0) - cast<usize>(1))
+        val sawOverflow = match overflow {
+            Ok(changed) => false
+            Err(error) => error == CollectionError.CapacityOverflow
+        }
+        if !sawOverflow { values.close(); return 5 }
+        if allocator.attempts != attempts { values.close(); return 6 }
+        val badSet = values.set(4, 99)
+        if !(match badSet { Ok(value) => false, Err(error) => error.size == cast<usize>(4) }) {
+            values.close(); return 13
+        }
+        val badRemove = values.removeAt(4)
+        if !(match badRemove { Ok(value) => false, Err(error) => error.index == cast<usize>(4) }) {
+            values.close(); return 14
+        }
+        val unchanged = values.ensureCapacity(4)
+        if !(match unchanged { Ok(changed) => !changed, Err(error) => false }) {
+            values.close(); return 15
+        }
+        values.clear()
+        val retained = values.add(42)
+        if !(match retained { Ok(changed) => changed, Err(error) => false }) {
+            values.close(); return 16
+        }
+        if allocator.attempts != attempts { values.close(); return 17 }
+        values.close()
+        val empty = values.get(0)
+        if !(match empty { Ok(value) => false, Err(error) => error.size == cast<usize>(0) }) { return 18 }
+        values.close()
+        if allocator.allocations != 1 { return 7 }
+        if allocator.releases != 1 { return 8 }
+        if allocator.attempts != 2 { return 9 }
+        allocator.fail = false
+        val reused = values.add(42)
+        if !(match reused { Ok(changed) => changed, Err(error) => false }) { values.close(); return 19 }
+        values.close()
+        if allocator.allocations != 2 || allocator.releases != 2 { return 20 }
+
+        val items = ArrayList<Item>.create()
+        val firstAdd = items.add(Item { value: 7 })
+        val secondAdd = items.add(Item { value: 42 })
+        if !(match firstAdd { Ok(changed) => changed, Err(error) => false }) { items.close(); return 10 }
+        if !(match secondAdd { Ok(changed) => changed, Err(error) => false }) { items.close(); return 11 }
+        val removed = items.removeAt(0)
+        if (match removed { Ok(item) => item.value, Err(error) => -1 }) != 7 { items.close(); return 12 }
+        val result = items.get(0)
+        print_i32(match result { Ok(item) => item.value, Err(error) => -1 })
+        items.close()
+        return 0
+    }
+}

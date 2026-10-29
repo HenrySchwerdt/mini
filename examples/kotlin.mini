@@ -1,0 +1,32 @@
+class Counter {
+    private var value: i32
+
+    static create(value: i32): Counter = Counter { value: value }
+    add(amount: i32): void { this.value = this.value + amount }
+    current(): i32 = this.value
+}
+
+class Main {
+    static answer(): Result<i32, bool> = Result.Ok(42)
+    static identity<T>(value: T): T = value
+
+    static main(): i32 {
+        val result = Main.answer()
+        val answer = match result {
+            Ok(value) => value
+            Err(error) => 0
+        }
+
+        val counter = Counter.create(0)
+        counter.add(Main.identity<i32>(answer))
+        print_i32(counter.current())
+
+        var iterations = 0
+        while iterations < 2 {
+            val next = iterations + 1
+            iterations = next
+        }
+        print_i32(iterations)
+        return 0
+    }
+}

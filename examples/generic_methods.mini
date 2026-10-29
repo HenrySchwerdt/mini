@@ -1,0 +1,30 @@
+interface Shape { area(): i32 }
+
+class Square : Shape {
+    public val side: i32
+    override area(): i32 = this.side * this.side
+}
+
+class Box<T> {
+    public val value: T
+    public map<R>(f: (T) -> R): R = f(this.value)
+    public pair<R>(other: R): R = other
+}
+
+class Tools {
+    public val base: i32
+    public add<R>(v: R): R = v
+    public areaOf<S: Shape>(s: S): i32 = s.area() + this.base
+}
+
+class Main {
+    static main(): i32 {
+        val box = Box<i32> { value: 21 }
+        print_i32(box.map<i32>({ it * 2 }))
+        val tools = Tools { base: 1 }
+        print_i32(tools.add<i32>(7))
+        print_i32(tools.areaOf<Square>(Square { side: 3 }))
+        print_i32(box.pair<i32>(5))
+        return 0
+    }
+}

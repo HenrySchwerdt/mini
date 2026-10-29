@@ -1,0 +1,25 @@
+interface Value { get(): i32 }
+
+open class Base : Value {
+    protected var value: i32
+    override get(): i32 = this.value
+}
+
+class Child : Base {
+    private val extra: i32
+
+    static create(value: i32, extra: i32): Child = Child { value: value, extra: extra }
+    override get(): i32 = super.get() + this.extra
+}
+
+class Main {
+    static via_base(value: *Base): i32 = value.get()
+    static via_interface(value: *Value): i32 = value.get()
+
+    static main(): i32 {
+        val child = Child.create(20, 22)
+        print_i32(Main.via_base(&child))
+        print_i32(Main.via_interface(&child))
+        return 0
+    }
+}

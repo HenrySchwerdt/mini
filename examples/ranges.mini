@@ -1,0 +1,18 @@
+package examples.ranges
+
+import mini.core.IntRange
+
+class Main {
+    static main(): i32 {
+        val range = IntRange.of(3, 9)
+        if !range.contains(5) { return 1 }
+        if range.contains(10) { return 2 }
+        if range.count() != 7 { return 3 }
+        var total = 0
+        val out = &total
+        range.forEach() { i -> *out = *out + i }
+        if total != 42 { return 4 }
+        print_i32(range.sum())
+        return 0
+    }
+}

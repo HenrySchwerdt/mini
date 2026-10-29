@@ -1,0 +1,21 @@
+class Main {
+    static read(flag: bool): Result<Optional<i32>, i32> {
+        if flag { return Result.Ok(Optional.Some(42)) }
+        return Result.Err(7)
+    }
+
+    static main(): i32 {
+        val result = Main.read(true)
+        val value = match result {
+            Ok(Some(value)) => value
+            Ok(None) => 0
+            Err(error) => error
+        }
+        print_i32(value)
+        val empty: Optional<i32> = Optional.None
+        print_i32(match empty { Some(value) => value, None => 8 })
+        val direct = Optional<i32>.Some(9)
+        print_i32(match direct { Some(value) => value, None => 0 })
+        return 0
+    }
+}
