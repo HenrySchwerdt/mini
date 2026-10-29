@@ -63,29 +63,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        # All shards on Linux; macOS runs every shard on main and only the platform-sensitive
+        # ones (e2e, selfhost, modules) on pull requests, since macOS runners are scarce.
+        os: ${{ fromJSON(github.ref == 'refs/heads/main' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
         shard: [modules, e2e, selfhost, bridge, oracle, frontend-selfhost, sema-selfhost]
-        include:
-          # macOS: the platform-sensitive shards on pull requests, everything on main.
-          - { os: macos-latest, shard: e2e }
-          - { os: macos-latest, shard: selfhost }
-          - { os: macos-latest, shard: modules }
-          - { os: macos-latest, shard: bridge, main-only: true }
-          - { os: macos-latest, shard: oracle, main-only: true }
-          - { os: macos-latest, shard: frontend-selfhost, main-only: true }
-          - { os: macos-latest, shard: sema-selfhost, main-only: true }
+        include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"selfhost"},{"os":"macos-latest","shard":"modules"}]') }}
     name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Skip on pull requests
-        id: gate
-        run: echo "run=${{ !matrix.main-only || github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.run == 'true'
       - uses: ./.github/actions/setup
-        if: steps.gate.outputs.run == 'true'
       - name: Tests (${{ matrix.shard }})
-        if: steps.gate.outputs.run == 'true'
         working-directory: compiler
         run: |
           case "${{ matrix.shard }}" in
