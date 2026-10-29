@@ -165,6 +165,15 @@ private fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<
     out.add(RefCand(fn, ps, ret, tps, c.subst))
 }
 
+fun BodyChecker.extFits(fn: FunSym, recv: Type): Boolean {
+    sema.ensureSig(fn)
+    val r = fn.receiver ?: return false
+    val cs = ConstraintSystem(sema)
+    val m = HashMap<TypeParamSym, Type>()
+    cs.addVariables(fn.typeParams, m)
+    return cs.addSub(recv, ops.substitute(r, m))
+}
+
 fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     val name = e.name
     val cands = ArrayList<RefCand>()
@@ -204,7 +213,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             }
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, ct, ext)
-            for (g in ext) for (c in g) funRefCand(c, false, cands)
+            for (g in ext) for (c in g) if (extFits(c.fn, ct)) funRefCand(c, false, cands)
         } else if (ri is ValueRecv) {
             val vt = ri.type
             for (m in members.funsNamed(vt, name)) {
@@ -220,8 +229,8 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             }
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, vt, ext)
-            for (g in ext) for (c in g) {
-                funRefCand(Candidate(c.fn, c.subst, null), true, cands)
+            if (cands.isEmpty()) for (g in ext) for (c in g) {
+                if (extFits(c.fn, vt)) funRefCand(Candidate(c.fn, c.subst, null), true, cands)
             }
         }
     }

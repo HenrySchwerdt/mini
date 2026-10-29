@@ -60,13 +60,17 @@ fun BodyChecker.valueOfClass(c: ClassSym): NameRes {
 
 /** a simple name used as an expression: variables first, then classifiers */
 fun BodyChecker.resolveSimpleName(name: String): NameRes? {
+    var ls: Scope? = scope
+    while (ls != null) {
+        if (ls is LocalScope) {
+            val v = ls.vars[name]
+            if (v != null) return NameRes(v, v.type ?: ErrType("untyped"), null, NameRes.VALUE)
+        }
+        ls = ls.parent
+    }
     var s: Scope? = scope
     while (s != null) {
         when (s) {
-            is LocalScope -> {
-                val v = s.vars[name]
-                if (v != null) return NameRes(v, v.type ?: ErrType("untyped"), null, NameRes.VALUE)
-            }
             is ClassScope -> {
                 if (s.instance) {
                     val r = memberPropRes(s.cls.thisType(), name)
@@ -414,7 +418,21 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         val ct = fin(expr(callee, null))
         groups = listOf(invokeCandidates(ct))
     }
-    val res = resolveCallGroups(node, groups, args, typeArgs, expected, false)
+    var res = resolveCallGroups(node, groups, args, typeArgs, expected, false)
+    if (res == null && recv is ValueRecv && name != null) {
+        // `recv.f(args)` where `f` is a variable of type `Recv.(args) -> R`
+        val vr = resolveSimpleName(name)
+        val vt = vr?.type
+        val ft = if (vt != null) (ops.asFunType(vt) ?: vt) else null
+        if (ft is FunType && ft.receiver != null) {
+            val a2 = ArrayList<Arg>()
+            val ra = Arg(null, null, false)
+            ra.type = if (safe) ops.makeNotNull(recv.type) else recv.type
+            a2.add(ra)
+            a2.addAll(args)
+            res = resolveCallGroups(node, listOf(invokeCandidates(ft)), a2, typeArgs, expected, true)
+        }
+    }
     if (res == null) {
         err(e.start, "unresolved call '" + (name ?: "<expr>") + "'")
         return ErrType("unresolved call " + (name ?: ""))

@@ -24,6 +24,8 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     var capturedNames: HashSet<String> = HashSet()
     var lambdaDepth = 0
     var pendingLabel: String? = null
+    /** the argument expression being checked: its expected type is a hint only (K2 resolves arguments independently) */
+    var argNode: Expr? = null
     var lambdaLabel: String? = null
 
     // ---- small helpers ---------------------------------------------------------------------------------------------
@@ -72,6 +74,14 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val r = record(n, type, callee)
         r.calleeText = text
         return r
+    }
+
+    /** like [recordAt] for a declaration (a pattern `(a, b)`, a subject variable) */
+    fun recordDeclAt(start: Int, end: Int, type: Type): ExprRec {
+        val n = DestructEntry(null, false, "", null)
+        n.start = start
+        n.end = end
+        return record(n, type, null)
     }
 
     inline fun <T> withScope(s: Scope, body: () -> T): T {
@@ -315,6 +325,12 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         sub.capturedNames = capturedNames
         sub.checkLocalFunBody(f)
         f.bodyChecked = true
+        var i = 0
+        for (p in d.params) {
+            record(p, f.params[i].type ?: ErrType("param"), f.params[i])
+            i++
+        }
+        record(d, f.returnType ?: ErrType("return"), f)
     }
 
     fun checkLocalFunBody(f: FunSym) {

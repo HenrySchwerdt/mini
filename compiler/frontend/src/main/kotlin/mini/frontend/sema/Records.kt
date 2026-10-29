@@ -97,6 +97,7 @@ class Rendering(private val sema: Sema) {
                 sema.ensurePropSig(sym)
                 if (sym.isLocal) return "local " + sym.name + "@" + sym.start
                 val o = sym.owner
+                if (o != null && (o.isLocal || o.isAnonymous) && sym.receiver == null) return "local " + sym.name + "@" + sym.start
                 val base = if (o != null) (if (o.isAnonymous) "<anonymous>." else if (o.isLocal) "<local>." else o.renderName() + ".") + sym.name else {
                     val pk = sym.file?.pkg ?: ""
                     if (pk.isNotEmpty()) pk + "." + sym.name else sym.name

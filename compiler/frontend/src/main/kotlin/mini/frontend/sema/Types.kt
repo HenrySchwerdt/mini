@@ -46,9 +46,8 @@ class ErrType(val reason: String) : Type() {
 }
 
 /** The captured type of a projected type argument (`Captured(out X)`); approximated by [approximate] where K2 does so. */
-class CapType(val arg: TArg) : Type() {
-    override val nullable: Boolean get() = false
-    override fun withNullable(n: Boolean): Type = if (n) ClassTypeHolder.nullableAnyOf(this) else this
+class CapType(val arg: TArg, override val nullable: Boolean) : Type() {
+    override fun withNullable(n: Boolean): Type = if (n == nullable) this else CapType(arg, n)
 }
 
 /** An inference variable (see Infer.kt). */
@@ -125,7 +124,7 @@ fun renderType(t: Type): String {
             return sb.append(')').toString()
         }
         is ErrType -> return "<error>"
-        is CapType -> return "Captured(" + renderArg(t.arg) + ")"
+        is CapType -> return "Captured(" + renderArg(t.arg) + ")" + (if (t.nullable) "?" else "")
         is VarType -> return "<tv:" + t.v.tp.name + ">" + (if (t.nullable) "?" else "")
         is IntLiteralType -> return "ILT(" + t.value + ")"
     }
@@ -173,7 +172,7 @@ fun typeEquals(a: Type, b: Type): Boolean {
             return true
         }
         is ErrType -> return b is ErrType
-        is CapType -> return b is CapType && (a.arg === b.arg || argEquals(a.arg, b.arg))
+        is CapType -> return b is CapType && a.nullable == b.nullable && (a.arg === b.arg || argEquals(a.arg, b.arg))
         is VarType -> return b is VarType && a.v === b.v
         is IntLiteralType -> return b is IntLiteralType && a.value == b.value
     }

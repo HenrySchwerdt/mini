@@ -36,6 +36,7 @@ tasks.test {
     inputs.property("semaAreas", System.getenv("MINI_SEMA_AREAS") ?: "")
     inputs.property("semaUpdate", System.getenv("MINI_SEMA_UPDATE") ?: "")
     inputs.property("probe", System.getenv("MINI_FIR_PROBE") ?: "")
+    inputs.property("probeDump", System.getenv("MINI_SEMA_DUMP") ?: "")
     inputs.property("probeCompare", System.getenv("MINI_SEMA_COMPARE") ?: "")
     val probeFile = System.getenv("MINI_FIR_PROBE")
     if (probeFile != null && File(probeFile).isFile) inputs.file(probeFile)

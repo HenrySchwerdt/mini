@@ -87,12 +87,17 @@ object SemaOracle {
             var rs = r.start
             if (decl) {
                 // PSI declarations include a leading KDoc comment
-                if (text.startsWith("/**", rs)) {
-                    val e = text.indexOf("*/", rs + 3)
-                    if (e > 0) {
+                while (true) {
+                    if (text.startsWith("/*", rs)) {
+                        val e = text.indexOf("*/", rs + 2)
+                        if (e < 0) break
                         rs = e + 2
-                        while (rs < text.length && text[rs].isWhitespace()) rs++
-                    }
+                    } else if (text.startsWith("//", rs)) {
+                        val e = text.indexOf('\n', rs)
+                        if (e < 0) break
+                        rs = e + 1
+                    } else break
+                    while (rs < text.length && text[rs].isWhitespace()) rs++
                 }
             }
             val key = "${rs}-${r.end}-" + (if (decl) "d" else "e")

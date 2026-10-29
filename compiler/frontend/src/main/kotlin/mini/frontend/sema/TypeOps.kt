@@ -49,10 +49,9 @@ class TypeOps(private val sema: Sema) {
 
     fun makeNotNull(t: Type): Type {
         if (t is TypeParamType) {
-            if (t.nullable || t.definitelyNotNull) {
-                if (hasNullableBound(t.tp)) return TypeParamType(t.tp, false, true)
-                return TypeParamType(t.tp, false, false)
-            }
+            if (t.definitelyNotNull) return t
+            if (t.nullable) return TypeParamType(t.tp, false, true)
+            if (hasNullableBound(t.tp)) return TypeParamType(t.tp, false, true)
             return t
         }
         return t.withNullable(false)
@@ -69,6 +68,16 @@ class TypeOps(private val sema: Sema) {
         return true
     }
 
+    /** what a star-projected type parameter stands for when a member is accessed: its upper bound, else `Any?` */
+    fun starBound(tp: TypeParamSym): Type {
+        sema.ensureBounds(tp)
+        if (tp.bounds.size == 1) {
+            val b = tp.bounds[0]
+            if (b is ClassType && b.args.isEmpty()) return b
+        }
+        return sema.nullableAny
+    }
+
     /** substitution of the type parameters of [c] by the arguments of [t] (star projections become the bound, `Any?` here) */
     fun substOf(t: ClassType): Map<TypeParamSym, Type> {
         val m = HashMap<TypeParamSym, Type>()
@@ -78,7 +87,8 @@ class TypeOps(private val sema: Sema) {
                 val a = t.args[i]
                 val at = a.type
                 if (at != null && (a.variance == Variance.INV || a.variance == tp.variance)) m[tp] = at
-                else m[tp] = CapType(a)
+                else if (at == null) m[tp] = starBound(tp)
+                else m[tp] = CapType(a, false)
             }
             i++
         }
@@ -146,8 +156,8 @@ class TypeOps(private val sema: Sema) {
 
     fun capUpper(t: CapType): Type {
         val x = t.arg.type
-        if (x != null && t.arg.variance == Variance.OUT) return x
-        return sema.nullableAny
+        val r = if (x != null && t.arg.variance == Variance.OUT) x else sema.nullableAny
+        return if (t.nullable) r.withNullable(true) else r
     }
 
     /** replaces captured types by what K2 infers for declarations: the upper bound / a projection */
@@ -204,7 +214,7 @@ class TypeOps(private val sema: Sema) {
         if (b is CapType) {
             val x = b.arg.type
             if (x != null && b.arg.variance == Variance.IN) return sub(a, x, depth + 1)
-            return false
+            return true
         }
         if (b is IsectType) {
             for (p in b.parts) if (!sub(a, p, depth + 1)) return false

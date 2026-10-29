@@ -188,10 +188,12 @@ fun BodyChecker.invokeCandidates(t0: Type): List<Candidate> {
 fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
     val groups = ArrayList<List<Candidate>>()
     var s: Scope? = scope
-    val recvsSeen = ArrayList<ImplRecv>()
-    while (s != null) {
+    var pass = 0
+    while (pass < 2) {
+      s = scope
+      while (s != null) {
         when (s) {
-            is LocalScope -> {
+            is LocalScope -> if (pass == 0) {
                 val fs = s.funs[name]
                 if (fs != null) {
                     val l = ArrayList<Candidate>()
@@ -218,7 +220,7 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 val lc = s.classes[name]
                 if (lc != null) groups.add(ctorCandidates(lc))
             }
-            is ClassScope -> {
+            is ClassScope -> if (pass == 1) {
                 if (s.instance) {
                     addReceiverGroups(s.cls.thisType(), name, groups)
                 }
@@ -228,8 +230,8 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 val nc = s.cls.nested[name]
                 if (nc != null) groups.add(ctorCandidates(nc))
             }
-            is ReceiverScope -> addReceiverGroups(s.type, name, groups)
-            is FileScope -> {
+            is ReceiverScope -> if (pass == 1) addReceiverGroups(s.type, name, groups)
+            is FileScope -> if (pass == 1) {
                 for (g in sema.topLevel(file, name)) {
                     val l = ArrayList<Candidate>()
                     for (x in g) {
@@ -258,6 +260,8 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
             else -> {}
         }
         s = s.parent
+      }
+      pass++
     }
     return groups
 }
@@ -548,14 +552,37 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
         val params = paramsOf(single)
         val b = bindArgs(params, args)
         if (b != null) {
+            val tps = typeParamsOf(single.fn)
+            // type parameters the receiver already determines are known for the arguments
+            val cs = ConstraintSystem(sema)
+            val m = HashMap<TypeParamSym, Type>()
+            m.putAll(single.subst)
+            if (tps.isNotEmpty()) {
+                cs.addVariables(tps, m)
+                val fr = single.fn.receiver
+                val er = single.extRecv
+                if (fr != null && er != null) cs.addSub(er, ops.substitute(fr, m))
+                for (v in cs.vars) if (v.lower.isNotEmpty() || v.equal.isNotEmpty()) cs.fix(v)
+            }
             var i = 0
             while (i < args.size) {
                 val p = params[b.paramOfArg[i]]
                 val raw = if (p.isVararg && !args[i].spread) (p.varargElement ?: p.type) else p.type
                 if (raw != null) {
-                    val t = ops.substitute(raw, single.subst)
-                    // parameter types that mention the candidate's own type parameters give no expectation
-                    if (!mentionsTypeParams(t, typeParamsOf(single.fn))) expectedOf[i] = t
+                    val t = cs.resolveFixed(ops.substitute(raw, m))
+                    // parameter types that still mention unsolved type parameters give no expectation
+                    if (!cs.hasVars(t)) {
+                        expectedOf[i] = t
+                    } else if (t is VarType && !t.nullable) {
+                        // a bare type variable: its declared upper bound is the expectation
+                        for (u in t.v.upper) {
+                            val ur = cs.resolveFixed(u)
+                            if (!cs.hasVars(ur)) {
+                                expectedOf[i] = ur
+                                break
+                            }
+                        }
+                    }
                 }
                 i++
             }
@@ -565,7 +592,9 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
     while (i < args.size) {
         val a = args[i]
         if (a.expr != null && a.type == null && !a.postponed) {
+            argNode = AstWalk.unparen(a.expr)
             val t = expr(a.expr, expectedOf[i])
+            argNode = null
             a.type = t
         }
         i++

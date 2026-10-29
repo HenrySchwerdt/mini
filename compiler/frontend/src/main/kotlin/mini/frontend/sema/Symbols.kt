@@ -97,7 +97,8 @@ class ClassSym(
 
     /** class name as the oracle renders it */
     fun renderName(): String {
-        if (isLocal || isAnonymous) return "<local>." + name
+        if (isAnonymous) return "<anonymous>"
+        if (isLocal) return "<local>." + name
         return fqName()
     }
 

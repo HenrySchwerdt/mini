@@ -97,9 +97,14 @@ fun Sema.checkProp(p: PropSym) {
     val bc = BodyChecker(this, file)
     val o = p.owner
     var base: Scope = if (o != null) initializerScope(o) else p.scope
+    var accBase: Scope = if (o != null) o.bodyScope!! else p.scope
     base = TypeParamScope(p.typeParams, base)
+    accBase = TypeParamScope(p.typeParams, accBase)
     val recv = p.receiver
-    if (recv != null) base = ReceiverScope(recv, p.name, base)
+    if (recv != null) {
+        base = ReceiverScope(recv, p.name, base)
+        accBase = ReceiverScope(recv, p.name, accBase)
+    }
     bc.scope = base
     val declared = if (!needsInference) p.type else null
     val init = d.initializer
@@ -115,11 +120,8 @@ fun Sema.checkProp(p: PropSym) {
     val g = d.getter
     if (g != null && g.body != null) {
         val gc = BodyChecker(this, file)
-        val ls = LocalScope(base)
-        if (needsInference && g.returnType == null && p.type == null) {
-            // type comes from the getter
-        }
-        val gt = if (g.returnType != null) resolveType(g.returnType, base) else p.type
+        val ls = LocalScope(accBase)
+        val gt = if (g.returnType != null) resolveType(g.returnType, accBase) else p.type
         ls.vars["field"] = VarSym("field", gt ?: ErrType("field"), true, false, g.start)
         gc.scope = ls
         val target = ReturnTarget(null, gt, null, false)
@@ -148,10 +150,13 @@ fun Sema.checkProp(p: PropSym) {
     val s = d.setter
     if (s != null && s.body != null) {
         val sc = BodyChecker(this, file)
-        val ls = LocalScope(base)
+        val ls = LocalScope(accBase)
         ls.vars["field"] = VarSym("field", p.type ?: ErrType("field"), true, false, s.start)
         val pn = s.param?.name ?: "value"
-        ls.vars[pn] = VarSym(pn, p.type ?: ErrType("value"), false, true, s.param?.start ?: s.start)
+        val sv = VarSym(pn, p.type ?: ErrType("value"), false, true, s.param?.start ?: s.start)
+        ls.vars[pn] = sv
+        val sp = s.param
+        if (sp != null) bc.record(sp, p.type ?: ErrType("value"), sv)
         sc.scope = ls
         sc.targets.add(ReturnTarget(null, unitType, null, false))
         sc.blockBody(s.body, null)
@@ -370,9 +375,14 @@ fun Sema.dumpFile(f: FileInfo): List<Rec> {
     val rn = Rendering(this)
     for (n in nodes) {
         val r = records.get(n) ?: continue
-        out.add(Rec(n.start, n.end, n::class.simpleName ?: "?", renderType(r.type), renderCallee(this, r.callee, r.calleeText)))
+        var end = n.end
+        if (n is PropertyDecl || n is DestructuringDecl) {
+            // the PSI range of a declaration statement does not include its terminating semicolon
+            while (end > n.start && (f.text[end - 1] == ';' || f.text[end - 1].isWhitespace())) end--
+        }
+        out.add(Rec(n.start, end, n::class.simpleName ?: "?", renderType(r.type), renderCallee(this, r.callee, r.calleeText)))
         val sm = r.smart
-        if (sm != null) out.add(Rec(n.start, n.end, "SmartCast", renderType(sm), null))
+        if (sm != null) out.add(Rec(n.start, end, "SmartCast", renderType(sm), null))
     }
     return out
 }

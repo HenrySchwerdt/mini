@@ -48,7 +48,7 @@ private fun BodyChecker.expr0(e: Expr, expected: Type?): Type {
             return t
         }
         is PrefixExpr -> return prefix(e, expected)
-        is PostfixExpr -> return postfix(e)
+        is PostfixExpr -> return postfix(e, expected)
         is AnnotatedExpr -> {
             for (a in e.annotations) annotationArgs(a)
             return expr(e.expr, expected)
@@ -170,11 +170,17 @@ fun BodyChecker.stringExpr(e: StringExpr): Type {
             is StrShortRef -> {
                 flushRun(e, runStart, runEnd)
                 runStart = -1
-                val n = NameExpr(p.name)
-                n.start = p.start + 1
-                n.end = p.end
-                expr(n, null)
-                sema.extraNodes.add(n)
+                if (p.name == "this") {
+                    val n = ThisExpr(null)
+                    n.start = p.start + 1
+                    n.end = p.end
+                    expr(n, null)
+                } else {
+                    val n = NameExpr(p.name)
+                    n.start = p.start + 1
+                    n.end = p.end
+                    expr(n, null)
+                }
             }
             is StrLongExpr -> {
                 flushRun(e, runStart, runEnd)
@@ -377,12 +383,19 @@ fun BodyChecker.elvis(e: BinaryExpr, expected: Type?): Type {
     val saved = flow
     flow = flow.copy()
     // right side runs when the left is null
-    val r = expr(e.right, expected ?: (if (l.nullable) null else null))
+    val r0 = expr(e.right, expected)
     val rflow = flow
     flow = saved
     // after the elvis, the left side is known non-null unless the right side may complete normally
     var res: Type
     val lnn = if (ops.mayBeNull(l)) ops.makeNotNull(l) else l
+    var r = r0
+    if (containsError(r) && !containsError(lnn) && expected == null && argNode == null) {
+        val sv = flow
+        flow = saved.copy()
+        r = expr(e.right, lnn)
+        flow = sv
+    }
     if (ops.isNothing(r)) {
         res = lnn
     } else {
@@ -396,6 +409,7 @@ fun BodyChecker.elvis(e: BinaryExpr, expected: Type?): Type {
         val k = stableKey(e.left)
         if (k != null) flow.add(FactAdd(k.key, k.root, sema.anyType))
     }
+    res = preferExpected(res, expected, e)
     record(e, res, null)
     return res
 }
@@ -477,14 +491,15 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
     return unsupported(e.start, "prefix " + e.op)
 }
 
-fun BodyChecker.postfix(e: PostfixExpr): Type {
+fun BodyChecker.postfix(e: PostfixExpr, expected: Type?): Type {
     if (e.op == "!!") {
         val t = fin(expr(e.expr, null))
         val nn = if (ops.mayBeNull(t)) ops.makeNotNull(t) else t
         val k = stableKey(e.expr)
         if (k != null) flow.add(FactAdd(k.key, k.root, sema.anyType))
-        record(e, nn, null)
-        return nn
+        val pe = preferExpected(nn, expected, e)
+        record(e, pe, null)
+        return pe
     }
     val t = fin(expr(e.expr, null))
     val name = if (e.op == "++") "inc" else "dec"
@@ -718,16 +733,69 @@ fun BodyChecker.ifExpr(e: IfExpr, expected: Type?): Type {
     var et: Type? = null
     if (elseE != null) et = branchValue(elseE, expected)
     val elseFlow = flow
+    if (elseE != null && thenE != null && expected == null && et != null && argNode == null) {
+        // a branch whose type could not be inferred on its own (`emptyList()`) takes the other branch' type
+        val te = containsError(tt)
+        val ee = containsError(et)
+        if (te != ee) {
+            val hint = if (te) et else tt
+            if (te) tt = recheck(thenE, hint, base, c.onTrue) else et = recheck(elseE, hint, base, c.onFalse)
+        }
+    }
     flow = FlowOps.merge(ops, thenFlow, elseFlow)
     if (elseE == null) {
         return sema.unitType
     }
-    return joinBranches(listOf(tt, et!!))
+    return preferExpected(joinBranches(listOf(tt, et!!)), expected, e)
+}
+
+fun BodyChecker.recheck(b: Expr, hint: Type, base: Flow, facts: List<FactAdd>): Type {
+    val sv = flow
+    flow = base.copy()
+    flow.addAll(facts)
+    val t = branchValue(b, hint)
+    flow = sv
+    return t
 }
 
 fun BodyChecker.branchValue(b: Expr, expected: Type?): Type {
     if (b is BlockExpr) return block(b.stmts, expected, true)
     return expr(b, expected)
+}
+
+/**
+ * `if`, `when`, `try`, `?:` and `!!` are resolved by K2 as calls of a synthetic generic function; with a proper expected
+ * type (other than `Any`) their result has exactly that type when all branches fit.
+ */
+fun BodyChecker.preferExpected(res: Type, expected: Type?, node: Ast): Type {
+    if (node === argNode) return res
+    if (expected == null || res is ErrType || expected is ErrType) return res
+    if (expected is ClassType && expected.cls === sema.anyType.cls) return res
+    if (expected is VarType || containsVar(expected)) return res
+    if (ops.isNothing(res)) return res
+    if (res is IntLiteralType) return res
+    if (!ops.isSubtype(res, expected)) return res
+    return expected
+}
+
+fun containsVar(t: Type): Boolean {
+    when (t) {
+        is VarType -> return true
+        is ClassType -> {
+            for (a in t.args) {
+                val x = a.type
+                if (x != null && containsVar(x)) return true
+            }
+            return false
+        }
+        is FunType -> {
+            val r = t.receiver
+            if (r != null && containsVar(r)) return true
+            for (p in t.params) if (containsVar(p)) return true
+            return containsVar(t.ret)
+        }
+        else -> return false
+    }
 }
 
 fun BodyChecker.joinBranches(types: List<Type>): Type {
@@ -764,7 +832,7 @@ fun BodyChecker.tryExpr(e: TryExpr, expected: Type?): Type {
         for (n in assigned) flow.killRoot(n)
         block(fin.stmts, null, true)
     }
-    return joinBranches(types)
+    return preferExpected(joinBranches(types), expected, e)
 }
 
 fun BodyChecker.returnExpr(e: ReturnExpr): Type {
@@ -855,14 +923,16 @@ fun BodyChecker.forExpr(e: ForExpr): Type {
             while (s > 0 && file.text[s] != '(' && file.text[s] != '[') s--
             var en = e.entries[e.entries.size - 1].end
             while (en < file.text.length && file.text[en] != ')' && file.text[en] != ']') en++
-            recordAt(s, en + 1, elem, null, null)
+            recordDeclAt(s, en + 1, elem)
         }
     } else {
         for (en in e.entries) {
             var t = elem
             if (en.type != null) t = sema.resolveType(en.type, scope)
-            val v = VarSym(en.name, t, false, false, en.start)
-            record(en, t, v)
+            var vs = en.start
+            while (vs < file.text.length && (file.text[vs] == '(' || file.text[vs].isWhitespace())) vs++
+            val v = VarSym(en.name, fin(t), false, false, vs)
+            val rr = record(en, fin(t), v)
             declareVar(l, v)
         }
     }
@@ -887,8 +957,11 @@ fun BodyChecker.whenExpr(e: WhenExpr, expected: Type?): Type {
         if (subj.valName != null) {
             val l = newLocal()
             val vt = if (subj.valType != null) sema.resolveType(subj.valType, scope) else subjType
-            val v = VarSym(subj.valName, vt, false, false, subj.start)
+            var vs = subj.start
+            while (vs < file.text.length && (file.text[vs] == '(' || file.text[vs].isWhitespace())) vs++
+            val v = VarSym(subj.valName, vt, false, false, vs)
             declareVar(l, v)
+            recordDeclAt(vs, subj.expr.end, vt)
             subjVar = v
             subjType = vt
             subjKey = StableRef("v" + v.id, v.name)
@@ -978,6 +1051,25 @@ fun BodyChecker.whenExpr(e: WhenExpr, expected: Type?): Type {
         failed = ArrayList(failed)
         if (en.conds.size == 1 && g == null) failed.addAll(falseFacts)
     }
+    if (expected == null && argNode == null) {
+        var hint: Type? = null
+        val good = ArrayList<Type>()
+        var anyErr = false
+        for (t in types) if (containsError(t)) anyErr = true else good.add(t)
+        if (anyErr && good.isNotEmpty()) {
+            hint = joinBranches(good)
+            var idx = 0
+            for (en in e.entries) {
+                if (containsError(types[idx])) {
+                    val sv = flow
+                    flow = base.copy()
+                    types[idx] = branchValue(en.body, hint)
+                    flow = sv
+                }
+                idx++
+            }
+        }
+    }
     var exhaustive = hasElse
     if (!exhaustive && subj != null && subjType != null) exhaustive = isExhaustive(subjType, covered, coveredTrue, coveredFalse, anyNull)
     if (!exhaustive) {
@@ -990,7 +1082,7 @@ fun BodyChecker.whenExpr(e: WhenExpr, expected: Type?): Type {
     scope = saved
     if (!exhaustive) return sema.unitType
     if (types.isEmpty()) return sema.unitType
-    return joinBranches(types)
+    return preferExpected(joinBranches(types), expected, e)
 }
 
 fun BodyChecker.isExhaustive(subj: Type, covered: List<Any>, t: Boolean, f: Boolean, hasNull: Boolean): Boolean {
