@@ -839,7 +839,17 @@ clang --target=wasm32-wasip1 prog.o libminirt-wasm32.a minirt-entry-wasm32.o -o 
 the browser shim an in-memory file system (stdlib.json written under `/work/stdlib/`, the user source as `/work/prog.kt`). Output (`prog.ll`) is written there
 too. `@yowasp/clang` is driven with the same in-memory idea: `commands.clang(args, tree, { stdout, stderr })` takes and returns a tree
 `{ name: string | Uint8Array | subtree }` (its sysroot is built in: `--target=wasm32-wasip1` needs no `--sysroot`). `scripts/wasm/yowasp.mjs` is a
-10-line-per-feature node wrapper that mounts real files into that tree and writes the results back.
+small node wrapper that mounts real files into that tree and writes the results back.
+
+**Website integration** (`MiniToolchain` contract of `website/.vitepress/theme/playground/types.ts`). `scripts/wasm/pack-site.mjs <toolchain-dir> <out>` writes
+`<out>/manifest.json` and `<out>/<version>/` (`version` = hash of all files; everything below it is immutable) for `website/public/toolchain/`:
+`mini-toolchain.worker.js` (module worker, esbuild bundle of `scripts/wasm/worker/`, which includes `@yowasp/clang`'s JS and fetches its
+`llvm.core*.wasm` / `llvm-resources.tar` next to itself), `minic.wasm` and `stdlib.json` (manifest stage `check`), `libminirt-wasm32.a`, `minirt-entry-wasm32.o`,
+`llvm.core*.wasm`, `llvm-resources.tar` (stage `full`). The worker speaks the `load/check/compile` protocol: `check` and `compile` run `minic.wasm` on an in-memory
+WASI file system (`worker/memwasi.mjs`, 12 imports) and turn its text output into `Diagnostic` objects (`worker/toolchain-core.mjs`); `compile` then runs clang.wasm
+twice (compile, link) and returns the `.wasm` (plus MIR / LLVM IR on request). `scripts/wasm/test-worker.mjs` drives the packed worker through the protocol under
+node (fake `self`, `file:` fetch): load check, M0101 and type-error diagnostics, load full, compile hello and run it, compile errors. Not tested here: a real browser
+(the clang package is loaded by its own bundle, which is written for browsers and node).
 
 **Scripts** (all relative to the repository root; `scripts/build-wasm-toolchain.sh` runs them in this order and packs `build/wasm-toolchain.tar.gz`):
 
@@ -849,6 +859,7 @@ too. `@yowasp/clang` is driven with the same in-memory idea: `commands.clang(arg
 | `scripts/wasm/test-programs.sh` | every `compiler/testdata` program through JVM compiler -> clang.wasm -> `node:wasi`, stdout / exit code / `.err` lines like `LlvmEndToEndTest` (53/53 pass; about 2-3 minutes with 4 jobs) |
 | `scripts/wasm/build-minic-wasm.sh` | `minic.wasm` (JVM `emit-mir` of the compiler sources, `native-driver --target=wasm32`, clang.wasm; **the clang step takes about 29 minutes**: the YoWASP build has LLVM assertions on and runs as wasm) |
 | `scripts/wasm/test-minic-wasm.sh` | `--check` in wasm (`M0101` for `memory/uaf_simple.kt`, clean for `ok_heap_basic.kt`), and `minic.wasm --emit-ll` -> clang.wasm -> run for hello and testdata programs; the `.ll` must equal the JVM compiler's byte for byte |
+| `scripts/wasm/pack-site.mjs`, `scripts/wasm/test-worker.mjs` | website layout and a protocol test of the worker (see above) |
 | `scripts/wasm/build-one.sh` | one `.kt` file to a `.wasm` with the JVM compiler |
 | `.github/workflows/wasm-toolchain.yml` | the same on CI (artifact `wasm-toolchain`; `workflow_call` for other workflows) |
 

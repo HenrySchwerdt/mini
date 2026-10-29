@@ -76,6 +76,7 @@ jobs:
           name: wasm-toolchain
           path: |
             build/wasm-toolchain.tar.gz
+            build/wasm-toolchain-site.tar.gz
             build/wasm-toolchain/
           if-no-files-found: error
           retention-days: 30

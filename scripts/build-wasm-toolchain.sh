@@ -7,6 +7,7 @@
 #   minirt-entry-wasm32.o   the C `main` that calls mk_main (linked next to the program)
 #   stdlib.json             {"files": [{"path", "text"}...]} the stdlib sources, in compilation order
 #   toolchain.json          versions, sizes and the command lines the browser runs
+#   build/site/toolchain/   the same, laid out for website/public/toolchain (manifest.json, <version>/mini-toolchain.worker.js, wasm files, @yowasp/clang modules)
 #
 # clang and wasm-ld (with wasi-libc and compiler-rt) are NOT part of the bundle: they come from the pinned npm
 # package @yowasp/clang (scripts/wasm/package.json), which the playground loads as `commands.clang` (see compiler/README.md).
@@ -60,3 +61,8 @@ fs.writeFileSync(`${dist}/toolchain.json`, JSON.stringify({
 ' "$dist" "$clang_version" "$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 tar -C build -czf build/wasm-toolchain.tar.gz wasm-toolchain
 ls -l "$dist" build/wasm-toolchain.tar.gz
+
+# The website layout (manifest.json + versioned directory with the module worker), checked through the real worker protocol.
+node scripts/wasm/pack-site.mjs "$dist" build/site/toolchain
+[ "$skip_test" -eq 1 ] || node --no-warnings scripts/wasm/test-worker.mjs build/site/toolchain
+tar -C build/site -czf build/wasm-toolchain-site.tar.gz toolchain
