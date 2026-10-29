@@ -104,7 +104,9 @@ object TestDiscovery {
                 if (d !is FunDecl || d.name == null) continue
                 val names = annotationNames(d.mods)
                 if ("Test" !in names) continue
-                val line = lineOf(f.text, d.start)
+                // the line of `fun name` (the annotation may be on the line above)
+                val funAt = Regex("""\bfun\b""").find(f.text, d.start)?.range?.first ?: d.start
+                val line = lineOf(f.text, funAt)
                 if (d.receiver != null || d.params.isNotEmpty()) {
                     throw MiniError("${f.display}:$line: test function `${d.name}` must take no parameters and have no receiver", "write `@Test fun ${d.name}() { ... }`")
                 }
@@ -144,7 +146,7 @@ class TestRunner(val p: Platform, val c: Console, val builder: Builder) {
 
     private fun describeFailure(r: ExecResult): String {
         val err = r.stderr.lines().filter { !Diagnostics.isNoise(it) }.joinToString("\n").trim()
-        val cleaned = err.replace("Exception in thread \"main\" ", "")
+        val cleaned = err.replace("Exception in thread \"main\" ", "").replace(Regex("""\b(java\.lang|kotlin)\.(?=[A-Z])"""), "")
         if (r.startError != null) return "could not start the test binary: ${r.startError}"
         if (r.exitCode == 1 || r.exitCode == 0) return cleaned.ifEmpty { "the test failed (exit code ${r.exitCode})" }
         val sig = when (r.exitCode) { 134 -> "SIGABRT (a panic or failed internal check)"; 139 -> "SIGSEGV (crash)"; 136 -> "SIGFPE"; 137 -> "killed (SIGKILL)"; else -> null }

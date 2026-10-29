@@ -91,7 +91,7 @@ In Strict mode a separate checker runs before code generation.
 | **Own frontend to MIR without K2 (B2-3)** | **Done.** `--frontend=mini` gives MIR and C byte-identical to the K2 path for all 47 test programs. The natively built `minic-native` (no JVM, no K2) compiles the whole compiler in about 5 s. |
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. |
 | **Full bootstrap, stage 2 == stage 3 (B3)** | **Done.** `compiler/bootstrap.sh`: stage1 builds stage2, stage2 builds stage3, and the C and MIR of stage 2 and stage 3 are byte-identical. Checked in CI. |
-| Project tool `mini` (`mini new/build/run/test`, `mini.toml`, no Gradle) | Planned, right after B2-3. |
+| Project tool `mini` (`mini new/build/run/test`, `mini.toml`, path and git dependencies; JVM-hosted v0) | **v0 done**, see [docs/mini-tool.md](docs/mini-tool.md). A native `mini` and a repository without Gradle are next. |
 | Reflection (static metadata, ownership-aware), JSON (kotlinx.serialization API), compile-time DI and a web framework with one arena per request | Planned after B3. |
 | LLVM as the primary backend (in-process via its C API, embedded lld, single binary, no clang), statically bundled libuv, `.kts` scripts and a REPL on the LLVM ORC JIT | Planned after B3. |
 | Coroutines and async IO on libuv, runtime written in Kotlin, Windows | Later. |
@@ -110,6 +110,25 @@ Requirements: JDK 21, clang (or gcc). libuv is only needed for the runtime tests
 ```
 
 `./minic` builds the compiler on first use (Gradle) and then runs it.
+
+### Create a project
+
+`mini` is the project tool (like `cargo`; `minic` is the bare compiler underneath, like `rustc`). Put the repository
+root on your `PATH` once, then:
+
+```sh
+export PATH="$PATH:$PWD"            # in the repository root; add it to your shell profile
+mini new hello && cd hello
+mini run                            # build and run
+mini test                           # run the @Test functions in tests/
+mini new geometry --lib             # a library; use it with: mini add geometry --path ../geometry
+mini check                          # type-check and run the memory checker, no binary
+mini explain M0102                  # explain a diagnostic
+```
+
+Without `PATH` use `./mini new hello && cd hello && ../mini run`. `mini` also has `build --release`, `add`, `remove`,
+`update`, `tree`, `clean`, `doctor` and shell completions; dependencies are paths or git repositories pinned in
+`mini.lock`. Full reference: [docs/mini-tool.md](docs/mini-tool.md).
 
 ### Self-hosting in one minute
 
