@@ -100,6 +100,31 @@ fun sum(n: Node?): Int {
     return s
 }
 
+// a copy that is only sometimes the owned local: giving the local away through the copy would lose its
+// reference on the paths where the copy is null
+fun pick(c: Boolean): Node? {
+    val r = Node(1, null)
+    val res = if (c) r else null
+    return res
+}
+
+fun pickEmpty(c: Boolean): Node? {
+    val r = Node(3, null)
+    val z: Node?
+    if (c) {
+        z = r
+    } else {
+        z = null
+    }
+    return z
+}
+
+fun pickCast(a: Any): Node? {
+    val r = Node(4, null)
+    val x = a as? Node
+    return x ?: r
+}
+
 fun main() {
     println(makeString(7))
     println(makeNode(3).value)
@@ -118,4 +143,10 @@ fun main() {
     println(swapChain(Node(5, null)).next!!.value)
     println(castReturn().value)
     println(failingCast())
+    println(pick(true)!!.value)
+    println(pick(false) == null)
+    println(pickEmpty(true)!!.value)
+    println(pickEmpty(false) == null)
+    println(pickCast("s")!!.value)
+    println(pickCast(Node(9, null))!!.value)
 }

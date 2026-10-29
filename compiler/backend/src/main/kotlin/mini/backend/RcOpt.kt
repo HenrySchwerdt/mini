@@ -284,7 +284,10 @@ private class LoopRange(val start: Int) {
 }
 
 /** The chain of reads a definition of a candidate borrower consists of (`x = a.b.c` has root `a`, one field read). */
-private class Chain(val roots: ArrayList<MirLocal>, var hasField: Boolean)
+private class Chain(val roots: ArrayList<MirLocal>, var hasField: Boolean) {
+    /** The value may not come from a root (constant, singleton, a `as?` that can give NULL): moving the root would lose a reference. */
+    var rootless = false
+}
 
 private class LocalInfo(val local: MirLocal, val index: Int, val isParam: Boolean) {
     var firstDef = -1
@@ -292,6 +295,8 @@ private class LocalInfo(val local: MirLocal, val index: Int, val isParam: Boolea
     var declDepth = 0
     var ownedDef = false
     var duplicate = false
+    /** Declared without a value (assigned later): NULL on some paths. */
+    var declaredEmpty = false
     val chains = ArrayList<Chain>()
     val usePos = ArrayList<Int>()
     val useLoop = ArrayList<LoopRange?>()
@@ -305,6 +310,7 @@ private class LocalInfo(val local: MirLocal, val index: Int, val isParam: Boolea
     // derived by the validation
     val roots = ArrayList<LocalInfo>()
     var viaField = false
+    var rootless = false
 }
 
 private class ListCtx(val list: List<MirStmt>, val loop: MirLabel?, val noClose: Boolean) {
@@ -461,13 +467,19 @@ private class RcAnalyzer(
             acc.roots += e.local
             true
         }
-        is MirExpr.Cast -> chainOf(e.operand, acc)
+        is MirExpr.Cast -> {
+            if (e.mode == MirExpr.CastMode.Safe) acc.rootless = true
+            chainOf(e.operand, acc)
+        }
         is MirExpr.NotNull -> chainOf(e.operand, acc)
         is MirExpr.FieldGet -> {
             acc.hasField = true
             e.type.isRef && chainOf(e.obj, acc)
         }
-        is MirExpr.ObjectGet, is MirExpr.StringConst, is MirExpr.NullConst -> true
+        is MirExpr.ObjectGet, is MirExpr.StringConst, is MirExpr.NullConst -> {
+            acc.rootless = true
+            true
+        }
         else -> false
     }
 
@@ -533,7 +545,7 @@ private class RcAnalyzer(
                 if (s.local.type.isRef) {
                     val i = info(s.local, false)
                     i.declList = curList
-                    if (init != null) addDef(i, init, pos++)
+                    if (init != null) addDef(i, init, pos++) else i.declaredEmpty = true
                 }
             }
             is MirStmt.Assign -> {
@@ -637,6 +649,7 @@ private class RcAnalyzer(
     private fun closure(x: LocalInfo): Boolean {
         x.roots.clear()
         x.viaField = false
+        x.rootless = false
         val seen = ArrayList<LocalInfo>()
         seen += x
         return walk(x, i = x, seen = seen)
@@ -644,8 +657,10 @@ private class RcAnalyzer(
 
     private fun walk(x: LocalInfo, i: LocalInfo, seen: ArrayList<LocalInfo>): Boolean {
         var ok = true
+        if (i.declaredEmpty) x.rootless = true
         for (c in i.chains) {
             if (c.hasField) x.viaField = true
+            if (c.rootless) x.rootless = true
             for (r in c.roots) {
                 val ri = byId[r.id]
                 if (ri == null) {
@@ -810,7 +825,7 @@ private class RcAnalyzer(
     private fun consumable(l: MirLocal): LocalInfo? {
         val x = byId[l.id] ?: return null
         if (x.borrowed) {
-            if (x.viaField || x.roots.size != 1) return null
+            if (x.viaField || x.rootless || x.roots.size != 1) return null
             val r = x.roots[0]
             return if (usable(r)) r else null
         }

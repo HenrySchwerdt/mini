@@ -557,6 +557,28 @@ class RcOptTest {
         assertFalse("old" in on, on)
     }
 
+    @Test
+    fun copyThatIsSometimesNullDoesNotGiveTheOwnerAway() {
+        // val r = A(); val res = if (c) r else null; return res: on the null path r still has to be released
+        val c = MirLocal(0, "c", TBoolean)
+        val r = MirLocal(1, "r", a)
+        val res = MirLocal(2, "res", an)
+        val f = fn(
+            "f", listOf(c), an,
+            MirStmt.Declare(r, MirExpr.New("kc_A_C", emptyList(), a)),
+            MirStmt.Declare(res, null),
+            MirStmt.If(
+                MirExpr.Local(c),
+                listOf(MirStmt.Assign(res, MirExpr.Local(r))),
+                listOf(MirStmt.Assign(res, MirExpr.NullConst(an))),
+            ),
+            MirStmt.Return(MirExpr.Local(res)),
+        )
+        val on = cOf(CEmitter.emit(module(ctor, f), rcOpt = true), "f")
+        assertEquals(1, retains(on), on) // the result keeps its own reference
+        assertTrue(releasesOf(on, "v_r_1"), on)
+    }
+
     // ---- the pass itself -----------------------------------------------------------------------------------------
 
     @Test
