@@ -296,6 +296,21 @@ slot, so a fixpoint over slot groups), reuse analysis (an object that dies at a 
 `minirt.h`, thread-sharing awareness (borrowed aliases of fields of `MK_FLAG_SHARED` objects assume the
 program is data-race free, like the baseline's field-read retain).
 
+## C interop
+
+User guide: `website/guide/c-interop.md`. Design (docs/plan-kotlin.md section 7): the API of `kotlinx.cinterop`, implemented in the language, with no runtime shim.
+
+* **MIR.** New scalar types `Byte`, `Short`, `Float` (never boxed; a `Byte?` is an error) and `Ptr`/`Ptr?` (a C `void *`: `CPointer<T>`, `NativePtr`, every `CPointed` such as `IntVar` or a `@CStruct` class, `CFunction`). New nodes: `Load`, `PtrAdd`, `MirStmt.Store`, `CCall` (call of a `MirExtern`), `CCallIndirect`, `FuncAddr`; the module carries `externs`, `includes` (`@file:CInclude`) and `links` (`@file:CLink`). Serialized additively (version 2 unchanged). Layout rules shared by both frontends: `backend/.../CInterop.kt`.
+* **Frontends.** Both produce identical MIR: `jvm-bridge/.../Ir2MirInterop.kt` and its port `lower/.../Ir2MirInterop.kt`. Pointer classes never become MIR classes. `external fun` + `@CName` is a `CCall` (types are checked: only primitives and pointers). The intrinsics of `stdlib/kotlinx/cinterop/Intrinsics.kt` (builtin file) become loads, stores, pointer arithmetic, `sizeOf` constants, function pointers. `@CStruct` property accessors become loads/stores at offsets from the C layout rules. `staticCFunction` lifts a capture-free lambda to a function of its own wrapped in a catch-all that panics. Everything else (`memScoped`, `alloc`, `.value`, `p[i]`, `cstr`, `toKString`) is ordinary Kotlin in `stdlib/kotlinx/cinterop/` on top of those and libc `calloc`/`free`.
+* **Backends.** C: calls go through own prototypes bound to the real symbol with an asm label (`extern int mkx_strlen(void *) __asm__("strlen")`), so headers never clash and C and LLVM call the same symbol; loads/stores are `memcpy` (any alignment, no aliasing rules). LLVM: `declare` per symbol, call-site function types, `signext`/`zeroext`, default argument promotion for `...`.
+* **Variadic** externs: `@CVariadic(fixed)` per call shape. `@Owned(free = "fn")` on an external function: see the memory checker below.
+* **Tools.** `minic build ... --c-src file.c` (repeatable) links C files; `-I` for the source directories; `@file:CLink` becomes `-l<lib>` (the generated C/IR also carry a `mini:link` comment for drivers that do not link themselves, e.g. `minic-native`).
+* **K2 caveat.** `external class` is rejected by K2 on the JVM unless the file has `@file:Suppress("WRONG_MODIFIER_TARGET")` (the driver silences the suppression warning). The own frontend needs nothing.
+* **Memory checker** (both frontends, `MemoryFacts`): pointer classes are tracked values; `memScoped` is `Arena().use { }` (M0105 on escape), `nativeHeap` is a `Deallocating` allocator (M0102/M0103/M0101), `@Owned(free = "fn")` results are `SK.Extern` allocations released by calling `fn`; pointers from other C functions are externally managed. The `kotlinx.cinterop` API is checked as Strict code with borrowed results and is no Managed boundary.
+* **Own frontend additions that interop needed:** member extension functions and properties on lambda receivers (`"x".cstr.ptr` inside `memScoped`), top-level `operator fun T.invoke` for `f(a, b)` on a variable, generic member extension properties, and callable references as arguments of overloaded generic functions (`staticCFunction(::f)`).
+* **Not done:** unsigned types, structs/unions by value (`CValue`, `readValue`, `useContents`), bit fields, exporting Kotlin functions with `@CName`, `mini-bindgen`, `ByteArray` conversions, pointers inside `Any`/collections, 32-bit targets.
+* **Tests:** `testdata/cinterop_*.kt` (libc plus `cinterop_lib.c`, run in both frontends and backends and under ASan/UBSan), `testdata/memory-extra/x_cinterop_*.kt` (checker).
+
 ## Memory-model checker (Strict mode)
 
 Implements the analysis of `docs/memory-model.md` (the corpus in `testdata/memory` is its test).

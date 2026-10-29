@@ -21,11 +21,15 @@ class LowerPurityTest {
         Regex("""\bSystem\."""),
     )
 
+    private val stringLiteral = Regex(""""(?:\\.|[^"\\])*"""")
+
     private fun violations(fileName: String, text: String): List<String> {
         val out = ArrayList<String>()
         text.lines().forEachIndexed { i, line ->
+            // String literals are data (e.g. package names compared against "java."), not API use.
+            val code = line.replace(stringLiteral, "\"\"")
             for (r in forbidden) {
-                if (r.containsMatchIn(line)) out += "$fileName:${i + 1}: matches ${r.pattern}: ${line.trim()}"
+                if (r.containsMatchIn(code)) out += "$fileName:${i + 1}: matches ${r.pattern}: ${line.trim()}"
             }
         }
         return out

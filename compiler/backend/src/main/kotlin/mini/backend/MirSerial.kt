@@ -20,8 +20,14 @@ package mini.backend
  * `(l <id> "<name>" <type>)` at its first mention in the function and as `(l <id>)` afterwards
  * (the reader decodes in the same order as the writer wrote).
  *
- * Types: Int Long Boolean Double Char String Unit Nothing String? Null, `(obj "<qn>" "<cName>" <nullable> <isInterface>)`,
- * `(boxed <prim>)`.
+ * Types: Int Long Boolean Double Char Byte Short Float Ptr Ptr? String Unit Nothing String? Null,
+ * `(obj "<qn>" "<cName>" <nullable> <isInterface>)`, `(boxed <prim>)`.
+ *
+ * C interop (docs/plan-kotlin.md section 7), additive to version 2: the top-level forms
+ * `(include "<header>")`, `(link "<lib>")` and `(extern <id> "<symbol>" (types <param>...) <ret> <fixed>)` (fixed: -1 or the
+ * number of fixed parameters of a variadic function; the ids number the externs and precede every function), the
+ * statement `(store <ptr> <value>)` and the expressions `(load <ptr> <type>)`, `(padd <ptr> <bytes>)`, `(ccall <extern id> <arg>...)`,
+ * `(ccalli <ret> (types ...) <callee> <arg>...)` and `(faddr "<cName>")`.
  *
  * The `when` expressions over the sealed MIR hierarchies are exhaustive on purpose: adding a node
  * type makes this file fail to compile until the format covers it. Pure Kotlin (no regex, no
@@ -76,10 +82,21 @@ internal fun mirDouble(d: Double): String {
 private class MirWriterImpl {
     val sb = StringBuilder()
     var locals = HashMap<Int, MirLocal>()
+    var externIds = HashMap<MirExtern, Int>()
 
     fun run(m: MirModule): String {
         sb.append("(mini-mir ").append(MIR_FORMAT_VERSION).append(' ')
         str(m.sourceName)
+        for (h in m.includes) { sb.append("\n  (include "); str(h); sb.append(')') }
+        for (l in m.links) { sb.append("\n  (link "); str(l); sb.append(')') }
+        externIds = HashMap()
+        for ((i, x) in m.externs.withIndex()) {
+            externIds[x] = i
+            sb.append("\n  (extern ").append(i).append(' ')
+            str(x.symbol); sb.append(' ')
+            types(x.params); sb.append(' ')
+            type(x.returnType); sb.append(' ').append(x.fixedParams).append(')')
+        }
         for (c in m.classes) {
             sb.append("\n  ")
             cls(c)
@@ -174,6 +191,10 @@ private class MirWriterImpl {
             TBoolean -> sb.append("Boolean")
             TDouble -> sb.append("Double")
             TChar -> sb.append("Char")
+            TByte -> sb.append("Byte")
+            TShort -> sb.append("Short")
+            TFloat -> sb.append("Float")
+            is TPtr -> sb.append(if (t.nullable) "Ptr?" else "Ptr")
             TString -> sb.append("String")
             TUnit -> sb.append("Unit")
             TNothing -> sb.append("Nothing")
@@ -226,6 +247,12 @@ private class MirWriterImpl {
                 str(s.owner); sb.append(' ')
                 str(s.field); sb.append(' ')
                 type(s.fieldType); sb.append(' ')
+                expr(s.value)
+                sb.append(')')
+            }
+            is MirStmt.Store -> {
+                sb.append("(store ")
+                expr(s.ptr); sb.append(' ')
                 expr(s.value)
                 sb.append(')')
             }
@@ -414,6 +441,16 @@ private class MirWriterImpl {
             }
             is MirExpr.ObjectGet -> { sb.append("(objget "); str(e.classCName); sb.append(' '); type(e.type); sb.append(')') }
             is MirExpr.StringLength -> { sb.append("(slen "); expr(e.operand); sb.append(')') }
+            is MirExpr.Load -> { sb.append("(load "); expr(e.ptr); sb.append(' '); type(e.type); sb.append(')') }
+            is MirExpr.PtrAdd -> { sb.append("(padd "); expr(e.ptr); sb.append(' '); expr(e.bytes); sb.append(')') }
+            is MirExpr.CCall -> {
+                val id = externIds[e.extern] ?: throw MirFormatError("call of the C function ${e.extern.symbol}, which is not in the module's externs")
+                sb.append("(ccall ").append(id); exprs(e.args); sb.append(')')
+            }
+            is MirExpr.CCallIndirect -> {
+                sb.append("(ccalli "); type(e.type); sb.append(' '); types(e.paramTypes); sb.append(' '); expr(e.callee); exprs(e.args); sb.append(')')
+            }
+            is MirExpr.FuncAddr -> { sb.append("(faddr "); str(e.cName); sb.append(')') }
             is MirExpr.Unreachable -> { sb.append("(unreachable "); type(e.type); sb.append(')') }
             is MirExpr.CaughtException -> { sb.append("(caught "); type(e.type); sb.append(')') }
             is MirExpr.TypeInfoOf -> { sb.append("(tinfo "); optType(e.target); sb.append(')') }
@@ -517,6 +554,7 @@ private class SxParser(val text: String) {
 private class MirReaderImpl {
     var locals = HashMap<Int, MirLocal>()
     var labels = HashMap<Int, MirLabel>()
+    var externs = ArrayList<MirExtern>()
 
     fun fail(msg: String): Nothing = throw MirFormatError(msg)
 
@@ -529,14 +567,25 @@ private class MirReaderImpl {
         val sourceName = str(items[2])
         val classes = ArrayList<MirClass>()
         val functions = ArrayList<MirFunction>()
+        val includes = ArrayList<String>()
+        val links = ArrayList<String>()
+        externs = ArrayList()
         for (i in 3 until items.size) {
             val form = items[i]
             val tag = tagOf(form)
             if (tag == "class") classes.add(cls(form))
             else if (tag == "fun") functions.add(fn(form))
+            else if (tag == "include") includes.add(str((form as Sx.Lst).items[1]))
+            else if (tag == "link") links.add(str((form as Sx.Lst).items[1]))
+            else if (tag == "extern") {
+                val ex = (form as Sx.Lst).items
+                need(ex, 6, tag)
+                if (int(ex[1]) != externs.size) fail("extern ids must be numbered in order")
+                externs.add(MirExtern(str(ex[2]), types(ex[3]), type(ex[4]), int(ex[5])))
+            }
             else fail("unexpected top-level form '$tag'")
         }
-        return MirModule(sourceName, functions, classes)
+        return MirModule(sourceName, functions, classes, externs, includes, links)
     }
 
     // -- generic helpers
@@ -669,6 +718,11 @@ private class MirReaderImpl {
         "Boolean" -> TBoolean
         "Double" -> TDouble
         "Char" -> TChar
+        "Byte" -> TByte
+        "Short" -> TShort
+        "Float" -> TFloat
+        "Ptr" -> TPtr(false)
+        "Ptr?" -> TPtr(true)
         "String" -> TString
         "Unit" -> TUnit
         "Nothing" -> TNothing
@@ -772,6 +826,7 @@ private class MirReaderImpl {
                 val ft = type(it[4])
                 return MirStmt.SetField(obj, owner, field, ft, expr(it[5]))
             }
+            "store" -> { need(it, 3, tag); val p = expr(it[1]); return MirStmt.Store(p, expr(it[2])) }
             "eval" -> { need(it, 2, tag); return MirStmt.Eval(expr(it[1])) }
             "if" -> {
                 need(it, 4, tag)
@@ -911,6 +966,22 @@ private class MirReaderImpl {
             }
             "objget" -> { need(it, 3, tag); return MirExpr.ObjectGet(str(it[1]), type(it[2])) }
             "slen" -> { need(it, 2, tag); return MirExpr.StringLength(expr(it[1])) }
+            "load" -> { need(it, 3, tag); val p = expr(it[1]); return MirExpr.Load(p, type(it[2])) }
+            "padd" -> { need(it, 3, tag); val p = expr(it[1]); return MirExpr.PtrAdd(p, expr(it[2])) }
+            "ccall" -> {
+                need(it, 2, tag)
+                val id = int(it[1])
+                if (id < 0 || id >= externs.size) fail("(ccall $id ...): no such extern")
+                return MirExpr.CCall(externs[id], exprsFrom(it, 2))
+            }
+            "ccalli" -> {
+                need(it, 4, tag)
+                val t = type(it[1])
+                val pts = types(it[2])
+                val callee = expr(it[3])
+                return MirExpr.CCallIndirect(callee, exprsFrom(it, 4), pts, t)
+            }
+            "faddr" -> { need(it, 2, tag); return MirExpr.FuncAddr(str(it[1])) }
             "unreachable" -> { need(it, 2, tag); return MirExpr.Unreachable(type(it[1])) }
             "caught" -> { need(it, 2, tag); return MirExpr.CaughtException(type(it[1])) }
             "tinfo" -> { need(it, 2, tag); return MirExpr.TypeInfoOf(optType(it[1])) }

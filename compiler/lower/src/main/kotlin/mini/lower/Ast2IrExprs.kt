@@ -193,7 +193,7 @@ fun Ast2Ir.literal(e: LiteralExpr): IrExpression {
         LitKind.REAL -> {
             var text = e.text.replace("_", "")
             val last = text[text.length - 1]
-            if (last == 'f' || last == 'F') fail(e, "Float literal")
+            if (last == 'f' || last == 'F') return IrConst(t, roundToFloat(text.substring(0, text.length - 1).toDouble()))
             return IrConst(t, text.toDouble())
         }
         LitKind.INT -> {

@@ -111,7 +111,7 @@ internal fun Ir2Mir.collectClass(c: IrClass, pkg: String, path: List<String>, fi
         }
     }
     for (d in c.declarations) {
-        if (d is IrClass) collectClass(d, pkg, path + d.name.asString(), file)
+        if (d is IrClass && !isPtrClass(d)) collectClass(d, pkg, path + d.name.asString(), file)
     }
 }
 

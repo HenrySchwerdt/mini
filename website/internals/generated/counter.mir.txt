@@ -1,6 +1,6 @@
-(mini-mir 1 "counter.kt"
-  (class "Counter" "kc_Counter" false - false - (fields (f "n" Int)) (interfaces) (vtable - - -) (itables))
-  (fun "fib" "kt_fib_AI" (params (l 0 "n" Int)) Int -
+(mini-mir 2 "counter.kt"
+  (class "Counter" "kc_Counter" false - false - (fields (f "n" Int false)) (interfaces) (vtable - - -) (itables) false)
+  (fun "fib" "kt_fib_AI" (params (l 0 "n" Int)) Int - false false false (owns)
     (declare (l 2 "tmp" Int) -)
     (if (bin Lt (l 0) (int 2))
       (then
@@ -9,19 +9,19 @@
         (declare (l 1 "tmp" Int) (call "kt_fib_AI" Int (bin Sub (l 0) (int 1))))
         (assign (l 2) (bin Add (l 1) (call "kt_fib_AI" Int (bin Sub (l 0) (int 2)))))))
     (return (l 2)))
-  (fun "main" "mk_main" (params) Unit -
-    (declare (l 1 "c" (obj "Counter" "kc_Counter" false false)) (new "kc_Counter_C_AI" (obj "Counter" "kc_Counter" false false) (int 0)))
+  (fun "main" "mk_main" (params) Unit - false false false (owns)
+    (declare (l 1 "c" (obj "Counter" "kc_Counter" false false)) (new "kc_Counter_C_AI" (obj "Counter" "kc_Counter" false false) false - (int 0)))
     (eval (rcall "mk_println_int" Unit (call "kt_fib_AI" Int (int 10))))
     (eval (rcall "mk_println_int" Unit (call "kc_Counter_Minc" Int (l 1)))))
-  (fun "Counter.<get-n>" "kc_Counter_M_x003Cget_x002Dn_x003E" (params (l 0 "this" (obj "Counter" "kc_Counter" false false))) Int -
+  (fun "Counter.<get-n>" "kc_Counter_M_x003Cget_x002Dn_x003E" (params (l 0 "this" (obj "Counter" "kc_Counter" false false))) Int - false false false (owns)
     (return (get (l 0) "kc_Counter" "n" Int)))
-  (fun "Counter.<set-n>" "kc_Counter_M_x003Cset_x002Dn_x003E_AI" (params (l 0 "this" (obj "Counter" "kc_Counter" false false)) (l 1 "<set-?>" Int)) Unit -
+  (fun "Counter.<set-n>" "kc_Counter_M_x003Cset_x002Dn_x003E_AI" (params (l 0 "this" (obj "Counter" "kc_Counter" false false)) (l 1 "<set-?>" Int)) Unit - false false false (owns)
     (setfield (l 0) "kc_Counter" "n" Int (l 1)))
-  (fun "Counter.inc" "kc_Counter_Minc" (params (l 0 "this" (obj "Counter" "kc_Counter" false false))) Int -
+  (fun "Counter.inc" "kc_Counter_Minc" (params (l 0 "this" (obj "Counter" "kc_Counter" false false))) Int - false false false (owns)
     (declare (l 2 "tmp" (obj "Counter" "kc_Counter" false false)) (l 0))
     (declare (l 1 "tmp" Int) (get (l 0) "kc_Counter" "n" Int))
     (setfield (l 2) "kc_Counter" "n" Int (bin Add (l 1) (int 1)))
     (eval unit)
     (return (get (l 0) "kc_Counter" "n" Int)))
-  (fun "Counter.<init>" "kc_Counter_C_AI" (params (l 0 "this" (obj "Counter" "kc_Counter" false false)) (l 1 "n" Int)) Unit "kc_Counter"
+  (fun "Counter.<init>" "kc_Counter_C_AI" (params (l 0 "this" (obj "Counter" "kc_Counter" false false)) (l 1 "n" Int)) Unit "kc_Counter" false false false (owns)
     (setfield (l 0) "kc_Counter" "n" Int (l 1))))

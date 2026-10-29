@@ -70,6 +70,8 @@ internal fun zeroOf(t: MirType): MirExpr = when (t) {
     TBoolean -> MirExpr.BooleanConst(false)
     TDouble -> MirExpr.DoubleConst(0.0)
     TChar -> MirExpr.CharConst(0)
+    TByte, TShort -> MirExpr.Convert(MirExpr.IntConst(0), t)
+    TFloat -> MirExpr.Convert(MirExpr.DoubleConst(0.0), TFloat)
     else -> MirExpr.NullConst(t)
 }
 

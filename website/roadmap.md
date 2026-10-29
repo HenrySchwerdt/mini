@@ -20,6 +20,7 @@ This page separates what exists today from what is planned. Anything under "Plan
 |---|---|
 | **Own frontend to MIR without K2 (B2-3)** | In progress. On the working branch all 47 test programs already lower to MIR identical to the K2 path, also from a natively built, K2-free `minic-native`. |
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. Strict programs are checked, but programs that use allocator objects, context parameters or `mini.memory` do not build natively yet (`minic build` reports `unsupported construct: value class 'NativePtr'` while compiling `mini.memory`). The planned lowering uses `mk_alloc_with`, `mk_free` and `mk_arena_*` from the runtime. |
+| **Playground and notebook in the browser** | The editors, runner and notebook are built ([Playground and notebook](/guide/playground)); **Run** and **Check** stay disabled until the compiler built for WebAssembly is shipped with the site (plan section 10i). |
 
 ## Next
 

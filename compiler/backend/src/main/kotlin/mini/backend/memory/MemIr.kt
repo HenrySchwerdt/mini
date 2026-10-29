@@ -132,6 +132,11 @@ class MFun(
     val pos: Pos = Pos.NONE,
     /** Always throws or is a require-like call that creates an exception edge. */
     val throwsKnown: Boolean = false,
+    /**
+     * C interop (docs/plan-kotlin.md 7): an `external fun` annotated `@Owned(free = "fn")`; the result is a C allocation the
+     * caller must release by calling the C function `fn` (a null or empty name means: owned, released some other way).
+     */
+    val cFree: String? = null,
 ) {
     var body: List<MStmt>? = null
     /** Parameters that are visible allocators (context parameters whose type is an allocator). */

@@ -123,6 +123,8 @@ All as Kotlin source in `stdlib/mini/memory/`.
 | `Arena` | `Scoped` (hence `AutoCloseable`) | **yes** | Region. Must be closed (`use {}` or `close()`): otherwise M0102. Not `ThreadSafe`. |
 | `Pool<T>` | `Deallocating`, `AutoCloseable` | **yes** | Fixed capacity, objects freed individually. Must be closed. Not `ThreadSafe`. |
 | `Rc` | `Managed`, `ThreadSafe` | no | Refcounting, default of Managed code. |
+| `memScoped { }` (`kotlinx.cinterop.MemScope`) | `Scoped` | no (the block closes it) | C interop: `alloc<T>()`, `allocArray`, `"s".cstr.ptr` allocate in it; a pointer that leaves the block is M0105. |
+| `nativeHeap` (`kotlinx.cinterop`) | `Deallocating` | no | C interop: malloc/free; every `alloc` needs `nativeHeap.free`. `@Owned(free = "fn")` on an `external fun` gives a C result the same obligation, released by calling `fn`. |
 | `DebugAllocator(inner)` | `Deallocating`, `ThreadSafe` | no | Wraps a `Deallocating` allocator and, under Mini, reports leaks with their allocation site at program end. |
 
 Interfaces: `Allocator { allocate(size, align): NativePtr? }`,

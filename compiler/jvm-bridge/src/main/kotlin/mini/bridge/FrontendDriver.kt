@@ -71,6 +71,8 @@ object FrontendDriver {
             args.moduleName = "main"
             args.pluginClasspaths = arrayOf(File(work, "plugin").absolutePath)
             args.jvmTarget = "21"
+            // C interop: `@file:Suppress("WRONG_MODIFIER_TARGET")` lets K2 accept `external class` (docs: compiler/README.md "C interop")
+            args.dontWarnOnErrorSuppression = true
 
             val collector = Collector()
             var captured: Throwable? = null

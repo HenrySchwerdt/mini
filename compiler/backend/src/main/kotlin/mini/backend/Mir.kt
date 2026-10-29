@@ -21,7 +21,33 @@ class MirModule(
     val functions: List<MirFunction>,
     /** Classes, interfaces and objects. Superclasses and interfaces precede their subtypes. */
     val classes: List<MirClass> = emptyList(),
+    /** C interop (docs/plan-kotlin.md section 7): the C functions called by [MirExpr.CCall], each declared once. */
+    val externs: List<MirExtern> = emptyList(),
+    /** `@file:CInclude("header.h")`: headers the C backend includes (the LLVM backend needs none). */
+    val includes: List<String> = emptyList(),
+    /** `@file:CLink("lib")`: libraries the program is linked with (`-l<lib>`). */
+    val links: List<String> = emptyList(),
 )
+
+/**
+ * A C function the program calls (`external fun` + `@CName("symbol")`). [params] are the parameter types of the Kotlin
+ * declaration (primitives and [TPtr] only); [fixedParams] is -1 for an ordinary function and the number of leading
+ * fixed parameters for a variadic one (`@CVarargs`): the remaining [params] are passed as `...` arguments.
+ */
+class MirExtern(
+    val symbol: String,
+    val params: List<MirType>,
+    val returnType: MirType,
+    val fixedParams: Int = -1,
+) {
+    val isVariadic: Boolean get() = fixedParams >= 0
+    /** The parameters of the C prototype (without the `...` part). */
+    val prototypeParams: List<MirType> get() = if (fixedParams >= 0) params.subList(0, fixedParams) else params
+
+    /** Two externs of one symbol with the same C prototype share one declaration. */
+    val prototypeKey: String
+        get() = symbol + "(" + prototypeParams.joinToString(",") + (if (isVariadic) ",..." else "") + ")" + returnType
+}
 
 class MirField(
     val name: String,
@@ -133,6 +159,22 @@ object TUnit : MirType("Unit")
 object TNothing : MirType("Nothing")
 
 /*
+ * C interop scalars (docs/plan-kotlin.md section 7). They are plain values, never reference counted and never boxed
+ * (a `Byte?` is an unsupported construct). Byte and Short are `int8_t` / `int16_t`, Float is `float`.
+ */
+object TByte : MirType("Byte")
+object TShort : MirType("Short")
+object TFloat : MirType("Float")
+
+/**
+ * A C pointer (`void *`): `CPointer<T>`, `CPointed` values (`IntVar`, structs) and C function pointers. A value type,
+ * not reference counted. A nullable pointer is the same C value, NULL for `null`.
+ */
+data class TPtr(val nullable: Boolean) : MirType(if (nullable) "Ptr?" else "Ptr") {
+    override fun toString(): String = displayName
+}
+
+/*
  * Reference types. All of them are C pointers (`MkObject *`, except strings which are
  * `const MkString *`) and may be NULL at the C level; nullability is a Kotlin-level fact.
  */
@@ -162,8 +204,13 @@ val MirType.isRef: Boolean
 val MirType.isPrimitive: Boolean
     get() = this === TInt || this === TLong || this === TBoolean || this === TDouble || this === TChar
 
+/** Byte, Short, Float and pointers: the value types that exist for C interop but cannot be boxed. */
+val MirType.isInteropScalar: Boolean
+    get() = this === TByte || this === TShort || this === TFloat || this is TPtr
+
 fun MirType.nonNull(): MirType = when (this) {
     TNString -> TString
+    is TPtr -> TPtr(false)
     is TObject -> if (nullable) copy(nullable = false) else this
     is TBoxed -> prim
     else -> this
@@ -171,6 +218,7 @@ fun MirType.nonNull(): MirType = when (this) {
 
 fun MirType.asNullable(): MirType = when (this) {
     TString -> TNString
+    is TPtr -> TPtr(true)
     is TObject -> if (nullable) this else copy(nullable = true)
     TInt, TLong, TBoolean, TDouble, TChar -> TBoxed(this)
     else -> this
@@ -201,6 +249,8 @@ sealed class MirStmt {
         val fieldType: MirType,
         val value: MirExpr,
     ) : MirStmt()
+    /** `*(T *)ptr = value` where `T` is the C type of the value's type (C interop; any alignment, no aliasing rules). */
+    class Store(val ptr: MirExpr, val value: MirExpr) : MirStmt()
     /** Expression evaluated for its effect; the value is discarded. */
     class Eval(val expr: MirExpr) : MirStmt()
     class If(val cond: MirExpr, val thenBody: List<MirStmt>, val elseBody: List<MirStmt>) : MirStmt()
@@ -392,6 +442,28 @@ sealed class MirExpr {
 
     /** The exception being handled; only valid as the first `Declare` of a [MirCatch] body. Owned. */
     class CaughtException(override val type: MirType) : MirExpr()
+
+    /** `*(T *)ptr` for the scalar type [type] (C interop; any alignment, no aliasing rules). */
+    class Load(val ptr: MirExpr, override val type: MirType) : MirExpr()
+
+    /** `(char *)ptr + bytes`; [bytes] is a Long. The result has the type of [ptr]. */
+    class PtrAdd(val ptr: MirExpr, val bytes: MirExpr) : MirExpr() { override val type: MirType get() = ptr.type }
+
+    /** Call of the C function [extern] (a function of [MirModule.externs]); the type is its return type. */
+    class CCall(val extern: MirExtern, val args: List<MirExpr>) : MirExpr() {
+        override val type: MirType get() = extern.returnType
+    }
+
+    /** Call through a C function pointer [callee] (`CPointer<CFunction<...>>.invoke`); the types are those of the C signature. */
+    class CCallIndirect(
+        val callee: MirExpr,
+        val args: List<MirExpr>,
+        val paramTypes: List<MirType>,
+        override val type: MirType,
+    ) : MirExpr()
+
+    /** The address of the function [cName] of this module as a C function pointer (`staticCFunction`). */
+    class FuncAddr(val cName: String) : MirExpr() { override val type: MirType get() = TPtr(false) }
 
     /** `&<type info of target>` (NULL for a null target), as an argument of runtime calls. */
     class TypeInfoOf(val target: MirType?) : MirExpr() {

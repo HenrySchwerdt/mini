@@ -10,3 +10,9 @@ public fun Double.isNaN(): Boolean = this != this
 public fun Double.isInfinite(): Boolean = this == Double.POSITIVE_INFINITY || this == Double.NEGATIVE_INFINITY
 
 public fun Double.isFinite(): Boolean = !isInfinite() && !isNaN()
+
+public fun Float.isNaN(): Boolean = this != this
+
+public fun Float.isInfinite(): Boolean = this == Float.POSITIVE_INFINITY || this == Float.NEGATIVE_INFINITY
+
+public fun Float.isFinite(): Boolean = !isInfinite() && !isNaN()

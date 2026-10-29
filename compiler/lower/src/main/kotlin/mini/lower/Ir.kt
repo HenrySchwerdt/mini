@@ -23,7 +23,15 @@ abstract class IrElement {
  * simple name of its first argument ([arg]: the enum entry of `MemoryMode(Mode.Strict)`, the class of
  * `AllocatedBy(Heap::class)`) and, for a class reference, the qualified name of that class ([argFq]).
  */
-class IrAnnotation(val fq: String, val arg: String?, val argFq: String? = null, val offset: Int = -1) {
+class IrAnnotation(
+    val fq: String,
+    val arg: String?,
+    val argFq: String? = null,
+    val offset: Int = -1,
+    /** every argument as text (string literal, integer, enum entry or class name), with its name (`size = 16`) or null */
+    val args: List<String?> = emptyList(),
+    val argNames: List<String?> = emptyList(),
+) {
     val name: String get() = fq.substring(fq.lastIndexOf('.') + 1)
 }
 

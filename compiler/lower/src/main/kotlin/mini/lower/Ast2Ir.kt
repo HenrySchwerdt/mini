@@ -386,6 +386,16 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             }
             return sb.toString()
         }
+        if (e is LiteralExpr && e.kind == LitKind.INT) {
+            var text = e.text.replace("_", "")
+            if (text.endsWith("L")) text = text.substring(0, text.length - 1)
+            val v = parseIntLiteral(text) ?: return null
+            return v.toString()
+        }
+        if (e is PrefixExpr && e.op == "-") {
+            val inner = annotationArgOf(e.expr) ?: return null
+            return "-" + inner
+        }
         return null
     }
 
@@ -401,7 +411,15 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             if (t !is UserType || t.segments.isEmpty()) continue
             val args = a.args
             val first = if (args != null && args.isNotEmpty()) args[0].value else null
-            out.add(IrAnnotation(resolveClassName(t, file), annotationArgOf(first), annotationClassArg(first, file), a.start))
+            val texts = ArrayList<String?>()
+            val names = ArrayList<String?>()
+            if (args != null) {
+                for (x in args) {
+                    texts.add(annotationArgOf(x.value))
+                    names.add(x.name)
+                }
+            }
+            out.add(IrAnnotation(resolveClassName(t, file), annotationArgOf(first), annotationClassArg(first, file), a.start, texts, names))
         }
         return out
     }

@@ -26,12 +26,62 @@ fun Ast2Ir.convertConst(v: Any, t: Type): Any? {
         if (v is Long) return v.toInt()
         return v
     }
-    if (n == "kotlin.Double") {
+    if (n == "kotlin.Double" || n == "kotlin.Float") {
         if (v is Int) return v.toDouble()
         if (v is Long) return v.toDouble()
         return v
     }
     return v
+}
+
+/**
+ * The value of a Float literal as a Double: [d] rounded to the nearest float (ties to even), computed with Double
+ * arithmetic only (the compiler sources do not use Float). K2 hands over a Float constant; both paths end up with the same
+ * `Convert(DoubleConst(x), Float)` in the MIR. (The decimal text is rounded twice, to a Double and to a float: this can
+ * differ from the JVM's direct parse in the rare case of a literal on the midpoint of two floats.)
+ */
+fun roundToFloat(d: Double): Double {
+    if (d != d || d == 0.0 || d == Double.POSITIVE_INFINITY || d == Double.NEGATIVE_INFINITY) return d
+    val neg = d < 0.0
+    val a = if (neg) -d else d
+    // a = m * 2^e with 1 <= m < 2
+    var m = a
+    var e = 0
+    while (m >= 2.0) {
+        m /= 2.0
+        e++
+    }
+    while (m < 1.0) {
+        m *= 2.0
+        e--
+    }
+    val s = if (e >= -126) e - 23 else -149
+    // q = a / 2^s (exact), rounded to an integer with ties to even
+    var q = a
+    var k = s
+    while (k > 0) {
+        q /= 2.0
+        k--
+    }
+    while (k < 0) {
+        q *= 2.0
+        k++
+    }
+    var fl = q.toLong().toDouble()
+    val frac = q - fl
+    if (frac > 0.5 || (frac == 0.5 && (fl.toLong() and 1L) == 1L)) fl += 1.0
+    var r = fl
+    k = s
+    while (k > 0) {
+        r *= 2.0
+        k--
+    }
+    while (k < 0) {
+        r /= 2.0
+        k++
+    }
+    if (r > 3.4028234663852886E38) r = Double.POSITIVE_INFINITY
+    return if (neg) -r else r
 }
 
 /** whether [e0] is built from literals and at least one `const val` */
@@ -57,7 +107,7 @@ fun Ast2Ir.evalConst(e0: Expr): Any? {
                 LitKind.REAL -> {
                     val text = e.text.replace("_", "")
                     val last = text[text.length - 1]
-                    if (last == 'f' || last == 'F') return null
+                    if (last == 'f' || last == 'F') return roundToFloat(text.substring(0, text.length - 1).toDouble())
                     return text.toDouble()
                 }
                 LitKind.INT -> {

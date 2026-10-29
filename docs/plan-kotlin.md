@@ -290,6 +290,15 @@ fun main() {
 - Ownership across the boundary: pointers from C are "externally managed". `@Owned` on an
   `external fun` transfers the free obligation, e.g. `@Owned(free = "uv_loop_close")`.
 
+**Status (C interop, first complete version).** Implemented as specified above, in the language and checked by both frontends and both
+backends: `external fun` + `@CName` (direct C call; primitives, `Byte`/`Short`/`Float`, pointers), `CPointer<T>` / `COpaquePointer` / `CPointed`
+variables with `.value`, `.pointed`, `.ptr`, pointer arithmetic and `p[i]`, `nativeHeap`, `memScoped` (a `Scoped` allocator: M0105 on escape),
+`String.cstr` / `toKString()`, `@CStruct external class` with layout computed by the C rules (`@CArray` in-place arrays, embedded structs), callbacks
+with `staticCFunction` (capture is a compile error) and calls through `CPointer<CFunction<...>>`, variadic C functions (`@CVariadic`),
+`@file:CInclude` / `@file:CLink` (and `minic --c-src`), `@Owned(free = "fn")` checked like any other allocation. Not yet: unsigned types,
+structs by value (`CValue`, `useContents`), exporting `@CName fun` to C, `mini-bindgen`, pointers in generic containers. Details:
+`compiler/README.md` "C interop", user guide `website/guide/c-interop.md`.
+
 ## 8. Using Kotlin libs: levels
 
 1. **Source of KMP libs** (`commonMain`): compiles directly. For their `expect`s

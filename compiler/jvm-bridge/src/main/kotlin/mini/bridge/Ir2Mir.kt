@@ -7,6 +7,7 @@ import mini.backend.BinaryOp
 import mini.backend.Mangling
 import mini.backend.MirClass
 import mini.backend.MirExpr
+import mini.backend.MirExtern
 import mini.backend.MirField
 import mini.backend.MirFunction
 import mini.backend.MirItable
@@ -140,6 +141,12 @@ class Ir2Mir {
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val typeSubst = HashMap<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>()
 
+    /** C interop (Ir2MirInterop.kt): classes that are plain addresses, struct layouts, the C functions called. */
+    internal val ptrClassCache = HashMap<IrClass, Boolean>()
+    internal val structCache = HashMap<IrClass, StructInfo>()
+    internal val cExterns = ArrayList<MirExtern>()
+    internal val cExternIndex = HashMap<String, MirExtern>()
+
     /** Strict mode (Ir2MirStrict.kt): the function being converted is Strict; the allocator context levels in scope. */
     internal var currentStrict = false
     internal var allocLevels = ArrayList<List<AllocRef>>()
@@ -159,7 +166,8 @@ class Ir2Mir {
             val pkg = file.packageFqName.asString()
             for (d in file.declarations) {
                 when (d) {
-                    is IrSimpleFunction -> tops += file to d
+                    // an inline function with a reified type parameter only exists expanded at its call sites
+                    is IrSimpleFunction -> if (!(d.isInline && d.typeParameters.any { it.isReified })) tops += file to d
                     is IrClass -> if (!isRuntimeProvided(d)) collectClass(d, pkg, listOf(d.name.asString()), file)
                     is org.jetbrains.kotlin.ir.declarations.IrTypeAlias -> {}
                     is IrProperty -> {
@@ -188,7 +196,7 @@ class Ir2Mir {
             if (f.name.asString() == "main" && params.isNotEmpty() && !isArgsMain(f)) {
                 unsupported(f, "main function with unsupported parameters (only `fun main()` and `fun main(args: Array<String>)`)")
             }
-            functionNames[f] = Mangling.function(file.packageFqName.asString(), f.name.asString(), params)
+            functionNames[f] = uniqueTopLevelName(Mangling.function(file.packageFqName.asString(), f.name.asString(), params))
         }
         for (info in classInfos.values) {
             setFile(info.file ?: continue)
@@ -235,7 +243,20 @@ class Ir2Mir {
         for (c in classInfos.keys.toList()) visit(c)
         classes += extraClasses
         functions += extraFunctions
-        return MirModule(sourceName, functions, classes)
+        return MirModule(sourceName, functions, classes, cExterns, interopFileAnnotations(module, "kotlinx.cinterop.CInclude"), interopFileAnnotations(module, "kotlinx.cinterop.CLink"))
+    }
+
+    /**
+     * Overloads that differ only in the class of a pointer-typed parameter (`CPointer<*>` / `CPointed`: all of them the
+     * C type `void *`) get the same mangled name; later ones get an `_O<n>` suffix, in declaration order.
+     */
+    internal val topLevelNames = HashSet<String>()
+
+    internal fun uniqueTopLevelName(name: String): String {
+        if (topLevelNames.add(name)) return name
+        var k = 2
+        while (!topLevelNames.add(name + "_O" + k)) k++
+        return name + "_O" + k
     }
 
     internal fun setFile(f: IrFile) {

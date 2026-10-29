@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": [".vitepress/theme/**/*.ts", "tests/**/*.ts", "env.d.ts"],
+  "exclude": ["node_modules"]
+}

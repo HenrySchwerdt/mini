@@ -22,8 +22,10 @@ object MemoryChecker {
         }
         // one cause, one message: a leak report for a slot that already has a use/free/move error is a follow-up
         val dirty = all.values.filter { it.code != "M0102" && it.slot >= 0 }.map { it.slot }.toSet()
+        // a loan of an arena value that leaves the arena is one cause: M0105 at that position, not also M0109
+        val escapes = all.values.filter { it.code == "M0105" }.map { it.pos }.toSet()
         return all.values
-            .filter { !(it.code == "M0102" && it.slot in dirty) && it.pos.line > 0 }
+            .filter { !(it.code == "M0102" && it.slot in dirty) && !(it.code == "M0109" && it.pos in escapes) && it.pos.line > 0 }
             .sortedWith(compareBy({ it.file }, { it.pos.line }, { it.pos.col }, { it.code }))
     }
 
@@ -93,6 +95,8 @@ object MemoryChecker {
                 else -> return
             }
             if (fn.mode != MemMode.Strict || fn.external) return
+            // the kotlinx.cinterop API (C interop) is checked like Strict code but is no boundary: Managed code may call it
+            if (fn.qname.startsWith("kotlinx.cinterop.")) return
             for ((i, a) in args.withIndex()) {
                 val p = fn.params.getOrNull(i) ?: continue
                 if (p.isContext || !p.owned || !a.type.tracked) continue

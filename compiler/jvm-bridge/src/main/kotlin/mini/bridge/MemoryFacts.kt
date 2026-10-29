@@ -73,6 +73,7 @@ import org.jetbrains.kotlin.ir.util.fileOrNull
 import org.jetbrains.kotlin.ir.util.kotlinFqName
 import org.jetbrains.kotlin.ir.util.parentClassOrNull
 import org.jetbrains.kotlin.ir.util.statements
+import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 
 /**
  * Kotlin IR to MemIr (the input of the ownership checker, `mini.backend.memory`). Everything that touches
@@ -99,6 +100,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     val strictFailures = ArrayList<String>()
 
     fun lower(module: IrModuleFragment): MModule {
+        cFreeFns = collectCFreeFns(module)
         val functions = ArrayList<MFunction>()
         val sources = HashMap<String, List<String>>()
         var mainFile = ""
@@ -202,6 +204,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val ab = annos(c.annotations, ALLOCATED_BY)?.let { a ->
             (a.arguments.firstOrNull() as? IrClassReference)?.classType?.classFqName?.asString()
         }
+        // C interop (docs/plan-kotlin.md 7): pointers and everything that lives in C memory are tracked like Strict objects
+        if (isPtrClass(c)) mode = MemMode.Strict
         val mc = MClass(c.kotlinFqName.asString(), mode, ab, isCloseable(c))
         classes[c] = mc
         classList += mc
@@ -218,6 +222,60 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             }
         }
         return mc
+    }
+
+    /** `CPointer`, `NativePtr`, `CPointed` and everything extending it (kotlinx.cinterop): values that are plain addresses. */
+    internal fun isPtrClass(c: IrClass): Boolean {
+        val seen = HashSet<IrClass>()
+        fun rec(k: IrClass): Boolean {
+            if (!seen.add(k)) return false
+            val fq = k.kotlinFqName.asString()
+            if (fq == "kotlinx.cinterop.CPointer" || fq == "kotlinx.cinterop.NativePtr" || fq == "kotlinx.cinterop.CPointed") return true
+            return k.superTypes.any { t -> t.classOrNull?.owner?.let { rec(it) } == true }
+        }
+        return rec(c)
+    }
+
+    private fun isCInteropFunction(f: IrFunction): Boolean {
+        val pkg = (f.parent as? org.jetbrains.kotlin.ir.declarations.IrPackageFragment)?.packageFqName?.asString()
+        if (pkg == "kotlinx.cinterop") return true
+        val cls = f.parentClassOrNull ?: return false
+        return cls.kotlinFqName.asString().startsWith("kotlinx.cinterop.") || isPtrClass(cls)
+    }
+
+    /** The C function named by `@Owned(free = "fn")` on [f] (null: no such annotation; "": owned, no named free function). */
+    private fun ownedFree(f: IrFunction): String? {
+        val a = annos(f.annotations, OWNED) ?: return null
+        return (a.arguments.firstOrNull() as? IrConst)?.value as? String ?: ""
+    }
+
+    /** The C symbol of an `external fun` (its `@CName`, else its name), or null when [f] is not a C function. */
+    internal fun cSymbolOf(f: IrFunction): String? {
+        if (!f.isExternal || f.parent !is org.jetbrains.kotlin.ir.declarations.IrPackageFragment) return null
+        val pkg = (f.parent as org.jetbrains.kotlin.ir.declarations.IrPackageFragment).packageFqName.asString()
+        val cn = annos(f.annotations, "kotlin.native.CName")
+        if (cn != null) {
+            val s = (cn.arguments.firstOrNull() as? IrConst)?.value as? String
+            return if (s.isNullOrEmpty()) f.name.asString() else s
+        }
+        if (pkg == "kotlin" || pkg.startsWith("kotlin.") || pkg.startsWith("kotlinx.") || pkg.startsWith("mini.")) return null
+        return f.name.asString()
+    }
+
+    /** The names of all C functions that release something (`@Owned(free = "fn")` anywhere in the user files). */
+    private var cFreeFns: Set<String>? = null
+
+    private fun collectCFreeFns(module: IrModuleFragment): Set<String> {
+        val out = HashSet<String>()
+        // the declarations of external functions are gone (Reachability); their calls tell which ones release something
+        val v = object : org.jetbrains.kotlin.ir.visitors.IrVisitorVoid() {
+            override fun visitElement(element: IrElement) {
+                if (element is IrCall) ownedFree(element.symbol.owner)?.takeIf { it.isNotEmpty() && element.symbol.owner.isExternal }?.let { out += it }
+                element.acceptChildrenVoid(this)
+            }
+        }
+        for (file in module.files) if (isUserFile(file)) file.acceptChildrenVoid(v)
+        return out
     }
 
     private fun isCloseable(c: IrClass): Boolean {
@@ -262,6 +320,9 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val cls = f.parentClassOrNull
         var mode = if (file == null) MemMode.Managed else fileMode(file)
         if (cls != null) mode = classOf(cls).mode
+        // C interop: the pointer API borrows its arguments and returns loans of them; it is checked like Strict code
+        val interop = isCInteropFunction(f)
+        if (interop) mode = MemMode.Strict
         val external = file == null
         val ctor = f as? IrConstructor
         val ctorClass = ctor?.let { classOf(it.parentAsClass()) }
@@ -278,7 +339,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             }
         }
         val name = f.name.asString()
-        val retAnnot = annotOf(f.annotations, f.returnType.annotations)
+        var retAnnot = annotOf(f.annotations, f.returnType.annotations)
+        if (interop && mapType(f.returnType).tracked) retAnnot = MAnnot(null, pos(f))
         val fq = (f.parent as? org.jetbrains.kotlin.ir.declarations.IrPackageFragment)?.packageFqName?.asString()?.let { "$it.$name" }
             ?: ((cls?.kotlinFqName?.asString() ?: "") + "." + name)
         val m = MFun(
@@ -293,6 +355,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             ctorOf = ctorClass,
             pos = pos(f),
             throwsKnown = external && name in THROWERS,
+            cFree = if (f.isExternal && file != null) ownedFree(f) else null,
         )
         funs[f] = m
         return m
@@ -769,6 +832,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
 
             if (pkg == "kotlin.internal.ir" && name == "CHECK_NOT_NULL" && args.isNotEmpty() && args[0] != null) return expr(args[0]!!, out)
 
+            cInteropCall(c, callee, name, pkg, parentCls, out)?.let { return it }
+
             // null tests and negation
             if (pkg == "kotlin.internal.ir" && name == "EQEQ") {
                 val a = args[0]; val b = args[1]
@@ -787,6 +852,87 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 if (special != null) return special
             }
             return generalCall(c, callee, out)
+        }
+
+        // ---- C interop (docs/plan-kotlin.md 7, docs/memory-model.md) -------------------------------------------------
+
+        private fun regularCount(ps: List<IrValueParameter>) = ps.count { it.kind == IrParameterKind.Regular }
+
+        /**
+         *  - `memScoped { }` is `Arena().use { scope -> ... }`: the lambda's receiver is the arena;
+         *  - `alloc<T>()`, `allocArray`, `allocPointerTo`, `getPointer(scope)`, `CValues.ptr` allocate *in* the allocator they are
+         *    called on (a `MemScope`: arena rules, M0105 on escape; `nativeHeap`: Deallocating rules, must be freed);
+         *  - `nativeHeap.free(p)` is `alloc.free(p)`;
+         *  - a call of the C function named in an `@Owned(free = "fn")` frees its argument;
+         *  - a pointer returned by a C function without `@Owned` is externally managed: no obligation.
+         */
+        private fun cInteropCall(c: IrCall, callee: IrSimpleFunction, name: String, pkg: String?, parentCls: IrClass?, out: MutableList<MStmt>): MExpr? {
+            val ps = callee.parameters
+            val args = c.arguments
+            val p = pos(c)
+            val inInterop = pkg == "kotlinx.cinterop" || parentCls?.kotlinFqName?.asString()?.startsWith("kotlinx.cinterop.") == true
+            if (inInterop) {
+                if (name == "memScoped" && pkg == "kotlinx.cinterop") {
+                    val li = ps.indices.firstOrNull { args[it] is IrFunctionExpression } ?: return null
+                    val fe = args[li] as IrFunctionExpression
+                    val recvParam = fe.function.parameters.firstOrNull { it.kind == IrParameterKind.ExtensionReceiver || it.kind == IrParameterKind.DispatchReceiver }
+                    val scopeType = if (recvParam != null) mapType(recvParam.type) else return null
+                    val ctor = MFun("kotlinx.cinterop.MemScope.<init>", MemMode.Strict, emptyList(), MReturn(scopeType))
+                    val target = tmp(scopeType, p, "memScope")
+                    out += MStmt.Decl(target, MExpr.New(ctor, null, emptyList(), scopeType, p), MAnnot.NONE, p)
+                    val res = scope(ScopeKind.Use, fe, out, target, emptyList(), listOf(MExpr.Local(target, p)), p)
+                    return resultOf(res, c, p)
+                }
+                val allocator: IrExpression? = when {
+                    pkg == "kotlinx.cinterop" && (name == "alloc" || name == "allocArray" || name == "allocPointerTo") ->
+                        ps.indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver || it.kind == IrParameterKind.DispatchReceiver }.let { if (it >= 0) args[it] else null }
+                    name == "alloc" && parentCls != null && isAllocatorClass(parentCls) ->
+                        ps.indexOfFirst { it.kind == IrParameterKind.DispatchReceiver }.let { if (it >= 0) args[it] else null }
+                    name == "getPointer" && parentCls?.kotlinFqName?.asString() == "kotlinx.cinterop.CValues" ->
+                        ps.indexOfFirst { it.kind == IrParameterKind.Regular }.let { if (it >= 0) args[it] else null }
+                    name == "<get-ptr>" && parentCls?.kotlinFqName?.asString() == "kotlinx.cinterop.MemScope" ->
+                        ps.indexOfFirst { it.kind == IrParameterKind.DispatchReceiver }.let { if (it >= 0) args[it] else null }
+                    else -> null
+                }
+                if (allocator != null && mapType(c.type).tracked) {
+                    // the other arguments (the length, ...) are evaluated for their uses
+                    for ((i, a) in args.withIndex()) {
+                        if (a == null || a === allocator || a is IrFunctionExpression || ps[i].kind == IrParameterKind.ExtensionReceiver) continue
+                        val x = expr(a, out)
+                        if (x !is MExpr.Opaque || x.children.isNotEmpty()) out += MStmt.Eval(x, pos(a))
+                    }
+                    val av = expr(allocator, out)
+                    val allocLocal = if (av is MExpr.Local) av.local else tmp(av.type, p, "\$alloc").also { out += MStmt.Decl(it, av, MAnnot.NONE, p) }
+                    val ctx = newLocal("alloc", allocLocal.type, p)
+                    val fn = MFun("kotlinx.cinterop.$name", MemMode.Strict, listOf(MParam(ctx, isContext = true)), MReturn(mapType(c.type)))
+                    return MExpr.Call(fn, null, listOf(MExpr.Local(allocLocal, p)), mapType(c.type), p)
+                }
+                if (name == "free" && pkg == "kotlinx.cinterop" && regularCount(ps) == 1 && ps.any { it.kind == IrParameterKind.ExtensionReceiver }) {
+                    val alloc = expr(args[ps.indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }]!!, out)
+                    val t = expr(args[ps.indexOfFirst { it.kind == IrParameterKind.Regular }]!!, out)
+                    return MExpr.Free(t, alloc, FreeKind.Free, p)
+                }
+                return null
+            }
+            val sym = cSymbolOf(callee) ?: return null
+            if (ps.isNotEmpty() && sym in (cFreeFns ?: emptySet()) && args.getOrNull(0) != null && mapType(ps[0].type).tracked) {
+                // `fn(p)` for an `@Owned(free = "fn")`: releases `p`; the other arguments only count as uses
+                val t = expr(args[0]!!, out)
+                for (i in 1 until args.size) args[i]?.let { expr(it, out) }
+                return MExpr.Free(t, null, FreeKind.Free, p)
+            }
+            val rt = mapType(c.type)
+            if (rt.tracked && ownedFree(callee) == null) {
+                // a pointer from C: externally managed, no obligation (a borrowed alias of nothing)
+                val kids = args.filterNotNull().map { expr(it, out) }
+                return MExpr.Opaque(MType(TK.Managed, rt.nullable, rt.cls, className = rt.className, display = rt.display), p, kids)
+            }
+            return null
+        }
+
+        private fun isAllocatorClass(c: IrClass): Boolean {
+            val fq = c.kotlinFqName.asString()
+            return fq == "kotlinx.cinterop.MemScope" || fq == "kotlinx.cinterop.nativeHeap"
         }
 
         private fun implementsAllocator(c: org.jetbrains.kotlin.ir.declarations.IrClass): Boolean {
@@ -948,6 +1094,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         private val ALLOCS = mapOf(
             "mini.memory.Heap" to AllocKind.Heap, "mini.memory.Arena" to AllocKind.Arena, "mini.memory.Pool" to AllocKind.Pool,
             "mini.memory.Rc" to AllocKind.Rc, "mini.memory.DebugAllocator" to AllocKind.Debug,
+            // C interop: `memScoped { }` is a Scoped allocator (docs/memory-model.md 2.4), `nativeHeap` is malloc/free
+            "kotlinx.cinterop.MemScope" to AllocKind.Arena, "kotlinx.cinterop.nativeHeap" to AllocKind.Heap,
         )
         private val BORROWS_ALL = setOf("println", "print", "toString", "equals", "hashCode", "plus", "compareTo", "to", "assert")
         private val THROWERS = setOf("error", "require", "check", "requireNotNull", "checkNotNull", "TODO")

@@ -45,9 +45,17 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         "kotlin.Boolean" -> TBoolean
         "kotlin.Double" -> TDouble
         "kotlin.Char" -> TChar
+        "kotlin.Byte" -> TByte
+        "kotlin.Short" -> TShort
+        "kotlin.Float" -> TFloat
         else -> null
     }
-    if (prim != null) return if (nullable) TBoxed(prim) else prim
+    if (prim != null) {
+        if (prim.isInteropScalar && nullable) unsupported(at, "nullable type '$n?' (Byte, Short and Float cannot be boxed; use a non-null type)")
+        return if (nullable) TBoxed(prim) else prim
+    }
+    val ptrClass = t.classOrNull
+    if (ptrClass != null && isPtrClass(ptrClass)) return TPtr(nullable)
     functionArity(t)?.let { return functionInterface(it).let { f -> if (nullable) f.copy(nullable = true) else f } }
     arrayKindOfFq(n)?.let { return arrayType(it, nullable) }
     return when (n) {
@@ -68,6 +76,7 @@ internal fun Ir2Mir.erasedBound(p: TypeParamSym, nullable: Boolean, at: IrElemen
     for (b in p.bounds) {
         val bn = b.classFqName
         val bc = b.classOrNull
+        if (bc != null && isPtrClass(bc)) return TPtr(nullable || b.isMarkedNullable())
         val supported = b !is TypeParamType &&
             bn != "kotlin.Comparable" && (bn == "kotlin.String" || bn == "kotlin.CharSequence" || arrayKindOfFq(bn) != null || (bc != null && (bc in classInfos || builtinOf(bc) != null)) || functionArity(b) != null)
         if (!supported) continue

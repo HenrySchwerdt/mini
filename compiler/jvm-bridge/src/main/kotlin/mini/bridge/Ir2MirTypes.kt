@@ -18,7 +18,12 @@ import mini.backend.MirType
 import mini.backend.TBoolean
 import mini.backend.TBoxed
 import mini.backend.TChar
+import mini.backend.TByte
 import mini.backend.TDouble
+import mini.backend.TFloat
+import mini.backend.TPtr
+import mini.backend.TShort
+import mini.backend.isInteropScalar
 import mini.backend.TInt
 import mini.backend.TLong
 import mini.backend.TNString
@@ -129,9 +134,16 @@ internal fun Ir2Mir.mirType(t: IrType, at: IrElement): MirType {
         "kotlin.Boolean" -> TBoolean
         "kotlin.Double" -> TDouble
         "kotlin.Char" -> TChar
+        "kotlin.Byte" -> TByte
+        "kotlin.Short" -> TShort
+        "kotlin.Float" -> TFloat
         else -> null
     }
-    if (prim != null) return if (nullable) TBoxed(prim) else prim
+    if (prim != null) {
+        if (prim.isInteropScalar && nullable) unsupported(at, "nullable type '$n?' (Byte, Short and Float cannot be boxed; use a non-null type)")
+        return if (nullable) TBoxed(prim) else prim
+    }
+    t.classOrNull?.owner?.let { if (isPtrClass(it)) return TPtr(nullable) }
     functionArity(t)?.let { return functionInterface(it).let { f -> if (nullable) f.copy(nullable = true) else f } }
     arrayKindOfFq(n)?.let { return arrayType(it, nullable) }
     return when (n) {
@@ -152,6 +164,7 @@ internal fun Ir2Mir.erasedBound(p: org.jetbrains.kotlin.ir.declarations.IrTypePa
     for (b in p.superTypes) {
         val bn = b.classFqName?.asString()
         val bc = b.classOrNull?.owner
+        if (bc != null && isPtrClass(bc)) return TPtr(nullable || b.isMarkedNullable())
         val supported = (b as? org.jetbrains.kotlin.ir.types.IrSimpleType)?.classifier !is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol &&
             bn != "kotlin.Comparable" && (bn == "kotlin.String" || bn == "kotlin.CharSequence" || arrayKindOfFq(bn) != null || (bc != null && (bc in classInfos || builtinOf(bc) != null)) || functionArity(b) != null)
         if (!supported) continue

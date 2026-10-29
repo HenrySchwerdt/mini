@@ -70,7 +70,7 @@ class MiniFrontendTest {
             System.setErr(PrintStream(errBuf, true, "UTF-8"))
             Cli.run(
                 listOf(
-                    "build", src.path, "-o", exe.path, "--frontend=mini",
+                    "build", src.path, *CInteropTestData.cArgs(src), "-o", exe.path, "--frontend=mini",
                     "--runtime-src", File(runtime, "src").path,
                     "--runtime-include", File(runtime, "include").path, "--cflag", "-Werror",
                 ),

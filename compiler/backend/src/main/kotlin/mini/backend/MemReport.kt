@@ -89,6 +89,7 @@ object MemReport {
                 is MirStmt.Declare -> s.init?.let { scanExpr(f, tr, it, out) }
                 is MirStmt.Assign -> scanExpr(f, tr, s.value, out)
                 is MirStmt.SetField -> { scanExpr(f, tr, s.obj, out); scanExpr(f, tr, s.value, out) }
+                is MirStmt.Store -> { scanExpr(f, tr, s.ptr, out); scanExpr(f, tr, s.value, out) }
                 is MirStmt.Eval -> scanExpr(f, tr, s.expr, out)
                 is MirStmt.If -> { scanExpr(f, tr, s.cond, out); scanStmts(f, tr, s.thenBody, out); scanStmts(f, tr, s.elseBody, out) }
                 is MirStmt.Block -> scanStmts(f, tr, s.body, out)

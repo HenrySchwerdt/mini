@@ -24,6 +24,8 @@ internal enum class SK(val obligation: Boolean, val label: String) {
     Param(true, "@Owned parameter"), Field(true, "value moved out of a field"),
     /** Owned result of a call whose allocator is not visible at the call (obligation when bound, no temp-leak report). */
     Unknown(true, "owned value"),
+    /** Result of an `@Owned(free = "fn")` C function: released by calling `fn` (C interop). */
+    Extern(true, "C allocation"),
     Arena(false, "Arena"), Stack(false, "stack"),
 }
 
