@@ -178,14 +178,13 @@ private fun Ast2Ir.hashCodeFunction(c: IrClass, sym: ClassSym, fs: FunSym, props
                 stmts.add(ret(f, constInt(0)))
             } else if (props.size == 1) {
                 val p0 = props[0]
-                stmts.add(ret(f, hashOf(f, fieldGet(f, p0), p0.backingField!!.type)))
+                stmts.add(ret(f, hashOf(f, p0)))
             } else {
                 val result = IrVariable("result", sema.intType, true)
                 result.parent = f
                 var i = 0
                 for (p in props) {
-                    val fld = p.backingField!!
-                    val h = hashOf(f, fieldGet(f, p), fld.type)
+                    val h = hashOf(f, p)
                     if (i == 0) {
                         result.initializer = h
                         stmts.add(result)
@@ -208,22 +207,19 @@ private fun Ast2Ir.hashCodeFunction(c: IrClass, sym: ClassSym, fs: FunSym, props
     return f
 }
 
-private fun Ast2Ir.hashOf(f: IrFunction, value: IrExpression, t: Type): IrExpression {
-    if (t.nullable) {
+private fun Ast2Ir.hashOf(f: IrFunction, p: IrProperty): IrExpression {
+    val t = p.backingField!!.type
+    if (ops.mayBeNull(t)) {
         // `if (x == null) 0 else x.hashCode()`
-        val tmp = newTemp("hash", t, value)
         val call = IrCall(memberFunNamed(ops.makeNotNull(t), "hashCode", 0), sema.intType)
-        call.arguments.add(IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, irType(ops.makeNotNull(t)), getValue(tmp), irType(ops.makeNotNull(t))))
+        call.arguments.add(fieldGet(f, p))
         val br = ArrayList<IrBranch>()
-        br.add(IrBranch(eqNull(getValue(tmp)), constInt(0)))
+        br.add(IrBranch(eqNull(fieldGet(f, p)), constInt(0)))
         br.add(IrBranch(constBool(true), call))
-        val stmts = ArrayList<IrStatement>()
-        stmts.add(tmp)
-        stmts.add(IrWhen(br, sema.intType, null))
-        return IrBlock(stmts, sema.intType, null)
+        return IrWhen(br, sema.intType, null)
     }
     val call = IrCall(memberFunNamed(t, "hashCode", 0), sema.intType)
-    call.arguments.add(value)
+    call.arguments.add(fieldGet(f, p))
     return call
 }
 

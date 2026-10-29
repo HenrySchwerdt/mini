@@ -176,7 +176,7 @@ fun Ast2Ir.localProperty(d: PropertyDecl): IrStatement {
     iv.isLateinit = dm != null && dm.has("lateinit")
     val init = d.initializer
     val deleg = d.delegate
-    if (deleg != null) fail(d, "local delegated property")
+    if (deleg != null) return localDelegatedProperty(d, v)
     if (init != null) iv.initializer = convertWithExpected(init, t)
     varMap[v] = iv
     return iv
@@ -479,6 +479,83 @@ fun Ast2Ir.buildAccessorBody(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c
     }
 }
 
+/** the property reference passed to `getValue` / `setValue` (not used by the lowering) */
+fun Ast2Ir.delegateReference(name: String, type: Type, arity: Int): IrExpression {
+    val dummy = IrProperty(name, null)
+    val kind = if (arity == 0) "KProperty" else "KProperty"
+    val cls = sema.kRefClass(kind, arity)
+    val args = ArrayList<TArg>()
+    args.add(TArg(type, Variance.INV))
+    val t = ClassType(cls, args, false)
+    val ref = IrPropertyReference(dummy, t)
+    ref.origin = "PROPERTY_REFERENCE_FOR_DELEGATE"
+    return ref
+}
+
 fun Ast2Ir.delegatedAccessor(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c: IrClass?, isGetter: Boolean): IrStatement {
-    fail(sym.decl, "delegated property")
+    val d = sym.decl ?: fail(null, "delegated property without declaration")
+    val di = rec(d)?.extra as? DelegateInfo ?: fail(d, "delegated property without operator information")
+    val fld = p.backingField ?: fail(d, "delegated property without delegate field")
+    val recv = f.parameters.firstOrNull { it.kind == IrParameterKind.DispatchReceiver }
+    val delegateValue = IrGetField(fld, if (recv != null) getValue(recv) else null, fld.type)
+    val thisRef: IrExpression = if (recv != null) getValue(recv) else nullConst()
+    val t = irType(sema.typeOfProp(sym))
+    val propRef = delegateReference(sym.name, t, if (recv != null) 1 else 0)
+    if (isGetter) {
+        val gi = di.getValue ?: fail(d, "getValue is not resolved")
+        val call = callOperator(gi, delegateValue, listOf(thisRef, propRef), t, null)
+        return IrReturn(f, call, sema.nothingType)
+    }
+    val si = di.setValue ?: fail(d, "setValue is not resolved")
+    val value = getValue(f.parameters[f.parameters.size - 1])
+    return callOperator(si, delegateValue, listOf(thisRef, propRef, value), sema.unitType, null)
+}
+
+fun Ast2Ir.localDelegatedProperty(d: PropertyDecl, v: VarSym): IrStatement {
+    val di = rec(d)?.extra as? DelegateInfo ?: fail(d, "delegated local property without operator information")
+    val t = irType(v.type ?: sema.nullableAny)
+    val prop = IrLocalDelegatedProperty(d.name)
+    prop.parent = enclosingParent()
+    val de = convert(d.delegate!!)
+    val dv = IrVariable(d.name + "\$delegate", de.type, false)
+    dv.origin = "PROPERTY_DELEGATE"
+    dv.parent = ctx?.fn
+    dv.initializer = de
+    prop.delegate = dv
+    // getter
+    val g = IrSimpleFunction("<get-" + d.name + ">")
+    g.origin = "DELEGATED_PROPERTY_ACCESSOR"
+    g.visibility = "local"
+    g.parent = enclosingParent()
+    g.returnType = t
+    val gc = BodyCtx(ctx, g, null, false)
+    withCtx(gc) {
+        val gi = di.getValue ?: fail(d, "getValue is not resolved")
+        val call = callOperator(gi, getValue(dv), listOf(nullConst(), delegateReference(d.name, t, 0)), t, null)
+        val st = ArrayList<IrStatement>()
+        st.add(IrReturn(g, call, sema.nothingType))
+        g.body = IrBlockBody(st)
+    }
+    prop.getter = g
+    if (d.isVar) {
+        val s = IrSimpleFunction("<set-" + d.name + ">")
+        s.origin = "DELEGATED_PROPERTY_ACCESSOR"
+        s.visibility = "local"
+        s.parent = enclosingParent()
+        s.returnType = sema.unitType
+        val vp = IrValueParameter("value", t, IrParameterKind.Regular, 0)
+        vp.parent = s
+        s.parameters.add(vp)
+        val sc = BodyCtx(ctx, s, null, false)
+        withCtx(sc) {
+            val si = di.setValue ?: fail(d, "setValue is not resolved")
+            val call = callOperator(si, getValue(dv), listOf(nullConst(), delegateReference(d.name, t, 0), getValue(vp)), sema.unitType, null)
+            val st = ArrayList<IrStatement>()
+            st.add(call)
+            s.body = IrBlockBody(st)
+        }
+        prop.setter = s
+    }
+    delegatedLocals[v] = prop
+    return prop
 }

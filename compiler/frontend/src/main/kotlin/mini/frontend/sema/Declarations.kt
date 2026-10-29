@@ -171,7 +171,11 @@ fun Sema.checkProp(p: PropSym) {
         sc.blockBody(s.body, null)
         bc.record(s, unitType, null)
     }
-    bc.record(d, p.type ?: ErrType("?"), p)
+    val pr = bc.record(d, p.type ?: ErrType("?"), p)
+    if (deleg != null) {
+        val dtp = records.get(deleg)?.type
+        if (dtp != null) pr.extra = bc.delegateInfo(bc.fin(dtp), p.isVar, p.type ?: nullableAny, d.start)
+    }
 }
 
 fun Sema.checkClass(c: ClassSym) {

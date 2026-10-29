@@ -37,6 +37,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
     val localClassCtxs = HashMap<IrClass, BodyCtx?>()
     var pendingLocalCtx: BodyCtx? = null
     val lambdaLabels = HashMap<LambdaExpr, String?>()
+    val delegatedLocals = HashMap<VarSym, IrLocalDelegatedProperty>()
 
     var ctx: BodyCtx? = null
 

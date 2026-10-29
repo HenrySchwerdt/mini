@@ -302,7 +302,11 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val ps = PropSym(d.name, d, null, null, file)
         ps.isLocal = true
         sema.declSyms[d] = v
-        record(d, v.type ?: ErrType("?"), v)
+        val lr = record(d, v.type ?: ErrType("?"), v)
+        if (deleg != null) {
+            val dtp = rec.get(deleg)?.type
+            if (dtp != null) lr.extra = delegateInfo(fin(dtp), d.isVar, v.type ?: sema.nullableAny, d.start)
+        }
         declareVar(l, v)
         if (init != null && !d.isVar) {
             val ct = rec.get(init)?.type
@@ -325,6 +329,14 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val g = d.getter
         val s = d.setter
         if (g != null || s != null) unsupported(d.start, "local property accessors")
+    }
+
+    /** resolves `getValue` / `setValue` of the delegate type of a property of type [propType] */
+    fun delegateInfo(delegateType: Type, isVar: Boolean, propType: Type, pos: Int): DelegateInfo {
+        val g = resolveOperator("getValue", delegateType, listOf(sema.nullableAny, sema.nullableAny), pos, null)
+        var s: OpResult? = null
+        if (isVar) s = resolveOperator("setValue", delegateType, listOf(sema.nullableAny, sema.nullableAny, propType), pos, null)
+        return DelegateInfo(delegateType, g?.info, s?.info)
     }
 
     fun delegatedType(delegateType: Type, pos: Int): Type {

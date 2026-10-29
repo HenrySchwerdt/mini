@@ -34,7 +34,8 @@ fun Ast2Ir.convert(e: Expr): IrExpression {
         val st = irType(sm)
         if (!typeEquals(st, ir.type)) {
             val c = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, ir, st)
-            c.isSmart = true
+            // a smart cast of `this` is only kept where the callee needs it; a variable's is always kept
+            c.isSmart = e is ThisExpr
             ir = c
         }
     }
@@ -45,7 +46,8 @@ fun Ast2Ir.convert(e: Expr): IrExpression {
 fun Ast2Ir.convertNoSmart(e: Expr): IrExpression {
     if (e is ParenExpr) return convertNoSmart(e.inner)
     if (e is AnnotatedExpr) return convertNoSmart(e.expr)
-    return convertRaw(e)
+    if (e is ThisExpr) return convertRaw(e)
+    return convert(e)
 }
 
 /**
@@ -54,6 +56,16 @@ fun Ast2Ir.convertNoSmart(e: Expr): IrExpression {
  */
 fun Ast2Ir.adaptReceiver(v: IrExpression?, p: IrValueParameter?): IrExpression? {
     if (v == null || p == null) return v
+    if (p.kind == IrParameterKind.DispatchReceiver && v is IrCall && v.callee.returnType is TypeParamType) {
+        // K2 coerces a generic-result receiver of an `Any` member called through an interface to `Any`
+        val fn = p.parent as? IrSimpleFunction
+        val owner = fn?.parent as? IrClass
+        if (fn != null && owner != null && owner.kind == IrClassKind.INTERFACE && fn.isFakeOverride &&
+            (fn.name == "hashCode" || fn.name == "toString" || fn.name == "equals")) {
+            val at = irType(sema.anyType)
+            return IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, at, v, at)
+        }
+    }
     if (v is IrTypeOperatorCall && v.isSmart && v.operator == IrTypeOperator.IMPLICIT_CAST) {
         val orig = v.argument.type
         if (receiverFits(orig, p.type)) return v.argument
@@ -299,6 +311,12 @@ fun Ast2Ir.nameExpr(e: NameExpr, node: Ast): IrExpression {
     when (sym) {
         is VarSym -> {
             if (sym.isField) return fieldAccess(node)
+            val dp = delegatedLocals[sym]
+            if (dp != null) {
+                val call = IrCall(dp.getter, t)
+                call.origin = "GET_LOCAL_PROPERTY"
+                return call
+            }
             val v = varMap[sym] ?: fail(node, "variable " + sym.name + " is not declared in the IR")
             return IrGetValue(v, v.type, null)
         }

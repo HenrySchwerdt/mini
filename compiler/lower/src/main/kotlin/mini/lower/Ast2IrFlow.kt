@@ -26,12 +26,27 @@ fun Ast2Ir.assignExpr(e: BinaryExpr): IrExpression {
             val f = currentAccessorField() ?: fail(left, "field outside of an accessor")
             return IrSetField(f, currentThisOf(f), convert(e.right), unit)
         }
+        val dp = delegatedLocals[sym]
+        if (dp != null) {
+            val call = IrCall(dp.setter ?: fail(left, "delegated property without setter"), unit)
+            call.origin = "EQ"
+            call.arguments.add(convert(e.right))
+            return call
+        }
         val v = varMap[sym] ?: fail(left, "variable " + sym.name + " is not declared in the IR")
         return IrSetValue(v, convert(e.right), unit, "EQ")
     }
     if (sym is PropSym) {
         val p = propertyOf(sym)
-        val s = p.setter ?: fail(left, "property " + sym.name + " has no setter")
+        val s0 = p.setter
+        if (s0 == null) {
+            // a `val` assigned in an initialiser: the backing field is written directly
+            val fld = p.backingField ?: fail(left, "property " + sym.name + " has no setter")
+            val d = lr.access?.dispatch
+            val recvE: IrExpression? = if (d != null) recvValue(d, left) else null
+            return IrSetField(fld, recvE, convert(e.right), unit)
+        }
+        val s = s0
         val access = lr.access
         val value = e.right
         return withReceivers(access, left, s, unit) { callee, c, disp, ext ->

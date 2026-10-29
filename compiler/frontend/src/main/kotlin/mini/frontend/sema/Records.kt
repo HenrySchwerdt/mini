@@ -32,6 +32,9 @@ class RecvRef(val cls: ClassSym?, val scope: ReceiverScope?, val isObject: Boole
 /** How a receiver is provided: an explicit expression (possibly safe-called) or an implicit receiver. */
 class RecvUse(val expr: Expr?, val safe: Boolean, val ref: RecvRef?, val type: Type?)
 
+/** the operator functions of a delegated property: `getValue`, `setValue` (var), `provideDelegate` */
+class DelegateInfo(val delegateType: Type, val getValue: CallInfo?, val setValue: CallInfo?)
+
 /** `a op= b`: whether `opAssign` was used (else `a = a op b`), the `set` of an indexed target */
 class CompoundInfo(val assignOp: Boolean, val set: CallInfo?)
 
