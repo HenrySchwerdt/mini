@@ -130,7 +130,7 @@ internal fun Ir2Mir.structOf(cls: IrClass, at: IrElement): StructInfo {
         arrays.add(arr != null)
         specs.add(CFieldSpec(name, size, align))
     }
-    val layout = CInterop.layout(specs, annotationLong(a, 1, "size") ?: -1L, (annotationLong(a, 2, "align") ?: -1L).toInt())
+    val layout = CInterop.layout(specs, annotationLong(a, 1, "size") ?: CInterop.UNSET, (annotationLong(a, 2, "align") ?: CInterop.UNSET).toInt())
     val info = StructInfo(layout, names, arrays)
     structCache[cls] = info
     return info

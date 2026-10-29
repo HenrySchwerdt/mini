@@ -16,6 +16,7 @@ class CStructLayout(val size: Long, val align: Int, val offsets: List<Long>)
 
 object CInterop {
     const val POINTER_SIZE = 8L
+    const val UNSET = -1L
 
     /** Size in bytes of the C type a scalar MIR type stands for, or -1 for a type that has no C representation here. */
     fun scalarSize(t: MirType): Long = when (t) {
@@ -24,7 +25,7 @@ object CInterop {
         TInt, TFloat -> 4L
         TLong, TDouble -> 8L
         is TPtr -> POINTER_SIZE
-        else -> -1L
+        else -> UNSET
     }
 
     /** True for the MIR types an external function may have as parameter or result (and `Unit` as result). */
