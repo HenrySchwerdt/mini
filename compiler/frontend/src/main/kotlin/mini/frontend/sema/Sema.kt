@@ -390,7 +390,7 @@ class Sema {
                 for (p in ref.params) ps.add(resolveType0(p.type, scope, file))
                 val ret = resolveType0(ref.returnType, scope, file)
                 val susp = ref.mods?.has("suspend") == true
-                return FunType(rt, ps, ret, false, susp)
+                return FunType(rt, ps, ret, false, susp, ref.contextTypes.size)
             }
             is UserType -> return resolveUserType(ref, scope, file)
             is DynamicType -> {

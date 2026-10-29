@@ -239,9 +239,22 @@ fun Ast2Ir.fillCallArgs(
                 inlineArgument = false
                 regular++
             }
-            else -> call.arguments.add(null)
+            IrParameterKind.Context -> call.arguments.add(contextArgument(p, subst))
         }
     }
+}
+
+/** The implicit context argument for [p]: the innermost context parameter in scope whose type fits. */
+private fun Ast2Ir.contextArgument(p: IrValueParameter, subst: Map<TypeParamSym, Type>): IrExpression? {
+    val want = ops.substitute(p.type, subst)
+    var c = ctx
+    while (c != null) {
+        for (cand in c.contexts) {
+            if (want is TypeParamType || ops.isSubtype(cand.type, want)) return IrGetValue(cand, cand.type, null)
+        }
+        c = c.parent
+    }
+    return null
 }
 
 private fun Ast2Ir.argFor(info: CallInfo, j: Int, p: IrValueParameter, subst: Map<TypeParamSym, Type>, label: String?): IrExpression? {

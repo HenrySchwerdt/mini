@@ -104,7 +104,7 @@ class ConstraintSystem(private val sema: Sema) {
                 val r = t.receiver
                 val ps = ArrayList<Type>()
                 for (p in t.params) ps.add(resolveFixed(p))
-                return FunType(if (r != null) resolveFixed(r) else null, ps, resolveFixed(t.ret), t.nullable, t.suspend)
+                return FunType(if (r != null) resolveFixed(r) else null, ps, resolveFixed(t.ret), t.nullable, t.suspend, t.contexts)
             }
             is IsectType -> {
                 val ps = ArrayList<Type>()

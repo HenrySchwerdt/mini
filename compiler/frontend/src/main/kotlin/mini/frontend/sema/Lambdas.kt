@@ -106,7 +106,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
             if (allOk) ret = retExpected
         }
     }
-    val ft = FunType(recvT, paramTypes, ret, false, false)
+    val ft = FunType(recvT, paramTypes, ret, false, false, if (ef != null && ef.contexts <= paramTypes.size) ef.contexts else 0)
     val lamRec = record(lam, ft, null)
     lamRec.extra = LambdaInfo(lamVars)
     if (stmts.isNotEmpty()) {
