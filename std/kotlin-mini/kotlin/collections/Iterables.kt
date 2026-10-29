@@ -104,12 +104,12 @@ public inline fun <T> Iterable<T>.forEachIndexed(action: (index: Int, T) -> Unit
 public fun <T> Iterable<T>.first(): T {
     when (this) {
         is List<*> -> {
-            if (this.isEmpty()) throw NoSuchElementException("List is empty.")
+            if (this.isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
             return (this as List<T>)[0]
         }
         else -> {
             val iterator = iterator()
-            if (!iterator.hasNext()) throw NoSuchElementException("Collection is empty.")
+            if (!iterator.hasNext()) mini.internal.throwNoSuchElement("Collection is empty.")
             return iterator.next()
         }
     }
@@ -117,7 +117,7 @@ public fun <T> Iterable<T>.first(): T {
 
 public inline fun <T> Iterable<T>.first(predicate: (T) -> Boolean): T {
     for (element in this) if (predicate(element)) return element
-    throw NoSuchElementException("Collection contains no element matching the predicate.")
+    mini.internal.throwNoSuchElement("Collection contains no element matching the predicate.")
 }
 
 public fun <T> Iterable<T>.firstOrNull(): T? {
@@ -139,11 +139,11 @@ public inline fun <T> Iterable<T>.find(predicate: (T) -> Boolean): T? = firstOrN
 
 public fun <T> Iterable<T>.last(): T {
     if (this is List<*>) {
-        if (this.isEmpty()) throw NoSuchElementException("List is empty.")
+        if (this.isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
         return (this as List<T>)[this.size - 1]
     }
     val iterator = iterator()
-    if (!iterator.hasNext()) throw NoSuchElementException("Collection is empty.")
+    if (!iterator.hasNext()) mini.internal.throwNoSuchElement("Collection is empty.")
     var last = iterator.next()
     while (iterator.hasNext()) last = iterator.next()
     return last
@@ -158,7 +158,7 @@ public inline fun <T> Iterable<T>.last(predicate: (T) -> Boolean): T {
             found = true
         }
     }
-    if (!found) throw NoSuchElementException("Collection contains no element matching the predicate.")
+    if (!found) mini.internal.throwNoSuchElement("Collection contains no element matching the predicate.")
     @Suppress("UNCHECKED_CAST")
     return last as T
 }
@@ -180,9 +180,9 @@ public inline fun <T> Iterable<T>.lastOrNull(predicate: (T) -> Boolean): T? {
 
 public fun <T> Iterable<T>.single(): T {
     val iterator = iterator()
-    if (!iterator.hasNext()) throw NoSuchElementException("Collection is empty.")
+    if (!iterator.hasNext()) mini.internal.throwNoSuchElement("Collection is empty.")
     val single = iterator.next()
-    if (iterator.hasNext()) throw IllegalArgumentException("Collection has more than one element.")
+    if (iterator.hasNext()) mini.internal.throwIllegalArgument("Collection has more than one element.")
     return single
 }
 
@@ -200,7 +200,7 @@ public fun <T> Iterable<T>.elementAt(index: Int): T {
     for (element in this) {
         if (index == i++) return element
     }
-    throw IndexOutOfBoundsException("Collection doesn't contain element at index $index.")
+    mini.internal.throwIndexOutOfBounds("Collection doesn't contain element at index $index.")
 }
 
 public fun <T> Iterable<T>.elementAtOrNull(index: Int): T? {
@@ -541,7 +541,7 @@ public inline fun <T, R> Iterable<T>.foldIndexed(initial: R, operation: (index: 
 
 public inline fun <S, T : S> Iterable<T>.reduce(operation: (acc: S, T) -> S): S {
     val iterator = this.iterator()
-    if (!iterator.hasNext()) throw UnsupportedOperationException("Empty collection can't be reduced.")
+    if (!iterator.hasNext()) mini.internal.throwUnsupportedOperation("Empty collection can't be reduced.")
     var accumulator: S = iterator.next()
     while (iterator.hasNext()) accumulator = operation(accumulator, iterator.next())
     return accumulator
@@ -614,9 +614,9 @@ public fun <T : Comparable<T>> Iterable<T>.minOrNull(): T? {
     return min
 }
 
-public fun <T : Comparable<T>> Iterable<T>.max(): T = maxOrNull() ?: throw NoSuchElementException()
+public fun <T : Comparable<T>> Iterable<T>.max(): T = maxOrNull() ?: mini.internal.throwNoSuchElement(null)
 
-public fun <T : Comparable<T>> Iterable<T>.min(): T = minOrNull() ?: throw NoSuchElementException()
+public fun <T : Comparable<T>> Iterable<T>.min(): T = minOrNull() ?: mini.internal.throwNoSuchElement(null)
 
 public inline fun <T, R : Comparable<R>> Iterable<T>.maxByOrNull(selector: (T) -> R): T? {
     val iterator = iterator()
@@ -653,10 +653,10 @@ public inline fun <T, R : Comparable<R>> Iterable<T>.minByOrNull(selector: (T) -
 }
 
 public inline fun <T, R : Comparable<R>> Iterable<T>.maxBy(selector: (T) -> R): T =
-    maxByOrNull(selector) ?: throw NoSuchElementException()
+    maxByOrNull(selector) ?: mini.internal.throwNoSuchElement(null)
 
 public inline fun <T, R : Comparable<R>> Iterable<T>.minBy(selector: (T) -> R): T =
-    minByOrNull(selector) ?: throw NoSuchElementException()
+    minByOrNull(selector) ?: mini.internal.throwNoSuchElement(null)
 
 public fun <T> Iterable<T>.average(): Double where T : Number {
     var sum = 0.0
@@ -879,11 +879,11 @@ public inline fun <T> MutableIterable<T>.retainAll(predicate: (T) -> Boolean): B
 }
 
 public fun <T> MutableList<T>.removeFirst(): T {
-    if (isEmpty()) throw NoSuchElementException("List is empty.")
+    if (isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
     return removeAt(0)
 }
 
 public fun <T> MutableList<T>.removeLast(): T {
-    if (isEmpty()) throw NoSuchElementException("List is empty.")
+    if (isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
     return removeAt(lastIndex)
 }

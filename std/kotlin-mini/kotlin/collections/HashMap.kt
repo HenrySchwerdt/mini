@@ -54,7 +54,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     }
 
     public constructor(initialCapacity: Int) {
-        if (initialCapacity < 0) throw IllegalArgumentException("Illegal initial capacity: $initialCapacity")
+        if (initialCapacity < 0) mini.internal.throwIllegalArgument("Illegal initial capacity: $initialCapacity")
         linked = false
         threshold = tableSizeFor(initialCapacity)
     }
@@ -293,14 +293,14 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         override fun hasNext(): Boolean = nextNode != null
 
         override fun next(): HashNode<K, V> {
-            val e = nextNode ?: throw NoSuchElementException()
+            val e = nextNode ?: mini.internal.throwNoSuchElement(null)
             current = e
             if (map.linked) nextNode = e.after else advanceFrom(e)
             return e
         }
 
         override fun remove() {
-            val c = current ?: throw IllegalStateException()
+            val c = current ?: mini.internal.throwIllegalState(null)
             current = null
             map.removeNode(c.key)
         }
@@ -352,7 +352,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
                 override fun remove() = it.remove()
             }
 
-        override fun add(element: MutableMap.MutableEntry<K, V>): Boolean = throw UnsupportedOperationException()
+        override fun add(element: MutableMap.MutableEntry<K, V>): Boolean = mini.internal.throwUnsupportedOperation(null)
 
         override fun clear() = map.clear()
 
@@ -373,7 +373,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             override fun remove() = it.remove()
         }
 
-        override fun add(element: K): Boolean = throw UnsupportedOperationException()
+        override fun add(element: K): Boolean = mini.internal.throwUnsupportedOperation(null)
 
         override fun clear() = map.clear()
 
@@ -393,7 +393,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             override fun remove() = it.remove()
         }
 
-        override fun add(element: V): Boolean = throw UnsupportedOperationException()
+        override fun add(element: V): Boolean = mini.internal.throwUnsupportedOperation(null)
 
         override fun clear() = map.clear()
     }

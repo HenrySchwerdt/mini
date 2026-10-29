@@ -162,7 +162,6 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrConst -> constant(e)
     is IrGetValue -> {
         val owner = e.symbol.owner
-        if (owner is IrValueParameter && owner.kind == IrParameterKind.ExtensionReceiver) unsupported(e, "receiver parameter")
         MirExpr.Local(localOf(owner, e))
     }
     is IrCall -> if (isNoWhenBranch(e)) {

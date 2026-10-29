@@ -387,6 +387,15 @@ MkObject *mk_ref_array_get(MkObject *array, MkInt index); /* returns +1 (or NULL
 void mk_ref_array_set(MkObject *array, MkInt index, MkObject *value); /* retains value, releases the old one */
 MkInt mk_ref_array_length(MkObject *array);
 
+/* Failures of the stdlib (until exceptions exist): print "fatal: <Kind>: <message>" to stderr and abort. */
+_Noreturn void mk_throw_illegal_argument(const MkString *message);
+_Noreturn void mk_throw_illegal_state(const MkString *message);
+_Noreturn void mk_throw_index_out_of_bounds(const MkString *message);
+_Noreturn void mk_throw_no_such_element(const MkString *message);
+_Noreturn void mk_throw_number_format(const MkString *message);
+_Noreturn void mk_throw_unsupported_operation(const MkString *message);
+_Noreturn void mk_throw_not_implemented(const MkString *message);
+
 /* ---- end v1-S ------------------------------------------------------------------- */
 
 #ifdef __cplusplus

@@ -54,3 +54,18 @@ fun refArraySet(array: Any, index: Int, value: Any?) {
 
 @Suppress("UNCHECKED_CAST")
 fun refArrayLength(array: Any): Int = (array as Array<Any?>).size
+
+fun throwIllegalArgument(message: String?): Nothing = throw IllegalArgumentException(message)
+
+fun throwIllegalState(message: String?): Nothing = throw IllegalStateException(message)
+
+fun throwIndexOutOfBounds(message: String?): Nothing = throw IndexOutOfBoundsException(message)
+
+fun throwNoSuchElement(message: String?): Nothing = throw NoSuchElementException(message)
+
+fun throwNumberFormat(message: String?): Nothing = throw NumberFormatException(message)
+
+fun throwUnsupportedOperation(message: String?): Nothing = throw UnsupportedOperationException(message)
+
+fun throwNotImplemented(message: String?): Nothing =
+    if (message == null) throw NotImplementedError() else throw NotImplementedError(message)

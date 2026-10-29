@@ -8,17 +8,17 @@ package kotlin.text
 
 import mini.internal.stringSubstring
 
-public val CharSequence.indices: IntRange
+public val String.indices: IntRange
     get() = 0..length - 1
 
-public val CharSequence.lastIndex: Int
+public val String.lastIndex: Int
     get() = length - 1
 
-public fun CharSequence.isEmpty(): Boolean = length == 0
+public fun String.isEmpty(): Boolean = length == 0
 
-public fun CharSequence.isNotEmpty(): Boolean = length > 0
+public fun String.isNotEmpty(): Boolean = length > 0
 
-public fun CharSequence.isBlank(): Boolean {
+public fun String.isBlank(): Boolean {
     var i = 0
     while (i < length) {
         if (!this[i].isWhitespace()) return false
@@ -27,7 +27,7 @@ public fun CharSequence.isBlank(): Boolean {
     return true
 }
 
-public fun CharSequence.isNotBlank(): Boolean = !isBlank()
+public fun String.isNotBlank(): Boolean = !isBlank()
 
 public fun String?.isNullOrEmpty(): Boolean = this == null || this.length == 0
 
@@ -37,7 +37,7 @@ public fun String.substring(startIndex: Int): String = substring(startIndex, len
 
 public fun String.substring(startIndex: Int, endIndex: Int): String {
     if (startIndex < 0 || endIndex > length || startIndex > endIndex) {
-        throw IndexOutOfBoundsException("begin $startIndex, end $endIndex, length $length")
+        mini.internal.throwIndexOutOfBounds("begin $startIndex, end $endIndex, length $length")
     }
     return stringSubstring(this, startIndex, endIndex)
 }
@@ -63,23 +63,23 @@ public fun String.substringAfterLast(delimiter: String, missingDelimiterValue: S
 }
 
 public fun String.take(n: Int): String {
-    require(n >= 0) { "Requested character count $n is less than zero." }
+    if (n < 0) mini.internal.throwIllegalArgument("Requested character count $n is less than zero.")
     return substring(0, if (n < length) n else length)
 }
 
 public fun String.takeLast(n: Int): String {
-    require(n >= 0) { "Requested character count $n is less than zero." }
+    if (n < 0) mini.internal.throwIllegalArgument("Requested character count $n is less than zero.")
     val l = length
     return substring(l - (if (n < l) n else l))
 }
 
 public fun String.drop(n: Int): String {
-    require(n >= 0) { "Requested character count $n is less than zero." }
+    if (n < 0) mini.internal.throwIllegalArgument("Requested character count $n is less than zero.")
     return substring(if (n < length) n else length)
 }
 
 public fun String.dropLast(n: Int): String {
-    require(n >= 0) { "Requested character count $n is less than zero." }
+    if (n < 0) mini.internal.throwIllegalArgument("Requested character count $n is less than zero.")
     return take(if (length - n > 0) length - n else 0)
 }
 
@@ -179,7 +179,7 @@ public inline fun String.trim(predicate: (Char) -> Boolean): String {
 }
 
 public fun String.padStart(length: Int, padChar: Char = ' '): String {
-    if (length < 0) throw IllegalArgumentException("Desired length $length is less than zero.")
+    if (length < 0) mini.internal.throwIllegalArgument("Desired length $length is less than zero.")
     if (length <= this.length) return this
     val sb = StringBuilder(length)
     var i = 1
@@ -192,7 +192,7 @@ public fun String.padStart(length: Int, padChar: Char = ' '): String {
 }
 
 public fun String.padEnd(length: Int, padChar: Char = ' '): String {
-    if (length < 0) throw IllegalArgumentException("Desired length $length is less than zero.")
+    if (length < 0) mini.internal.throwIllegalArgument("Desired length $length is less than zero.")
     if (length <= this.length) return this
     val sb = StringBuilder(length)
     sb.append(this)
@@ -205,7 +205,7 @@ public fun String.padEnd(length: Int, padChar: Char = ' '): String {
 }
 
 public fun String.repeat(n: Int): String {
-    require(n >= 0) { "Count 'n' must be non-negative, but was $n." }
+    if (n < 0) mini.internal.throwIllegalArgument("Count 'n' must be non-negative, but was $n.")
     return when (n) {
         0 -> ""
         1 -> this
@@ -389,12 +389,12 @@ public inline fun String.all(predicate: (Char) -> Boolean): Boolean {
 }
 
 public fun String.first(): Char {
-    if (length == 0) throw NoSuchElementException("Char sequence is empty.")
+    if (length == 0) mini.internal.throwNoSuchElement("Char sequence is empty.")
     return this[0]
 }
 
 public fun String.last(): Char {
-    if (length == 0) throw NoSuchElementException("Char sequence is empty.")
+    if (length == 0) mini.internal.throwNoSuchElement("Char sequence is empty.")
     return this[length - 1]
 }
 

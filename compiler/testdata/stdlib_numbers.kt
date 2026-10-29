@@ -1,0 +1,68 @@
+// Char classification, number parsing/formatting and small numeric helpers of the Mini stdlib.
+import kotlin.math.abs
+fun describe(c: Char): String {
+    val sb = StringBuilder()
+    sb.append(c).append(':')
+    if (c.isDigit()) sb.append(" digit")
+    if (c.isLetter()) sb.append(" letter")
+    if (c.isWhitespace()) sb.append(" space")
+    if (c.isUpperCase()) sb.append(" upper")
+    if (c.isLowerCase()) sb.append(" lower")
+    return sb.toString()
+}
+
+fun parse(s: String) {
+    val v = s.toIntOrNull()
+    if (v == null) println(s + " -> not an Int") else println(s + " -> " + (v + 1))
+}
+
+fun main() {
+    println(describe('a'))
+    println(describe('Q'))
+    println(describe('7'))
+    println(describe(' '))
+    println(describe('-'))
+    println('a'.uppercaseChar())
+    println('Z'.lowercaseChar())
+    println('7'.digitToInt())
+    println('b'.digitToInt(16))
+    println(11.digitToChar(16))
+    println(7.digitToChar())
+
+    println("42".toInt())
+    println("-17".toInt() + 1)
+    println("+5".toInt())
+    println("ff".toInt(16))
+    println("9223372036854775807".toLong())
+    println("-9223372036854775808".toLong())
+    parse("123")
+    parse("")
+    parse("12x")
+    parse("-")
+    parse("2147483647")
+    parse("2147483648")
+    println("2147483647".toIntOrNull())
+    println("9223372036854775808".toLongOrNull())
+    println("1.5".toDouble())
+    println("-2e3".toDouble())
+    println("abc".toDoubleOrNull())
+    println("true".toBoolean())
+    println("nope".toBoolean())
+    println(255.toString(16))
+    println((-255).toString(2))
+    println(0.toString(8))
+    println(Long.MIN_VALUE.toString(16))
+
+    println(maxOf(3, 9))
+    println(minOf(3, 9))
+    println(maxOf(3L, 9L))
+    println(minOf(2.5, -1.0))
+    println(maxOf(1, 5, 3))
+    println(15.coerceAtLeast(20))
+    println(15.coerceAtMost(10))
+    println(15.coerceIn(0, 10))
+    println((-5).coerceIn(0, 10))
+    println(abs(-7))
+    println(abs(7L))
+    println(abs(-2.5))
+}

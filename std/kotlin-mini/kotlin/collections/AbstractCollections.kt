@@ -146,7 +146,7 @@ public abstract class AbstractList<out E> protected constructor() : AbstractColl
     override fun listIterator(): ListIterator<E> = ListIteratorImpl(this, 0)
 
     override fun listIterator(index: Int): ListIterator<E> {
-        if (index < 0 || index > size) throw IndexOutOfBoundsException("index: $index, size: $size")
+        if (index < 0 || index > size) mini.internal.throwIndexOutOfBounds("index: $index, size: $size")
         return ListIteratorImpl(this, index)
     }
 
@@ -171,8 +171,8 @@ public abstract class AbstractList<out E> protected constructor() : AbstractColl
     override fun contains(element: @UnsafeVariance E): Boolean = indexOf(element) >= 0
 
     override fun subList(fromIndex: Int, toIndex: Int): List<E> {
-        if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: $fromIndex, toIndex: $toIndex, size: $size")
-        if (fromIndex > toIndex) throw IllegalArgumentException("fromIndex: $fromIndex > toIndex: $toIndex")
+        if (fromIndex < 0 || toIndex > size) mini.internal.throwIndexOutOfBounds("fromIndex: $fromIndex, toIndex: $toIndex, size: $size")
+        if (fromIndex > toIndex) mini.internal.throwIllegalArgument("fromIndex: $fromIndex > toIndex: $toIndex")
         return SubList(this, fromIndex, toIndex)
     }
 
@@ -207,7 +207,7 @@ internal class SubList<out E>(private val list: List<E>, private val fromIndex: 
         get() = _size
 
     override fun get(index: Int): E {
-        if (index < 0 || index >= _size) throw IndexOutOfBoundsException("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
         return list[fromIndex + index]
     }
 }
@@ -218,14 +218,14 @@ internal class ListIteratorImpl<out E>(private val list: List<E>, start: Int) : 
     override fun hasNext(): Boolean = index < list.size
 
     override fun next(): E {
-        if (!hasNext()) throw NoSuchElementException()
+        if (!hasNext()) mini.internal.throwNoSuchElement(null)
         return list[index++]
     }
 
     override fun hasPrevious(): Boolean = index > 0
 
     override fun previous(): E {
-        if (!hasPrevious()) throw NoSuchElementException()
+        if (!hasPrevious()) mini.internal.throwNoSuchElement(null)
         index--
         return list[index]
     }
@@ -248,7 +248,7 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
     }
 
     override fun addAll(index: Int, elements: Collection<E>): Boolean {
-        if (index < 0 || index > size) throw IndexOutOfBoundsException("index: $index, size: $size")
+        if (index < 0 || index > size) mini.internal.throwIndexOutOfBounds("index: $index, size: $size")
         var i = index
         val it = elements.iterator()
         var modified = false
@@ -279,7 +279,7 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
     override fun listIterator(): MutableListIterator<E> = MutableListIteratorImpl(this, 0)
 
     override fun listIterator(index: Int): MutableListIterator<E> {
-        if (index < 0 || index > size) throw IndexOutOfBoundsException("index: $index, size: $size")
+        if (index < 0 || index > size) mini.internal.throwIndexOutOfBounds("index: $index, size: $size")
         return MutableListIteratorImpl(this, index)
     }
 
@@ -304,8 +304,8 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
     override fun contains(element: E): Boolean = indexOf(element) >= 0
 
     override fun subList(fromIndex: Int, toIndex: Int): MutableList<E> {
-        if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: $fromIndex, toIndex: $toIndex, size: $size")
-        if (fromIndex > toIndex) throw IllegalArgumentException("fromIndex: $fromIndex > toIndex: $toIndex")
+        if (fromIndex < 0 || toIndex > size) mini.internal.throwIndexOutOfBounds("fromIndex: $fromIndex, toIndex: $toIndex, size: $size")
+        if (fromIndex > toIndex) mini.internal.throwIllegalArgument("fromIndex: $fromIndex > toIndex: $toIndex")
         return MutableSubList(this, fromIndex, toIndex)
     }
 
@@ -341,23 +341,23 @@ internal class MutableSubList<E>(private val list: MutableList<E>, private val f
         get() = _size
 
     override fun get(index: Int): E {
-        if (index < 0 || index >= _size) throw IndexOutOfBoundsException("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
         return list[fromIndex + index]
     }
 
     override fun set(index: Int, element: E): E {
-        if (index < 0 || index >= _size) throw IndexOutOfBoundsException("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
         return list.set(fromIndex + index, element)
     }
 
     override fun add(index: Int, element: E) {
-        if (index < 0 || index > _size) throw IndexOutOfBoundsException("index: $index, size: $_size")
+        if (index < 0 || index > _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
         list.add(fromIndex + index, element)
         _size++
     }
 
     override fun removeAt(index: Int): E {
-        if (index < 0 || index >= _size) throw IndexOutOfBoundsException("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
         val r = list.removeAt(fromIndex + index)
         _size--
         return r
@@ -371,7 +371,7 @@ internal class MutableListIteratorImpl<E>(private val list: MutableList<E>, star
     override fun hasNext(): Boolean = index < list.size
 
     override fun next(): E {
-        if (!hasNext()) throw NoSuchElementException()
+        if (!hasNext()) mini.internal.throwNoSuchElement(null)
         last = index
         return list[index++]
     }
@@ -379,7 +379,7 @@ internal class MutableListIteratorImpl<E>(private val list: MutableList<E>, star
     override fun hasPrevious(): Boolean = index > 0
 
     override fun previous(): E {
-        if (!hasPrevious()) throw NoSuchElementException()
+        if (!hasPrevious()) mini.internal.throwNoSuchElement(null)
         index--
         last = index
         return list[index]
@@ -390,14 +390,14 @@ internal class MutableListIteratorImpl<E>(private val list: MutableList<E>, star
     override fun previousIndex(): Int = index - 1
 
     override fun remove() {
-        if (last < 0) throw IllegalStateException()
+        if (last < 0) mini.internal.throwIllegalState(null)
         list.removeAt(last)
         if (last < index) index--
         last = -1
     }
 
     override fun set(element: E) {
-        if (last < 0) throw IllegalStateException()
+        if (last < 0) mini.internal.throwIllegalState(null)
         list[last] = element
     }
 

@@ -19,7 +19,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     public constructor(initialCapacity: Int) {
-        if (initialCapacity < 0) throw IllegalArgumentException("Illegal Capacity: $initialCapacity")
+        if (initialCapacity < 0) mini.internal.throwIllegalArgument("Illegal Capacity: $initialCapacity")
         array = refArrayNew(if (initialCapacity < 4) 4 else initialCapacity)
     }
 
@@ -55,7 +55,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     override fun add(index: Int, element: E) {
-        if (index < 0 || index > length) throw IndexOutOfBoundsException("index: $index, size: $length")
+        if (index < 0 || index > length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
         ensureCapacity(length + 1)
         var i = length
         while (i > index) {
@@ -135,7 +135,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     private fun checkElementIndex(index: Int) {
-        if (index < 0 || index >= length) throw IndexOutOfBoundsException("index: $index, size: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
     }
 
     override fun toString(): String = super.toString()

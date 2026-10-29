@@ -14,7 +14,7 @@ private object EmptyList : AbstractList<Nothing>(), RandomAccess {
     override val size: Int
         get() = 0
 
-    override fun get(index: Int): Nothing = throw IndexOutOfBoundsException("Empty list doesn't contain element at index $index.")
+    override fun get(index: Int): Nothing = mini.internal.throwIndexOutOfBounds("Empty list doesn't contain element at index $index.")
 
     override fun equals(other: Any?): Boolean = other is List<*> && other.isEmpty()
 
@@ -263,7 +263,7 @@ public inline fun <K, V> buildMap(builderAction: MutableMap<K, V>.() -> Unit): M
 
 public fun <K, V> Map<K, V>.getValue(key: K): V {
     val v = get(key)
-    if (v == null && !containsKey(key)) throw NoSuchElementException("Key $key is missing in the map.")
+    if (v == null && !containsKey(key)) mini.internal.throwNoSuchElement("Key $key is missing in the map.")
     @Suppress("UNCHECKED_CAST")
     return v as V
 }

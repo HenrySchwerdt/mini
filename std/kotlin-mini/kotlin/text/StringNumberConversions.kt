@@ -51,15 +51,15 @@ public fun String.toLongOrNull(radix: Int): Long? {
     return if (negative) result else -result
 }
 
-public fun String.toInt(): Int = toIntOrNull() ?: throw NumberFormatException("For input string: \"$this\"")
+public fun String.toInt(): Int = toIntOrNull() ?: mini.internal.throwNumberFormat("For input string: \"$this\"")
 
-public fun String.toInt(radix: Int): Int = toIntOrNull(radix) ?: throw NumberFormatException("For input string: \"$this\"")
+public fun String.toInt(radix: Int): Int = toIntOrNull(radix) ?: mini.internal.throwNumberFormat("For input string: \"$this\"")
 
-public fun String.toLong(): Long = toLongOrNull() ?: throw NumberFormatException("For input string: \"$this\"")
+public fun String.toLong(): Long = toLongOrNull() ?: mini.internal.throwNumberFormat("For input string: \"$this\"")
 
 public fun String.toDoubleOrNull(): Double? = if (stringIsDouble(this)) stringParseDouble(this) else null
 
-public fun String.toDouble(): Double = toDoubleOrNull() ?: throw NumberFormatException("For input string: \"$this\"")
+public fun String.toDouble(): Double = toDoubleOrNull() ?: mini.internal.throwNumberFormat("For input string: \"$this\"")
 
 public fun String.toBoolean(): Boolean = this.lowercase() == "true"
 

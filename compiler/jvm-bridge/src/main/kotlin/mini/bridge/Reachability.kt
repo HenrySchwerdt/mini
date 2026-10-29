@@ -2,6 +2,8 @@
 
 package mini.bridge
 
+import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
@@ -23,6 +25,7 @@ import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.IrTypeProjection
 import org.jetbrains.kotlin.ir.util.getPackageFragment
+import org.jetbrains.kotlin.ir.util.isFakeOverride
 import org.jetbrains.kotlin.ir.util.kotlinFqName
 import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
@@ -70,23 +73,43 @@ object Reachability {
      * @param isStdlibFile true for files of the Mini stdlib sources (they are pruned), false for user files.
      */
     fun prune(module: IrModuleFragment, isStdlibFile: (IrFile) -> Boolean) {
+        val marker = Marker(isStdlibFile)
         module.files.removeAll { isBuiltinFile(it) }
         for (f in module.files) {
             f.declarations.removeAll { it is IrFunction && (it.isExternal || cSymbol(it) != null) }
         }
-        val marker = Marker()
         for (f in module.files) {
             if (!isStdlibFile(f)) f.acceptChildrenVoid(marker.visitor)
         }
         for (f in module.files) {
-            if (isStdlibFile(f)) f.declarations.removeAll { it !in marker.kept }
+            if (isStdlibFile(f)) {
+                f.declarations.removeAll { it !in marker.kept }
+                f.declarations.filterIsInstance<IrClass>().forEach { marker.pruneMembers(it) }
+            }
         }
         module.files.removeAll { isStdlibFile(it) && it.declarations.isEmpty() }
     }
 
-    private class Marker {
+    private class Marker(private val isStdlibFile: (IrFile) -> Boolean) {
         val kept = HashSet<IrDeclaration>()
         private val classes = HashSet<IrClass>()
+
+        private fun isStdlibClass(c: IrClass): Boolean = (c.getPackageFragment() as? IrFile)?.let(isStdlibFile) == true
+
+        /**
+         * A plain member function of a stdlib class that nothing can reach by dispatch: final, not an override,
+         * not an accessor, not in an interface. It is only kept (and its body only walked) when called.
+         */
+        private fun isDemandDriven(f: IrDeclaration, c: IrClass): Boolean =
+            f is IrSimpleFunction && isStdlibClass(c) && c.kind != ClassKind.INTERFACE && !f.isFakeOverride &&
+                f.overriddenSymbols.isEmpty() && f.correspondingPropertySymbol == null && f.modality == Modality.FINAL
+
+        /** Drops demand-driven member functions that were never called (nested classes are handled recursively). */
+        fun pruneMembers(c: IrClass) {
+            if (c !in classes) return
+            c.declarations.removeAll { isDemandDriven(it, c) && it !in kept }
+            c.declarations.filterIsInstance<IrClass>().forEach { pruneMembers(it) }
+        }
 
         val visitor = object : IrVisitorVoid() {
             override fun visitElement(element: IrElement) {
@@ -124,6 +147,7 @@ object Reachability {
                     val p: IrDeclarationParent = d.parent
                     if (p is IrClass) {
                         markClass(p)
+                        if (isDemandDriven(d, p) && kept.add(d)) d.acceptVoid(visitor)
                     } else if (p is IrFile) {
                         val top: IrDeclaration = (d as? IrSimpleFunction)?.correspondingPropertySymbol?.owner ?: d
                         if (kept.add(top)) top.acceptVoid(visitor)
@@ -144,7 +168,10 @@ object Reachability {
             }
             c.superTypes.forEach { markType(it) }
             c.typeParameters.forEach { tp -> tp.superTypes.forEach { markType(it) } }
-            c.acceptChildrenVoid(visitor)
+            for (d in c.declarations.toList()) {
+                if (isDemandDriven(d, c)) continue
+                d.acceptVoid(visitor)
+            }
         }
 
         private fun markType(t: IrType) {

@@ -4,6 +4,7 @@ package mini.bridge
 
 import mini.backend.MirExpr
 import mini.backend.MirStmt
+import mini.backend.TNothing
 import org.jetbrains.kotlin.ir.expressions.IrCall
 
 /**
@@ -13,5 +14,12 @@ import org.jetbrains.kotlin.ir.expressions.IrCall
  */
 internal fun Ir2Mir.cSymbolCall(c: IrCall, symbol: String, out: MutableList<MirStmt>): MirExpr {
     val args = c.arguments.map { it ?: unsupported(c, "call with omitted argument to '$symbol'") }
-    return MirExpr.RuntimeCall(symbol, operands(args, out), mirType(c.type, c))
+    val type = mirType(c.type, c)
+    val call = MirExpr.RuntimeCall(symbol, operands(args, out), type)
+    if (type == TNothing) {
+        // a call that never returns (`_Noreturn`): it must still be emitted, as a statement
+        out += MirStmt.Eval(call)
+        return MirExpr.Unreachable(TNothing)
+    }
+    return call
 }

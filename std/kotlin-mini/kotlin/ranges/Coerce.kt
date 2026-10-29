@@ -10,7 +10,7 @@ public fun Int.coerceAtLeast(minimumValue: Int): Int = if (this < minimumValue) 
 public fun Int.coerceAtMost(maximumValue: Int): Int = if (this > maximumValue) maximumValue else this
 
 public fun Int.coerceIn(minimumValue: Int, maximumValue: Int): Int {
-    if (minimumValue > maximumValue) throw IllegalArgumentException("Cannot coerce value to an empty range: maximum $maximumValue is less than minimum $minimumValue.")
+    if (minimumValue > maximumValue) mini.internal.throwIllegalArgument("Cannot coerce value to an empty range: maximum $maximumValue is less than minimum $minimumValue.")
     if (this < minimumValue) return minimumValue
     if (this > maximumValue) return maximumValue
     return this
@@ -21,7 +21,7 @@ public fun Long.coerceAtLeast(minimumValue: Long): Long = if (this < minimumValu
 public fun Long.coerceAtMost(maximumValue: Long): Long = if (this > maximumValue) maximumValue else this
 
 public fun Long.coerceIn(minimumValue: Long, maximumValue: Long): Long {
-    if (minimumValue > maximumValue) throw IllegalArgumentException("Cannot coerce value to an empty range: maximum $maximumValue is less than minimum $minimumValue.")
+    if (minimumValue > maximumValue) mini.internal.throwIllegalArgument("Cannot coerce value to an empty range: maximum $maximumValue is less than minimum $minimumValue.")
     if (this < minimumValue) return minimumValue
     if (this > maximumValue) return maximumValue
     return this
@@ -32,7 +32,7 @@ public fun Double.coerceAtLeast(minimumValue: Double): Double = if (this < minim
 public fun Double.coerceAtMost(maximumValue: Double): Double = if (this > maximumValue) maximumValue else this
 
 public fun Double.coerceIn(minimumValue: Double, maximumValue: Double): Double {
-    if (minimumValue > maximumValue) throw IllegalArgumentException("Cannot coerce value to an empty range: maximum $maximumValue is less than minimum $minimumValue.")
+    if (minimumValue > maximumValue) mini.internal.throwIllegalArgument("Cannot coerce value to an empty range: maximum $maximumValue is less than minimum $minimumValue.")
     if (this < minimumValue) return minimumValue
     if (this > maximumValue) return maximumValue
     return this

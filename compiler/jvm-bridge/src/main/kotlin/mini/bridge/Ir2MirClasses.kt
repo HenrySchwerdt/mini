@@ -423,8 +423,7 @@ internal fun Ir2Mir.checkFunctionShape(f: IrSimpleFunction, member: Boolean) {
     if (f.isSuspend) unsupported(f, "suspend function '${f.name}'")
     for (p in f.parameters) {
         when (p.kind) {
-            IrParameterKind.Regular -> {}
-            IrParameterKind.ExtensionReceiver -> unsupported(f, "extension function '${f.name}'")
+            IrParameterKind.Regular, IrParameterKind.ExtensionReceiver -> {}
             IrParameterKind.Context -> unsupported(f, "context parameter in '${f.name}'")
             IrParameterKind.DispatchReceiver -> if (!member) unsupported(f, "member function '${f.name}'")
         }

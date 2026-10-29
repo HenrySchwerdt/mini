@@ -14,12 +14,11 @@ import mini.internal.sbSetCharAt
 import mini.internal.sbSetLength
 import mini.internal.sbToString
 
-public interface Appendable {
-    public fun append(value: Char): Appendable
-    public fun append(value: CharSequence?): Appendable
-}
-
-public class StringBuilder : Appendable, CharSequence {
+/**
+ * Note (docs/stdlib.md): in Mini v1 StringBuilder is not (yet) a CharSequence/Appendable: interfaces of the
+ * builtin package are not usable as types by the backend. Everything else follows kotlin.text.StringBuilder.
+ */
+public class StringBuilder {
     private val buf: Any = sbNew()
 
     public constructor()
@@ -30,32 +29,25 @@ public class StringBuilder : Appendable, CharSequence {
         sbAppendString(buf, content)
     }
 
-    override val length: Int
+    public val length: Int
         get() = sbLength(buf)
 
-    override fun get(index: Int): Char {
-        if (index < 0 || index >= length) throw IndexOutOfBoundsException("index: $index, length: $length")
+    public operator fun get(index: Int): Char {
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
         return sbCharAt(buf, index)
     }
 
     public operator fun set(index: Int, value: Char) {
-        if (index < 0 || index >= length) throw IndexOutOfBoundsException("index: $index, length: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
         sbSetCharAt(buf, index, value)
     }
-
-    override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = substring(startIndex, endIndex)
 
     public fun substring(startIndex: Int, endIndex: Int): String = toString().substring(startIndex, endIndex)
 
     public fun substring(startIndex: Int): String = toString().substring(startIndex)
 
-    override fun append(value: Char): StringBuilder {
+    public fun append(value: Char): StringBuilder {
         sbAppendChar(buf, value)
-        return this
-    }
-
-    override fun append(value: CharSequence?): StringBuilder {
-        if (value == null) sbAppendString(buf, "null") else sbAppendString(buf, value.toString())
         return this
     }
 
@@ -100,7 +92,7 @@ public class StringBuilder : Appendable, CharSequence {
     public fun appendLine(value: Int): StringBuilder = append(value).append('\n')
 
     public fun insert(index: Int, value: String): StringBuilder {
-        if (index < 0 || index > length) throw IndexOutOfBoundsException("index: $index, length: $length")
+        if (index < 0 || index > length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
         val s = toString()
         clear()
         sbAppendString(buf, s.substring(0, index))
@@ -116,7 +108,7 @@ public class StringBuilder : Appendable, CharSequence {
     public fun delete(startIndex: Int, endIndex: Int): StringBuilder {
         val len = length
         val end = if (endIndex > len) len else endIndex
-        if (startIndex < 0 || startIndex > end) throw IndexOutOfBoundsException("start: $startIndex, end: $endIndex, length: $len")
+        if (startIndex < 0 || startIndex > end) mini.internal.throwIndexOutOfBounds("start: $startIndex, end: $endIndex, length: $len")
         val s = toString()
         clear()
         sbAppendString(buf, s.substring(0, startIndex))
@@ -138,7 +130,7 @@ public class StringBuilder : Appendable, CharSequence {
     }
 
     public fun setLength(newLength: Int) {
-        if (newLength < 0) throw IllegalArgumentException("Negative new length: $newLength.")
+        if (newLength < 0) mini.internal.throwIllegalArgument("Negative new length: $newLength.")
         sbSetLength(buf, newLength)
     }
 
@@ -162,7 +154,7 @@ public inline fun buildString(builderAction: StringBuilder.() -> Unit): String {
 
 public inline fun buildString(capacity: Int, builderAction: StringBuilder.() -> Unit): String = buildString(builderAction)
 
-public fun StringBuilder.appendRange(value: CharSequence, startIndex: Int, endIndex: Int): StringBuilder {
+public fun StringBuilder.appendRange(value: String, startIndex: Int, endIndex: Int): StringBuilder {
     var i = startIndex
     while (i < endIndex) {
         append(value[i])

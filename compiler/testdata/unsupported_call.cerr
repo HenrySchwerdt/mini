@@ -1,2 +1,1 @@
-unsupported_call.kt:2:
-unsupported construct: type 'kotlin.collections.List'
+unsupported construct: generic class

@@ -71,3 +71,30 @@ public external fun refArraySet(array: Any, index: Int, value: Any?)
 
 @CSymbol("mk_ref_array_length")
 public external fun refArrayLength(array: Any): Int
+
+// ---- failures ------------------------------------------------------------------------------
+// Every `throw` of the stdlib goes through these functions. Natively they abort the program
+// (`mk_throw_*`: "fatal: <Kind>: <message>" on stderr, exit code != 0) until the backend supports
+// exceptions; then the bodies become `throw IllegalArgumentException(message)` etc. in this one place.
+// On the JVM (unit tests) they throw the real exceptions.
+
+@CSymbol("mk_throw_illegal_argument")
+public external fun throwIllegalArgument(message: String?): Nothing
+
+@CSymbol("mk_throw_illegal_state")
+public external fun throwIllegalState(message: String?): Nothing
+
+@CSymbol("mk_throw_index_out_of_bounds")
+public external fun throwIndexOutOfBounds(message: String?): Nothing
+
+@CSymbol("mk_throw_no_such_element")
+public external fun throwNoSuchElement(message: String?): Nothing
+
+@CSymbol("mk_throw_number_format")
+public external fun throwNumberFormat(message: String?): Nothing
+
+@CSymbol("mk_throw_unsupported_operation")
+public external fun throwUnsupportedOperation(message: String?): Nothing
+
+@CSymbol("mk_throw_not_implemented")
+public external fun throwNotImplemented(message: String?): Nothing

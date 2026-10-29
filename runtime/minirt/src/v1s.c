@@ -245,3 +245,25 @@ MkInt mk_ref_array_length(MkObject *o) {
     if (o == NULL) mk_panic("NullPointerException");
     return ((MkRefArray *)o)->length;
 }
+
+/* ---- failures ---------------------------------------------------------------------------- */
+
+static _Noreturn void throw_kind(const char *kind, const MkString *message) {
+    MkString *prefix = mk_string_from_utf8(kind, strlen(kind));
+    if (message == NULL) mk_panic_string(prefix);
+    MkString *sep = mk_string_from_utf8(": ", 2);
+    MkString *a = mk_string_concat(prefix, sep);
+    MkString *full = mk_string_concat(a, message);
+    mk_panic_string(full);
+}
+
+#define MK_THROW(fn, kind) \
+    _Noreturn void fn(const MkString *message) { throw_kind(kind, message); }
+
+MK_THROW(mk_throw_illegal_argument, "IllegalArgumentException")
+MK_THROW(mk_throw_illegal_state, "IllegalStateException")
+MK_THROW(mk_throw_index_out_of_bounds, "IndexOutOfBoundsException")
+MK_THROW(mk_throw_no_such_element, "NoSuchElementException")
+MK_THROW(mk_throw_number_format, "NumberFormatException")
+MK_THROW(mk_throw_unsupported_operation, "UnsupportedOperationException")
+MK_THROW(mk_throw_not_implemented, "NotImplementedError")

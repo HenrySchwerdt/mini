@@ -7,20 +7,20 @@ package kotlin
 
 public inline fun require(value: Boolean) {
     if (!value) {
-        throw IllegalArgumentException("Failed requirement.")
+        mini.internal.throwIllegalArgument("Failed requirement.")
     }
 }
 
 public inline fun require(value: Boolean, lazyMessage: () -> Any) {
     if (!value) {
         val message = lazyMessage()
-        throw IllegalArgumentException(message.toString())
+        mini.internal.throwIllegalArgument(message.toString())
     }
 }
 
 public inline fun <T : Any> requireNotNull(value: T?): T {
     if (value == null) {
-        throw IllegalArgumentException("Required value was null.")
+        mini.internal.throwIllegalArgument("Required value was null.")
     } else {
         return value
     }
@@ -29,7 +29,7 @@ public inline fun <T : Any> requireNotNull(value: T?): T {
 public inline fun <T : Any> requireNotNull(value: T?, lazyMessage: () -> Any): T {
     if (value == null) {
         val message = lazyMessage()
-        throw IllegalArgumentException(message.toString())
+        mini.internal.throwIllegalArgument(message.toString())
     } else {
         return value
     }
@@ -37,20 +37,20 @@ public inline fun <T : Any> requireNotNull(value: T?, lazyMessage: () -> Any): T
 
 public inline fun check(value: Boolean) {
     if (!value) {
-        throw IllegalStateException("Check failed.")
+        mini.internal.throwIllegalState("Check failed.")
     }
 }
 
 public inline fun check(value: Boolean, lazyMessage: () -> Any) {
     if (!value) {
         val message = lazyMessage()
-        throw IllegalStateException(message.toString())
+        mini.internal.throwIllegalState(message.toString())
     }
 }
 
 public inline fun <T : Any> checkNotNull(value: T?): T {
     if (value == null) {
-        throw IllegalStateException("Required value was null.")
+        mini.internal.throwIllegalState("Required value was null.")
     } else {
         return value
     }
@@ -59,14 +59,14 @@ public inline fun <T : Any> checkNotNull(value: T?): T {
 public inline fun <T : Any> checkNotNull(value: T?, lazyMessage: () -> Any): T {
     if (value == null) {
         val message = lazyMessage()
-        throw IllegalStateException(message.toString())
+        mini.internal.throwIllegalState(message.toString())
     } else {
         return value
     }
 }
 
-public inline fun error(message: Any): Nothing = throw IllegalStateException(message.toString())
+public inline fun error(message: Any): Nothing = mini.internal.throwIllegalState(message.toString())
 
-public fun TODO(): Nothing = throw NotImplementedError()
+public fun TODO(): Nothing = mini.internal.throwNotImplemented(null)
 
-public fun TODO(reason: String): Nothing = throw NotImplementedError("An operation is not implemented: $reason")
+public fun TODO(reason: String): Nothing = mini.internal.throwNotImplemented("An operation is not implemented: $reason")

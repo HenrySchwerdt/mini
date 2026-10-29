@@ -31,7 +31,7 @@ public fun Char.lowercase(): String = lowercaseChar().toString()
 
 public fun Char.digitToInt(): Int {
     if (this in '0'..'9') return this.code - '0'.code
-    throw IllegalArgumentException("Char $this is not a decimal digit")
+    mini.internal.throwIllegalArgument("Char $this is not a decimal digit")
 }
 
 public fun Char.digitToInt(radix: Int): Int {
@@ -39,17 +39,17 @@ public fun Char.digitToInt(radix: Int): Int {
     else if (this in 'a'..'z') this.code - 'a'.code + 10
     else if (this in 'A'..'Z') this.code - 'A'.code + 10
     else -1
-    if (d < 0 || d >= radix) throw IllegalArgumentException("Char $this is not a digit in the radix $radix")
+    if (d < 0 || d >= radix) mini.internal.throwIllegalArgument("Char $this is not a digit in the radix $radix")
     return d
 }
 
 public fun Int.digitToChar(): Char {
     if (this in 0..9) return ('0'.code + this).toChar()
-    throw IllegalArgumentException("Int $this is not a decimal digit")
+    mini.internal.throwIllegalArgument("Int $this is not a decimal digit")
 }
 
 public fun Int.digitToChar(radix: Int): Char {
-    if (this < 0 || this >= radix) throw IllegalArgumentException("Digit $this does not represent a valid digit in radix $radix")
+    if (this < 0 || this >= radix) mini.internal.throwIllegalArgument("Digit $this does not represent a valid digit in radix $radix")
     return if (this < 10) ('0'.code + this).toChar() else ('A'.code + this - 10).toChar()
 }
 
