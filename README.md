@@ -63,8 +63,11 @@ Erwartete Ausgaben stammen immer aus echtem Kotlin auf der JVM.
 JVM (Bootstrap-Stufe B1, geprüft von `SelfHostTest`):
 
 ```sh
+# minic baut sein eigenes Backend nativ (~20 s)
+./minic build $(find compiler/native-driver/src/main/kotlin compiler/backend/src/main/kotlin -name '*.kt') -o build/minic-backend
 ./minic emit-mir examples/shapes.kt -o build/shapes.mir   # Frontend (K2, noch auf der JVM)
 build/minic-backend build/shapes.mir -o build/shapes.c     # Backend, nativ
+clang -std=c17 -O2 -Iruntime/include build/shapes.c runtime/src/*.c -lm -o build/shapes && build/shapes
 ```
 
 Funktioniert nativ: Klassen, Vererbung, Interfaces, `object`, `data`/`sealed`/`enum class`,
