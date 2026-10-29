@@ -124,6 +124,7 @@ class ConstraintSystem(private val sema: Sema) {
         val a = resolveFixed(a0)
         val b = resolveFixed(b0)
         if (a is ErrType || b is ErrType) return true
+        if (a is CapType) return addSub(ops.capUpper(a), b, depth + 1)
         if (b is VarType) {
             if (a is VarType && a.v === b.v) return true
             var lo = a

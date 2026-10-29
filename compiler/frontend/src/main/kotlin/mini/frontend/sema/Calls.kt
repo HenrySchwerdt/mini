@@ -107,9 +107,11 @@ fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boole
     val groups = ArrayList<List<Candidate>>()
     val t = t0
     val mem = ArrayList<Candidate>()
-    for (m in members.funsNamed(t, name)) {
-        if (m.fn.decl?.receiver != null) continue
-        mem.add(Candidate(m.fn, m.subst, null))
+    if (!ops.mayBeNull(t)) {
+        for (m in members.funsNamed(t, name)) {
+            if (m.fn.decl?.receiver != null) continue
+            mem.add(Candidate(m.fn, m.subst, null))
+        }
     }
     if (mem.isNotEmpty()) groups.add(mem)
     // property of function type / with invoke is handled by the caller (callExpr)

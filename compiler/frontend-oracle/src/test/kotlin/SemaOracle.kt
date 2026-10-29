@@ -84,8 +84,19 @@ object SemaOracle {
             val cat = categories[r.kind] ?: continue
             if (r.kind == "FirResolvedQualifier") continue // K2 specific: compared through its parent call
             val decl = r.kind.startsWith("decl:")
-            val key = "${r.start}-${r.end}-" + (if (decl) "d" else "e")
-            groups.getOrPut(key) { ArrayList() }.add(r)
+            var rs = r.start
+            if (decl) {
+                // PSI declarations include a leading KDoc comment
+                if (text.startsWith("/**", rs)) {
+                    val e = text.indexOf("*/", rs + 3)
+                    if (e > 0) {
+                        rs = e + 2
+                        while (rs < text.length && text[rs].isWhitespace()) rs++
+                    }
+                }
+            }
+            val key = "${rs}-${r.end}-" + (if (decl) "d" else "e")
+            groups.getOrPut(key) { ArrayList() }.add(if (rs == r.start) r else FirRec(rs, r.end, r.kind, r.type, r.callee, r.extra))
         }
         for ((key, list) in groups) {
             val first = list[0]
@@ -93,7 +104,7 @@ object SemaOracle {
             var calleeFir: String? = null
             for (r in list) if (r.callee != null && calleeFir == null) calleeFir = r.callee
             // a smart cast at this position: K2 reports the narrowed type
-            val sc = fir.firstOrNull { it.start == first.start && it.end == first.end && it.kind == "FirSmartCastExpression" && !first.kind.startsWith("decl:") }
+            val sc = fir.firstOrNull { it.start == first.start && it.end == first.end && it.kind == "FirSmartCastExpression" && it.extra == "orig=" + first.kind }
             val expectedType = sc?.type ?: first.type
             val o = ours[key]
             val os = if (sc != null) ours[key.dropLast(1) + "s"] else null

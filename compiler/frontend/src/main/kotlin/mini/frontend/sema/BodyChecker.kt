@@ -52,7 +52,27 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     }
 
     /** the type of a literal-typed value as it is stored (declared variable, return type, ...) */
-    fun fin(t: Type): Type = if (t is IntLiteralType) ops.literalDefault(t) else t
+    fun fin(t: Type): Type = if (t is IntLiteralType) ops.literalDefault(t) else ops.approximate(t)
+
+    fun checkAnnotations(m: Modifiers?) {
+        if (m == null) return
+        for (a in m.annotations()) annotationArgs(a)
+    }
+
+    fun annotationArgs(a: AnnotationEntry) {
+        val args = a.args ?: return
+        for (x in args) expr(x.value, null)
+    }
+
+    /** records a synthetic node (operator token, argument list) at an explicit range */
+    fun recordAt(start: Int, end: Int, type: Type, callee: Sym?, text: String?): ExprRec {
+        val n = NameExpr("")
+        n.start = start
+        n.end = end
+        val r = record(n, type, callee)
+        r.calleeText = text
+        return r
+    }
 
     inline fun <T> withScope(s: Scope, body: () -> T): T {
         val saved = scope
@@ -77,6 +97,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     // ---- entry points -------------------------------------------------------------------------------------------------
 
     fun checkFileDecls() {
+        for (a in file.ast.fileAnnotations) annotationArgs(a)
         for (d in file.ast.declarations) checkTopLevel(d)
     }
 
@@ -245,13 +266,6 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         record(d, v.type ?: ErrType("?"), v)
         declareVar(l, v)
         // flow: the initializer's type is known when it is more precise
-        if (init != null && declared != null && !d.isVar) {
-            val it = rec.get(init)?.type
-            if (it != null && it !is IntLiteralType) {
-                val k = "v" + v.id
-                if (!ops.isSubtype(declared, it)) flow.add(FactAdd(k, v.name, it))
-            }
-        }
         val g = d.getter
         val s = d.setter
         if (g != null || s != null) unsupported(d.start, "local property accessors")

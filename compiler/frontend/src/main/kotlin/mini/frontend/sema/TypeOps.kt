@@ -77,7 +77,7 @@ class TypeOps(private val sema: Sema) {
             if (i < t.args.size) {
                 val a = t.args[i]
                 val at = a.type
-                m[tp] = at ?: sema.nullableAny
+                if (at == null || a.variance != Variance.INV) m[tp] = CapType(a) else m[tp] = at
             }
             i++
         }
@@ -105,6 +105,7 @@ class TypeOps(private val sema: Sema) {
                 if (fn != null) out.add(ClassType(fn, listOf(TArg(t.ret, Variance.OUT)), false))
             }
             is IsectType -> for (p in t.parts) out.add(p)
+            is CapType -> out.add(capUpper(t))
             else -> {}
         }
         return out
@@ -142,6 +143,44 @@ class TypeOps(private val sema: Sema) {
         return null
     }
 
+    fun capUpper(t: CapType): Type {
+        val x = t.arg.type
+        if (x != null && t.arg.variance == Variance.OUT) return x
+        return sema.nullableAny
+    }
+
+    /** replaces captured types by what K2 infers for declarations: the upper bound / a projection */
+    fun approximate(t: Type): Type {
+        when (t) {
+            is CapType -> return approximate(capUpper(t))
+            is ClassType -> {
+                if (t.args.isEmpty()) return t
+                var changed = false
+                val args = ArrayList<TArg>()
+                for (a in t.args) {
+                    val x = a.type
+                    if (x is CapType) {
+                        changed = true
+                        val ax = x.arg.type
+                        if (ax == null) args.add(TArg(null, Variance.INV)) else args.add(TArg(approximate(ax), x.arg.variance))
+                    } else if (x != null) {
+                        val n = approximate(x)
+                        if (n !== x) changed = true
+                        args.add(TArg(n, a.variance))
+                    } else args.add(a)
+                }
+                return if (changed) ClassType(t.cls, args, t.nullable) else t
+            }
+            is FunType -> {
+                val r = t.receiver
+                val ps = ArrayList<Type>()
+                for (p in t.params) ps.add(approximate(p))
+                return FunType(if (r != null) approximate(r) else null, ps, approximate(t.ret), t.nullable, t.suspend)
+            }
+            else -> return t
+        }
+    }
+
     // ---- subtyping -------------------------------------------------------------------------------------------------
 
     fun isSubtype(a: Type, b: Type): Boolean = sub(a, b, 0)
@@ -155,6 +194,12 @@ class TypeOps(private val sema: Sema) {
         if (a is VarType || b is VarType) return true
         if (a is IntLiteralType) return subLiteral(a, b)
         if (b is IntLiteralType) return false
+        if (a is CapType) return sub(capUpper(a), b, depth + 1)
+        if (b is CapType) {
+            val x = b.arg.type
+            if (x != null && b.arg.variance == Variance.IN) return sub(a, x, depth + 1)
+            return false
+        }
         if (b is IsectType) {
             for (p in b.parts) if (!sub(a, p, depth + 1)) return false
             return true

@@ -57,7 +57,7 @@ class FirDumper {
         val src = e.source ?: return
         if (e is FirSmartCastExpression) {
             val t = try { render(e.resolvedType) } catch (x: Throwable) { "<unresolved>" }
-            out.add(FirRec(src.startOffset, src.endOffset, "FirSmartCastExpression", t, null, "stable=${e.isStable}"))
+            out.add(FirRec(src.startOffset, src.endOffset, "FirSmartCastExpression", t, null, "orig=" + e.originalExpression.javaClass.simpleName.removeSuffix("Impl")))
             return
         }
         if (!src.isReal()) return

@@ -51,6 +51,7 @@ class SemaOracleTest {
         val baseline = readBaseline()
         val update = System.getenv("MINI_SEMA_UPDATE") != null
         val report = StringBuilder()
+        val all = StringBuilder()
         val newBaseline = StringBuilder("# file matched total (positions where K2 resolved a type; see SemaOracleTest)\n")
         val regressions = ArrayList<String>()
         val overall = SemaOracle.Stat()
@@ -73,6 +74,7 @@ class SemaOracleTest {
                         val k = m.category + ": " + m.fir.substringBefore(" =>").take(40)
                         topMismatch[k] = (topMismatch[k] ?: 0) + 1
                     }
+                    for (m in st.mismatches) all.append("$rel L${m.line} [${m.category}] `${m.snippet}`\n    K2:   ${m.fir}\n    ours: ${m.ours}\n")
                     if (st.mismatches.isNotEmpty()) {
                         report.append("      first mismatches:\n")
                         for (m in st.mismatches.take(5)) report.append("        L${m.line} [${m.category}] `${m.snippet}`\n          K2:   ${m.fir}\n          ours: ${m.ours}\n")
@@ -92,6 +94,7 @@ class SemaOracleTest {
         val out = File(System.getProperty("mini.reports") ?: "build/reports")
         out.mkdirs()
         File(out, "sema-oracle.txt").writeText(report.toString())
+        File(out, "sema-oracle-mismatches.txt").writeText(all.toString())
         println(report.toString().lines().filter { it.startsWith("  AREA") || it.startsWith("OVERALL") }.joinToString("\n"))
         if (update) {
             val bf = System.getProperty("mini.semaBaseline")

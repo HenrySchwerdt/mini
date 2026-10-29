@@ -45,6 +45,12 @@ class ErrType(val reason: String) : Type() {
     override fun withNullable(n: Boolean): Type = this
 }
 
+/** The captured type of a projected type argument (`Captured(out X)`); approximated by [approximate] where K2 does so. */
+class CapType(val arg: TArg) : Type() {
+    override val nullable: Boolean get() = false
+    override fun withNullable(n: Boolean): Type = if (n) ClassTypeHolder.nullableAnyOf(this) else this
+}
+
 /** An inference variable (see Infer.kt). */
 class VarType(val v: TypeVariable, override val nullable: Boolean) : Type() {
     override fun withNullable(n: Boolean): Type = if (n == nullable) this else VarType(v, n)
@@ -119,6 +125,7 @@ fun renderType(t: Type): String {
             return sb.append(')').toString()
         }
         is ErrType -> return "<error>"
+        is CapType -> return "Captured(" + renderArg(t.arg) + ")"
         is VarType -> return "<tv:" + t.v.tp.name + ">" + (if (t.nullable) "?" else "")
         is IntLiteralType -> return "ILT(" + t.value + ")"
     }
@@ -166,6 +173,7 @@ fun typeEquals(a: Type, b: Type): Boolean {
             return true
         }
         is ErrType -> return b is ErrType
+        is CapType -> return b is CapType && (a.arg === b.arg || argEquals(a.arg, b.arg))
         is VarType -> return b is VarType && a.v === b.v
         is IntLiteralType -> return b is IntLiteralType && a.value == b.value
     }
@@ -200,4 +208,10 @@ fun containsError(t: Type): Boolean {
         }
         else -> return false
     }
+}
+
+/** only used to give [CapType] a nullable form: the most general nullable type is `Any?`, resolved through the symbol table */
+object ClassTypeHolder {
+    var any: Type? = null
+    fun nullableAnyOf(t: Type): Type = any ?: t
 }

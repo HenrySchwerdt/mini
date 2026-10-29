@@ -72,7 +72,10 @@ private fun BodyChecker.expr0(e: Expr, expected: Type?): Type {
         is WhileExpr -> return whileExpr(e)
         is DoWhileExpr -> return doWhile(e)
         is ObjectLiteral -> return objectLiteral(e, expected)
-        is CollectionLiteral -> return unsupported(e.start, "collection literal")
+        is CollectionLiteral -> {
+            for (x in e.elements) expr(x, null)
+            return ErrType("collection literal")
+        }
         is ErrorExpr -> return ErrType("syntax error")
     }
 }
@@ -439,7 +442,8 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
         "++", "--" -> {
             val t = fin(expr(e.expr, null))
             val name = if (e.op == "++") "inc" else "dec"
-            resolveOperator(name, t, emptyList(), e.start, null)
+            val res = resolveOperator(name, t, emptyList(), e.start, null)
+            if (res != null) recordAt(e.start, e.start + 2, res.ret, res.callee, res.calleeText)
             invalidate(e.expr)
             return t
         }
@@ -458,7 +462,8 @@ fun BodyChecker.postfix(e: PostfixExpr): Type {
     }
     val t = fin(expr(e.expr, null))
     val name = if (e.op == "++") "inc" else "dec"
-    resolveOperator(name, t, emptyList(), e.start, null)
+    val res = resolveOperator(name, t, emptyList(), e.start, null)
+    if (res != null) recordAt(e.end - 2, e.end, res.ret, res.callee, res.calleeText)
     invalidate(e.expr)
     record(e, t, null)
     return t

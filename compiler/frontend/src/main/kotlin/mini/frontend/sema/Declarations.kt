@@ -31,6 +31,8 @@ fun Sema.checkFun(f: FunSym) {
     if (needs) f.retState = 1
     val bc = BodyChecker(this, file)
     for (tp in f.typeParams) ensureBounds(tp)
+    bc.checkAnnotations(d.mods)
+    for (p in d.params) bc.checkAnnotations(p.mods)
     recordFunSignature(bc, f)
     bc.checkFunBody(f)
     if (needs) {
@@ -69,7 +71,7 @@ fun Sema.initializerScope(c: ClassSym): Scope {
     val pc = c.primaryCtor ?: return body
     ensureSig(pc)
     val l = LocalScope(body)
-    for (p in pc.params) l.vars[p.name] = p
+    for (p in pc.params) if (p.decl?.valVar == null) l.vars[p.name] = p
     return l
 }
 
@@ -89,6 +91,7 @@ fun Sema.checkProp(p: PropSym) {
         return
     }
     ensurePropSig(p)
+    BodyChecker(this, file).checkAnnotations(d.mods)
     val needsInference = p.type == null
     if (needsInference) p.typeState = 1
     val bc = BodyChecker(this, file)
@@ -166,6 +169,8 @@ fun Sema.checkClass(c: ClassSym) {
     for (tp in c.typeParams) ensureBounds(tp)
     val hs = c.headerScope ?: return
     val bodyScope = c.bodyScope ?: return
+    BodyChecker(this, file).checkAnnotations(d.mods)
+    for (en in d.enumEntries) BodyChecker(this, file).checkAnnotations(en.mods)
     // primary constructor parameters and super constructor calls
     val pc = c.primaryCtor
     val bc = BodyChecker(this, file)
@@ -178,6 +183,7 @@ fun Sema.checkClass(c: ClassSym) {
             i++
         }
         bc.scope = hs
+        for (p in pc.primaryParams) bc.checkAnnotations(p.mods)
         for (p in pc.primaryParams) {
             val dv = p.default
             if (dv != null) {
@@ -307,7 +313,10 @@ fun BodyChecker.delegationCall(c: ClassSym, d: CtorDelegation) {
         }
     }
     val res = resolveCallGroups(d, listOf(cands), args, null, null, false)
-    record(d, sema.unitType, res?.callee)
+    val text = file.text
+    var kw = text.indexOf(if (d.isThis) "this" else "super", d.start)
+    if (kw < 0 || kw > d.end) kw = d.start
+    recordAt(kw, d.end, sema.unitType, res?.callee, res?.calleeText)
 }
 
 fun BodyChecker.enumEntryCall(c: ClassSym, en: EnumEntryDecl) {
@@ -318,6 +327,32 @@ fun BodyChecker.enumEntryCall(c: ClassSym, en: EnumEntryDecl) {
     for (k in c.ctors) cands.add(Candidate(k, HashMap(), null))
     val res = resolveCallGroups(en, listOf(cands), args, null, null, false)
     record(en, c.thisType(), res?.callee)
+    val text = file.text
+    var from = text.indexOf(en.name, en.start)
+    if (from >= 0) {
+        from += en.name.length
+        while (from < en.end && text[from].isWhitespace()) from++
+        if (from < en.end && text[from] == '(') {
+            var depth = 0
+            var j = from
+            while (j < en.end) {
+                val ch = text[j]
+                if (ch == '(') depth++
+                else if (ch == ')') {
+                    depth--
+                    if (depth == 0) break
+                } else if (ch == '"') {
+                    j++
+                    while (j < en.end && text[j] != '"') {
+                        if (text[j] == '\\') j++
+                        j++
+                    }
+                }
+                j++
+            }
+            recordAt(from, j + 1, sema.unitType, res?.callee, res?.calleeText)
+        }
+    }
 }
 
 // ---- driver -------------------------------------------------------------------------------------------------------------------------------------
