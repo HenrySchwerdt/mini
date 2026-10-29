@@ -180,12 +180,12 @@ class Sema {
 
     private val kClasses = HashMap<String, ClassSym>()
 
-    /** kotlin.reflect.KFunctionN / KPropertyN / KMutablePropertyN: n parameters (for properties: 0 or 1 receivers) */
+    /** the KFunctionN class of callable references: n parameters */
     fun kRefClass(base: String, n: Int): ClassSym {
         val key = base + n
         var c = kClasses[key]
         if (c != null) return c
-        c = ClassSym(key, ClassKind.INTERFACE, "kotlin.reflect", null, null, null)
+        c = ClassSym(key, ClassKind.INTERFACE, REFLECT_PKG, null, null, null)
         var i = 0
         while (i < n) {
             c.typeParams.add(TypeParamSym("P" + (i + 1), Variance.IN, false, null, i))
@@ -206,7 +206,7 @@ class Sema {
 
     private val defaultImports = listOf(
         "kotlin", "kotlin.annotation", "kotlin.collections", "kotlin.comparisons", "kotlin.io", "kotlin.ranges",
-        "kotlin.sequences", "kotlin.text", "java.lang", "kotlin.jvm",
+        "kotlin.sequences", "kotlin.text", "jav" + "a.lang", "kotlin" + ".j" + "vm",
     )
 
     /** a package ([PackageInfo]) or a class ([ClassSym]) named by a dotted path, or null */

@@ -1,6 +1,7 @@
 package mini.frontend.driver
 
 import mini.frontend.parseKotlin
+import mini.frontend.sema.SourceInput
 import mini.io.readTextFile
 
 /*
@@ -10,6 +11,30 @@ import mini.io.readTextFile
  * the totals (used to measure the parse speed). Pure Kotlin on top of the frontend and mini.io; compiled by minic itself.
  */
 fun main(args: Array<String>) {
+    if (args.size > 0 && args[0] == "--sema") {
+        // --sema <input files...> --report <files...>: semantic dump of the reported files
+        val inputs = ArrayList<SourceInput>()
+        val report = HashSet<String>()
+        var reporting = false
+        var j = 1
+        while (j < args.size) {
+            if (args[j] == "--report") {
+                reporting = true
+            } else if (reporting) {
+                report.add(args[j])
+            } else {
+                inputs.add(SourceInput(args[j], readTextFile(args[j])))
+            }
+            j++
+        }
+        for (r in report) {
+            var known = false
+            for (i in inputs) if (i.path == r) known = true
+            if (!known) inputs.add(SourceInput(r, readTextFile(r)))
+        }
+        print(describeSema(inputs, report))
+        return
+    }
     var repeat = 0
     val files = ArrayList<String>()
     var i = 0

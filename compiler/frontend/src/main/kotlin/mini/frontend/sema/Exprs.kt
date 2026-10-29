@@ -135,8 +135,7 @@ fun BodyChecker.literal(e: LiteralExpr, expected: Type?): Type {
                 if (text.endsWith("L")) text = text.substring(0, text.length - 1)
             }
             if (unsigned) return unsupported(e.start, "unsigned literal")
-            val v = parseIntLiteral(text)
-            if (v == null) return sema.longType
+            val v: Long = parseIntLiteral(text) ?: return sema.longType
             if (isLong) return sema.longType
             val lit = IntLiteralType(v, v <= 2147483647L)
             if (expected != null && expected is ClassType) {

@@ -33,6 +33,7 @@ tasks.test {
     systemProperty("mini.semaBaseline", file("src/test/resources/sema-oracle-baseline.txt").absolutePath)
     systemProperty("mini.reports", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
     systemProperty("mini.oracleCache", layout.buildDirectory.dir("sema-oracle-cache").get().asFile.absolutePath)
+    inputs.property("semaNativeFiles", System.getenv("MINI_SEMA_NATIVE_FILES") ?: "")
     inputs.property("semaAreas", System.getenv("MINI_SEMA_AREAS") ?: "")
     inputs.property("semaUpdate", System.getenv("MINI_SEMA_UPDATE") ?: "")
     inputs.property("probe", System.getenv("MINI_FIR_PROBE") ?: "")

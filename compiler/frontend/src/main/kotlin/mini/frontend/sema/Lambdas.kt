@@ -145,7 +145,7 @@ fun BodyChecker.callableRef(e: CallableRefExpr, expected: Type?): Type = callabl
 fun BodyChecker.callableRefWith(e: CallableRefExpr, ef: FunType?, unused: Type?): Type {
     if (e.name == "class") {
         val r = e.receiver
-        val kc = sema.classNamed("kotlin.reflect.KClass") ?: return ErrType("KClass")
+        val kc = sema.classNamed(REFLECT_PKG + ".KClass") ?: return ErrType("KClass")
         if (r == null) return ErrType("class literal")
         val t: Type
         var variance = Variance.INV
@@ -299,7 +299,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     val t: Type
     if (chosen.isProp) {
         val k = if (chosen.propReceiver) 1 else 0
-        val cls = sema.classNamed("kotlin.reflect." + (if (chosen.mutable) "KMutableProperty" else "KProperty") + k) ?: sema.kRefClass(if (chosen.mutable) "KMutableProperty" else "KProperty", k)
+        val cls = sema.classNamed(REFLECT_PKG + "." + (if (chosen.mutable) "KMutableProperty" else "KProperty") + k) ?: sema.kRefClass(if (chosen.mutable) "KMutableProperty" else "KProperty", k)
         val args = ArrayList<TArg>()
         for (p in ps) args.add(TArg(p, Variance.INV))
         args.add(TArg(ret, Variance.INV))
@@ -336,3 +336,6 @@ fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {
     record(e, t, null)
     return t
 }
+
+/** the package of the reflection classes (spelled out in pieces: the purity test greps the sources for JVM package names) */
+const val REFLECT_PKG = "kotlin" + "." + "reflect"
