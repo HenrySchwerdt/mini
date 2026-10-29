@@ -453,8 +453,13 @@ fun Ast2Ir.isFloating(t: Type): Boolean {
 
 fun Ast2Ir.equality(e: BinaryExpr): IrExpression {
     val ident = e.op == "===" || e.op == "!=="
-    val l = if (ident) convert(e.left) else convertEqOperand(e.left)
-    val r = if (ident) convert(e.right) else convertEqOperand(e.right)
+    var l = if (ident) convert(e.left) else convertEqOperand(e.left)
+    var r = if (ident) convert(e.right) else convertEqOperand(e.right)
+    if (!ident && !l.type.nullable && !r.type.nullable && isSmallNumber(l.type.classFqName) && isSmallNumber(r.type.classFqName)) {
+        // Byte and Short are compared as Int (K2 does the same)
+        l = convertNumber(l, "kotlin.Int")
+        r = convertNumber(r, "kotlin.Int")
+    }
     val neg = e.op == "!=" || e.op == "!=="
     val name = if (ident) "EQEQEQ" else if (isFloating(l.type) && isFloating(r.type)) "ieee754equals" else "EQEQ"
     val eq = IrCall(builtinFun(name), sema.booleanType)
@@ -492,9 +497,10 @@ fun Ast2Ir.comparison(e: BinaryExpr): IrExpression {
     if (!l.type.nullable && !rr.type.nullable && isPrimitiveName(ln) && isPrimitiveName(rn)) {
         var a = l
         var b = rr
-        if (ln != rn) {
-            // the narrower operand is converted to the wider type: `x.toLong()`
-            val wide = widerNumber(ln!!, rn!!)
+        if (ln != rn || isSmallNumber(ln)) {
+            // the narrower operand is converted to the wider type: `x.toLong()`; Byte and Short compare as Int
+            var wide = widerNumber(ln!!, rn!!)
+            if (isSmallNumber(wide)) wide = "kotlin.Int"
             if (ln != wide) a = convertNumber(a, wide)
             if (rn != wide) b = convertNumber(b, wide)
         }
@@ -513,7 +519,10 @@ fun Ast2Ir.comparison(e: BinaryExpr): IrExpression {
     return c
 }
 
+fun isSmallNumber(n: String?): Boolean = n == "kotlin.Byte" || n == "kotlin.Short"
+
 fun numberRank(n: String): Int = when (n) {
+    "kotlin.Byte", "kotlin.Short" -> 0
     "kotlin.Int" -> 1
     "kotlin.Long" -> 2
     "kotlin.Float" -> 3
@@ -535,7 +544,7 @@ fun Ast2Ir.convertNumber(e: IrExpression, to: String): IrExpression {
 }
 
 fun isPrimitiveName(n: String?): Boolean =
-    n == "kotlin.Int" || n == "kotlin.Long" || n == "kotlin.Double" || n == "kotlin.Float"
+    n == "kotlin.Int" || n == "kotlin.Long" || n == "kotlin.Double" || n == "kotlin.Float" || n == "kotlin.Byte" || n == "kotlin.Short"
 
 fun Ast2Ir.inExpr(e: BinaryExpr): IrExpression {
     val r = rec(e) ?: fail(e, "in without record")
