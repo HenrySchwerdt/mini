@@ -180,7 +180,7 @@ class RefCand(val sym: Sym, val params: List<Type>, val ret: Type, val tps: List
     var propReceiver = false
 }
 
-private fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<RefCand>) {
+internal fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<RefCand>) {
     val fn = c.fn
     sema.ensureSig(fn)
     if (fn.kind == FunKind.FUNCTION_INVOKE) return

@@ -63,7 +63,7 @@ class LlvmEndToEndTest {
         val name = src.nameWithoutExtension
         val exe = File(work, name)
         val ll = File(work, "$name.ll")
-        val (rc, compileErr) = runCli(listOf("build", src.path, "-o", exe.path, "--backend=llvm", "--emit-ll", ll.path, "--cflag", "-Werror"))
+        val (rc, compileErr) = runCli(listOf("build", src.path, *CInteropTestData.cArgs(src), "-o", exe.path, "--backend=llvm", "--emit-ll", ll.path, "--cflag", "-Werror"))
 
         val cerr = sibling(src, "cerr")
         if (cerr.isFile) {
@@ -107,7 +107,7 @@ class LlvmEndToEndTest {
                 val exe = File(work, "$name.asan")
                 val (rc, err) = runCli(
                     listOf(
-                        "build", src.path, "-o", exe.path, "--backend=llvm", "--cc", "clang", "--link-cc", linker!!,
+                        "build", src.path, *CInteropTestData.cArgs(src), "-o", exe.path, "--backend=llvm", "--cc", "clang", "--link-cc", linker!!,
                         "--cflag", "-fsanitize=address,undefined", "--cflag", "-fno-sanitize-recover=undefined",
                         "--cflag", "-g", "--cflag", "-fno-omit-frame-pointer",
                     ),
@@ -133,7 +133,7 @@ class LlvmEndToEndTest {
         return listOf("--stats", "--no-rc-opt", "--no-strict", "--no-conv").map { flag ->
             DynamicTest.dynamicTest("llvm rc_stress $flag") {
                 val exe = File(work, "rc_stress" + flag.replace("-", "_"))
-                val (rc, err) = runCli(listOf("build", src.path, "-o", exe.path, "--backend=llvm", flag))
+                val (rc, err) = runCli(listOf("build", src.path, *CInteropTestData.cArgs(src), "-o", exe.path, "--backend=llvm", flag))
                 assertEquals(0, rc, "build with $flag failed:\n$err")
                 val proc = ProcessBuilder(exe.path).start()
                 val stdout = proc.inputStream.readBytes().toString(Charsets.UTF_8)

@@ -5,7 +5,11 @@ import mini.backend.EmitError
 import mini.backend.MirClass
 import mini.backend.MirType
 import mini.backend.TBoolean
+import mini.backend.TByte
 import mini.backend.TChar
+import mini.backend.TFloat
+import mini.backend.TPtr
+import mini.backend.TShort
 import mini.backend.TDouble
 import mini.backend.TInt
 import mini.backend.TLong
@@ -48,7 +52,10 @@ internal class Layouts(private val classes: Map<String, MirClass>, private val t
         t === TInt -> 4
         t === TLong || t === TDouble -> 8
         t === TBoolean -> 1
-        t === TChar -> 2
+        t === TChar || t === TShort -> 2
+        t === TByte -> 1
+        t === TFloat -> 4
+        t is TPtr -> target.ptrBytes
         t.isRef -> target.ptrBytes
         else -> throw EmitError("no size for $t")
     }

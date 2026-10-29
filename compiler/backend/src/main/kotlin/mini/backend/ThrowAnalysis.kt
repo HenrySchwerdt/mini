@@ -47,6 +47,7 @@ internal class ThrowAnalysis(private val module: MirModule) {
         is MirStmt.Declare -> s.init?.let { expr(it) } ?: false
         is MirStmt.Assign -> expr(s.value)
         is MirStmt.SetField -> expr(s.obj) || expr(s.value)
+        is MirStmt.Store -> expr(s.ptr) || expr(s.value)
         is MirStmt.Eval -> expr(s.expr)
         is MirStmt.If -> expr(s.cond) || s.thenBody.any { stmt(it) } || s.elseBody.any { stmt(it) }
         is MirStmt.Block -> s.body.any { stmt(it) }
@@ -82,6 +83,12 @@ internal class ThrowAnalysis(private val module: MirModule) {
         is MirExpr.ICall -> expr(e.receiver) || e.args.any { expr(it) } || dynamicMayThrow
         is MirExpr.New -> e.args.any { expr(it) } || e.ctorCName in mayThrow
         is MirExpr.StringLength -> expr(e.operand)
+        is MirExpr.Load -> expr(e.ptr)
+        is MirExpr.PtrAdd -> expr(e.ptr) || expr(e.bytes)
+        // C code cannot throw; a staticCFunction callback never lets an exception escape (it panics instead)
+        is MirExpr.CCall -> e.args.any { expr(it) }
+        is MirExpr.CCallIndirect -> expr(e.callee) || e.args.any { expr(it) }
+        is MirExpr.FuncAddr -> false
     }
 
     private fun positiveConst(e: MirExpr) = (e is MirExpr.IntConst && e.value > 0) || (e is MirExpr.LongConst && e.value > 0L)

@@ -166,7 +166,6 @@ fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boole
     // extension members of implicit class receivers
     val ext = ArrayList<Candidate>()
     for (r in implicitReceivers()) {
-        if (r.cls == null) continue
         for (m in members.funsNamed(r.type, name)) {
             if (m.fn.decl?.receiver != null) {
                 val c = Candidate(m.fn, m.subst, t)
@@ -246,6 +245,13 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                         val ic = invokeCandidates(typeWithFlowVar(v, vt))
                         for (c in ic) c.invokeVar = v
                         if (ic.isNotEmpty()) groups.add(ic)
+                        // `operator fun T.invoke(...)` declared as a top-level extension (C function pointers, kotlinx.cinterop)
+                        val eg = ArrayList<List<Candidate>>()
+                        extensionGroups("invoke", typeWithFlowVar(v, vt), eg)
+                        for (g in eg) {
+                            for (c in g) c.invokeVar = v
+                            groups.add(g)
+                        }
                     }
                 }
                 val lc = s.classes[name]
@@ -291,6 +297,12 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                             sema.ensurePropSig(x)
                             val pt = sema.typeOfProp(x)
                             for (ic in invokeCandidates(pt)) {
+                                ic.invokeProp = x
+                                il.add(ic)
+                            }
+                            val eg = ArrayList<List<Candidate>>()
+                            extensionGroups("invoke", pt, eg)
+                            for (g in eg) for (ic in g) {
                                 ic.invokeProp = x
                                 il.add(ic)
                             }
@@ -445,6 +457,15 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
             return false
         }
         return pt is TypeParamType
+    }
+    if (u is CallableRefExpr && u.name != "class" && u.receiver == null && pt is FunType) {
+        // `f(::g)` with overloads of `f` over different function arities: the reference must have the arity of the parameter type
+        val cands = ArrayList<RefCand>()
+        for (g in unqualifiedGroups(u.name)) for (c in g) funRefCand(c, false, cands)
+        if (cands.isEmpty()) return true
+        val want = pt.params.size + (if (pt.receiver != null) 1 else 0)
+        for (c in cands) if (c.params.size == want) return true
+        return false
     }
     return true
 }
@@ -764,8 +785,15 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                 val lt = anonFunWith(u, if (expectedFun != null) cs.resolveFixed(expectedFun) as FunType else null)
                 cs.addSub(lt, pt)
             } else if (u is CallableRefExpr) {
-                if (expectedFun != null) cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
-                val ef = if (expectedFun != null) cs.resolveFixed(expectedFun) as FunType else null
+                // parameter types nothing else determines (`staticCFunction(::callback)`) come from the referenced function
+                var unknown = false
+                if (expectedFun != null) {
+                    val free = ArrayList<TypeVariable>()
+                    for (p in expectedFun.params) cs.unfixedVars(cs.resolveFixed(p), free)
+                    for (v in free) if (v.equal.isEmpty() && v.lower.isEmpty()) unknown = true
+                }
+                if (expectedFun != null && !unknown) cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
+                val ef = if (expectedFun != null && !unknown) cs.resolveFixed(expectedFun) as FunType else null
                 val lt = callableRefWith(u, ef, if (pt is FunType || pt is VarType) null else null)
                 cs.addSub(lt, pt)
             }

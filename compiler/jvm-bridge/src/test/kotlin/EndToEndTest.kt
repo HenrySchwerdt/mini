@@ -71,7 +71,7 @@ class EndToEndTest {
                     System.setErr(PrintStream(errBuf, true, "UTF-8"))
                     Cli.run(
                         listOf(
-                            "build", src.path, "-o", exe.path, "--cc", cc!!,
+                            "build", src.path, *CInteropTestData.cArgs(src), "-o", exe.path, "--cc", cc!!,
                             "--runtime-src", File(runtime, "src").path,
                             "--runtime-include", File(runtime, "include").path,
                             "--cflag", "-fsanitize=address,undefined", "--cflag", "-fno-sanitize-recover=undefined",
@@ -109,7 +109,7 @@ class EndToEndTest {
             System.setErr(PrintStream(errBuf, true, "UTF-8"))
             Cli.run(
                 listOf(
-                    "build", src.path, "-o", exe.path, "--emit-c", cOut.path,
+                    "build", src.path, *CInteropTestData.cArgs(src), "-o", exe.path, "--emit-c", cOut.path,
                     "--runtime-src", File(runtime, "src").path,
                     "--runtime-include", File(runtime, "include").path, "--cflag", "-Werror",
                 ),

@@ -1,0 +1,1 @@
+unsupported construct: external fun 'puts': parameter 's' of type 'kotlin.String' has no C representation

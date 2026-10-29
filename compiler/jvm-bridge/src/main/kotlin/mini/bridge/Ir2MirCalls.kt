@@ -2,6 +2,10 @@
 
 package mini.bridge
 
+import mini.backend.TByte
+import mini.backend.TShort
+import mini.backend.TFloat
+import mini.backend.TPtr
 import mini.backend.ANY_CNAME
 import mini.backend.BinaryOp
 import mini.backend.Mangling
@@ -148,7 +152,7 @@ internal fun Ir2Mir.tmpOfPlain(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
 internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     val r = callInner(c, out)
     // a call that never returns normally must still be emitted when its (Nothing) value is discarded
-    if (r.type == TNothing && (r is MirExpr.Call || r is MirExpr.VCall || r is MirExpr.ICall || r is MirExpr.RuntimeCall || r is MirExpr.New)) {
+    if (r.type == TNothing && (r is MirExpr.Call || r is MirExpr.VCall || r is MirExpr.ICall || r is MirExpr.RuntimeCall || r is MirExpr.New || r is MirExpr.CCall || r is MirExpr.CCallIndirect)) {
         out += MirStmt.Eval(r)
         return MirExpr.Unreachable(TNothing)
     }
@@ -163,6 +167,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     lateinitIsInitialized(c, name, if (parent is IrClass) parent.kotlinFqName.asString() else (parent as? IrPackageFragment)?.packageFqName?.asString() ?: "", out)?.let { return it }
     // natively implemented function (@CSymbol, docs/stdlib.md)
     Reachability.cSymbol(owner)?.let { return cSymbolCall(c, it, out) }
+    // C interop: external functions of C, the kotlinx.cinterop intrinsics, @CStruct fields
+    interopCall(c, owner, out)?.let { return it }
     memoryApiCall(c, owner, out)?.let { return it }
 
     if (isFunctionInvoke(owner)) return invokeFunctionValue(c, out)
@@ -375,8 +381,10 @@ internal fun Ir2Mir.consoleCall(c: IrCall, name: String, args: List<IrExpression
             TDouble -> "mk_print_double"
             TBoolean -> "mk_print_boolean"
             TChar -> "mk_print_char"
+            TFloat -> "mk_print_float"
             else -> null
         }
+        if (v.type == TByte || v.type == TShort) return MirExpr.RuntimeCall("mk_print_int", listOf(MirExpr.Convert(v, TInt)), TUnit)
         if (fn != null) return MirExpr.RuntimeCall(fn, listOf(v), TUnit)
         return MirExpr.RuntimeCall("mk_print_string", listOf(toStringExpr(v, c, out)), TUnit)
     }
@@ -387,6 +395,8 @@ internal fun Ir2Mir.consoleCall(c: IrCall, name: String, args: List<IrExpression
         TDouble -> MirExpr.RuntimeCall("mk_println_double", listOf(v), TUnit)
         TBoolean -> MirExpr.RuntimeCall("mk_println_boolean", listOf(v), TUnit)
         TChar -> MirExpr.RuntimeCall("mk_println_char", listOf(v), TUnit)
+        TFloat -> MirExpr.RuntimeCall("mk_println_float", listOf(v), TUnit)
+        TByte, TShort -> MirExpr.RuntimeCall("mk_println_int", listOf(MirExpr.Convert(v, TInt)), TUnit)
         else -> if (v.type.isRef) MirExpr.RuntimeCall("mk_println_string", listOf(toStringExpr(v, c, out)), TUnit)
         else unsupported(c, "println of a value of type ${v.type}")
     }
@@ -397,7 +407,7 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
         val v = operands(args, out)
         if (v.size != 1) unsupported(c, "compiler intrinsic '$name'")
         val t = v[0].type
-        return if (t is TBoxed) MirExpr.Unbox(v[0], t.prim) else if (t.isRef) MirExpr.NotNull(v[0]) else v[0]
+        return if (t is TBoxed) MirExpr.Unbox(v[0], t.prim) else if (t.isRef || t is TPtr) MirExpr.NotNull(v[0]) else v[0]
     }
     val op = when (name) {
         "less" -> BinaryOp.Lt
@@ -416,6 +426,7 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
     if (op == BinaryOp.Eq || op == BinaryOp.IdEq) {
         if (ta.isRef || tb.isRef) return refEquality(op, v[0], v[1], c, out)
     }
+    if (ta is TPtr && tb is TPtr) return MirExpr.Binary(if (op == BinaryOp.IdEq) BinaryOp.Eq else op, v[0], v[1])
     if (ta != tb) unsupported(c, "comparison of $ta with $tb")
     if (ta == TString && op != BinaryOp.Eq) unsupported(c, "ordering comparison of strings")
     return MirExpr.Binary(if (op == BinaryOp.IdEq) BinaryOp.Eq else op, v[0], v[1])
@@ -427,6 +438,7 @@ internal fun Ir2Mir.refEquality(op: BinaryOp, a: MirExpr, b: MirExpr, at: IrElem
     if (ta === TNull && tb === TNull) return MirExpr.BooleanConst(true)
     if (ta === TNull || tb === TNull) {
         val other = if (ta === TNull) b else a
+        if (other.type is TPtr) return MirExpr.Binary(BinaryOp.IdEq, other, MirExpr.NullConst(TPtr(true)))
         if (!other.type.isRef) return MirExpr.BooleanConst(false)
         return MirExpr.Binary(BinaryOp.IdEq, other, MirExpr.NullConst())
     }
@@ -475,9 +487,13 @@ internal fun Ir2Mir.primitiveMember(
         "toLong" -> return convertTo(recv, TLong, c)
         "toDouble" -> return convertTo(recv, TDouble, c)
         "toChar" -> return convertTo(recv, TChar, c)
+        "toByte" -> return convertTo(recv, TByte, c)
+        "toShort" -> return convertTo(recv, TShort, c)
+        "toFloat" -> return convertTo(recv, TFloat, c)
         "<get-code>" -> return convertTo(recv, TInt, c)
         "hashCode" -> return when (recv.type) {
             TInt -> recv
+            TByte, TShort -> MirExpr.Convert(recv, TInt)
             TChar -> MirExpr.Convert(recv, TInt)
             TBoolean -> MirExpr.Conditional(recv, MirExpr.IntConst(1231), MirExpr.IntConst(1237))
             TLong -> MirExpr.Convert(
@@ -500,11 +516,11 @@ internal fun Ir2Mir.primitiveMember(
 
     // unary numeric
     if (v.size == 1) {
-        val numeric = if (recv.type == TChar) MirExpr.Convert(recv, TInt) else recv
+        val numeric = if (recv.type == TChar || recv.type == TByte || recv.type == TShort) MirExpr.Convert(recv, TInt) else recv
         return when (name) {
             "unaryMinus" -> MirExpr.Unary(UnaryOp.Neg, numeric)
             "unaryPlus" -> numeric
-            "inv" -> MirExpr.Unary(UnaryOp.Inv, recv)
+            "inv" -> convertTo(MirExpr.Unary(UnaryOp.Inv, numeric), recv.type, c)
             "inc" -> convertTo(incDec(numeric, BinaryOp.Add), recv.type, c)
             "dec" -> convertTo(incDec(numeric, BinaryOp.Sub), recv.type, c)
             else -> unsupported(c, "call to '$cls.$name'")
@@ -540,21 +556,22 @@ internal fun Ir2Mir.primitiveMember(
     return convertTo(r, resultType, c)
 }
 
-internal fun Ir2Mir.widenChar(e: MirExpr): MirExpr = if (e.type == TChar) MirExpr.Convert(e, TInt) else e
+internal fun Ir2Mir.widenChar(e: MirExpr): MirExpr = if (e.type == TChar || e.type == TByte || e.type == TShort) MirExpr.Convert(e, TInt) else e
 
 internal fun Ir2Mir.incDec(e: MirExpr, op: BinaryOp): MirExpr = when (e.type) {
     TInt -> MirExpr.Binary(op, e, MirExpr.IntConst(1))
     TLong -> MirExpr.Binary(op, e, MirExpr.LongConst(1))
     TDouble -> MirExpr.Binary(op, e, MirExpr.DoubleConst(1.0))
+    TFloat -> MirExpr.Binary(op, e, MirExpr.Convert(MirExpr.DoubleConst(1.0), TFloat))
     else -> throw IllegalStateException("inc/dec on ${e.type}")
 }
 
 internal fun Ir2Mir.widest(a: MirType, b: MirType, at: IrElement): MirType {
     fun rank(t: MirType) = when (t) {
-        TInt, TChar -> 1; TLong -> 2; TDouble -> 3
+        TInt, TChar, TByte, TShort -> 1; TLong -> 2; TFloat -> 3; TDouble -> 4
         else -> unsupported(at, "arithmetic on $t")
     }
-    return if (rank(a) >= rank(b)) (if (a == TChar) TInt else a) else b
+    return if (rank(a) >= rank(b)) (if (a == TChar || a == TByte || a == TShort) TInt else a) else (if (b == TChar || b == TByte || b == TShort) TInt else b)
 }
 
 

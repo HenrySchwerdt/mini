@@ -18,7 +18,7 @@ object Cli {
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
              [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=mini|k2]
-             [--backend=c|llvm] [--emit-ll <path>] [--link-cc <compiler>]
+             [--backend=c|llvm] [--emit-ll <path>] [--link-cc <compiler>] [--c-src <file.c>]...
        minic mem-report <file.kt>... [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [--top <n>] [--user-only]
              [--no-rc-opt] [--no-strict] [--no-conv]"""
 
@@ -60,6 +60,8 @@ object Cli {
         val emitLl: File? = null,
         /** `--link-cc <compiler>`: compiler that compiles libminirt and links an `--backend=llvm` build (default: `--cc`). */
         val linkCc: String? = null,
+        /** `--c-src <file.c>` (repeatable): C files compiled and linked into the program (C interop, `@file:CInclude`). */
+        val cSources: List<File> = emptyList(),
     )
 
     /** Returns the process exit code. */
@@ -185,6 +187,7 @@ object Cli {
         var llvm = false
         var emitLl: File? = null
         var linkCc: String? = null
+        val cSrc = mutableListOf<File>()
         var stdlib: File? = null
         var noStdlib = false
         var out: File? = null
@@ -224,6 +227,7 @@ object Cli {
                 "--backend=c" -> llvm = false
                 "--emit-ll" -> emitLl = File(next(x) ?: return null)
                 "--link-cc" -> linkCc = next(x) ?: return null
+                "--c-src" -> cSrc += File(next(x) ?: return null)
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     sources += File(x)
@@ -234,7 +238,7 @@ object Cli {
         // the own frontend needs the Mini stdlib sources: `--no-stdlib` (the JVM kotlin-stdlib) stays on K2 unless asked otherwise
         if (noStdlib && !explicitFrontend) mini = false
         if (sources.isEmpty() || (needOutput && out == null)) { System.err.println(USAGE); return null }
-        return Options(sources, out ?: File("mem-report"), emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport, wrc = wrc, top = top, userOnly = userOnly, llvm = llvm, emitLl = emitLl, linkCc = linkCc)
+        return Options(sources, out ?: File("mem-report"), emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport, wrc = wrc, top = top, userOnly = userOnly, llvm = llvm, emitLl = emitLl, linkCc = linkCc, cSources = cSrc)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -257,6 +261,9 @@ object Cli {
             } catch (e: mini.lower.LowerDiagnostics) {
                 // like K2's frontend errors: `file.kt:l:c: error: message` lines as they are
                 throw FrontendDriver.FrontendFailure(e.message ?: "compilation failed")
+            } catch (e: mini.lower.UnsupportedConstruct) {
+                // the same report as the K2 path: `file: error: unsupported construct: ...`, exit code 1
+                throw UnsupportedConstruct(e.message ?: "unsupported construct")
             }
         }
         var mir: mini.backend.MirModule? = null
@@ -346,13 +353,16 @@ object Cli {
 
         // 4. clang
         o.output.absoluteFile.parentFile?.mkdirs()
-        if (llvm) return compileLlvm(o, cFile, include, runtimeFiles)
+        if (llvm) return compileLlvm(o, cFile, include, runtimeFiles, module.links)
         val cmd = mutableListOf(o.cc, "-std=c17", "-O1", "-Wall", "-Wno-unused-label", "-Wno-unused-variable", "-Wno-unused-but-set-variable", "-I", include.path)
         if (o.stats) cmd += "-DMK_STATS"
+        cmd += interopIncludeDirs(o)
         cmd += o.cflags
         cmd += cFile.path
         runtimeFiles.forEach { cmd += it.path }
+        o.cSources.forEach { cmd += it.path }
         cmd += listOf("-o", o.output.path, "-lm")
+        module.links.forEach { cmd += "-l$it" }
         val proc = ProcessBuilder(cmd).redirectErrorStream(true).start()
         val text = proc.inputStream.bufferedReader().readText()
         val rc = proc.waitFor()
@@ -362,6 +372,18 @@ object Cli {
         }
         if (text.isNotBlank()) System.err.print(text)
         return 0
+    }
+
+    /** `-I` for the directory of every source file and of every `--c-src` file (`@file:CInclude("mylib.h")` finds headers next to them). */
+    private fun interopIncludeDirs(o: Options): List<String> {
+        val dirs = LinkedHashSet<String>()
+        for (f in o.sources + o.cSources) f.absoluteFile.parentFile?.let { dirs += it.path }
+        val out = ArrayList<String>()
+        for (d in dirs) {
+            out += "-I"
+            out += d
+        }
+        return out
     }
 
     private fun runTool(cmd: List<String>, what: String): String {
@@ -376,7 +398,7 @@ object Cli {
      * `--backend=llvm`: `--cc` (clang) turns the `.ll` into an object file, `--link-cc` (default: `--cc`) compiles
      * libminirt and links. The two steps let a sanitizer build instrument the IR with clang and link with another driver.
      */
-    private fun compileLlvm(o: Options, ll: File, include: File, runtimeFiles: List<File>): Int {
+    private fun compileLlvm(o: Options, ll: File, include: File, runtimeFiles: List<File>, links: List<String>): Int {
         val obj = File.createTempFile("minic-", ".o")
         val warnings = StringBuilder()
         try {
@@ -387,9 +409,12 @@ object Cli {
             val link = mutableListOf(o.linkCc ?: o.cc, "-std=c17", "-O1", "-Wall", "-Wno-unused-label", "-Wno-unused-variable", "-Wno-unused-but-set-variable", "-I", include.path)
             if (o.stats) link += "-DMK_STATS"
             link += o.cflags.filter { !it.startsWith("-Wno-override-module") }
+            link += interopIncludeDirs(o)
             link += obj.path
             runtimeFiles.forEach { link += it.path }
+            o.cSources.forEach { link += it.path }
             link += listOf("-o", o.output.path, "-lm")
+            links.forEach { link += "-l$it" }
             warnings.append(runTool(link, "linking"))
         } finally {
             obj.delete()

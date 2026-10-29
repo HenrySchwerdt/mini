@@ -193,6 +193,7 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
                         expr(s.obj); expr(s.value)
                         if (tr.rcStore(f, s) && !isFreshThisStore(f, s)) local.addField(fieldId(s.owner, s.field))
                     }
+                    is MirStmt.Store -> { expr(s.ptr); expr(s.value) }
                     is MirStmt.Eval -> expr(s.expr)
                     is MirStmt.If -> { expr(s.cond); stmts(s.thenBody); stmts(s.elseBody) }
                     is MirStmt.Block -> stmts(s.body)

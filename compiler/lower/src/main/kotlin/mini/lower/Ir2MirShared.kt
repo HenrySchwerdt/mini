@@ -25,5 +25,5 @@ internal class Progression(
 )
 
 internal val RANGES = setOf("kotlin.ranges.IntRange", "kotlin.ranges.LongRange", "kotlin.ranges.CharRange")
-internal val PRIMITIVES = setOf("kotlin.Int", "kotlin.Long", "kotlin.Double", "kotlin.Boolean", "kotlin.Char", "kotlin.String")
+internal val PRIMITIVES = setOf("kotlin.Int", "kotlin.Long", "kotlin.Double", "kotlin.Boolean", "kotlin.Char", "kotlin.String", "kotlin.Byte", "kotlin.Short", "kotlin.Float")
 

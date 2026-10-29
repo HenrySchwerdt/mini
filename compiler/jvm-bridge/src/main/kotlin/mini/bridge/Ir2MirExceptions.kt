@@ -59,7 +59,7 @@ internal fun Ir2Mir.builtinOf(c: IrClass): BuiltinClass? =
     if (c in classInfos) null else builtinByFq[c.kotlinFqName.asString()]
 
 /** Classes the runtime provides (the exception hierarchy): their stdlib source declarations are not compiled. */
-internal fun Ir2Mir.isRuntimeProvided(c: IrClass): Boolean = builtinByFq.containsKey(c.kotlinFqName.asString())
+internal fun Ir2Mir.isRuntimeProvided(c: IrClass): Boolean = builtinByFq.containsKey(c.kotlinFqName.asString()) || isPtrClass(c)
 
 internal fun Ir2Mir.builtinType(name: String, nullable: Boolean = false): TObject {
     val c = BUILTIN_CLASSES.first { it.cName == name }

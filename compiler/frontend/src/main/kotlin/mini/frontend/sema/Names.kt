@@ -52,13 +52,26 @@ fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
 /** extension properties declared as members of the classes of the implicit receivers */
 fun BodyChecker.memberExtensionProp(name: String, recv: Type): NameRes? {
     for (r in implicitReceivers()) {
-        if (r.cls == null) continue
         for (mp in members.propsNamed(r.type, name)) {
             val er = mp.prop.receiver ?: continue
-            if (ops.isSubtype(recv, ops.substitute(er, mp.subst))) {
-                val nr = NameRes(mp.prop, propBaseType(mp.prop, mp.subst), null, NameRes.VALUE)
-                nr.dispatch = r.ref
-                return nr
+            if (mp.prop.typeParams.isEmpty()) {
+                if (ops.isSubtype(recv, ops.substitute(er, mp.subst))) {
+                    val nr = NameRes(mp.prop, propBaseType(mp.prop, mp.subst), null, NameRes.VALUE)
+                    nr.dispatch = r.ref
+                    return nr
+                }
+            } else {
+                // a generic extension property (`val <T : CVariable> CValues<T>.ptr`): infer its type parameters from the receiver
+                val cs = ConstraintSystem(sema)
+                val m = HashMap<TypeParamSym, Type>()
+                m.putAll(mp.subst)
+                cs.addVariables(mp.prop.typeParams, m)
+                if (cs.addSub(recv, ops.substitute(er, m))) {
+                    cs.fixAll()
+                    val nr = NameRes(mp.prop, cs.resolveFixed(ops.substitute(sema.typeOfProp(mp.prop), m)), null, NameRes.VALUE)
+                    nr.dispatch = r.ref
+                    return nr
+                }
             }
         }
     }
@@ -483,7 +496,10 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
     } else {
         // (expr)(args): invoke on the value
         val ct = fin(expr(callee, null))
-        groups = listOf(invokeCandidates(ct))
+        val ig = ArrayList<List<Candidate>>()
+        ig.add(invokeCandidates(ct))
+        extensionGroups("invoke", ct, ig)
+        groups = ig
     }
     var res = resolveCallGroups(node, groups, args, typeArgs, expected, false)
     if (res == null && recv is ValueRecv && name != null) {

@@ -355,8 +355,8 @@ fun Ast2Ir.invokeCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExp
     val subst = HashMap<TypeParamSym, Type>()
     for (pp in callee.parameters) {
         when (pp.kind) {
-            IrParameterKind.DispatchReceiver -> call.arguments.add(fv)
-            IrParameterKind.ExtensionReceiver -> call.arguments.add(null)
+            IrParameterKind.DispatchReceiver -> call.arguments.add(if (fn.receiver == null) fv else null)
+            IrParameterKind.ExtensionReceiver -> call.arguments.add(if (fn.receiver != null) adaptReceiver(fv, pp) else null)
             IrParameterKind.Regular -> {
                 if (info.recvAsFirstArg && regular == 0) {
                     val recvUse = info.dispatch ?: fail(node, "invoke receiver")

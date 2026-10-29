@@ -403,7 +403,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (ab == HEAP_CLASS) { kind = AllocKind.Heap } else if (ab == RC_CLASS) kind = AllocKind.Rc
         }
         if (kind == AllocKind.Rc || kind == AllocKind.Other) return AVal.untracked(rt, e.pos)
-        val sk = kind?.let { siteKind(it) } ?: SK.Unknown
+        val sk = if (fn.cFree != null) SK.Extern else kind?.let { siteKind(it) } ?: SK.Unknown
         return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, sk, id)), rt.nullable, false, e.pos)
     }
 
@@ -662,6 +662,8 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         }
         // owning, tracked field
         if (vv.tracked && !vv.fresh && !vv.isNull && ((vv.src < 0 && vv.refs.isNotEmpty()) || (vv.src >= 0 && slot(vv.src)?.let { it.bits and B != 0 } == true))) {
+            // a loan of an arena value (a pointer into a memScoped scope) stored in an object that outlives the arena: M0105, not a follow-up M0109
+            if (vv.sites.any { it.kind == SK.Arena } && !checkOwnedInto(ownerSites, vv, f)) return
             if (!takeOwnership(vv, "stored in an owned field") && vv.src >= 0) {
                 val idx = u.paramIndex[vv.src]
                 if (idx != null) u.fn?.storesParams?.add(idx)
@@ -746,6 +748,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun helpFor(n: String, k: SK): String = when (k) {
         SK.Resource -> "call `$n.close()` or wrap in `$n.use { ... }`"
         SK.Param -> "release `$n` with `$n.free()` or pass it on to an `@Owned` parameter"
+        SK.Extern -> "call the C function named in `@Owned(free = ...)` with `$n` on every path (or `nativeHeap.free($n)` for memory from `malloc`)"
         else -> "call `$n.free()` on every path (or `$n.use { ... }` for AutoCloseable), or move it to an owner"
     }
 

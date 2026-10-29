@@ -7,13 +7,20 @@ enum class Mode { Strict, Managed }
 @Retention(AnnotationRetention.BINARY)
 annotation class MemoryMode(val mode: Mode)
 
-/** Ownership is transferred (parameter, return value, field). Type position: `fun f(b: @Owned Buf): @Owned Buf`. */
+/**
+ * Ownership is transferred (parameter, return value, field). Type position: `fun f(b: @Owned Buf): @Owned Buf`.
+ *
+ * On an `external fun` of C (docs/plan-kotlin.md 7): `@Owned(free = "uv_loop_close") external fun make(): CPointer<...>?` says the
+ * result is a C allocation the caller owns: the checker requires it to be released by calling the C function [free] with it
+ * (or by `nativeHeap.free` when it came from `malloc`), like any other `Deallocating` allocation (M0102 / M0103 / M0101).
+ * Pointers from C functions without `@Owned` are externally managed: no obligation.
+ */
 @Target(
     AnnotationTarget.TYPE, AnnotationTarget.FUNCTION, AnnotationTarget.VALUE_PARAMETER,
     AnnotationTarget.PROPERTY, AnnotationTarget.FIELD, AnnotationTarget.LOCAL_VARIABLE,
 )
 @Retention(AnnotationRetention.BINARY)
-annotation class Owned
+annotation class Owned(val free: String = "")
 
 /** Only lent: must not be stored, freed or returned as owned. Default for parameters. */
 @Target(

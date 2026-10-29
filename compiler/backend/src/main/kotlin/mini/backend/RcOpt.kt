@@ -184,6 +184,11 @@ private fun computeChildren(e: MirExpr): List<MirExpr> = when (e) {
     is MirExpr.ICall -> listOf(e.receiver) + e.args
     is MirExpr.New -> e.args
     is MirExpr.StringLength -> listOf(e.operand)
+    is MirExpr.Load -> listOf(e.ptr)
+    is MirExpr.PtrAdd -> listOf(e.ptr, e.bytes)
+    is MirExpr.CCall -> e.args
+    is MirExpr.CCallIndirect -> listOf(e.callee) + e.args
+    is MirExpr.FuncAddr -> NO_CHILDREN
     is MirExpr.IntConst, is MirExpr.LongConst, is MirExpr.DoubleConst, is MirExpr.BooleanConst, is MirExpr.CharConst,
     is MirExpr.StringConst, MirExpr.UnitValue, is MirExpr.Local, is MirExpr.NullConst, is MirExpr.ObjectGet,
     is MirExpr.Unreachable, is MirExpr.CaughtException, is MirExpr.TypeInfoOf -> NO_CHILDREN
@@ -427,6 +432,7 @@ private class RcAnalyzer(
             val leaks = when (s) {
                 is MirStmt.Declare -> s.init != null && thisLeaks(s.init, self)
                 is MirStmt.Eval -> thisLeaks(s.expr, self)
+                is MirStmt.Store -> thisLeaks(s.ptr, self) || thisLeaks(s.value, self)
                 is MirStmt.Assign -> thisLeaks(s.value, self)
                 else -> true // control flow may store fields we do not track
             }
@@ -603,6 +609,10 @@ private class RcAnalyzer(
                 if (a != null) use(a, p)
                 val b = directLocal(s.value)
                 if (b != null) use(b, p)
+            }
+            is MirStmt.Store -> {
+                expr(s.ptr)
+                expr(s.value)
             }
             is MirStmt.Eval -> expr(s.expr)
             is MirStmt.If -> {
@@ -983,6 +993,13 @@ private class RcAnalyzer(
                 takesIn(s, listOf(s.obj, s.value), out, record)
                 val inn = out.copy()
                 addUses(s.obj, inn)
+                addUses(s.value, inn)
+                return inn
+            }
+            is MirStmt.Store -> {
+                takesIn(s, listOf(s.ptr, s.value), out, record)
+                val inn = out.copy()
+                addUses(s.ptr, inn)
                 addUses(s.value, inn)
                 return inn
             }

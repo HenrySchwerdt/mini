@@ -2,6 +2,11 @@
 
 package mini.bridge
 
+import mini.backend.TByte
+import mini.backend.TShort
+import mini.backend.TFloat
+import mini.backend.TPtr
+import mini.backend.isInteropScalar
 import mini.backend.ANY_CNAME
 import mini.backend.BinaryOp
 import mini.backend.Mangling
@@ -271,6 +276,9 @@ internal fun Ir2Mir.constant(c: IrConst): MirExpr = when (val v = c.value) {
     is Int -> MirExpr.IntConst(v)
     is Long -> MirExpr.LongConst(v)
     is Double -> MirExpr.DoubleConst(v)
+    is Byte -> MirExpr.Convert(MirExpr.IntConst(v.toInt()), TByte)
+    is Short -> MirExpr.Convert(MirExpr.IntConst(v.toInt()), TShort)
+    is Float -> MirExpr.Convert(MirExpr.DoubleConst(v.toDouble()), TFloat)
     is Boolean -> MirExpr.BooleanConst(v)
     is Char -> MirExpr.CharConst(v.code)
     is String -> MirExpr.StringConst(v)
@@ -278,16 +286,20 @@ internal fun Ir2Mir.constant(c: IrConst): MirExpr = when (val v = c.value) {
     else -> unsupported(c, "constant of type ${v::class.simpleName}")
 }
 
+/** The numeric types a `Convert` can translate between (Int, Long, Char, Double and the C interop types Byte, Short, Float). */
+internal fun isNumericType(t: MirType): Boolean =
+    t == TInt || t == TLong || t == TChar || t == TDouble || t == TByte || t == TShort || t == TFloat
+
 internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (e.type == to || e.type == TNothing) return e
     val from = e.type
-    if (from.isPrimitive && to.isPrimitive) {
-        val ok = (from == TInt || from == TLong || from == TChar || from == TDouble) &&
-            (to == TInt || to == TLong || to == TChar || to == TDouble)
-        if (!ok) unsupported(at, "conversion from $from to $to")
-        return MirExpr.Convert(e, to)
+    if (isNumericType(from) && isNumericType(to)) return MirExpr.Convert(e, to)
+    if (from.isPrimitive && to.isPrimitive) unsupported(at, "conversion from $from to $to")
+    if (from is TPtr && to is TPtr) return e // the same address: nullability is a Kotlin-level fact
+    if (from === TNull && (to.isRef || to is TPtr)) return MirExpr.NullConst(to)
+    if ((from.isInteropScalar || to.isInteropScalar) && (from.isRef || to.isRef)) {
+        unsupported(at, "boxing of a value of type ${from.displayName} as ${to.displayName} (Byte, Short, Float and C pointers cannot be stored in Any, collections or generic code)")
     }
-    if (from === TNull && to.isRef) return MirExpr.NullConst(to)
     if (from.isPrimitive && to.isRef) {
         if (to == TBoxed(from) || (to is TObject && to.cName == ANY_CNAME)) return MirExpr.Box(e, to)
         unsupported(at, "conversion from $from to $to")
@@ -316,6 +328,8 @@ internal fun Ir2Mir.toStringExpr(e: MirExpr, at: IrElement, out: MutableList<Mir
         TInt -> MirExpr.RuntimeCall("mk_string_from_int", listOf(e), TString)
         TLong -> MirExpr.RuntimeCall("mk_string_from_long", listOf(e), TString)
         TDouble -> MirExpr.RuntimeCall("mk_string_from_double", listOf(e), TString)
+        TFloat -> MirExpr.RuntimeCall("mk_string_from_float", listOf(e), TString)
+        TByte, TShort -> MirExpr.RuntimeCall("mk_string_from_int", listOf(MirExpr.Convert(e, TInt)), TString)
         TBoolean -> MirExpr.RuntimeCall("mk_string_from_boolean", listOf(e), TString)
         TChar -> MirExpr.RuntimeCall("mk_string_from_char", listOf(e), TString)
         else -> if (e.type.isRef) MirExpr.RuntimeCall("mk_to_string", listOf(asAny(e)), TString)
