@@ -629,3 +629,11 @@ path for all 47 programs, the programs run correctly, and the binary compiles it
 builds and again reproduces 47 of 47 programs. Not byte-identical yet: the MIR for the self-compilation differs from the K2 path in about 250
 of 96,700 lines (K2 flow-sensitive smart casts the analysis does not model, e.g. through `val b = x != null && ...`, `as?` with `?: error`, and
 some `tmpN` numbering inside lambdas).
+
+### B3: bootstrap
+
+`compiler/bootstrap.sh`: JVM `minic --frontend=mini` builds the compiler (stage1), stage1 compiles the compiler sources to C (stage2),
+stage2 does the same (stage3); the C and MIR of stage2 and stage3 must be byte-identical (they are). Wall times on the dev box: stage1 89 s (JVM),
+stage1 compiling the sources 4.4 s, each clang build about 75 s. `compiler/selfcompare.py` compares the self-compile MIR of K2 and of the own
+frontend after normalising local ids and `tmpN` numbers (41 lines of 96,774 differ, plus 16 allowlisted flow-fact casts; the count is checked against
+`selfcompare-baseline.txt` and must not grow).
