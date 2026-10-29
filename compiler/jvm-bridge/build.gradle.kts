@@ -26,6 +26,9 @@ tasks.test {
     // The end-to-end tests build real executables from compiler/testdata.
     systemProperty("mini.testdata", rootProject.file("testdata").absolutePath)
     systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
+    // Declared as inputs so edits to test programs or the runtime re-run the test instead of hitting the cache.
+    inputs.dir(rootProject.file("testdata"))
+    inputs.dir(rootProject.projectDir.parentFile.resolve("runtime/minirt"))
     maxHeapSize = "2g"
     testLogging {
         events("passed", "failed", "skipped")
