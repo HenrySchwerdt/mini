@@ -33,5 +33,7 @@ tasks.test {
     testLogging {
         events("passed", "failed", "skipped")
         showStandardStreams = false
+        // Full assertion messages in CI logs (sanitizer reports are part of them).
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }

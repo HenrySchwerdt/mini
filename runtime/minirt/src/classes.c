@@ -99,7 +99,7 @@ MkInt mk_any_hash_code(MkObject *self) { return (MkInt)((uintptr_t)self >> 4); }
 
 bool mk_any_equals(MkObject *self, MkObject *other) { return self == other; }
 
-MkString *mk_any_to_string(MkObject *self) {
+const MkString *mk_any_to_string(MkObject *self) {
     char buf[320];
     int n = snprintf(buf, sizeof buf, "%s@%" PRIx32, self->type->name, (uint32_t)mk_hash_code(self));
     if (n < 0) n = 0;
@@ -107,7 +107,9 @@ MkString *mk_any_to_string(MkObject *self) {
     return mk_string_from_utf8(buf, (size_t)n);
 }
 
-typedef MkString *(*ToStringFn)(MkObject *);
+/* Slot types must match the generated definitions exactly: calling through an incompatible
+ * function pointer type is undefined behaviour (clang's -fsanitize=function reports it). */
+typedef const MkString *(*ToStringFn)(MkObject *);
 typedef bool (*EqualsFn)(MkObject *, MkObject *);
 typedef MkInt (*HashFn)(MkObject *);
 
@@ -130,7 +132,7 @@ MkString *mk_to_string(MkObject *o) {
     if (t == &mk_type_Double) return mk_string_from_double(((MkBoxDouble *)o)->value);
     if (t == &mk_type_Char) return mk_string_from_char(((MkBoxChar *)o)->value);
     void *f = slot(o, MK_VSLOT_TO_STRING);
-    return f ? ((ToStringFn)f)(o) : mk_any_to_string(o);
+    return (MkString *)(f ? ((ToStringFn)f)(o) : mk_any_to_string(o));
 }
 
 static MkInt double_bits_hash(MkDouble d) {

@@ -307,7 +307,8 @@ enum {
 };
 
 /* Default kotlin.Any members. toString gives "Name@<hex identity hash>". */
-MkString *mk_any_to_string(MkObject *self); /* refcount 1 */
+/* Returns const like generated toString overrides, so both fit the same vtable slot type. */
+const MkString *mk_any_to_string(MkObject *self); /* refcount 1 */
 bool mk_any_equals(MkObject *self, MkObject *other);
 MkInt mk_any_hash_code(MkObject *self);
 
