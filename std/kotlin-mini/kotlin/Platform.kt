@@ -11,7 +11,7 @@ public interface AutoCloseable {
     public fun close()
 }
 
-public fun <T : AutoCloseable?, R> T.use(block: (T) -> R): R {
+public inline fun <T : AutoCloseable?, R> T.use(block: (T) -> R): R {
     try {
         return block(this)
     } finally {
