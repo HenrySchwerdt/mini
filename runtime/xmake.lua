@@ -42,6 +42,11 @@ target("minirt")
 for _, file in ipairs(os.files("minirt/tests/test_*.c")) do
     local name = "minirt_" .. path.basename(file)
 
+    -- TODO: test_threads uses pthreads; port it to libuv threads to cover the MSVC atomics path.
+    if path.basename(file) == "test_threads" and is_plat("windows") then
+        goto continue
+    end
+
     target(name)
         set_kind("binary")
         set_languages("c17")
@@ -61,4 +66,5 @@ for _, file in ipairs(os.files("minirt/tests/test_*.c")) do
         add_tests("default", {
             group = "minirt"
         })
+    ::continue::
 end
