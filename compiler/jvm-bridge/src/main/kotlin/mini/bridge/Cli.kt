@@ -11,7 +11,8 @@ import java.io.File
  * Pipeline: K2 frontend -> Kotlin IR -> MIR (Ir2Mir) -> C (CEmitter) -> clang + libminirt.
  */
 object Cli {
-    private const val USAGE = """usage: minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
+    private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
+       minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
              [--stdlib <dir> | --no-stdlib]"""
 
@@ -38,13 +39,14 @@ object Cli {
             return if (args.isEmpty()) 2 else 0
         }
         if (args[0] == "check") return check(args.drop(1), repoRoot)
-        if (args[0] != "build") {
+        val emit = args[0] == "emit-mir"
+        if (args[0] != "build" && !emit) {
             System.err.println("minic: unknown command '${args[0]}'\n$USAGE")
             return 2
         }
         val opts = parse(args.drop(1)) ?: return 2
         return try {
-            build(opts, repoRoot)
+            if (emit) emitMir(opts, repoRoot) else build(opts, repoRoot)
         } catch (e: UnsupportedConstruct) {
             if (System.getenv("MINIC_DEBUG") != null) e.printStackTrace()
             System.err.println(e.message)
@@ -160,6 +162,33 @@ object Cli {
         return null
     }
 
+    /** K2 -> IR -> MIR for [sources] plus [stdlibFiles] and declaration-only [extra] sources. */
+    fun frontendToMir(sources: List<File>, stdlibFiles: List<File>, extra: List<File>, werror: Boolean): mini.backend.MirModule {
+        val sourceName = sources.first().name
+        var mir: mini.backend.MirModule? = null
+        FrontendDriver.runFrontend(sources, stdlibFiles + extra) { module, _ ->
+            // Strict-mode ownership checker (user files only): errors stop the build, warnings are printed
+            MemoryCheck.gate(module, sources.first(), werror)
+            MemoryCheck.dropFiles(module, extra) // extra sources only provide declarations
+            mir = Ir2Mir().convert(module, sourceName)
+        }
+        return mir ?: throw BuildFailure("the Kotlin frontend produced no IR for ${sources.joinToString()}")
+    }
+
+    /** `minic emit-mir <file.kt>... -o out.mir [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [-Werror]` */
+    private fun emitMir(o: Options, repoRoot: File?): Int {
+        for (src in o.sources) if (!src.isFile) throw BuildFailure("no such file: $src")
+        val stdlibFiles = if (o.noStdlib) emptyList() else {
+            val dir = Stdlib.findDir(o.stdlib, repoRoot)
+                ?: throw BuildFailure("Mini stdlib sources not found (${Stdlib.RELATIVE_DIR}); pass --stdlib <dir> or --no-stdlib")
+            Stdlib.sources(dir).also { if (it.isEmpty()) throw BuildFailure("no .kt files in $dir") }
+        }
+        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror)
+        o.output.absoluteFile.parentFile?.mkdirs()
+        o.output.writeText(mini.backend.MirWriter.write(module))
+        return 0
+    }
+
     fun build(o: Options, repoRoot: File?): Int {
         for (src in o.sources) if (!src.isFile) throw BuildFailure("no such file: $src")
         val sourceName = o.sources.first().name
@@ -180,17 +209,10 @@ object Cli {
         if (runtimeFiles.isEmpty()) throw BuildFailure("no .c files in $runtimeSrc")
 
         // 2. K2 -> IR -> MIR
-        var mir: mini.backend.MirModule? = null
         val extra = withoutStdlib(o.extraSrc, stdlibFiles)
-        FrontendDriver.runFrontend(o.sources, stdlibFiles + extra) { module, _ ->
-            // Strict-mode ownership checker (user files only): errors stop the build, warnings are printed
-            MemoryCheck.gate(module, o.sources.first(), o.werror)
-            MemoryCheck.dropFiles(module, extra) // extra sources only provide declarations
-            mir = Ir2Mir().convert(module, sourceName)
-        }
-        val module = mir ?: throw BuildFailure("the Kotlin frontend produced no IR for ${o.sources.joinToString()}")
+        val module = frontendToMir(o.sources, stdlibFiles, extra, o.werror)
         val mainCount = module.functions.count { it.cName == mini.backend.Mangling.MAIN }
-        if (mainCount != 1) throw BuildFailure("$sourceName: expected exactly one `fun main()`, found $mainCount")
+        if (mainCount != 1) throw BuildFailure("${module.sourceName}: expected exactly one `fun main()`, found $mainCount")
 
         // 3. MIR -> C
         val c = CEmitter.emit(module)

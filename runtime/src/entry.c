@@ -2,8 +2,7 @@
 #include "internal.h"
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+    mk_b1_set_args(argc, argv);
     mk_runtime_init();
     mk_main();
     mk_runtime_flush();

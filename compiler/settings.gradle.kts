@@ -15,4 +15,4 @@ dependencyResolutionManagement {
     }
 }
 
-include(":backend", ":jvm-bridge", ":memory-spec")
+include(":backend", ":jvm-bridge", ":memory-spec", ":native-driver")

@@ -49,9 +49,16 @@ object CEmitter {
             for (c in module.classes) classes[c.cName] = c
             throwing = ThrowAnalysis(module).run()
             for (f in module.functions) emitFunction(f, bodies)
-            if (module.functions.any { it.cName == Mangling.MAIN }) {
+            val userMain = module.functions.firstOrNull { it.cName == Mangling.MAIN }
+            if (userMain != null) {
                 bodies.append("/* program entry: an exception that escaped main is reported by the runtime */\n")
-                bodies.append("void mk_main(void) {\n    $USER_MAIN();\n    if (mk_pending_exception != NULL) mk_report_uncaught();\n}\n\n")
+                if (userMain.params.isEmpty()) {
+                    bodies.append("void mk_main(void) {\n    $USER_MAIN();\n    if (mk_pending_exception != NULL) mk_report_uncaught();\n}\n\n")
+                } else {
+                    // fun main(args: Array<String>): the runtime hands over the command line (B1 block of minirt.h)
+                    bodies.append("void mk_main(void) {\n    MkObject *args = mk_b1_args();\n    $USER_MAIN(args);\n    mk_release(args);\n")
+                    bodies.append("    if (mk_pending_exception != NULL) mk_report_uncaught();\n}\n\n")
+                }
             }
 
             val out = StringBuilder()

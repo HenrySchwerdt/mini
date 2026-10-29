@@ -534,6 +534,21 @@ const MkString *mk_array_content_to_string(const MkObject *array);
 
 /* ---- end v1-L ------------------------------------------------------------------- */
 
+/* ---- B1: file access and program arguments (stdlib/mini/internal/B1Intrinsics.kt) ----- */
+/* Used by the self-hosted backend driver (compiler/native-driver). Arguments are borrowed,
+ * reference results are owned (+1). Text files are UTF-8. */
+
+/* Reads the whole file and decodes it as UTF-8; NULL when it cannot be opened or read. */
+MkString *mk_b1_read_file(const MkString *path);
+/* Writes `text` as UTF-8 (create/truncate); false when it cannot be written. */
+MkBoolean mk_b1_write_file(const MkString *path, const MkString *text);
+/* Stores the process arguments (called by the runtime entry point before mk_main). */
+void mk_b1_set_args(int argc, char **argv);
+/* `Array<String>` of the command line arguments without the program name (for `fun main(args)`). */
+MkObject *mk_b1_args(void);
+
+/* ---- end B1 ----------------------------------------------------------------------- */
+
 #ifdef __cplusplus
 }
 #endif
