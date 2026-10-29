@@ -83,7 +83,8 @@ class Ir2Mir {
         val localCounts = HashMap<String, Int>()
         for (lc in closure.localClasses) {
             setFile(lc.file)
-            val n = localCounts.merge(lc.enclosing, 1, Int::plus)!!
+            val n = (localCounts[lc.enclosing] ?: 0) + 1
+            localCounts[lc.enclosing] = n
             val nm = lc.cls.name.let { if (it.startsWith("<")) "" + n else it }
             val pkg = lc.file.packageFqName
             collectClass(lc.cls, pkg, listOf(lc.enclosing + "$" + nm), lc.file)

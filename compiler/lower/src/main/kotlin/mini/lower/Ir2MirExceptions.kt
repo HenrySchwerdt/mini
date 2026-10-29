@@ -19,8 +19,15 @@ import mini.frontend.sema.*
 
 internal class BuiltinClass(val cName: String, val qualified: String, val parent: String?, val names: List<String>)
 
+private fun namesOf(first: String, extra: Array<out String>): List<String> {
+    val out = ArrayList<String>()
+    out.add(first)
+    for (e in extra) out.add(e)
+    return out
+}
+
 private fun b(cName: String, qualified: String, parent: String?, vararg extra: String) =
-    BuiltinClass(cName, qualified, parent, listOf(qualified) + extra)
+    BuiltinClass(cName, qualified, parent, namesOf(qualified, extra))
 
 internal val BUILTIN_CLASSES: List<BuiltinClass> = listOf(
     b("MkThrowable", "java.lang.Throwable", null, "kotlin.Throwable"),

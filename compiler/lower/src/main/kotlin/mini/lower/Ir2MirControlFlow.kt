@@ -75,6 +75,13 @@ internal fun Ir2Mir.progressionOrNull(e: IrExpression): Progression? {
 }
 
 /** `for (x in range)`: fir2ir leaves the iterator protocol in place; match it. */
+private fun primitiveIteratorElement(fq: String?): MirType? {
+    if (fq == "kotlin.collections.IntIterator") return TInt
+    if (fq == "kotlin.collections.LongIterator") return TLong
+    if (fq == "kotlin.collections.CharIterator") return TChar
+    return null
+}
+
 internal fun Ir2Mir.forLoop(b: IrBlock, out: MutableList<MirStmt>) {
     val st = b.statements
     val iter = st.getOrNull(0) as? IrVariable
@@ -82,16 +89,13 @@ internal fun Ir2Mir.forLoop(b: IrBlock, out: MutableList<MirStmt>) {
     val iterCall = iter?.initializer as? IrCall
     if (iter == null || loop == null || iterCall == null || st.size != 2) unsupported(b, "for loop shape")
     if (arrayForLoop(b, loop, iterCall, out)) return
-    val elemType = when (iter.type.classFqName) {
-        "kotlin.collections.IntIterator" -> TInt
-        "kotlin.collections.LongIterator" -> TLong
-        "kotlin.collections.CharIterator" -> TChar
-        else -> {
-            // any other Iterable: the iterator protocol is ordinary code (iterator(), hasNext(), next())
-            for (x in st) stmt(x, out)
-            return
-        }
+    val elemType0 = primitiveIteratorElement(iter.type.classFqName)
+    if (elemType0 == null) {
+        // any other Iterable: the iterator protocol is ordinary code (iterator(), hasNext(), next())
+        for (x in st) stmt(x, out)
+        return
     }
+    val elemType: MirType = elemType0
     val p = progressionOrNull(iterCall.arguments[0]!!)
     if (p == null) {
         // a range / progression value: ordinary iterator protocol over the stdlib classes

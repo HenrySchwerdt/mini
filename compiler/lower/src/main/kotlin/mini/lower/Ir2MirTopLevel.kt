@@ -20,7 +20,8 @@ internal class Facade(val cName: String, val qualified: String, val file: IrFile
 }
 
 internal fun Ir2Mir.facadeFor(file: IrFile): Facade = facades.getOrPut(file) {
-    val base = file.name.removeSuffix(".kt").replaceFirstChar { it.uppercase() } + "Kt"
+    val stem = file.name.removeSuffix(".kt")
+    val base = (if (stem.isEmpty()) stem else stem.substring(0, 1).uppercase() + stem.substring(1)) + "Kt"
     val pkg = file.packageFqName
     val cName = Mangling.className(pkg, listOf(base))
     val fields = file.declarations.filterIsInstance<IrProperty>().filter { it.getter?.body != null || it.getter == null }.mapNotNull { it.backingField } +

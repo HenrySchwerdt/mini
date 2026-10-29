@@ -63,7 +63,7 @@ object Reachability {
             f.declarations.addAll(keep)
         }
         for (f in module.files) {
-            if (!f.isStdlib) marker.visitor.visitChildren(f)
+            if (!f.isStdlib) marker.visitChildren(f)
         }
         for (f in module.files) {
             if (f.isStdlib) {
@@ -80,7 +80,7 @@ object Reachability {
         module.files.addAll(rest)
     }
 
-    private class Marker {
+    private class Marker : IrWalker() {
         val kept = HashSet<IrDeclaration>()
         /** `Foo::class` / `x::class` create a KClassImpl (Ir2MirExpressions.classReference). */
         var kclassImpl: IrClass? = null
@@ -109,39 +109,37 @@ object Reachability {
             for (d in c.declarations) if (d is IrClass) pruneMembers(d)
         }
 
-        val visitor = object : IrWalker() {
-            override fun visit(e: IrElement) {
-                if (e is IrExpression) markType(e.type)
-                if (e is IrValueDeclaration) markType(e.type)
-                if (e is IrFunction) markType(e.returnType)
-                when (e) {
-                    is IrFunctionAccessExpression -> {
-                        // members of builtin-typed receivers (for-loop `hasNext`/`next`, ...) are known to the backend
-                        val callee = calleeOf(e)
-                        val dispatch = dispatchReceiverTypeOf(e, callee)
-                        if (!(dispatch != null && isBuiltinClassType(dispatch))) markSymbolOwner(callee)
-                        if (e is IrFunctionReference) markSymbolOwner(e.target)
-                    }
-                    is IrGetObjectValue -> markClass(e.classOwner)
-                    is IrGetEnumValue -> markClass(e.entry.parent as IrClass)
-                    is IrClassReference -> {
-                        markType(e.classType)
-                        val k = kclassImpl
-                        if (k != null) markClass(k)
-                    }
-                    is IrGetClass -> {
-                        val k = kclassImpl
-                        if (k != null) markClass(k)
-                    }
-                    is IrTypeOperatorCall -> markType(e.typeOperand)
-                    is IrClass -> {
-                        markClass(e)
-                        return
-                    }
-                    else -> {}
+        override fun visit(e: IrElement) {
+            if (e is IrExpression) markType(e.type)
+            if (e is IrValueDeclaration) markType(e.type)
+            if (e is IrFunction) markType(e.returnType)
+            when (e) {
+                is IrFunctionAccessExpression -> {
+                    // members of builtin-typed receivers (for-loop `hasNext`/`next`, ...) are known to the backend
+                    val callee = calleeOf(e)
+                    val dispatch = dispatchReceiverTypeOf(e, callee)
+                    if (!(dispatch != null && isBuiltinClassType(dispatch))) markSymbolOwner(callee)
+                    if (e is IrFunctionReference) markSymbolOwner(e.target)
                 }
-                visitChildren(e)
+                is IrGetObjectValue -> markClass(e.classOwner)
+                is IrGetEnumValue -> markClass(e.entry.parent as IrClass)
+                is IrClassReference -> {
+                    markType(e.classType)
+                    val k = kclassImpl
+                    if (k != null) markClass(k)
+                }
+                is IrGetClass -> {
+                    val k = kclassImpl
+                    if (k != null) markClass(k)
+                }
+                is IrTypeOperatorCall -> markType(e.typeOperand)
+                is IrClass -> {
+                    markClass(e)
+                    return
+                }
+                else -> {}
             }
+            visitChildren(e)
         }
 
         private fun calleeOf(e: IrFunctionAccessExpression): IrFunction? = when (e) {
@@ -173,14 +171,14 @@ object Reachability {
                     val p = d.parent
                     if (p is IrClass) {
                         markClass(p)
-                        if (isDemandDriven(d, p) && kept.add(d)) visitor.visit(d)
+                        if (isDemandDriven(d, p) && kept.add(d)) visit(d)
                     } else if (p is IrFile) {
                         var top: IrDeclaration = d
                         if (d is IrSimpleFunction) {
                             val cp = d.correspondingProperty
                             if (cp != null) top = cp
                         }
-                        if (kept.add(top)) visitor.visit(top)
+                        if (kept.add(top)) visit(top)
                     }
                     if (d is IrSimpleFunction) for (o in d.overridden) markSymbolOwner(o)
                 }
@@ -199,7 +197,7 @@ object Reachability {
             val ds = ArrayList<IrDeclaration>(c.declarations)
             for (d in ds) {
                 if (isDemandDriven(d, c)) continue
-                visitor.visit(d)
+                visit(d)
             }
         }
 
