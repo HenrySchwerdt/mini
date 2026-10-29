@@ -16,6 +16,9 @@ internal const val CTX_TOP = 0
 internal const val CTX_CLASS = 1
 internal const val CTX_LOCAL = 2
 
+/** maximal nesting depth of expressions, types and declarations (deeper input is reported as an error) */
+internal const val MAX_DEPTH = 250
+
 fun isModifierWord(s: String): Boolean = when (s) {
     "abstract", "actual", "annotation", "companion", "const", "crossinline", "data", "enum", "expect", "external",
     "final", "infix", "inline", "inner", "internal", "lateinit", "noinline", "open", "operator", "out", "override",
@@ -48,8 +51,13 @@ class Parser(internal val lex: LexResult) {
     /** false inside `(...)`, `[...]` and `<...>`: newlines do not terminate expressions there */
     internal var nlOn = true
     internal var opText = ""
+    internal var opLevel = 0
+    /** the binary expression just parsed ended with the type of an `is` check */
+    internal var isClosed = false
     /** set while parsing the delegate of a class delegation: a `{` after it is the class body, not a lambda */
     internal var noLambda = false
+    /** current nesting of expressions / types / declarations; bounded so that hostile input cannot exhaust the stack */
+    internal var depth = 0
     private val lineStarts = ArrayList<Int>()
     private var lastSigRaw = -1
 
@@ -260,9 +268,14 @@ class Parser(internal val lex: LexResult) {
             if (any) done(am, NodeKind.FILE_ANNOTATIONS)
         }
 
-        // package directive (may carry annotations that were not file annotations: those are parsed as modifiers)
-        if (kind() == Tk.PACKAGE) {
+        // package directive (the reference parser also accepts modifiers in front of it)
+        if (kind() == Tk.PACKAGE || (kind() == Tk.IDENT && isModifierWord(tokText()) && la(1) == Tk.PACKAGE)) {
             val pm = mark()
+            if (kind() == Tk.IDENT) {
+                val mm = mark()
+                advance()
+                done(mm, NodeKind.MODIFIERS)
+            }
             advance()
             pkg = parseQualifiedName("package name")
             if (kind() == Tk.SEMI) advance()
@@ -574,6 +587,14 @@ class Parser(internal val lex: LexResult) {
      * anything when the tokens do not start a declaration (in [CTX_LOCAL] that means: parse an expression).
      */
     internal fun tryParseDeclaration(ctx: Int): Decl? {
+        if (depth >= MAX_DEPTH) return null
+        depth++
+        val d = tryParseDeclarationInner(ctx)
+        depth--
+        return d
+    }
+
+    private fun tryParseDeclarationInner(ctx: Int): Decl? {
         val k0 = kind()
         if (k0 != Tk.VAL && k0 != Tk.VAR && k0 != Tk.FUN && k0 != Tk.CLASS && k0 != Tk.INTERFACE && k0 != Tk.OBJECT &&
             k0 != Tk.TYPEALIAS && k0 != Tk.AT && k0 != Tk.IDENT
@@ -831,17 +852,18 @@ class Parser(internal val lex: LexResult) {
             // try a receiver type
             val sn = snap()
             val t = parseType(true)
-            if (kind() == Tk.DOT && la(1) == Tk.IDENT) {
+            if (kind() == Tk.DOT && la(1) == Tk.LPAR && ctx == CTX_LOCAL) {
+                return null // anonymous function with receiver: an expression
+            } else if (kind() == Tk.DOT && (la(1) == Tk.IDENT || la(1) == Tk.LPAR)) {
                 advance()
                 receiver = t
-            } else if (kind() == Tk.DOT && la(1) == Tk.LPAR && ctx == CTX_LOCAL) {
-                return null // anonymous function with receiver: an expression
             } else {
                 restore(sn)
                 if (ctx == CTX_LOCAL && kind() != Tk.IDENT) return null
             }
         }
-        val name = parseName("function name")
+        // a nameless function parses (the reference compiler reports it later, during analysis)
+        val name: String? = if (kind() == Tk.LPAR) null else parseName("function name")
         val params = parseParams(true)
         var ret: TypeRef? = null
         if (kind() == Tk.COLON) {
@@ -1040,7 +1062,7 @@ class Parser(internal val lex: LexResult) {
         if (kind() == Tk.IDENT) {
             name = tokText()
             advance()
-        } else if (!isObject) {
+        } else if (!isObject || mods == null || !mods.has("companion")) {
             errorPrev("Expecting name")
         }
         var tps: List<TypeParam> = emptyList()
@@ -1051,7 +1073,18 @@ class Parser(internal val lex: LexResult) {
             val cm = mark()
             val cs = tokStart()
             var cmods: Modifiers? = null
-            if (kind() == Tk.AT || atModifierKeyword()) {
+            var noKeyword = false
+            if (kind() == Tk.IDENT && isModifierWord(tokText()) && la(1) == Tk.LPAR) {
+                noKeyword = true
+                // `class A private (x: Int)`: the reference parser accepts a constructor modifier without the keyword
+                val mm = mark()
+                val ms = tokStart()
+                val kw = tokText()
+                advance()
+                val item = fin(KeywordMod(kw), ms)
+                done(mm, NodeKind.MODIFIERS)
+                cmods = fin(Modifiers(listOf(item), emptyList()), ms)
+            } else if (kind() == Tk.AT || atModifierKeyword()) {
                 cmods = parseModifierList()
             }
             if (isIdent("constructor") && la(1) == Tk.LPAR) {
@@ -1059,10 +1092,10 @@ class Parser(internal val lex: LexResult) {
                 val ps = parseParams(true)
                 done(cm, NodeKind.PRIMARY_CTOR)
                 ctor = fin(PrimaryCtor(cmods, true, ps), cs)
-            } else if (cmods == null && kind() == Tk.LPAR) {
+            } else if ((cmods == null || noKeyword) && kind() == Tk.LPAR) {
                 val ps = parseParams(true)
                 done(cm, NodeKind.PRIMARY_CTOR)
-                ctor = fin(PrimaryCtor(null, false, ps), cs)
+                ctor = fin(PrimaryCtor(cmods, false, ps), cs)
             } else {
                 restore(sn)
             }

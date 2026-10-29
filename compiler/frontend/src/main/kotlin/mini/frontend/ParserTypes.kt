@@ -7,6 +7,20 @@ package mini.frontend
  * not followed by `.` or `<` is left for the declaration.
  */
 internal fun Parser.parseType(recv: Boolean): TypeRef {
+    if (depth >= MAX_DEPTH) {
+        val m0 = mark()
+        val s0 = tokStart()
+        if (kind() == Tk.EOF) error("Type is nested too deeply") else skipError("Type is nested too deeply")
+        done(m0, NodeKind.ERROR)
+        return fin(ErrorType(), s0)
+    }
+    depth++
+    val t = parseTypeInner(recv)
+    depth--
+    return t
+}
+
+private fun Parser.parseTypeInner(recv: Boolean): TypeRef {
     val m = mark()
     val s = tokStart()
     // type modifiers: annotations, suspend, context(...)
@@ -69,7 +83,7 @@ internal fun Parser.parseType(): TypeRef = parseType(false)
 private fun Parser.parseTypeSuffixes(m: Int, s: Int, first: TypeRef, ctxTypes: List<TypeRef>, recv: Boolean): TypeRef {
     var t = first
     while (true) {
-        if (kind() == Tk.QUEST && !atElvis() && !(nlOn && nl())) {
+        if (kind() == Tk.QUEST && !atElvis() && (!atSafeDot() || recv || la(2) == Tk.LPAR)) {
             advance()
             done(m, NodeKind.TYPE_NULLABLE)
             t = fin(NullableType(t), s)

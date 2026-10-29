@@ -6,6 +6,18 @@ package mini.frontend
 internal fun Parser.parseExpression(): Expr {
     val m = mark()
     val s = tokStart()
+    if (depth >= MAX_DEPTH) {
+        if (kind() == Tk.EOF) error("Expression is nested too deeply") else skipError("Expression is nested too deeply")
+        done(m, NodeKind.ERROR)
+        return fin(ErrorExpr(), s)
+    }
+    depth++
+    val e = parseAssignmentLevel(m, s)
+    depth--
+    return e
+}
+
+private fun Parser.parseAssignmentLevel(m: Int, s: Int): Expr {
     var left = parseBin(1)
     while (!interrupted()) {
         val k = kind()
@@ -22,74 +34,93 @@ internal fun Parser.parseExpression(): Expr {
     return left
 }
 
-/** number of tokens of the binary operator of [level] at the current position (0: none); the text goes to [Parser.opText] */
-private fun Parser.binOp(level: Int): Int {
+/**
+ * Binary operator at the current position: returns the number of tokens it consists of (0: none); its text goes to
+ * [Parser.opText] and its precedence level (1 `||` ... 10 `*`) to [Parser.opLevel].
+ */
+private fun Parser.binOp(): Int {
     val k = kind()
-    when (level) {
-        1 -> if (k == Tk.OROR) {
+    when (k) {
+        Tk.OROR -> {
             opText = "||"
+            opLevel = 1
             return 1
         }
-        2 -> if (k == Tk.ANDAND) {
+        Tk.ANDAND -> {
             opText = "&&"
+            opLevel = 2
             return 1
         }
-        3 -> if (k == Tk.EQEQ || k == Tk.NEQ || k == Tk.EQEQEQ || k == Tk.NEQEQ) {
+        Tk.EQEQ, Tk.NEQ, Tk.EQEQEQ, Tk.NEQEQ -> {
             opText = tokText()
+            opLevel = 3
             return 1
         }
-        4 -> {
-            if (k == Tk.LT || k == Tk.LTEQ) {
-                opText = tokText()
-                return 1
+        Tk.LT, Tk.LTEQ -> {
+            opText = tokText()
+            opLevel = 4
+            return 1
+        }
+        Tk.GT -> {
+            opLevel = 4
+            if (atGtEq()) {
+                opText = ">="
+                return 2
             }
-            if (k == Tk.GT) {
-                if (atGtEq()) {
-                    opText = ">="
-                    return 2
-                }
-                opText = ">"
-                return 1
+            opText = ">"
+            return 1
+        }
+        Tk.IN, Tk.NOT_IN, Tk.IS, Tk.NOT_IS -> {
+            opText = tokText()
+            opLevel = 5
+            return 1
+        }
+        Tk.QUEST -> {
+            if (atElvis()) {
+                opText = "?:"
+                opLevel = 6
+                return 2
             }
+            return 0
         }
-        5 -> if (k == Tk.IN || k == Tk.NOT_IN || k == Tk.IS || k == Tk.NOT_IS) {
+        Tk.IDENT -> {
             opText = tokText()
+            opLevel = 7
             return 1
         }
-        6 -> if (atElvis()) {
-            opText = "?:"
-            return 2
-        }
-        7 -> if (k == Tk.IDENT) {
+        Tk.DOTDOT, Tk.DOTDOTLT -> {
             opText = tokText()
+            opLevel = 8
             return 1
         }
-        8 -> if (k == Tk.DOTDOT || k == Tk.DOTDOTLT) {
+        Tk.PLUS, Tk.MINUS -> {
             opText = tokText()
+            opLevel = 9
             return 1
         }
-        9 -> if (k == Tk.PLUS || k == Tk.MINUS) {
+        Tk.STAR, Tk.SLASH, Tk.PERC -> {
             opText = tokText()
+            opLevel = 10
             return 1
         }
-        10 -> if (k == Tk.STAR || k == Tk.SLASH || k == Tk.PERC) {
-            opText = tokText()
-            return 1
-        }
-        else -> {}
+        else -> return 0
     }
-    return 0
 }
 
-private fun Parser.parseBin(level: Int): Expr {
-    if (level > 10) return parseAs()
+/** precedence climbing over the left-associative binary operators; [minLevel] is the loosest level accepted */
+private fun Parser.parseBin(minLevel: Int): Expr {
     val m = mark()
     val s = tokStart()
-    var left = parseBin(level + 1)
+    var left = parseAs()
+    isClosed = false
     while (!interrupted()) {
-        val n = binOp(level)
-        if (n == 0) break
+        val n = binOp()
+        if (n == 0 || opLevel < minLevel) break
+        // after `is T` / `!is T` only operators of the same or a looser level may follow: the type on the right is not an
+        // operand a tighter operator could attach to (`a !is B to c` leaves the `to` for the enclosing construct)
+        if (isClosed && opLevel > 5) break
         val op = opText
+        val level = opLevel
         val k = kind()
         var i = 0
         while (i < n) {
@@ -100,6 +131,7 @@ private fun Parser.parseBin(level: Int): Expr {
             val t = parseType()
             done(m, NodeKind.IS)
             left = fin(IsExpr(k == Tk.NOT_IS, left, t), s)
+            isClosed = true
         } else {
             val right = parseBin(level + 1)
             done(m, NodeKind.BINARY)
@@ -127,14 +159,31 @@ private fun Parser.parseAs(): Expr {
     return left
 }
 
-private fun Parser.parsePrefix(): Expr {
+private fun Parser.parsePrefix(): Expr = parsePrefixInner()
+
+/** the operand of a prefix operator or annotation; recursion here is bounded like everything else */
+private fun Parser.parsePrefixOperand(): Expr {
+    if (depth >= MAX_DEPTH) {
+        val m0 = mark()
+        val s0 = tokStart()
+        if (kind() == Tk.EOF) error("Expression is nested too deeply") else skipError("Expression is nested too deeply")
+        done(m0, NodeKind.ERROR)
+        return fin(ErrorExpr(), s0)
+    }
+    depth++
+    val e = parsePrefixInner()
+    depth--
+    return e
+}
+
+private fun Parser.parsePrefixInner(): Expr {
     val k = kind()
     val s = tokStart()
     if (k == Tk.MINUS || k == Tk.PLUS || k == Tk.PLUSPLUS || k == Tk.MINUSMINUS || k == Tk.EXCL) {
         val m = mark()
         val op = tokText()
         advance()
-        val e = parsePrefix()
+        val e = parsePrefixOperand()
         done(m, NodeKind.PREFIX)
         return fin(PrefixExpr(op, e), s)
     }
@@ -144,7 +193,7 @@ private fun Parser.parsePrefix(): Expr {
         advance()
         val is2 = tokStart()
         val inner = mark()
-        val e = parsePrefix()
+        val e = parsePrefixOperand()
         done(inner, NodeKind.PREFIX)
         done(m, NodeKind.PREFIX)
         val innerNode = fin(PrefixExpr("!", e), is2)
@@ -165,7 +214,7 @@ private fun Parser.parsePrefix(): Expr {
             done(m, NodeKind.MODIFIERS)
             return parseAnonFun(m, s, fin(Modifiers(items, emptyList()), s))
         }
-        val e = parsePrefix()
+        val e = parsePrefixOperand()
         done(m, NodeKind.ANNOTATED)
         return fin(AnnotatedExpr(anns, e), s)
     }
@@ -177,7 +226,7 @@ private fun Parser.parsePrefix(): Expr {
         advance()
         advance()
         done(lm, NodeKind.LABEL)
-        val e = parsePrefix()
+        val e = parsePrefixOperand()
         done(m, NodeKind.LABELED)
         return fin(LabeledExpr(label, e), s)
     }
@@ -259,11 +308,9 @@ private fun Parser.parsePostfix(): Expr {
             val sm = mark()
             val ss = tokStart()
             var sel: Expr
-            if (kind() == Tk.IDENT) {
-                val name = tokText()
-                advance()
-                done(out.size - 1, NodeKind.NAME)
-                sel = fin(NameExpr(name), ss)
+            if (kind() == Tk.IDENT || startsExpression(kind())) {
+                // the reference parser accepts any atom as selector (`a.(b)`, `a. { }`); analysis rejects the odd ones
+                sel = parseAtom()
                 var ta: List<TypeArg> = emptyList()
                 var hasTa = false
                 if (kind() == Tk.LT && !interrupted()) {
@@ -1015,12 +1062,21 @@ private fun Parser.tryParseLambdaParams(): List<LambdaParam>? {
 private fun Parser.parseAnonFun(m: Int, s: Int, mods: Modifiers?): Expr {
     advance() // fun
     var receiver: TypeRef? = null
-    if (kind() != Tk.LPAR) {
+    var fname: String? = null
+    if (kind() == Tk.IDENT && la(1) == Tk.LPAR) {
+        // a named function in expression position: the reference parser accepts it
+        fname = tokText()
+        advance()
+    } else if (kind() != Tk.LPAR) {
         val sn = snap()
         val t = parseType(true)
         if (kind() == Tk.DOT) {
             advance()
             receiver = t
+            if (kind() == Tk.IDENT && la(1) == Tk.LPAR) {
+                fname = tokText()
+                advance()
+            }
         } else {
             restore(sn)
         }
@@ -1041,7 +1097,7 @@ private fun Parser.parseAnonFun(m: Int, s: Int, mods: Modifiers?): Expr {
         body = parseExpression()
     }
     done(m, NodeKind.ANON_FUN)
-    val fn = fin(FunDecl(mods, emptyList(), receiver, null, params, ret, emptyList(), body, exprBody), s)
+    val fn = fin(FunDecl(mods, emptyList(), receiver, fname, params, ret, emptyList(), body, exprBody), s)
     return fin(AnonFunExpr(fn), s)
 }
 
