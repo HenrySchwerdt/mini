@@ -498,7 +498,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun evalMove(e: MExpr.Move, env: Env): AVal {
         val t = e.target
         if (t is MExpr.FieldGet && t.obj is MExpr.Local && t.type.tracked && !e.implicit) {
-            val o = t.obj as MExpr.Local
+            val o: MExpr.Local = t.obj
             val ov = eval(o, env)
             val key = FKey(o.local.id, t.field.name)
             val cur = st.fields[key]

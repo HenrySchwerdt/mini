@@ -127,7 +127,11 @@ internal fun Ir2Mir.doWhileLoop(s: IrDoWhileLoop, out: MutableList<MirStmt>) {
 }
 
 
-internal fun Ir2Mir.progression(e: IrExpression): Progression {
+internal fun Ir2Mir.progression(e: IrExpression): Progression =
+    progressionOrNull(e) ?: unsupported(e, "for loop over something other than an Int/Long/Char range built with `..`, `until`, `downTo` or `step`")
+
+/** The literal progression shape `a..b`, `a until b`, `a downTo b`, `p step n`; null for any other expression (a range value). */
+internal fun Ir2Mir.progressionOrNull(e: IrExpression): Progression? {
     if (e is IrCall) {
         val owner = e.symbol.owner
         val parent = owner.parent
@@ -138,8 +142,8 @@ internal fun Ir2Mir.progression(e: IrExpression): Progression {
                 "downTo" -> return Progression(args[0]!!, args[1]!!, null, ascending = false, inclusive = true)
                 "until" -> return Progression(args[0]!!, args[1]!!, null, ascending = true, inclusive = false)
                 "step" -> {
-                    val inner = progression(args[0]!!)
-                    if (inner.step != null) unsupported(e, "step applied to a progression that already has a step")
+                    val inner = progressionOrNull(args[0]!!) ?: return null
+                    if (inner.step != null) return null
                     return Progression(inner.start, inner.end, args[1]!!, inner.ascending, inner.inclusive)
                 }
             }
@@ -151,7 +155,7 @@ internal fun Ir2Mir.progression(e: IrExpression): Progression {
             }
         }
     }
-    unsupported(e, "for loop over something other than an Int/Long/Char range built with `..`, `until`, `downTo` or `step`")
+    return null
 }
 
 /** `for (x in range)`: fir2ir leaves the iterator protocol in place; match it. */
@@ -172,7 +176,12 @@ internal fun Ir2Mir.forLoop(b: IrBlock, out: MutableList<MirStmt>) {
             return
         }
     }
-    val p = progression(iterCall.arguments[0]!!)
+    val p = progressionOrNull(iterCall.arguments[0]!!)
+    if (p == null) {
+        // a range / progression value: ordinary iterator protocol over the stdlib classes
+        for (x in st) stmt(x, out)
+        return
+    }
 
     val body = loop.body as? IrBlock ?: unsupported(loop, "for loop body")
     val loopVar = body.statements.getOrNull(0) as? IrVariable ?: unsupported(loop, "for loop variable")

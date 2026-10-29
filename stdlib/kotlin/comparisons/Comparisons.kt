@@ -16,6 +16,21 @@ public fun <T : Comparable<*>> compareValues(a: T?, b: T?): Int {
 public inline fun <T> compareBy(crossinline selector: (T) -> Comparable<*>?): Comparator<T> =
     Comparator { a, b -> compareValues(selector(a), selector(b)) }
 
+public fun <T> compareBy(vararg selectors: (T) -> Comparable<*>?): Comparator<T> {
+    if (selectors.size == 0) throw IllegalArgumentException("Failed requirement.")
+    return Comparator { a, b -> compareValuesByImpl(a, b, selectors) }
+}
+
+private fun <T> compareValuesByImpl(a: T, b: T, selectors: Array<out (T) -> Comparable<*>?>): Int {
+    for (fn in selectors) {
+        val v1 = fn(a)
+        val v2 = fn(b)
+        val diff = compareValues(v1, v2)
+        if (diff != 0) return diff
+    }
+    return 0
+}
+
 public inline fun <T> compareByDescending(crossinline selector: (T) -> Comparable<*>?): Comparator<T> =
     Comparator { a, b -> compareValues(selector(b), selector(a)) }
 
@@ -29,6 +44,24 @@ public infix fun <T> Comparator<T>.thenBy(selector: (T) -> Comparable<*>?): Comp
     Comparator { a, b ->
         val r = this.compare(a, b)
         if (r != 0) r else compareValues(selector(a), selector(b))
+    }
+
+public inline infix fun <T> Comparator<T>.thenByDescending(crossinline selector: (T) -> Comparable<*>?): Comparator<T> =
+    Comparator { a, b ->
+        val r = this.compare(a, b)
+        if (r != 0) r else compareValues(selector(b), selector(a))
+    }
+
+public infix fun <T> Comparator<T>.thenComparator(comparison: (a: T, b: T) -> Int): Comparator<T> =
+    Comparator { a, b ->
+        val r = this.compare(a, b)
+        if (r != 0) r else comparison(a, b)
+    }
+
+public infix fun <T> Comparator<T>.then(comparator: Comparator<in T>): Comparator<T> =
+    Comparator { a, b ->
+        val r = this.compare(a, b)
+        if (r != 0) r else comparator.compare(a, b)
     }
 
 public fun maxOf(a: Int, b: Int): Int = if (a >= b) a else b

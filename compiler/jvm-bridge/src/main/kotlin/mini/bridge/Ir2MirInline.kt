@@ -74,7 +74,8 @@ private fun Ir2Mir.expandBody(fn: IrFunction, ret: MirType, at: IrElement, out: 
     val label = MirLabel(labelCounter++)
     val res = if (ret == TUnit || ret == TNothing) null else MirLocal(localCounter++, "inl", ret)
     if (res != null) out += MirStmt.Declare(res, null)
-    returnTargets[fn] = InlineReturn(res, label, finallyStack.size)
+    // the same function may be expanded inside itself (nested `any { xs.any { } }`): save and restore the outer target
+    val outerTarget = returnTargets.put(fn, InlineReturn(res, label, finallyStack.size))
     val body = ArrayList<MirStmt>()
     try {
         when (val b = fn.body) {
@@ -86,7 +87,7 @@ private fun Ir2Mir.expandBody(fn: IrFunction, ret: MirType, at: IrElement, out: 
             else -> unsupported(fn, "inline function body")
         }
     } finally {
-        returnTargets.remove(fn)
+        if (outerTarget == null) returnTargets.remove(fn) else returnTargets[fn] = outerTarget
     }
     body += MirStmt.Break(label)
     out += MirStmt.Loop(label, body)

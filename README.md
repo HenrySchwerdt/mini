@@ -58,14 +58,26 @@ Erwartete Ausgaben stammen immer aus echtem Kotlin auf der JVM.
 
 ## Stand
 
-Funktioniert nativ: Funktionen, Primitive, Strings und String-Templates, `when`, Schleifen und
-Ranges, Klassen, Vererbung, Interfaces, `object`/`companion`, `data class`, `enum class`,
-Null-Safety, Default-Argumente, Refcounting, String- und `StringBuilder`-Funktionen der stdlib.
-Der Strict-Checker erkennt den kompletten Speichermodell-Korpus.
+**v1 erreicht:** `minic` kompiliert sein eigenes Backend (reines Kotlin) zu einem nativen Binary
+`minic-backend`. Für jedes Testprogramm erzeugt es byte-identisch dasselbe C wie das Backend auf der
+JVM (Bootstrap-Stufe B1, geprüft von `SelfHostTest`):
 
-In Arbeit: Lambdas, Generics, Exceptions und damit Collections. Danach v1: `minic` kompiliert sein
-eigenes Backend. Danach kommen Bootstrap, Coroutines/Async-IO auf libuv, LLVM-Backend und eine
-Runtime in Kotlin. Details in [docs/plan-kotlin.md](docs/plan-kotlin.md).
+```sh
+# minic baut sein eigenes Backend nativ (~20 s)
+./minic build $(find compiler/native-driver/src/main/kotlin compiler/backend/src/main/kotlin -name '*.kt') -o build/minic-backend
+./minic emit-mir examples/shapes.kt -o build/shapes.mir   # Frontend (K2, noch auf der JVM)
+build/minic-backend build/shapes.mir -o build/shapes.c     # Backend, nativ
+clang -std=c17 -O2 -Iruntime/include build/shapes.c runtime/src/*.c -lm -o build/shapes && build/shapes
+```
+
+Funktioniert nativ: Klassen, Vererbung, Interfaces, `object`, `data`/`sealed`/`enum class`,
+Null-Safety, Lambdas und Closures, `inline`/`reified`, Generics, Exceptions, Extensions, Arrays,
+`vararg`, Ranges, Collections und große Teile der stdlib. Der Strict-Checker erkennt den kompletten
+Speichermodell-Korpus.
+
+Als Nächstes: eigenes Frontend (B2) für einen komplett nativen, selbst-hostenden Compiler.
+Danach Dogfooding des Speichermodells (RC-Elision, Arenas im Compiler), Coroutines und Async-IO auf
+libuv, LLVM-Backend und eine Runtime in Kotlin. Details in [docs/plan-kotlin.md](docs/plan-kotlin.md).
 
 Plattformen: Linux und macOS (CI). Windows folgt später.
 

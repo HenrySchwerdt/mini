@@ -85,6 +85,7 @@ import org.jetbrains.kotlin.ir.expressions.IrWhileLoop
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.types.classOrNull
+import org.jetbrains.kotlin.ir.util.constructors
 import org.jetbrains.kotlin.ir.types.isMarkedNullable
 import org.jetbrains.kotlin.ir.util.kotlinFqName
 import org.jetbrains.kotlin.ir.util.statements
@@ -179,6 +180,10 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
             return adaptResult(MirExpr.Call(cName, args, mirType(owner.returnType, owner)), mirType(c.type, c), c, out)
         }
     }
+    if (parent is IrClass && parent.kotlinFqName.asString() in RANGES && name == "contains" && c.arguments.size == 2 &&
+        progressionOrNull(c.arguments[0]!!)?.let { it.step == null && it.ascending } == true
+    ) return rangeContains(c, c.arguments.map { it!! }, out)
+    if (parent is IrClass && name == "rangeTo" && c.arguments.size == 2) rangeObject(c, parent, out)?.let { return it }
     if (parent is IrClass && parent.kotlinFqName.asString() == "kotlin.Comparable" && name == "compareTo") return comparableCompareTo(c, out)
     if (parent is IrClass && isEnumSpecial(parent, owner)) return enumSpecialCall(c, parent, owner, out)
     if (parent is IrClass && (parent in classInfos || isAny(parent) || builtinOf(parent) != null)) return memberCall(c, owner, out)
@@ -316,6 +321,19 @@ internal fun Ir2Mir.memberDispatch(f: IrSimpleFunction, superQualified: Boolean,
     val sig = signatureOf(d, f)
     val coerced = args.mapIndexed { i, a -> if (i == 0) a else coerceOperand(a, mirType(sig.parameters[i].type, sig.parameters[i]), at, out) }
     return dispatchWithArgs(d, f, coerced, at)
+}
+
+/** `a..b` used as a value (not a `for` / `in` operand): `IntRange(a, b)` of the stdlib. */
+internal fun Ir2Mir.rangeObject(c: IrCall, parent: IrClass, out: MutableList<MirStmt>): MirExpr? {
+    val fq = parent.kotlinFqName.asString()
+    if (fq != "kotlin.Int" && fq != "kotlin.Long" && fq != "kotlin.Char") return null
+    val cls = c.type.classOrNull?.owner ?: return null
+    if (cls.kotlinFqName.asString() !in RANGES) return null
+    val ctor = cls.constructors.firstOrNull() ?: return null
+    val cName = functionNames[ctor] ?: unsupported(c, "range value '${cls.name}' (the stdlib class is not available)")
+    val vals = operands(c.arguments.map { it!! }, out)
+    val et = if (cls.name.asString() == "IntRange") TInt else if (cls.name.asString() == "LongRange") TLong else TChar
+    return MirExpr.New(cName, vals.map { convertTo(it, et, c) }, typeOf(cls))
 }
 
 /** `x in a..b` / `x in a until b` (the range is built in place; no range object exists). */

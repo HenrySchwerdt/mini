@@ -273,7 +273,7 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
         out += MirStmt.Break(r.label)
         return
     }
-    if (target !== f) unsupported(s, "return from a lambda or nested function")
+    if (target !== f) unsupported(s, "return from a lambda or nested function (target ${(target as? IrFunction)?.name}, in ${f.name}, inline stack ${returnTargets.keys.map { it.name.asString() }})")
     if (currentReturn == TUnit) {
         stmt(s.value, out)
         runFinalizers(0, out)

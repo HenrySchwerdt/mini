@@ -218,3 +218,19 @@ Sobald Generics/Lambdas/Exceptions im Backend vorhanden sind, ist hier idealerwe
 6. **Unicode**: nur ASCII/Latin-1; das Verhalten bei anderen Zeichen weicht von der JVM ab.
 7. **`Throwable.toString`/`typeName`**: der Paketname ist `kotlin.…` statt `java.lang.…`.
 8. **Lizenz**: abgeleitete Dateien tragen den Apache-2.0-Kopf und `stdlib/NOTICE`.
+
+## 9. v1-A additions (the backend sources compile natively)
+
+Ported from the Kotlin 2.4.21 stdlib sources (Apache-2.0 headers kept) or reimplemented, each covered by `stdlib-test/tests/V1aTests.kt`
+(runs on the JVM against our sources and against the real stdlib):
+
+* `kotlin.ranges`: `IntRange/LongRange/CharRange`, `IntProgression/...`, their iterators, `until`, `downTo`, `step`, `reversed`, `ClosedRange` are now real
+  classes (`Ranges.kt`, no longer a builtin file); ranges are `Iterable`, so `(0 until n).map { }`, `.joinToString`, `.reversed()` work.
+  `IntIterator` & co. are real abstract classes. Stdlib code that *returns* a range uses the constructor (`IntRange(0, size - 1)`) so that the JVM test
+  (which renames the package) sees its own type.
+* `kotlin.collections`: `ArrayDeque`, `asReversed`, `indexOfLast`, `ifEmpty`, reified `filterIsInstance`, `Set.plus/minus(Iterable)`, `windowed`/`chunked`/`zipWithNext`/`unzip`,
+  `groupBy(key, value)`, `runningFold`, `putIfAbsent`, more `Map` functions (`mapNotNull`, `flatMap`, `maxByOrNull`, `filterTo`, `minus(keys)`, ...), `String.iterator()`/`withIndex()`.
+* `kotlin.text`: `Char` delimiters for `substringBefore/After(Last)`, `ifEmpty/ifBlank/orEmpty`, `map/mapIndexed/forEachIndexed/indexOfFirst/indexOfLast/takeWhile/...`, `chunked`, `removeSurrounding`, `toCharArray`.
+* `kotlin.comparisons`: `compareBy(vararg selectors)`, `thenByDescending`, `thenComparator`, `then`.
+* `kotlin`: `Result`/`runCatching` (an ordinary class, not a value class), `Double.isNaN/isInfinite/isFinite`, `Double/Float.MIN_VALUE/MAX_VALUE`,
+  `KClass.simpleName/qualifiedName` (`KClassImpl`, created by the backend for `Foo::class` / `x::class` from the type info name).
