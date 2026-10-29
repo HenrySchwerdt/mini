@@ -42,8 +42,12 @@ class RcOptTest {
     /** True when [c] clears local [name] with a statement of its own (not the NULL initialisation of its declaration). */
     private fun clears(c: String, name: String) = Regex("(?m)^\\s+$name = NULL;").containsMatchIn(c)
 
-    private fun retains(c: String) = Regex("mk_retain\\(").findAll(c).count()
-    private fun releases(c: String) = Regex("mk_release\\(").findAll(c).count()
+    private fun retains(c: String) = Regex("mk_retain\\(|MKH_RETAIN\\(").findAll(c).count()
+    private fun releases(c: String) = Regex("mk_release\\(|MKH_REL\\(").findAll(c).count()
+
+    private fun releasesOf(c: String, v: String) = "mk_release((MkObject *)$v)" in c || "MKH_REL($v)" in c
+
+    private fun anyRelease(c: String) = "mk_release" in c || "MKH_REL" in c
 
     private val read = fn("read", listOf(MirLocal(0, "p", a)), TInt, MirStmt.Return(MirExpr.IntConst(1)))
     private val mutate = fn(
@@ -255,7 +259,9 @@ class RcOptTest {
         val on = cOf(CEmitter.emit(module(ctor, f), rcOpt = true), "f")
         val off = cOf(CEmitter.emit(module(ctor, f), rcOpt = false), "f")
         assertEquals(0, retains(on), on)
-        assertTrue(clears(on, "v_t_1"), on)
+        // t lives in the function's own scope and is never used again: it is neither cleared nor released
+        assertFalse(clears(on, "v_t_1"), on)
+        assertFalse(releasesOf(on, "v_t_1"), on)
         assertEquals(1, retains(off), off)
     }
 
@@ -363,8 +369,8 @@ class RcOptTest {
             MirStmt.Eval(MirExpr.Call("thrower", listOf(MirExpr.Local(t)), TInt)),
         )
         val on = cOf(CEmitter.emit(module(ctor, thrower, f), rcOpt = true), "f")
-        assertFalse("mk_release((MkObject *)v_t_1)" in on, on)
-        assertTrue("mk_release((MkObject *)v_o_2)" in on, on)
+        assertFalse(releasesOf(on, "v_t_1"), on)
+        assertTrue(releasesOf(on, "v_o_2"), on)
         assertEquals(0, retains(on), on)
     }
 
@@ -380,9 +386,175 @@ class RcOptTest {
             MirStmt.Eval(MirExpr.Call("thrower", listOf(MirExpr.Local(p)), TInt)),
         )
         val on = cOf(CEmitter.emit(module(ctor, thrower, f), rcOpt = true), "f")
-        val clear = on.indexOf("    v_t_1 = NULL;")
-        val exit = on.indexOf("mk_pending_exception != NULL")
-        assertTrue(clear in 0 until exit, on)
+        // after the move the exit path of the throwing call must not release t again
+        assertFalse(releasesOf(on, "v_t_1"), on)
+        assertTrue("mk_pending_exception != NULL" in on, on)
+    }
+
+    // ---- owned constructor parameters --------------------------------------------------------------------------
+
+    private fun ctor2() = fn(
+        "kc_A_C2", listOf(MirLocal(0, "this", a), MirLocal(1, "x", a)), TUnit,
+        MirStmt.SetField(MirExpr.Local(MirLocal(0, "this", a)), "kc_A", "next", an, MirExpr.Local(MirLocal(1, "x", a))),
+        ctorOf = "kc_A",
+    )
+
+    @Test
+    fun constructorThatStoresItsParameterOwnsIt() {
+        val c = CEmitter.emit(module(ctor2()), rcOpt = true)
+        val body = cOf(c, "kc_A_C2")
+        assertEquals(0, retains(body), body) // the parameter's reference moves into the field
+        assertFalse(releasesOf(body, "v_x_1"), body)
+        val base = cOf(CEmitter.emit(module(ctor2()), rcOpt = false), "kc_A_C2")
+        assertEquals(1, retains(base), base)
+    }
+
+    @Test
+    fun callerHandsItsLastReferenceToTheConstructor() {
+        val t = MirLocal(0, "t", a)
+        val r = MirLocal(1, "r", a)
+        val f = fn(
+            "f", emptyList(), TUnit,
+            MirStmt.Declare(t, MirExpr.New("kc_A_C", emptyList(), a)),
+            MirStmt.Declare(r, MirExpr.New("kc_A_C2", listOf(MirExpr.Local(t)), a)),
+            callRead(r),
+        )
+        val on = cOf(CEmitter.emit(module(read, ctor, ctor2(), f), rcOpt = true), "f")
+        assertEquals(0, retains(on), on)
+        assertFalse(releasesOf(on, "v_t_0"), on)
+        assertTrue(releasesOf(on, "v_r_1"), on)
+    }
+
+    @Test
+    fun callerRetainsAReferenceItStillNeeds() {
+        val t = MirLocal(0, "t", a)
+        val r = MirLocal(1, "r", a)
+        val f = fn(
+            "f", emptyList(), TUnit,
+            MirStmt.Declare(t, MirExpr.New("kc_A_C", emptyList(), a)),
+            MirStmt.Declare(r, MirExpr.New("kc_A_C2", listOf(MirExpr.Local(t)), a)),
+            callRead(t),
+        )
+        val on = cOf(CEmitter.emit(module(read, ctor, ctor2(), f), rcOpt = true), "f")
+        assertEquals(1, retains(on), on)
+        assertTrue(releasesOf(on, "v_t_0"), on)
+    }
+
+    @Test
+    fun callerRetainsABorrowedArgument() {
+        val p = MirLocal(0, "p", a)
+        val r = MirLocal(1, "r", a)
+        val f = fn("f", listOf(p), TUnit, MirStmt.Declare(r, MirExpr.New("kc_A_C2", listOf(MirExpr.Local(p)), a)))
+        val on = cOf(CEmitter.emit(module(ctor2(), f), rcOpt = true), "f")
+        assertEquals(1, retains(on), on)
+    }
+
+    @Test
+    fun parameterConsumedOnlyOnSomePathsStaysBorrowed() {
+        val c3 = fn(
+            "kc_A_C3", listOf(MirLocal(0, "this", a), MirLocal(1, "x", a), MirLocal(2, "c", TBoolean)), TUnit,
+            MirStmt.If(
+                MirExpr.Local(MirLocal(2, "c", TBoolean)),
+                listOf(MirStmt.SetField(MirExpr.Local(MirLocal(0, "this", a)), "kc_A", "next", an, MirExpr.Local(MirLocal(1, "x", a)))),
+                emptyList(),
+            ),
+            ctorOf = "kc_A",
+        )
+        val body = cOf(CEmitter.emit(module(c3), rcOpt = true), "kc_A_C3")
+        assertEquals(1, retains(body), body)
+    }
+
+    @Test
+    fun constructorThatThrowsBeforeConsumingStillReleasesItsParameter() {
+        val c4 = fn(
+            "kc_A_C4", listOf(MirLocal(0, "this", a), MirLocal(1, "x", a)), TUnit,
+            MirStmt.Eval(MirExpr.Call("thrower", listOf(MirExpr.Local(MirLocal(0, "this", a))), TInt)),
+            MirStmt.SetField(MirExpr.Local(MirLocal(0, "this", a)), "kc_A", "next", an, MirExpr.Local(MirLocal(1, "x", a))),
+            ctorOf = "kc_A",
+        )
+        val body = cOf(CEmitter.emit(module(thrower, c4), rcOpt = true), "kc_A_C4")
+        // exit path of the throwing call: x is still owned there
+        assertTrue(releasesOf(body, "v_x_1"), body)
+        assertEquals(0, retains(body), body)
+    }
+
+    @Test
+    fun aliasOfAnOwnedLocalPassesItsReferenceOn() {
+        // val t = A(); val a = t (alias); B(a): the constructor takes t's reference through the alias
+        val t = MirLocal(0, "t", a)
+        val al = MirLocal(1, "al", a)
+        val r = MirLocal(2, "r", a)
+        val f = fn(
+            "f", emptyList(), TUnit,
+            MirStmt.Declare(t, MirExpr.New("kc_A_C", emptyList(), a)),
+            MirStmt.Declare(al, MirExpr.Local(t)),
+            MirStmt.Declare(r, MirExpr.New("kc_A_C2", listOf(MirExpr.Local(al)), a)),
+            callRead(r),
+        )
+        val on = cOf(CEmitter.emit(module(read, ctor, ctor2(), f), rcOpt = true), "f")
+        assertEquals(0, retains(on), on)
+        assertFalse(releasesOf(on, "v_t_0"), on)
+    }
+
+    @Test
+    fun exitsBeforeADeclarationDoNotReleaseTheLocal() {
+        val c = MirLocal(0, "c", TBoolean)
+        val t = MirLocal(1, "t", a)
+        val f = fn(
+            "f", listOf(c), TUnit,
+            MirStmt.If(MirExpr.Local(c), listOf(MirStmt.Return(null)), emptyList()),
+            MirStmt.Declare(t, MirExpr.New("kc_A_C", emptyList(), a)),
+            callRead(t),
+        )
+        val on = cOf(CEmitter.emit(module(read, ctor, f), rcOpt = true), "f")
+        val off = cOf(CEmitter.emit(module(read, ctor, f), rcOpt = false), "f")
+        val firstReturn = on.indexOf("return;")
+        assertFalse(anyRelease(on.substring(0, firstReturn)), on)
+        assertTrue(anyRelease(off.substring(0, off.indexOf("return;"))), off)
+        assertTrue(releasesOf(on, "v_t_1"), on) // the normal end still releases it
+    }
+
+    @Test
+    fun firstStoreIntoAFreshObjectNeedsNoRelease() {
+        val body = cOf(CEmitter.emit(module(ctor2()), rcOpt = true), "kc_A_C2")
+        assertFalse(anyRelease(body), body)
+        assertFalse("old" in body, body)
+        // a second store into the same field has to release the first value
+        val two = fn(
+            "kc_A_C5", listOf(MirLocal(0, "this", a), MirLocal(1, "x", a)), TUnit,
+            MirStmt.SetField(MirExpr.Local(MirLocal(0, "this", a)), "kc_A", "next", an, MirExpr.NullConst(an)),
+            MirStmt.SetField(MirExpr.Local(MirLocal(0, "this", a)), "kc_A", "next", an, MirExpr.Local(MirLocal(1, "x", a))),
+            ctorOf = "kc_A",
+        )
+        val b2 = cOf(CEmitter.emit(module(two), rcOpt = true), "kc_A_C5")
+        assertEquals(1, releases(b2), b2) // only the second store releases an old value
+    }
+
+    @Test
+    fun storeAfterThisHasLeakedStillReleases() {
+        val leaky = fn(
+            "kc_A_C6", listOf(MirLocal(0, "this", a), MirLocal(1, "x", a)), TUnit,
+            MirStmt.Eval(MirExpr.Call("read", listOf(MirExpr.Local(MirLocal(0, "this", a))), TInt)),
+            MirStmt.SetField(MirExpr.Local(MirLocal(0, "this", a)), "kc_A", "next", an, MirExpr.Local(MirLocal(1, "x", a))),
+            ctorOf = "kc_A",
+        )
+        val body = cOf(CEmitter.emit(module(read, leaky), rcOpt = true), "kc_A_C6")
+        assertTrue(releasesOf(body, "old"), body)
+    }
+
+    @Test
+    fun assigningTheResultOfAConstructorFedByTheSameLocalNeedsNoCounting() {
+        // x = B(x) in a loop-free form
+        val x = MirLocal(0, "x", a)
+        val f = fn(
+            "f", emptyList(), TUnit,
+            MirStmt.Declare(x, MirExpr.New("kc_A_C", emptyList(), a)),
+            MirStmt.Assign(x, MirExpr.New("kc_A_C2", listOf(MirExpr.Local(x)), a)),
+            callRead(x),
+        )
+        val on = cOf(CEmitter.emit(module(read, ctor, ctor2(), f), rcOpt = true), "f")
+        assertEquals(0, retains(on), on)
+        assertFalse("old" in on, on)
     }
 
     // ---- the pass itself -----------------------------------------------------------------------------------------

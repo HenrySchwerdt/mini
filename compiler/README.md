@@ -24,6 +24,7 @@ compiler/jvm-bridge/build/install/minic/bin/minic build hello.kt -o build/hello
 minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
             [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
             [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [-Werror]
+            [--stats] [--no-rc-opt]
 minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
 ```
 
@@ -38,6 +39,10 @@ minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
   (warnings do not fail, unless `-Werror`; `build` accepts `-Werror` too). `minic build` runs the same checker after the frontend and before the C backend:
   errors stop the build (exit 1), warnings are printed.
 
+* `--stats`: build with `-DMK_STATS`: the program counts allocations / frees / retains / releases (split into atomic,
+  non-atomic and no-op) and the peak of live objects and bytes, and prints `mk-stats:` lines to stderr at exit
+  (runtime/include/minirt.h, block D1; `docs/benchmarks.md`). Without the flag the runtime has no counters at all.
+* `--no-rc-opt`: skip the reference-count elision pass (RcOpt, below): the baseline code generation.
 * `--emit-c <path>`: keep the generated C file there (otherwise a temporary file is used).
 * `--runtime-src <dir>`: directory whose `*.c` files (recursively) are linked in. Default:
   `runtime/src` in the repository root (found by walking up from the current
@@ -199,8 +204,8 @@ backend never emits C for IR it does not understand.
 
 ## Reference counting (Managed mode)
 
-Rules implemented by `Ir2Mir` (ownership shape) and `CEmitter` (retain/release placement). No
-elision pass exists yet.
+Rules implemented by `Ir2Mir` (ownership shape) and `CEmitter` (retain/release placement). These are the
+baseline rules (`--no-rc-opt`); the elision pass RcOpt (next section) removes most of the pairs they produce.
 
 1. Every reference-typed local owns one reference. It is `NULL`-initialised at the top of the C scope
    that contains its declaration and released at every exit of that scope: normal end, `break`,
@@ -221,6 +226,73 @@ elision pass exists yet.
 All non-cyclic test programs are verified leak-free and ASan/UBSan-clean (see Tests). **Reference
 cycles leak** (no cycle collector; `weak` references do not exist yet) and the leak check programs avoid
 them.
+
+## RC elision (RcOpt)
+
+`compiler/backend/.../RcOpt.kt` (pure Kotlin, on by default; `minic build --no-rc-opt` and
+`native-driver --no-rc-opt` give the baseline). It does not rewrite the MIR: per function it computes an
+`RcPlan` (borrowing locals, moves, takes, owned parameters, ...) that `CEmitter` consults when it places
+retain/release. The result is a deterministic function of the MIR module, so the JVM backend and the native
+`minic-backend` produce byte-identical C (SelfHostTest). Method: Perceus-style ("reference counting with reuse")
+ownership inference, restricted to what is provably safe for our object model (mutable fields, no GC, one
+reference convention for virtual calls).
+
+**Effects.** `RcEffects` computes, as a fixpoint over the call graph (like `ThrowAnalysis`), which functions may
+*overwrite a reference stored in the heap*: a reference field store, a `mk_ref_array_set`-like runtime call, or a
+call of such a function (virtual and interface calls through the union over all implementations of that vtable
+slot / itable entry; runtime calls not on an allow-list count as mutating). Only such an operation can free an
+object that a borrowed alias still points to. Stores into the object a constructor is initialising do not count
+for that constructor (the object is invisible to everybody else).
+
+**Rules** (each has unit tests in `backend/src/test/kotlin/RcOptTest.kt`, and end-to-end programs under ASan/UBSan
+in `testdata/rcopt_*.kt`):
+
+1. *Borrowed locals.* A reference local whose every definition is a plain read (`val t = p`, `val t = o.f`,
+   `x = x.next`, casts and `!!` of those, `object` singletons, constants) does not own a reference: no retain at the
+   definition, no release at any exit, and `Assign` is a plain C assignment. It is valid for its whole lifetime when
+   (a) the roots of its definitions are parameters (kept alive by the caller for the whole call), owned locals that are
+   not reassigned in the lifetime (and whose scope encloses the borrower), or immortal objects; and (b) if a field was
+   read on the way, no heap-mutating operation runs between the first definition and the last use. A call that
+   receives the borrower as an argument counts as running at its end (the callee itself may overwrite the field
+   while it still uses its parameter). The lifetime is extended to the end of every loop that contains a use but not
+   the declaration. The set of borrowers is the greatest fixpoint of these conditions.
+2. *Moves of the last use.* A statement that consumes the last use of an owned local - `Declare`/`Assign`/field store
+   of the local (also through `Cast`/`!!`, or through a plain-copy borrower of it) or `return` of it - takes its
+   reference instead of retaining a second one. "Last use" is exact liveness over the structured MIR (branches,
+   loops with fixpoint, `break`/`continue`, `try` handlers: everything live in a handler is live in the whole
+   `try` body); uses through borrowers of the local count as uses of it. A moved local is cleared (`x = NULL`) so
+   the scope-exit releases on other paths stay correct, except in the closed case of rule 5.
+3. *Owned constructor parameters.* A constructor parameter that the initialiser always gives away at its top level
+   (stored into a field, returned, passed to another constructor) has the *owned* convention: the callee releases
+   it at every exit unless it moved it, the caller passes a reference it owns - the last use of a local moves, anything
+   else is retained for the call. Arguments are evaluated first (into C temporaries, left to right), then the
+   references are handed over, so an exit while evaluating an argument still finds every local intact; an
+   exception inside the constructor releases the parameter on its exit path. Calls through vtables/itables keep the
+   borrowed convention (one ABI per slot). The conventions are a fixpoint over constructor delegation (max 4 rounds).
+4. *Self takes.* `x = Foo(x)`: the old value of `x` dies at the assignment, so it can be handed to the callee and
+   the release of the old value is skipped.
+5. *Closed moves.* When the consuming statement is a direct child of the list that declares the local, the local is
+   never reassigned, and no `continue` can jump past the statement to the end of the loop body, nothing can release
+   the local on any later path: the emitter neither clears it nor releases it at later exits.
+6. *Not-yet-declared locals.* Exits (`return`, `break`, `continue`, exception exits) that precede the `Declare` of a
+   local of an enclosing scope do not release it (it is still `NULL`).
+7. *Fresh stores.* The first store into each reference field of `this` in the top-level statements of a
+   constructor, as long as `this` has not been handed to other code, overwrites the zeroed field: no old value to
+   release.
+8. *Inline NULL test.* With RcOpt, releases of references that are often `NULL` (old field values, scope-exit
+   releases of conditionally assigned locals, fields in `dispose`) are emitted as `MKH_REL(x)`: the test is inline
+   and the runtime is only called for a real object.
+
+**Exception paths.** The exit code of every call that can throw releases the owned locals of the scopes it leaves.
+Borrowing locals are not in that list; a moved local was cleared (or is dead) before anything after the move can
+throw; an owned parameter is released by the callee's own exit path. `finally` is lowered by `Ir2Mir` into catch-all
+clauses and copies of the finalizer, which RcOpt sees as ordinary MIR.
+
+**Not done (ideas).** Owned parameters for non-constructor functions and vtable slots (needs one convention per
+slot, so a fixpoint over slot groups), reuse analysis (an object that dies at a constructor call donates its memory:
+`Tree(l, r)` after the last use of an old `Tree`), a cycle-free "unique" bit, inlined retain/release fast paths in
+`minirt.h`, thread-sharing awareness (borrowed aliases of fields of `MK_FLAG_SHARED` objects assume the
+program is data-race free, like the baseline's field-read retain).
 
 ## Memory-model checker (Strict mode)
 

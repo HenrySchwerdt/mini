@@ -12,6 +12,7 @@ IR-to-C backend; generated code includes only that header.
 | `src/alloc_pool.c` | Pool (fixed-size free list) |
 | `src/alloc_debug.c` | DebugAllocator (leak and double-free diagnostics) |
 | `src/object.c` | retain/release/share, `mk_is_instance`, `mk_type_Any` |
+| `src/stats.c` | D1 runtime statistics (`-DMK_STATS` only, otherwise empty) |
 | `src/string.c` | `kotlin.String`, number/boolean/char conversion, hash, equals |
 | `src/numfmt.c` | `Double.toString` compatible formatting |
 | `src/utf.c` | UTF-8 decoding / UTF-16 to UTF-8 encoding |
@@ -119,6 +120,17 @@ based allocators the read is itself a use-after-free that ASan reports). Mixing
   `mk_panic`.
 * `mk_share` must be called while the caller still has exclusive access (before
   the object is published to another thread); it does not touch fields.
+
+## Statistics (`-DMK_STATS`, block D1 of `minirt.h`)
+
+Compile the runtime and the generated code with `-DMK_STATS` (`minic build --stats`) to count, with relaxed atomics,
+allocations and frees (all allocators), bytes requested, the live and peak number of objects / bytes, and the calls of
+`mk_retain` / `mk_release` split into non-atomic, atomic (`MK_FLAG_SHARED`) and no-ops (NULL / static / stack
+objects). `mk_stats_get`, `mk_stats_reset` and `mk_stats_dump` are available to programs; at exit (registered with
+`atexit` on first use) four `mk-stats: key=value ...` lines go to stderr. The block size for the byte counts is
+remembered in the padding of the hidden allocator prefix. Without the macro `object.c` / `alloc.c` / `stats.c` contain
+no statistics code or data (`run_tests.sh` checks the object files for `mk_stats` symbols); `tests/test_stats.c` is built
+with `-DMK_STATS` by `run_tests.sh`. `docs/benchmarks.md` uses the counters to compare code generations.
 
 ## Strings
 

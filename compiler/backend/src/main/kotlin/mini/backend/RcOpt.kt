@@ -31,6 +31,19 @@ class RcFunctionPlan(
     val borrowed: HashSet<Int>,
     /** Consumer statement (Declare / Assign / SetField / Return) to the owned local whose reference it takes over. */
     val moves: HashMap<MirStmt, MirLocal>,
+    /** Call argument expression to the owned local whose reference the callee takes over (see [RcPlan.ownedMask]). */
+    val takes: HashMap<MirExpr, MirLocal>,
+    /** Parameters this function owns (owned convention): it releases them at its exits unless it moved them. */
+    val ownedParams: List<MirLocal>,
+    /**
+     * After this statement the listed locals have given their reference away on every path to every
+     * later exit of their scope: the emitter neither clears nor releases them there.
+     */
+    val dead: HashMap<MirStmt, ArrayList<MirLocal>>,
+    /** Reference field stores into the object a constructor initialises where the old value is known to be NULL. */
+    val fresh: HashSet<MirStmt>,
+    /** Assignments whose value expression hands the assigned local's own old reference to a callee: the old value is gone. */
+    val selfTakes: HashSet<MirStmt>,
 ) {
     fun isBorrowed(l: MirLocal): Boolean = l.id in borrowed
 }
@@ -41,23 +54,68 @@ class RcStats {
     var refLocals = 0
     var borrowedLocals = 0
     var moves = 0
+    var takes = 0
+    var ownedParams = 0
 }
 
-class RcPlan internal constructor(private val byFunction: HashMap<String, RcFunctionPlan>, val stats: RcStats) {
+class RcPlan internal constructor(
+    private val byFunction: HashMap<String, RcFunctionPlan>,
+    private val owned: HashMap<String, BooleanArray>,
+    val stats: RcStats,
+) {
     fun of(f: MirFunction): RcFunctionPlan? = byFunction[f.cName]
+
+    /**
+     * Ownership convention of the parameters of function [cName] (constructor initialisers): where true the
+     * callee owns the reference it receives (the caller passes a reference it owns: a moved local or a fresh
+     * retain), everywhere else parameters are borrowed. Null when there is no owned parameter.
+     */
+    fun ownedMask(cName: String): BooleanArray? = owned[cName]
 }
 
 object RcOpt {
     fun analyze(module: MirModule): RcPlan {
         val fx = RcEffects(module).run()
+        val owned = HashMap<String, BooleanArray>()
+        // Which constructor parameters does the initialiser always hand over (store into a field, pass on to
+        // another constructor)? Probing assumes every reference parameter is owned; more known callee conventions
+        // can only add parameters, so a few rounds reach the fixpoint (delegating constructors).
+        var changed = true
+        var round = 0
+        while (changed && round < 4) {
+            changed = false
+            round++
+            for (f in module.functions) {
+                if (f.constructorOf == null) continue
+                val probe = RcAnalyzer(f, fx, RcStats(), owned, true)
+                probe.run()
+                val mask = probe.consumedParams()
+                if (!sameMask(owned[f.cName], mask)) {
+                    if (anyTrue(mask)) owned[f.cName] = mask else owned.remove(f.cName)
+                    changed = true
+                }
+            }
+        }
         val plans = HashMap<String, RcFunctionPlan>()
         val stats = RcStats()
         for (f in module.functions) {
             stats.functions++
-            val plan = RcAnalyzer(f, fx, stats).run()
+            val plan = RcAnalyzer(f, fx, stats, owned, false).run()
             if (plan != null) plans[f.cName] = plan
         }
-        return RcPlan(plans, stats)
+        return RcPlan(plans, owned, stats)
+    }
+
+    private fun anyTrue(a: BooleanArray): Boolean {
+        for (x in a) if (x) return true
+        return false
+    }
+
+    private fun sameMask(a: BooleanArray?, b: BooleanArray): Boolean {
+        if (a == null) return !anyTrue(b)
+        if (a.size != b.size) return false
+        for (i in a.indices) if (a[i] != b[i]) return false
+        return true
     }
 }
 
@@ -97,9 +155,12 @@ internal class RcEffects(private val module: MirModule) {
     val mutating = HashSet<String>()
     private val slotImpls = HashMap<Int, HashSet<String>>()
     private val ifaceImpls = HashMap<String, HashSet<String>>()
+    private val objectCtors = HashMap<String, String>()
 
     fun run(): RcEffects {
         for (c in module.classes) {
+            val oc = c.objectCtor
+            if (oc != null) objectCtors[c.cName] = oc
             for ((slot, name) in c.vtable.withIndex()) {
                 if (name == null) continue
                 slotImpls.getOrPut(slot) { HashSet() }.add(name)
@@ -139,6 +200,8 @@ internal class RcEffects(private val module: MirModule) {
         is MirExpr.VCall -> slotMutates(e.slot)
         is MirExpr.ICall -> ifaceImpls[ifaceKey(e.interfaceCName, e.index)]?.any { it in mutating } ?: false
         is MirExpr.RuntimeCall -> runtimeMutates(e.cName)
+        // the first access of an object runs its constructor
+        is MirExpr.ObjectGet -> objectCtors[e.classCName]?.let { it in mutating } ?: false
         else -> false
     }
 
@@ -174,7 +237,7 @@ internal class RcEffects(private val module: MirModule) {
     private fun isFreshThisStore(f: MirFunction, s: MirStmt.SetField): Boolean {
         if (f.constructorOf == null || f.params.isEmpty()) return false
         val o = s.obj
-        return o is MirExpr.Local && o.local === f.params[0]
+        return o is MirExpr.Local && o.local.id == f.params[0].id
     }
 
     companion object {
@@ -235,12 +298,30 @@ private class LocalInfo(val local: MirLocal, val index: Int, val isParam: Boolea
     val assignPos = ArrayList<Int>()
     val assignLoop = ArrayList<LoopRange?>()
     var borrowed = false
+    /** A parameter with the owned convention: handled like an owned local from the function start on. */
+    var ownedParam = false
+    /** The statement list whose scope declares the local (the function body for parameters). */
+    var declList: List<MirStmt>? = null
     // derived by the validation
     val roots = ArrayList<LocalInfo>()
     var viaField = false
 }
 
-private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcStats) {
+private class ListCtx(val list: List<MirStmt>, val loop: MirLabel?, val noClose: Boolean) {
+    var index = 0
+}
+
+/**
+ * [calleeOwned]: ownership conventions of the constructors (see [RcPlan.ownedMask]). [probe] analyses a
+ * constructor assuming all its reference parameters (but `this`) are owned, to find out which ones it consumes.
+ */
+private class RcAnalyzer(
+    val f: MirFunction,
+    val fx: RcEffects,
+    val stats: RcStats,
+    val calleeOwned: HashMap<String, BooleanArray>,
+    val probe: Boolean,
+) {
     private val infos = ArrayList<LocalInfo>()
     private val byId = HashMap<Int, LocalInfo>()
     private var pos = 0
@@ -249,10 +330,29 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
     private val scopeParent = ArrayList<Int>()
     private var scope = 0
     private val moves = HashMap<MirStmt, MirLocal>()
+    private val takes = HashMap<MirExpr, MirLocal>()
+    private val dead = HashMap<MirStmt, ArrayList<MirLocal>>()
+    private var curList: List<MirStmt> = f.body
+    private val consumedTop = HashSet<Int>()
+    private val fresh = HashSet<MirStmt>()
+    private val selfTakes = HashSet<MirStmt>()
+
+    /** Probe result: which parameters are consumed by a top-level statement of the function. */
+    fun consumedParams(): BooleanArray {
+        val r = BooleanArray(f.params.size)
+        for ((k, p) in f.params.withIndex()) if (p.id in consumedTop) r[k] = true
+        return r
+    }
 
     fun run(): RcFunctionPlan? {
         scopeParent += -1
-        for (p in f.params) if (p.type.isRef) info(p, true)
+        val mask = if (probe) null else calleeOwned[f.cName]
+        for ((k, p) in f.params.withIndex()) {
+            if (!p.type.isRef) continue
+            val i = info(p, true)
+            i.declList = f.body
+            i.ownedParam = if (probe) f.constructorOf != null && k >= 1 else mask != null && k < mask.size && mask[k]
+        }
         for (s in f.body) stmt(s)
         // loop ends are known now; select and validate the borrowers
         var candidates = 0
@@ -268,11 +368,61 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
             borrowedIds += i.local.id
             borrowedCount++
         }
+        val ownedParams = ArrayList<MirLocal>()
+        for (i in infos) if (i.isParam && i.ownedParam && !probe) ownedParams += i.local
         stats.refLocals += infos.size
         stats.borrowedLocals += borrowedCount
         stats.moves += moves.size
-        if (borrowedIds.isEmpty() && moves.isEmpty()) return null
-        return RcFunctionPlan(borrowedIds, moves)
+        stats.takes += takes.size
+        stats.ownedParams += ownedParams.size
+        if (!probe && f.constructorOf != null && f.params.isNotEmpty()) findFreshStores()
+        if (borrowedIds.isEmpty() && moves.isEmpty() && takes.isEmpty() && ownedParams.isEmpty() && fresh.isEmpty()) return null
+        return RcFunctionPlan(borrowedIds, moves, takes, ownedParams, dead, fresh, selfTakes)
+    }
+
+    // ---- stores into a fresh object ------------------------------------------------------------------------
+
+    /** True when [e] uses [self] other than as the object of a field read. */
+    private fun thisLeaks(e: MirExpr, self: MirLocal): Boolean {
+        if (e is MirExpr.Local) return e.local.id == self.id
+        if (e is MirExpr.FieldGet) {
+            val o = e.obj
+            if (o is MirExpr.Local && o.local.id == self.id) return false
+        }
+        for (c in mirChildren(e)) if (thisLeaks(c, self)) return true
+        return false
+    }
+
+    /**
+     * The first reference store into each field of `this` in the top-level statements of a constructor, as long as
+     * `this` has not been handed to any other code, overwrites the NULL of the zeroed fresh object: nothing to release.
+     */
+    private fun findFreshStores() {
+        val self = f.params[0]
+        val stored = ArrayList<String>()
+        for (s in f.body) {
+            if (s is MirStmt.SetField) {
+                val o = s.obj
+                if (o is MirExpr.Local && o.local.id == self.id) {
+                    if (thisLeaks(s.value, self)) return
+                    if (s.fieldType.isRef) {
+                        val key = s.owner + "#" + s.field
+                        if (stored.none { it == key }) fresh += s
+                        stored += key
+                    }
+                    continue
+                }
+                if (thisLeaks(s.obj, self) || thisLeaks(s.value, self)) return
+                continue
+            }
+            val leaks = when (s) {
+                is MirStmt.Declare -> s.init != null && thisLeaks(s.init, self)
+                is MirStmt.Eval -> thisLeaks(s.expr, self)
+                is MirStmt.Assign -> thisLeaks(s.value, self)
+                else -> true // control flow may store fields we do not track
+            }
+            if (leaks) return
+        }
     }
 
     // ---- collection: positions, uses, definitions, events --------------------------------------------------
@@ -302,6 +452,7 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
         is MirExpr.Local -> e.local
         is MirExpr.Cast -> directLocal(e.operand)
         is MirExpr.NotNull -> directLocal(e.operand)
+        is MirExpr.FieldGet -> directLocal(e.obj) // a value read from a field of the local is used by the call, too
         else -> null
     }
 
@@ -329,6 +480,10 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
     private fun expr(e: MirExpr) {
         when (e) {
             is MirExpr.Local -> use(e.local, pos++)
+            is MirExpr.ObjectGet -> {
+                val p = pos++
+                if (fx.callMutates(e)) events += p
+            }
             is MirExpr.Call, is MirExpr.RuntimeCall, is MirExpr.New, is MirExpr.VCall, is MirExpr.ICall -> {
                 val ops = mirChildren(e)
                 for (o in ops) expr(o)
@@ -351,8 +506,11 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
     private fun stmts(list: List<MirStmt>) {
         scopeParent += scope
         val saved = scope
+        val savedList = curList
         scope = scopeParent.size - 1
+        curList = list
         for (s in list) stmt(s)
+        curList = savedList
         scope = saved
     }
 
@@ -374,6 +532,7 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
                 if (init != null) expr(init)
                 if (s.local.type.isRef) {
                     val i = info(s.local, false)
+                    i.declList = curList
                     if (init != null) addDef(i, init, pos++)
                 }
             }
@@ -422,10 +581,14 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
                 // body and condition statements share one scope (Kotlin scoping, see CEmitter.doWhile)
                 scopeParent += scope
                 val saved = scope
+                val savedList = curList
                 scope = scopeParent.size - 1
+                curList = s.body
                 for (b in s.body) stmt(b)
+                curList = s.condStmts
                 for (c in s.condStmts) stmt(c)
                 expr(s.cond)
+                curList = savedList
                 scope = saved
                 loopEnd(l)
             }
@@ -517,7 +680,7 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
         val hi = windowEnd(x)
         if (x.viaField && eventIn(lo, hi)) return false
         for (r in x.roots) {
-            if (r.isParam) {
+            if (r.isParam && !r.ownedParam) {
                 if (r.duplicate) return false
                 continue
             }
@@ -564,7 +727,7 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
     }
 
     private fun countUses(e: MirExpr, l: MirLocal): Int {
-        if (e is MirExpr.Local) return if (e.local === l) 1 else 0
+        if (e is MirExpr.Local) return if (e.local.id == l.id) 1 else 0
         var n = 0
         for (c in mirChildren(e)) n += countUses(c, l)
         return n
@@ -583,25 +746,148 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
         liveList(f.body, empty(), true)
     }
 
-    private fun liveList(list: List<MirStmt>, out: RcBits, record: Boolean): RcBits {
+    private val ctxStack = ArrayList<ListCtx>()
+
+    private fun liveList(list: List<MirStmt>, out: RcBits, record: Boolean, loop: MirLabel? = null, noClose: Boolean = false): RcBits {
+        val ctx = ListCtx(list, loop, noClose)
+        ctxStack += ctx
         var cur = out
-        for (k in list.indices.reversed()) cur = liveStmt(list[k], cur, record)
+        for (k in list.indices.reversed()) {
+            ctx.index = k
+            cur = liveStmt(list[k], cur, record)
+        }
+        ctxStack.removeAt(ctxStack.size - 1)
         return cur
+    }
+
+    private fun containsContinue(s: MirStmt, label: MirLabel): Boolean = when (s) {
+        is MirStmt.Continue -> s.label === label
+        is MirStmt.If -> s.thenBody.any { containsContinue(it, label) } || s.elseBody.any { containsContinue(it, label) }
+        is MirStmt.Block -> s.body.any { containsContinue(it, label) }
+        is MirStmt.While -> s.body.any { containsContinue(it, label) }
+        is MirStmt.Loop -> s.body.any { containsContinue(it, label) }
+        is MirStmt.DoWhile -> s.body.any { containsContinue(it, label) } || s.condStmts.any { containsContinue(it, label) }
+        is MirStmt.ForRange -> s.body.any { containsContinue(it, label) }
+        is MirStmt.Try -> s.body.any { containsContinue(it, label) } || s.catches.any { c -> c.body.any { containsContinue(it, label) } }
+        else -> false
+    }
+
+    /**
+     * True when giving away the reference of [x] in the current statement leaves it dead on every path to every
+     * later exit of its scope, so the emitter can skip clearing and releasing it: the statement is a direct child of
+     * the list that declares [x], [x] is never reassigned, and no `continue` can jump past the statement to the
+     * end of the loop body that releases the scope.
+     */
+    private fun closed(x: LocalInfo): Boolean {
+        if (ctxStack.isEmpty()) return false
+        val ctx = ctxStack[ctxStack.size - 1]
+        if (ctx.noClose || x.declList !== ctx.list || x.duplicate || x.assignPos.isNotEmpty()) return false
+        val loop = ctx.loop
+        if (loop != null) {
+            for (k in 0 until ctx.index) if (containsContinue(ctx.list[k], loop)) return false
+        }
+        return true
+    }
+
+    private fun noteConsumed(x: LocalInfo, s: MirStmt) {
+        if (x.isParam && ctxStack.isNotEmpty() && ctxStack[ctxStack.size - 1].list === f.body) consumedTop += x.local.id
+        if (closed(x)) {
+            var l = dead[s]
+            if (l == null) {
+                l = ArrayList()
+                dead[s] = l
+            }
+            l.add(x.local)
+        }
+    }
+
+    private fun usable(x: LocalInfo): Boolean = (!x.isParam || x.ownedParam) && !x.borrowed && !x.duplicate
+
+    /**
+     * The owned local whose reference a use of [l] can take over: [l] itself, or the single owned root of a plain
+     * copy (`val t = o`), which always holds the same value as the owned local while it is valid.
+     */
+    private fun consumable(l: MirLocal): LocalInfo? {
+        val x = byId[l.id] ?: return null
+        if (x.borrowed) {
+            if (x.viaField || x.roots.size != 1) return null
+            val r = x.roots[0]
+            return if (usable(r)) r else null
+        }
+        return if (usable(x)) x else null
+    }
+
+    /** Number of reads of [l], directly or through borrowed aliases rooted at it, in [e]. */
+    private fun countDeep(e: MirExpr, l: LocalInfo): Int {
+        if (e is MirExpr.Local) {
+            val i = byId[e.local.id] ?: return 0
+            if (i === l) return 1
+            if (i.borrowed && i.roots.any { it === l }) return 1
+            return 0
+        }
+        var n = 0
+        for (c in mirChildren(e)) n += countDeep(c, l)
+        return n
+    }
+
+    /** Records takes for the arguments of calls in [exprs] (owned parameters of constructors) that are last uses. */
+    private fun scanCalls(s: MirStmt, exprs: List<MirExpr>, e: MirExpr, out: RcBits, conditional: Boolean) {
+        when (e) {
+            is MirExpr.Conditional -> {
+                scanCalls(s, exprs, e.cond, out, conditional)
+                scanCalls(s, exprs, e.thenValue, out, true)
+                scanCalls(s, exprs, e.elseValue, out, true)
+            }
+            is MirExpr.Binary -> {
+                scanCalls(s, exprs, e.left, out, conditional)
+                scanCalls(s, exprs, e.right, out, conditional || e.op == BinaryOp.AndAnd || e.op == BinaryOp.OrOr)
+            }
+            else -> {
+                for (c in mirChildren(e)) scanCalls(s, exprs, c, out, conditional)
+                if (conditional) return
+                if (e is MirExpr.Call) {
+                    val mask = calleeOwned[e.cName]
+                    if (mask != null) for (k in e.args.indices) if (k < mask.size && mask[k]) tryTake(s, exprs, e.args[k], out)
+                } else if (e is MirExpr.New) {
+                    val mask = calleeOwned[e.ctorCName]
+                    if (mask != null) for (k in e.args.indices) if (k + 1 < mask.size && mask[k + 1]) tryTake(s, exprs, e.args[k], out)
+                }
+            }
+        }
+    }
+
+    private fun tryTake(s: MirStmt, exprs: List<MirExpr>, arg: MirExpr, out: RcBits) {
+        val l = movable(arg) ?: return
+        val x = consumable(l) ?: return
+        if (out.get(x.index)) return
+        var n = 0
+        for (e in exprs) n += countDeep(e, x)
+        if (n != 1) return
+        takes[arg] = x.local
+        if (s is MirStmt.Assign && s.local.id == x.local.id) selfTakes += s
+        noteConsumed(x, s)
+    }
+
+    private fun takesIn(s: MirStmt, exprs: List<MirExpr>, out: RcBits, record: Boolean) {
+        if (!record || calleeOwned.isEmpty()) return
+        for (e in exprs) scanCalls(s, exprs, e, out, false)
     }
 
     /** Records a move when [s] consumes the last use of an owned local. [out] is the live set after [s]. */
     private fun consume(s: MirStmt, value: MirExpr?, out: RcBits, target: MirLocal?, record: Boolean) {
         if (!record) return
         val l = movable(value) ?: return
-        val x = byId[l.id] ?: return
-        if (x.isParam || x.borrowed || x.duplicate || out.get(x.index)) return
+        val x = consumable(l) ?: return
+        if (out.get(x.index)) return
         if (target != null) {
             val t = byId[target.id] ?: return
             if (t.borrowed || t === x) return
         }
-        if (value == null || countUses(value, l) != 1) return
-        if (s is MirStmt.SetField && (countUses(s.obj, l) != 0)) return
-        moves[s] = l
+        if (value == null || countDeep(value, x) != 1) return
+        if (s is MirStmt.SetField && (countDeep(s.obj, x) != 0)) return
+        // a take of the same local in this statement (an argument) would count as a second use
+        moves[s] = x.local
+        noteConsumed(x, s)
     }
 
     private fun liveStmt(s: MirStmt, out0: RcBits, record: Boolean): RcBits {
@@ -611,6 +897,7 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
             is MirStmt.Declare -> {
                 val init = s.init
                 consume(s, init, out, s.local, record)
+                if (init != null) takesIn(s, listOf(init), out, record)
                 val inn = out.copy()
                 byId[s.local.id]?.let { inn.clear(it.index) }
                 if (init != null) addUses(init, inn)
@@ -618,6 +905,11 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
             }
             is MirStmt.Assign -> {
                 consume(s, s.value, out, s.local, record)
+                // the old value of the assigned local dies at the assignment: it may be handed to a callee in the value
+                val outTake = out0.copy()
+                byId[s.local.id]?.let { outTake.clear(it.index) }
+                if (exc != null) outTake.orWith(exc)
+                takesIn(s, listOf(s.value), outTake, record)
                 val inn = out.copy()
                 byId[s.local.id]?.let { inn.clear(it.index) }
                 addUses(s.value, inn)
@@ -625,12 +917,14 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
             }
             is MirStmt.SetField -> {
                 if (s.fieldType.isRef) consume(s, s.value, out, null, record)
+                takesIn(s, listOf(s.obj, s.value), out, record)
                 val inn = out.copy()
                 addUses(s.obj, inn)
                 addUses(s.value, inn)
                 return inn
             }
             is MirStmt.Eval -> {
+                takesIn(s, listOf(s.expr), out, record)
                 val inn = out.copy()
                 addUses(s.expr, inn)
                 return inn
@@ -652,14 +946,14 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
                 head.orWith(condUses)
                 while (true) {
                     contLive[s.label.id] = head
-                    val bodyIn = liveList(s.body, head, false)
+                    val bodyIn = liveList(s.body, head, false, s.label)
                     val next = head.copy()
                     next.orWith(bodyIn)
                     if (next.sameAs(head)) break
                     head = next
                 }
                 contLive[s.label.id] = head
-                if (record) liveList(s.body, head, true)
+                if (record) liveList(s.body, head, true, s.label)
                 return head
             }
             is MirStmt.Loop -> {
@@ -667,12 +961,12 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
                 var head = empty()
                 while (true) {
                     contLive[s.label.id] = head
-                    val bodyIn = liveList(s.body, head, false)
+                    val bodyIn = liveList(s.body, head, false, s.label)
                     if (bodyIn.sameAs(head)) break
                     head = bodyIn
                 }
                 contLive[s.label.id] = head
-                if (record) liveList(s.body, head, true)
+                if (record) liveList(s.body, head, true, s.label)
                 return head
             }
             is MirStmt.DoWhile -> {
@@ -685,9 +979,9 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
                     val afterCond = condUses.copy()
                     afterCond.orWith(head)
                     afterCond.orWith(out)
-                    condStart = liveList(s.condStmts, afterCond, false)
+                    condStart = liveList(s.condStmts, afterCond, false, null, true)
                     contLive[s.label.id] = condStart
-                    val bodyIn = liveList(s.body, condStart, false)
+                    val bodyIn = liveList(s.body, condStart, false, null, true)
                     if (bodyIn.sameAs(head)) break
                     head = bodyIn
                 }
@@ -695,9 +989,9 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
                     val afterCond = condUses.copy()
                     afterCond.orWith(head)
                     afterCond.orWith(out)
-                    condStart = liveList(s.condStmts, afterCond, true)
+                    condStart = liveList(s.condStmts, afterCond, true, null, true)
                     contLive[s.label.id] = condStart
-                    liveList(s.body, condStart, true)
+                    liveList(s.body, condStart, true, null, true)
                 }
                 return head
             }
@@ -708,14 +1002,14 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
                     val after = head.copy()
                     after.orWith(out)
                     contLive[s.label.id] = after
-                    val bodyIn = liveList(s.body, after, false)
+                    val bodyIn = liveList(s.body, after, false, s.label)
                     if (bodyIn.sameAs(head)) break
                     head = bodyIn
                 }
                 val after = head.copy()
                 after.orWith(out)
                 contLive[s.label.id] = after
-                if (record) liveList(s.body, after, true)
+                if (record) liveList(s.body, after, true, s.label)
                 val inn = after.copy()
                 addUses(s.start, inn)
                 addUses(s.end, inn)
@@ -727,6 +1021,7 @@ private class RcAnalyzer(val f: MirFunction, val fx: RcEffects, val stats: RcSta
             is MirStmt.Panic -> return empty()
             is MirStmt.Return -> {
                 consume(s, s.value, empty(), null, record && f.returnType.isRef)
+                s.value?.let { takesIn(s, listOf(it), empty(), record) }
                 val inn = empty()
                 s.value?.let { addUses(it, inn) }
                 return inn

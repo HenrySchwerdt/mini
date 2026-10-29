@@ -133,6 +133,117 @@ fun truncateWhileWalking(n: Node?): Int {
     return c
 }
 
+// the first access of an object runs its initialiser, which overwrites the field the alias came from
+val globalHolder = Holder(arrayListOf(1, 2, 3, 4, 5), null)
+
+object LazyReset {
+    val marker = 11
+    init {
+        globalHolder.items = ArrayList<Int>()
+    }
+}
+
+fun hazardObjectInit(): Int {
+    val h = globalHolder
+    val old = h.items
+    val m = LazyReset.marker
+    return old.size + m
+}
+
+// Hazards with precise uses: the alias is only read through plain field reads (no call whose own effects could
+// make the elision decision for it), so each function fails under ASan when exactly its own rule is missing.
+fun replaceNode(h: Holder) {
+    h.node = Node(100, null)
+}
+
+interface NodeResetter {
+    fun reset(h: Holder)
+}
+
+class NodeReset : NodeResetter {
+    override fun reset(h: Holder) {
+        h.node = Node(200, null)
+    }
+}
+
+open class BaseReset {
+    open fun reset(h: Holder) {}
+}
+
+class NodeReset2 : BaseReset() {
+    override fun reset(h: Holder) {
+        h.node = Node(400, null)
+    }
+}
+
+fun preciseVCall(h: Holder, r: BaseReset): Int {
+    val old = h.node
+    r.reset(h)
+    return old!!.value
+}
+
+class NodeResetOnConstruction(h: Holder) {
+    init {
+        h.node = Node(300, null)
+    }
+}
+
+fun preciseDirect(h: Holder): Int {
+    val old = h.node
+    h.node = Node(1, null)
+    return old!!.value
+}
+
+fun preciseCall(h: Holder): Int {
+    val old = h.node
+    replaceNode(h)
+    return old!!.value
+}
+
+fun preciseVirtual(h: Holder, r: NodeResetter): Int {
+    val old = h.node
+    r.reset(h)
+    return old!!.value
+}
+
+fun preciseLambda(h: Holder, f: () -> Unit): Int {
+    val old = h.node
+    f()
+    return old!!.value
+}
+
+fun preciseCtor(h: Holder): Int {
+    val old = h.node
+    NodeResetOnConstruction(h)
+    return old!!.value
+}
+
+fun readAfterStore(h: Holder, old: Node?): Int {
+    h.node = null
+    return old!!.value
+}
+
+fun preciseReceiver(h: Holder): Int {
+    val old = h.node
+    return readAfterStore(h, old)
+}
+
+val globalHolder2 = Holder(ArrayList<Int>(), Node(77, null))
+
+object LazyReset2 {
+    val marker = 5
+    init {
+        globalHolder2.node = Node(0, null)
+    }
+}
+
+fun preciseObjectInit(): Int {
+    val h = globalHolder2
+    val old = h.node
+    val m = LazyReset2.marker
+    return old!!.value + m
+}
+
 fun main() {
     val h = Holder(arrayListOf(1, 2, 3), Node(5, Node(6, null)))
     println(readField(h))
@@ -156,4 +267,20 @@ fun main() {
     println(length(list))
     println(truncateWhileWalking(list))
     println(length(list))
+    println(hazardObjectInit())
+    val h2 = Holder(ArrayList<Int>(), Node(11, null))
+    println(preciseDirect(h2))
+    h2.node = Node(12, null)
+    println(preciseCall(h2))
+    h2.node = Node(13, null)
+    println(preciseVirtual(h2, NodeReset()))
+    h2.node = Node(14, null)
+    println(preciseLambda(h2) { h2.node = Node(1, null) })
+    h2.node = Node(15, null)
+    println(preciseCtor(h2))
+    h2.node = Node(16, null)
+    println(preciseReceiver(h2))
+    h2.node = Node(17, null)
+    println(preciseVCall(h2, NodeReset2()))
+    println(preciseObjectInit())
 }

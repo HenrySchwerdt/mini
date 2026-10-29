@@ -2,6 +2,7 @@
 # D1 benchmark driver (docs/benchmarks.md).
 #
 #   compiler/bench/run.sh [--reps N] [--configs "base opt"] [--only <substring>] [--out <dir>] [--cflags "-O2"]
+#   gradle -p compiler bench                     (same, builds the distributions first; ARGS via -Pbench.args="--reps 1")
 #
 # For every benchmark and every configuration it
 #   1. turns the Kotlin program into MIR once (`minic emit-mir`),
@@ -33,8 +34,10 @@ done
 CC="${CC:-clang}"
 mkdir -p "$out"
 
-echo "== building minic and native-driver" >&2
-(cd "$root/compiler" && ./gradlew -q installDist) >&2 || exit 1
+if [ -z "${BENCH_NO_BUILD:-}" ]; then # the Gradle task `bench` builds the distributions itself
+    echo "== building minic and native-driver" >&2
+    (cd "$root/compiler" && ./gradlew -q installDist) >&2 || exit 1
+fi
 minic="$root/compiler/jvm-bridge/build/install/minic/bin/minic"
 driver="$root/compiler/native-driver/build/install/native-driver/bin/native-driver"
 
@@ -123,6 +126,8 @@ if want selfhost; then
         build_bin selfhost "$cfg" "$out/selfhost.mir"
         run_one selfhost-small selfhost "$cfg" "$out/small_input.mir" -o "$out/selfhost-small.$cfg.out.c"
         run_one selfhost-large selfhost "$cfg" "$out/selfhost.mir" -o "$out/selfhost-large.$cfg.out.c"
+        # the same input without the RcOpt analysis inside the backend: its cost shows in the difference
+        run_one selfhost-large-no-rcopt selfhost "$cfg" "$out/selfhost.mir" -o "$out/selfhost-large-no-rcopt.$cfg.out.c" --no-rc-opt
     done
 fi
 
