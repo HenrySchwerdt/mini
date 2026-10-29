@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# The Mini project tool (like cargo). Runs from a source checkout and builds itself and the compiler on first use.
+#   ./mini new hello && cd hello && ../mini run
+# To use it from any directory, put the repository root on PATH:
+#   export PATH="$PATH:/path/to/mini"     # then: mini new hello && cd hello && mini run
+set -euo pipefail
+
+# resolve symlinks, so `ln -s /path/to/mini/mini ~/bin/mini` works too
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+    dir="$(cd "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+root="$(cd "$(dirname "$src")" && pwd)"
+
+bin="$root/compiler/mini-tool/build/install/mini/bin/mini"
+minic="$root/compiler/jvm-bridge/build/install/minic/bin/minic"
+
+stale() { # stale <launcher> <module-dir>...: the launcher is missing or a main source is newer
+    local launcher="$1"; shift
+    [ ! -x "$launcher" ] && return 0
+    for d in "$@"; do
+        [ -n "$(find "$root/compiler/$d" -name '*.kt' -path '*/src/main/*' -newer "$launcher" -print -quit 2>/dev/null)" ] && return 0
+    done
+    return 1
+}
+
+if stale "$bin" mini-tool frontend || stale "$minic" jvm-bridge backend frontend; then
+    echo "mini: building the toolchain (first use, takes about a minute) ..." >&2
+    (cd "$root/compiler" && ./gradlew -q :mini-tool:installDist :jvm-bridge:installDist) >&2 ||
+        { echo "mini: building the toolchain failed; is JDK 21 installed? (try: mini doctor)" >&2; exit 1; }
+fi
+
+export MINI_ROOT="$root"
+export MINIC="$minic"
+[ -t 1 ] && export MINI_TTY_STDOUT=1 || export MINI_TTY_STDOUT=0
+[ -t 2 ] && export MINI_TTY_STDERR=1 || export MINI_TTY_STDERR=0
+exec "$bin" "$@"
