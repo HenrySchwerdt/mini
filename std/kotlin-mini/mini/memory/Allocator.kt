@@ -45,3 +45,9 @@ interface ThreadSafe
 fun Any?.free() {
     if (this is AutoCloseable) close()
 }
+
+/**
+ * Explicit ownership move: `val b = a.move()` makes `b` the owner and `a` dead.
+ * Plain `val b = a` only creates a borrowed alias. Identity on the JVM; recognised by the Mini compiler.
+ */
+fun <T> T.move(): T = this

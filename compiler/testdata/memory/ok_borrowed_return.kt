@@ -14,7 +14,7 @@ fun first(h: Holder): @Borrowed Box? = h.item
 fun main() {
     context(Heap()) {
         val holder = Holder(Box(6))
-        @Borrowed val peek = first(holder)
+        val peek = first(holder)
         println(peek?.v)
         holder.free()
     }

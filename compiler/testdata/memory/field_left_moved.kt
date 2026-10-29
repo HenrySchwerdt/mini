@@ -10,7 +10,7 @@ class Box(val v: Int)
 class Slot(var item: Box?)
 
 fun steal(s: Slot): @Owned Box? {
-    val b = s.item
+    val b = s.item.move()
 //          ^ M0113
     return b
 }

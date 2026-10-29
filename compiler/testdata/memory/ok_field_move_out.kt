@@ -10,7 +10,7 @@ class Box(val v: Int)
 class Slot(var item: Box?)
 
 fun swapOut(s: Slot): @Owned Box? {
-    val old = s.item
+    val old = s.item.move()
     s.item = null
     return old
 }

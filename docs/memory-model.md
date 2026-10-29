@@ -292,7 +292,7 @@ Referenzen haben einen **Besitzer**: eine lokale Variable, ein Parameter, ein Fe
 | Rückgabe einer Funktion | **besitzend** | `: @Borrowed T` gibt eine Leihgabe zurück (4.3) |
 | Property-Parameter des Konstruktors (`class C(var x: T)`) | **besitzend** (= Feld) | `@Borrowed` |
 | Feld | **besitzend** | `@Borrowed var f: T?` (ungeprüfte Rückverweise, 5.3) |
-| lokale Variable | **besitzend**, wenn mit einem frischen oder verschobenen Wert initialisiert | `@Borrowed val x = ...` leiht |
+| lokale Variable | **besitzend**, wenn mit einem frischen Wert (`Foo(...)`, Aufruf mit besitzender Rückgabe) oder `a.move()` initialisiert; **Alias (Leihgabe)**, wenn mit einem bestehenden Besitzer initialisiert/zugewiesen (`val b = a`) | `a.move()` oder `val b: @Owned T = a` macht `b` zum Besitzer; `@Borrowed val b = a` ist redundant (erlaubt, ohne Wirkung) |
 | `this` und Extension-Receiver | **geliehen** | – |
 | Parameter von Managed-Funktionen | **extern verwaltet** (6.2) | `@Borrowed` |
 
@@ -334,19 +334,45 @@ widerspricht sich: M0111.
 
 ## 5. Flussregeln (Strict)
 
-### 5.1 Moves
+### 5.1 Moves und Borrows
 
-Ein **Move** überträgt den Besitz. Er geschieht, wenn ein besitzender Wert (lokale Variable,
-besessener Parameter, besessenes Feld einer lokalen Wurzel) in einer **Move-Position** gelesen wird:
+**Einfache Zuweisung leiht.** `val b = a`, `var b = a` und `b = a` mit einem bestehenden
+Besitzer `a` (lokale Variable, besessener Parameter, besessenes Feld) auf der rechten Seite
+machen `b` zu einem **Alias** (Leihgabe): `a` bleibt Besitzer, `b` darf lesen, aber nicht
+freigeben oder besitzen. Ein Alias lebt höchstens so lange wie sein Besitzer (siehe 4.3).
 
-1. rechte Seite einer Zuweisung oder Initialisierung eines besitzenden Slots
-   (`val b = a`, `s.item = a`, `x = a`),
+Ein **Move** überträgt den Besitz. Er geschieht **implizit** genau an diesen Stellen:
+
+1. `return a` aus einer Funktion mit besitzender Rückgabe,
 2. Argument an einen `@Owned`-Parameter (auch Property-Parameter des Konstruktors),
-3. `return a` aus einer Funktion mit besitzender Rückgabe,
-4. Capture in einem Thread-Lambda (5.9) oder `use`-Aufruf auf `a` (3.2).
+3. Zuweisung an ein besitzendes **Feld** (`s.item = a`),
+4. Capture in einem Thread-Lambda (5.9); ferner `a.use { }` / `a.close()` (3.2),
 
-Alle anderen Lesezugriffe sind **Borrows**: Methodenaufruf, Feldzugriff, Argument an einen
-geliehenen Parameter, Initialisierung eines `@Borrowed`-Slots.
+und **ausdrücklich** durch die Hauptschreibweise `a.move()`:
+
+```kotlin
+fun <T> T.move(): T = this      // package mini.memory, vom Compiler erkannt
+```
+
+`val b = a.move()` verschiebt `a` in die neue lokale Variable `b`; `b` ist Besitzer.
+Gleichwertig ist die Typannotation `val b: @Owned Box = a`. Begründung für `move()` als
+Hauptform: Es ist ein gewöhnlicher Ausdruck und funktioniert an jeder Stelle (Argument,
+`return`, rechte Seite, Teil-Move aus Feldern: `s.item.move()`), braucht keine Deklaration und
+ist beim Lesen auffällig. Frische Werte (`val b = Box(1)`, `val b = make()`) sind ohnehin
+Besitzer; eine Variable, die einen Besitzer bekommt, wird mit `move()` neu gesetzt
+(`b = a.move()`).
+
+**Regeln für Aliase**
+
+* Verwendung eines Alias, nachdem sein Besitzer freigegeben wurde: **M0101**; nachdem er
+  verschoben wurde: **M0104**; nachdem der Scope des Besitzers endete: ebenso (Besitzer
+  `Freed`/`Moved`, je nachdem, wie er den Scope verließ). Gemeldet wird an der Verwendung des Alias.
+* `alias.free()`, `alias.close()`, `alias.use { }`, Übergabe an einen `@Owned`-Parameter,
+  Zuweisung an ein besitzendes Feld und `return alias` aus einer besitzenden Funktion:
+  **M0107** (Freigabe) beziehungsweise **M0109** (speichern/zurückgeben). Das ändert den
+  Zustand des Besitzers nicht.
+* Ein Alias kann neu zugewiesen werden (`var cur = n; cur = cur.next`): er leiht dann vom
+  neuen Besitzer.
 
 **Nutzung nach Move** (M0104): Jeder Zugriff auf einen verschobenen Slot (außer einer
 neuen Zuweisung, die ihn wieder initialisiert). Ebenso ein Move in einer Schleife, der im
@@ -354,15 +380,21 @@ nächsten Durchlauf wieder trifft (5.7).
 
 ```kotlin
 val a = Box(1)
-val b = a
-println(a.v)        // M0104: a wurde nach b verschoben
-b.free()
+val b = a               // Alias: a bleibt Besitzer
+println(b.v)            // ok
+a.free()
+println(b.v)            // M0101: b leiht von a, a ist freigegeben
+
+val c = Box(2)
+val d = c.move()        // Besitz wandert nach d
+println(c.v)            // M0104
+d.free()
 
 var list: Node? = null
-for (i in 1..5) list = push(list, i)   // ok: list wird verschoben und sofort neu gesetzt
+for (i in 1..5) list = push(list, i)   // ok: list wird an @Owned-Parameter verschoben und neu gesetzt
 ```
 
-Verschieben aus einem Feld (`val old = s.item`) ist ein **Teil-Move**: siehe 5.3.
+Herausnehmen aus einem Feld ist ein **Teil-Move** und braucht `move()`: siehe 5.3.
 
 ### 5.2 Zustände (Modell der Analyse)
 
@@ -400,7 +432,7 @@ Regeln:
 * Property-Parameter des Konstruktors besitzen (= Feld): `Node(i, head)` **verschiebt** `head`.
 * **Überschreiben** eines besitzenden Feldes mit unbekanntem altem Inhalt: M0102 (Pfadart
   `overwritten`, Position: die Zuweisung). Vorher `f.free()` oder aus dem Feld herausverschieben.
-* **Teil-Moves:** `val old = s.item` (rechte Seite ein besitzendes Feld einer lokalen Wurzel `s`,
+* **Teil-Moves:** `val old = s.item.move()` (ohne `move()` wäre `old` nur ein Alias; rechte Seite ein besitzendes Feld einer lokalen Wurzel `s`,
   auch wenn `s` ein geliehener Parameter ist) verschiebt das Feld heraus. Das Feld ist
   danach `Moved`. Vor **jedem Aufruf** (außer Methoden von lokalen Besitzern mit Borrow) und
   vor dem **Funktionsende** muss jedes verschobene Feld wieder gültig sein (neue
@@ -411,7 +443,7 @@ Regeln:
 
 ```kotlin
 fun swapOut(s: Slot): @Owned Box? {
-    val old = s.item        // Teil-Move
+    val old = s.item.move() // Teil-Move
     s.item = null           // wiederhergestellt
     return old
 }
@@ -625,7 +657,7 @@ val b = Box(1)
 println(b.v)
 b.free()
 ```
-Korpus: `uaf_simple`, `uaf_borrowed_result`, `uaf_finally`, `uaf_loop`.
+Korpus: `borrow_use_after_free`, `uaf_simple`, `uaf_borrowed_result`, `uaf_finally`, `uaf_loop`.
 
 ### 7.2 M0102 Leck: Allokation wird nie freigegeben
 
@@ -666,11 +698,11 @@ Behoben: den zweiten Aufruf löschen. Korpus: `dfree_simple`, `dfree_branch`, `d
 
 ```kotlin
 val a = Box(1)
-val b = a
+val b = a.move()
 println(a.v)      // error[M0104]: use of moved value `a`
 ```
-Behoben: `b` statt `a` benutzen, oder ausleihen: `@Borrowed val b = a`.
-Korpus: `move_assign`, `move_param`, `move_loop`, `move_into_field`, `move_thread`.
+Behoben: `b` statt `a` benutzen, oder `val b = a` (Alias) schreiben, wenn kein Move gewollt ist.
+Korpus: `move_explicit`, `borrow_use_after_move`, `borrow_scope_moved`, `move_param`, `move_loop`, `move_into_field`, `move_thread`.
 
 ### 7.5 M0105 Entkommen aus einem Scoped-Allocator
 
@@ -703,7 +735,7 @@ Receiver), auf einen Managed-Wert oder auf einen bereits verschobenen Slot.
 ```kotlin
 fun drop(b: Box) { b.free() }          // error[M0107]: `b` is borrowed and cannot be freed
 ```
-Behoben: `fun drop(b: @Owned Box)`. Korpus: `free_borrowed_param`, `free_managed_object`.
+Behoben: `fun drop(b: @Owned Box)`. Korpus: `borrow_free_via_alias`, `free_borrowed_param`, `free_managed_object`.
 
 ### 7.8 M0108 Falscher Allocator beim Freigeben
 
@@ -724,7 +756,7 @@ fun keep(h: Holder, i: Item) { h.item = i }   // error[M0109]: borrowed `i` is s
 fun pick(a: Item): Item = a                   // error[M0109]: borrowed `a` is returned as owned
 ```
 Behoben: `i: @Owned Item` (und der Aufrufer verschiebt), oder `: @Borrowed Item`.
-Korpus: `borrow_stored_field`, `borrow_returned_owned`.
+Korpus: `borrow_alias_stored`, `borrow_stored_field`, `borrow_returned_owned`.
 
 ### 7.10 M0110 Verletzung der Strict/Managed-Grenze
 
@@ -896,9 +928,10 @@ Property-Accessoren (Ziele `FUNCTION`, `PROPERTY_GETTER`, `PROPERTY_SETTER`).
 
 ---
 
-## 10. Offene Entscheidungen (Annahmen dieses Entwurfs)
+## 10. Entscheidungen
 
-Diese Punkte hat der Autor entschieden, der Projekteigner SOLL sie bestätigen:
+Status: vom Projekteigner geprüft. Punkte 1-3 ausdrücklich bestätigt, 4-8 und 10-14 mit ihnen
+bestätigt, Punkt 9 **geändert** (siehe dort); String-Literale sind statisch (Punkt 13 bestätigt).
 
 1. **`x.free()` als Hauptform** (3.1) statt `alloc.free(x)`; `alloc.free(x)` bleibt Nebenweg.
 2. **`@AllocatedBy` ist eine Einschränkung** des Context (2.2) und nicht nachrangig wie im
@@ -916,13 +949,15 @@ Diese Punkte hat der Autor entschieden, der Projekteigner SOLL sie bestätigen:
 8. **Strikte Defaults:** Parameter geliehen, Rückgabe/Felder besitzend, Property-Parameter
    besitzend; **keine** Inferenz von `@Owned` aus dem Körper (4.2). Der Plan lässt das
    offen („nur an Modulgrenzen“).
-9. **Move-Positionen** (5.1): Lesen eines besitzenden Werts auf der rechten Seite einer
-   Zuweisung verschiebt (Rust-ähnlich), `@Borrowed` leiht. Alternative wäre Leihen als Default.
-10. **Teil-Moves aus Feldern** mit Wiederherstellungspflicht (M0113) statt eines `take`-Helfers.
+9. **Zuweisung leiht, Move ist ausdrücklich** (5.1; geändert durch den Projekteigner): `val b = a`
+   ist ein Alias. Implizite Moves nur bei `return`, `@Owned`-Argument, besitzendem Feld und
+   Thread-Capture. Ausdrücklicher Move: `a.move()` (Hauptform, `fun <T> T.move(): T`), gleichwertig
+   `val b: @Owned T = a`. `@Borrowed val b = a` ist redundant, aber erlaubt.
+10. **Teil-Moves aus Feldern** mit `s.item.move()` und Wiederherstellungspflicht (M0113).
 11. **`Heap` und `Rc` sind zustandslose Allocatoren ohne Pflicht**; Standardinstanz nur für diese.
 12. **`@NoAlloc` prüft in P1 nur den eigenen Körper** und nur Allokationen, die tatsächlich
     nicht auf dem Stack liegen (7.16).
-13. **M0115** (Auftrag des Projekteigners): Arena führt nie `dispose` aus; Strings in Arena-Objekten nur als Literal oder `@Borrowed`. Offen: ob konstante Strings immer statisch sind.
+13. **M0115** (Auftrag des Projekteigners): Arena führt nie `dispose` aus; Strings in Arena-Objekten nur als Literal oder `@Borrowed`. String-Literale sind statisch (bestätigt).
 14. **Codevergabe:** M0101–M0115 ersetzen die Reihenfolge des Plans (der nur M0102 nennt);
     M0201–M0206 behalten die Bedeutung aus dem Plan (M0205 ist im `@NoAlloc` ein Fehler).
 
