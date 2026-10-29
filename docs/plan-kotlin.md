@@ -355,6 +355,8 @@ exactly the features that real Kotlin code needs:
 
 **Status B2-3 / B3:** `--frontend=mini` produces MIR and C identical to the K2 path for all test programs; `minic-native` (own frontend + lowering + backend) is built by minic, runs the programs correctly and bootstraps: `compiler/bootstrap.sh` shows stage2 == stage3 (C and MIR byte-identical). The self-compile MIR differs from K2 only in numbering and a few flow-fact casts (`compiler/selfcompare.py`). See `compiler/README.md`.
 
+**Status memory checker on the own frontend:** the Strict-mode checker (M0101-M0115, M0201-M0207) runs on the own frontend (`mini.lower.MemoryFacts` -> the same MemIr and checker) in `minic build|check` and in `minic-native` (`--check`); the memory corpus gives identical diagnostics under both frontends (117/117, `MiniMemoryCheckTest`), all user files are checked, and `--frontend=mini` is the default of `minic`. K2 remains available as `--frontend=k2` (and as the oracle in the tests); dropping it from the build is the remaining step of 10f.
+
 **Bootstrap stages after that:**
 1. **B1 (= v1):** backend self-hosted. The native `minic-backend` reads serialized MIR
    (written to a file by the JVM frontend) and produces C. This makes half the compiler run natively.

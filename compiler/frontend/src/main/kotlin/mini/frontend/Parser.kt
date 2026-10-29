@@ -150,7 +150,12 @@ class Parser(internal val lex: LexResult) {
         return text.substring(t.start, t.end)
     }
 
-    internal fun tokText(): String = textAt(0)
+    /** The text of the current token; a backtick-quoted identifier (`` `name` ``) is its name without the quotes, as K2 has it. */
+    internal fun tokText(): String {
+        val t = textAt(0)
+        if (t.length >= 2 && t[0] == '`' && t[t.length - 1] == '`') return t.substring(1, t.length - 1)
+        return t
+    }
 
     /** is the token `k` positions ahead an identifier with exactly this text? */
     internal fun identAt(k: Int, s: String): Boolean {

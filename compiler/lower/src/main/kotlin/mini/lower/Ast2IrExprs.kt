@@ -43,7 +43,9 @@ fun Ast2Ir.smartCast(raw: IrExpression, e: Ast, eqOperand: Boolean): IrExpressio
     if (eqOperand && sm != null) return ir
     if (sm != null && !(sm is TypeParamType && sm.definitelyNotNull)) {
         val st = irType(sm)
-        if (!typeEquals(st, ir.type)) {
+        // a variable known to hold `null` is smart cast to `Nothing?` (and its null-checked use to `Nothing`): no value to convert
+        val toNothing = st is ClassType && st.cls === sema.nothingType.cls
+        if (!toNothing && !typeEquals(st, ir.type)) {
             val c = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, ir, st)
             // a smart cast of `this` is only kept where the callee needs it; a variable's is always kept
             c.isSmart = true
