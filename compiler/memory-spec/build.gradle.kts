@@ -23,7 +23,8 @@ tasks.test {
     // Declared as inputs so edits to the corpus or the API re-run the test instead of hitting the cache.
     inputs.dir(rootProject.file("testdata/memory"))
     inputs.dir(rootProject.projectDir.parentFile.resolve("std/kotlin-mini"))
-    systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("std/kotlin-mini").absolutePath)
+    // only the mini.memory API: the rest of std/kotlin-mini is the Mini stdlib (package kotlin.*, docs/stdlib.md) and cannot be compiled against the JVM stdlib
+    systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("std/kotlin-mini/mini/memory").absolutePath)
     // regenerate expected outputs: gradle -p compiler :memory-spec:test -Pregen
     systemProperty("mini.regen", (project.findProperty("regen") != null).toString())
     maxHeapSize = "2g"
