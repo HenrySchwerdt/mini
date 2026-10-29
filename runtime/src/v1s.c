@@ -233,6 +233,16 @@ MkObject *mk_ref_array_get(MkObject *o, MkInt index) {
     return v;
 }
 
+/* D2 conventions (compiler/README.md): a borrowed read and a store that takes over the caller's reference */
+MkObject *mk_ref_array_get_b(MkObject *o, MkInt index) { return ra_of(o, index)->items[index]; }
+
+void mk_ref_array_set_o(MkObject *o, MkInt index, MkObject *value) {
+    MkRefArray *a = ra_of(o, index);
+    MkObject *old = a->items[index];
+    a->items[index] = value;
+    mk_release(old);
+}
+
 void mk_ref_array_set(MkObject *o, MkInt index, MkObject *value) {
     MkRefArray *a = ra_of(o, index);
     MkObject *old = a->items[index];

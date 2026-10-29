@@ -51,6 +51,8 @@ import org.jetbrains.kotlin.name.FqName
 object Reachability {
     private val BUILTIN = FqName("kotlin.internal.Builtin")
     private val CSYMBOL = FqName("mini.internal.CSymbol")
+    /** The same convention for the memory API (docs/memory-model.md): the Kotlin body is only the JVM fallback. */
+    private val NATIVE_SYMBOL = FqName("mini.memory.NativeSymbol")
 
     fun isBuiltinFile(f: IrFile): Boolean = f.annotations.any { it.type.classFqName() == BUILTIN }
 
@@ -59,7 +61,7 @@ object Reachability {
             f, (f as? IrSimpleFunction)?.correspondingPropertySymbol?.owner,
         )
         for (s in sources) {
-            val a = s.annotations.firstOrNull { it.type.classFqName() == CSYMBOL } ?: continue
+            val a = s.annotations.firstOrNull { it.type.classFqName() == CSYMBOL || it.type.classFqName() == NATIVE_SYMBOL } ?: continue
             val arg = a.arguments.firstOrNull() as? org.jetbrains.kotlin.ir.expressions.IrConst
             return arg?.value as? String
         }

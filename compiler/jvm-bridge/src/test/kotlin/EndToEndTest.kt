@@ -53,10 +53,14 @@ class EndToEndTest {
      */
     @TestFactory
     fun leakCheck(): List<DynamicTest> {
-        val sources = testdata.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+        // the Strict-mode programs of the memory corpus (docs/memory-model.md) are leak-checked like everything else:
+        // arenas, heap and pool objects, `free()` and the free glue must leave nothing behind and touch nothing twice
+        val memory = File(testdata, "memory")
+        val dirs = listOf(testdata) + (if (memory.isDirectory) listOf(memory) else emptyList())
+        val sources = dirs.flatMap { dir -> dir.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name } }
             .filter { sibling(it, "out").isFile && !sibling(it, "cerr").isFile && !sibling(it, "err").isFile && !sibling(it, "noleakcheck").isFile }
         return sources.map { src ->
-            DynamicTest.dynamicTest("leak-free ${src.nameWithoutExtension}") {
+            DynamicTest.dynamicTest("leak-free ${if (src.parentFile == testdata) "" else src.parentFile.name + "/"}${src.nameWithoutExtension}") {
                 val cc = sanitizerCc
                 org.junit.jupiter.api.Assumptions.assumeTrue(cc != null, "no C compiler with sanitizer runtimes")
                 val name = src.nameWithoutExtension

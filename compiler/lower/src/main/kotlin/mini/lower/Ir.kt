@@ -17,6 +17,22 @@ abstract class IrElement {
     var startOffset: Int = -1
 }
 
+/**
+ * An annotation as far as Ir2Mir needs it (the memory model of D2): the simple name of its class and the simple name
+ * of its argument (the enum entry of `MemoryMode(Mode.Strict)`, the class of `AllocatedBy(Heap::class)`), if any.
+ */
+class IrAnnotation(val name: String, val arg: String?)
+
+fun hasAnnotation(list: List<IrAnnotation>, name: String): Boolean {
+    for (a in list) if (a.name == name) return true
+    return false
+}
+
+fun findAnnotation(list: List<IrAnnotation>, name: String): IrAnnotation? {
+    for (a in list) if (a.name == name) return a
+    return null
+}
+
 /** Something a declaration can be nested in: a file, a class or a function. */
 interface IrDeclarationParent
 
@@ -25,6 +41,7 @@ abstract class IrStatement : IrElement()
 abstract class IrDeclaration : IrStatement() {
     var parent: IrDeclarationParent? = null
     var origin: String = "DEFINED"
+    var annotations: List<IrAnnotation> = emptyList()
 }
 
 abstract class IrExpression(var type: Type) : IrStatement(), IrVarargElement
@@ -33,6 +50,7 @@ abstract class IrExpression(var type: Type) : IrStatement(), IrVarargElement
 
 class IrFile(val path: String, val text: String, val packageFqName: String, val isStdlib: Boolean) : IrElement(), IrDeclarationParent {
     val declarations = ArrayList<IrDeclaration>()
+    var annotations: List<IrAnnotation> = emptyList()
     var isBuiltin = false
     private var lineStarts: IntArray? = null
 

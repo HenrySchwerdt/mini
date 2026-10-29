@@ -4,7 +4,7 @@ package mini.backend
  * Serialized MIR (bootstrap stage B1, docs/plan-kotlin.md section 10b): the JVM frontend writes a
  * MirModule as text, the native backend reads it back and runs CEmitter.
  *
- * Format (version 1): S-expressions, ASCII only, one class / function / statement per line.
+ * Format (version 2: strict flags of classes / functions, borrowed fields, allocators of `new`): S-expressions, ASCII only, one class / function / statement per line.
  *
  *   (mini-mir 1 "<sourceName>"
  *     (class "<qualifiedName>" "<cName>" <isInterface> "<super>"|- <external> "<objectCtor>"|-
@@ -30,7 +30,7 @@ package mini.backend
 
 class MirFormatError(message: String) : Exception(message)
 
-const val MIR_FORMAT_VERSION = 1
+const val MIR_FORMAT_VERSION = 2
 
 object MirWriter {
     fun write(module: MirModule): String = MirWriterImpl().run(module)
@@ -115,7 +115,8 @@ private class MirWriterImpl {
         for (f in c.fields) {
             sb.append(" (f ")
             str(f.name); sb.append(' ')
-            type(f.type)
+            type(f.type); sb.append(' ')
+            sb.append(f.borrowed)
             sb.append(')')
         }
         sb.append(") (interfaces")
@@ -129,7 +130,7 @@ private class MirWriterImpl {
             for (e in t.entries) { sb.append(' '); optStr(e) }
             sb.append(')')
         }
-        sb.append("))")
+        sb.append(") ").append(c.strict).append(")")
     }
 
     fun fn(f: MirFunction) {
@@ -142,6 +143,9 @@ private class MirWriterImpl {
         sb.append(") ")
         type(f.returnType); sb.append(' ')
         optStr(f.constructorOf)
+        sb.append(' ').append(f.strict).append(' ').append(f.returnsBorrowed).append(' ').append(f.noHeapEffects).append(" (owns")
+        for (i in f.ownsParams) sb.append(' ').append(i)
+        sb.append(')')
         for (s in f.body) {
             nl(2)
             stmt(s, 2)
@@ -404,7 +408,10 @@ private class MirWriterImpl {
                 type(e.type); sb.append(' '); types(e.paramTypes); sb.append(' '); expr(e.receiver)
                 exprs(e.args); sb.append(')')
             }
-            is MirExpr.New -> { sb.append("(new "); str(e.ctorCName); sb.append(' '); type(e.type); exprs(e.args); sb.append(')') }
+            is MirExpr.New -> {
+                sb.append("(new "); str(e.ctorCName); sb.append(' '); type(e.type); sb.append(' ').append(e.auto).append(' ')
+                optExpr(e.allocator); exprs(e.args); sb.append(')')
+            }
             is MirExpr.ObjectGet -> { sb.append("(objget "); str(e.classCName); sb.append(' '); type(e.type); sb.append(')') }
             is MirExpr.StringLength -> { sb.append("(slen "); expr(e.operand); sb.append(')') }
             is MirExpr.Unreachable -> { sb.append("(unreachable "); type(e.type); sb.append(')') }
@@ -583,11 +590,11 @@ private class MirReaderImpl {
 
     fun cls(x: Sx): MirClass {
         val it = lst(x, "class")
-        need(it, 11, "class")
+        need(it, 12, "class")
         val fields = ArrayList<MirField>()
         for (f in lst(it[7], "fields").drop(1)) {
             val fi = lst(f, "f")
-            fields.add(MirField(str(fi[1]), type(fi[2])))
+            fields.add(MirField(str(fi[1]), type(fi[2]), bool(fi[3])))
         }
         val interfaces = ArrayList<String>()
         for (s in lst(it[8], "interfaces").drop(1)) interfaces.add(str(s))
@@ -611,21 +618,27 @@ private class MirReaderImpl {
             itables = itables,
             objectCtor = optStr(it[6]),
             external = bool(it[5]),
+            strict = bool(it[11]),
         )
     }
 
     fun fn(x: Sx): MirFunction {
         val it = lst(x, "fun")
-        need(it, 6, "fun")
+        need(it, 10, "fun")
         locals = HashMap()
         labels = HashMap()
         val params = ArrayList<MirLocal>()
         for (p in lst(it[3], "params").drop(1)) params.add(local(p))
         val ret = type(it[4])
         val ctor = optStr(it[5])
+        val strict = bool(it[6])
+        val borrowed = bool(it[7])
+        val noEffects = bool(it[8])
+        val owns = ArrayList<Int>()
+        for (k in lst(it[9], "owns").drop(1)) owns.add(int(k))
         val body = ArrayList<MirStmt>()
-        for (k in 6 until it.size) body.add(stmt(it[k]))
-        return MirFunction(str(it[1]), str(it[2]), params, ret, body, ctor)
+        for (k in 10 until it.size) body.add(stmt(it[k]))
+        return MirFunction(str(it[1]), str(it[2]), params, ret, body, ctor, strict, borrowed, owns, noEffects)
     }
 
     fun local(x: Sx): MirLocal {
@@ -890,7 +903,12 @@ private class MirReaderImpl {
                 val recv = expr(it[5])
                 return MirExpr.ICall(iface, index, recv, exprsFrom(it, 6), pts, t)
             }
-            "new" -> { need(it, 3, tag); val t = type(it[2]); return MirExpr.New(str(it[1]), exprsFrom(it, 3), t) }
+            "new" -> {
+                need(it, 5, tag)
+                val t = type(it[2])
+                val auto = bool(it[3])
+                return MirExpr.New(str(it[1]), exprsFrom(it, 5), t, optExpr(it[4]), auto)
+            }
             "objget" -> { need(it, 3, tag); return MirExpr.ObjectGet(str(it[1]), type(it[2])) }
             "slen" -> { need(it, 2, tag); return MirExpr.StringLength(expr(it[1])) }
             "unreachable" -> { need(it, 2, tag); return MirExpr.Unreachable(type(it[1])) }

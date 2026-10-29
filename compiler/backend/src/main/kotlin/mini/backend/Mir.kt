@@ -23,7 +23,15 @@ class MirModule(
     val classes: List<MirClass> = emptyList(),
 )
 
-class MirField(val name: String, val type: MirType)
+class MirField(
+    val name: String,
+    val type: MirType,
+    /**
+     * `@Borrowed` field (Strict mode): a non-owning back reference. A tracked-class-typed field that is not
+     * borrowed is owned: the glue of `free()` releases it (docs/memory-model.md 5.3).
+     */
+    val borrowed: Boolean = false,
+)
 
 /** The function table a class provides for one interface (see compiler/README.md, itables). */
 class MirItable(
@@ -64,6 +72,11 @@ class MirClass(
      * `<cName>_ti` are declared in minirt.h.
      */
     val external: Boolean = false,
+    /**
+     * Declared in a Strict file / Strict class (docs/memory-model.md 6.1). Values of Strict classes are *tracked*:
+     * in Strict functions they carry no reference counts (the ownership checker proved who frees them), see [Tracking].
+     */
+    val strict: Boolean = false,
 )
 
 class MirFunction(
@@ -79,6 +92,22 @@ class MirFunction(
      * the value is the [MirClass.cName]. The emitter adds an allocating wrapper `<cName>_new`.
      */
     val constructorOf: String? = null,
+    /** Declared in Strict code: tracked values (instances of Strict classes) are not reference counted here. */
+    val strict: Boolean = false,
+    /**
+     * Requested by the stdlib annotation `kotlin.internal.ReturnsBorrowed`: the result is a borrowed reference (no count
+     * for the caller). A request: [Conventions] checks every function of the dispatch group and drops it when one of
+     * them cannot honour it.
+     */
+    val returnsBorrowed: Boolean = false,
+    /** Indices into [params] marked `kotlin.internal.TakesOwnership`: the callee owns those references (see [Conventions]). */
+    val ownsParams: List<Int> = emptyList(),
+    /**
+     * `kotlin.internal.NoHeapEffects`: the function does not overwrite a heap reference that a caller's borrowed alias
+     * can depend on (it may build and fill objects of its own); calls of it do not end the lifetime of aliases (RcEffects).
+     * An assertion of the stdlib author, not checked.
+     */
+    val noHeapEffects: Boolean = false,
 )
 
 class MirLocal(
@@ -234,6 +263,9 @@ class MirCatch(val type: MirType, val body: List<MirStmt>)
 sealed class MirExpr {
     abstract val type: MirType
 
+    /** Cache of [mirChildren] (the analyses walk the same trees many times; computing the operand list allocates). */
+    var childCache: List<MirExpr>? = null
+
     class IntConst(val value: Int) : MirExpr() { override val type: MirType get() = TInt }
     class LongConst(val value: Long) : MirExpr() { override val type: MirType get() = TLong }
     class DoubleConst(val value: Double) : MirExpr() { override val type: MirType get() = TDouble }
@@ -333,8 +365,21 @@ sealed class MirExpr {
         override val type: MirType,
     ) : MirExpr()
 
-    /** Allocates an instance and runs the constructor [ctorCName]. Owned result. */
-    class New(val ctorCName: String, val args: List<MirExpr>, override val type: MirType) : MirExpr()
+    /**
+     * Allocates an instance and runs the constructor [ctorCName]. Owned result (reference counted) unless the
+     * allocation happens in a Strict function and the class is Strict (a tracked value, see [Tracking]).
+     * [allocator]: an expression of type Long (the address of the `MkAllocator`) the object is allocated from
+     * (`mk_alloc_with`); null = the default (reference counting) allocator. [auto]: Strict code, no allocator is
+     * visible and the value does not escape (docs/memory-model.md 2.1, "stack"): the local that receives the value
+     * frees it at the end of its scope.
+     */
+    class New(
+        val ctorCName: String,
+        val args: List<MirExpr>,
+        override val type: MirType,
+        val allocator: MirExpr? = null,
+        val auto: Boolean = false,
+    ) : MirExpr()
 
     /** The singleton of an `object`, created on first access. Borrowed (the singleton is immortal). */
     class ObjectGet(val classCName: String, override val type: MirType) : MirExpr()
@@ -361,7 +406,21 @@ sealed class MirExpr {
  * or the operand of [MirStmt.Eval]; every other position sees a [MirExpr.Local] holding it.
  */
 fun MirExpr.isOwned(): Boolean = type.isRef && when (this) {
-    is MirExpr.Call, is MirExpr.RuntimeCall, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.New, is MirExpr.Box,
+    is MirExpr.RuntimeCall -> !NativeConventions.resultBorrowed(cName)
+    is MirExpr.Call, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.New, is MirExpr.Box,
     is MirExpr.CaughtException -> true
     else -> false
+}
+
+/**
+ * Ownership conventions of runtime functions that differ from the default (borrowed arguments, owned result):
+ * `mk_ref_array_get_b` returns a borrowed reference, `mk_ref_array_set_o` takes ownership of the stored value.
+ */
+object NativeConventions {
+    fun resultBorrowed(name: String): Boolean = name == "mk_ref_array_get_b"
+
+    /** Indices of the arguments the runtime function takes ownership of (a +1 reference the caller hands over), or null. */
+    fun ownedArgs(name: String): IntArray? = if (name == "mk_ref_array_set_o") OWNED_SET else null
+
+    private val OWNED_SET = intArrayOf(2)
 }

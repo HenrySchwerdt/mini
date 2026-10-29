@@ -7,10 +7,14 @@
  */
 package kotlin.collections
 
+import kotlin.internal.ReturnsBorrowed
+import kotlin.internal.TakesOwnership
 import mini.internal.refArrayGet
+import mini.internal.refArrayGetBorrowed
 import mini.internal.refArrayLength
 import mini.internal.refArrayNew
 import mini.internal.refArraySet
+import mini.internal.refArraySetOwned
 
 internal class HashNode<K, V>(
     val hash: Int,
@@ -28,14 +32,17 @@ internal class HashNode<K, V>(
         return old
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is Map.Entry<*, *>) return false
         return key == other.key && value == other.value
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int = (key?.hashCode() ?: 0) xor (value?.hashCode() ?: 0)
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String = "$key=$value"
 }
 
@@ -89,9 +96,11 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return h xor (h ushr 16)
     }
 
+    // inline: the read of the slot then stays visible to the backend as a borrowed array read (RcOpt aliases)
     @Suppress("UNCHECKED_CAST")
-    private fun slot(i: Int): HashNode<K, V>? = refArrayGet(table, i) as HashNode<K, V>?
+    private inline fun slot(i: Int): HashNode<K, V>? = refArrayGetBorrowed(table, i) as HashNode<K, V>?
 
+    @ReturnsBorrowed
     private fun findNode(key: Any?): HashNode<K, V>? {
         val n = refArrayLength(table)
         if (n == 0) return null
@@ -106,6 +115,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
 
     override fun containsKey(key: K): Boolean = findNode(key) != null
 
+    @ReturnsBorrowed
     override fun get(key: K): V? = findNode(key)?.value
 
     override fun containsValue(value: V): Boolean {
@@ -122,7 +132,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return false
     }
 
-    override fun put(key: K, value: V): V? {
+    override fun put(@TakesOwnership key: K, @TakesOwnership value: V): V? {
         var n = refArrayLength(table)
         if (n == 0) {
             resize()
@@ -132,7 +142,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         val index = (n - 1) and hash
         var e = slot(index)
         if (e == null) {
-            refArraySet(table, index, newNode(hash, key, value))
+            refArraySetOwned(table, index, newNode(hash, key, value))
         } else {
             while (true) {
                 if (e!!.hash == hash && e.key == key) {
@@ -153,7 +163,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return null
     }
 
-    private fun newNode(hash: Int, key: K, value: V): HashNode<K, V> {
+    private fun newNode(hash: Int, @TakesOwnership key: K, @TakesOwnership value: V): HashNode<K, V> {
         val node = HashNode(hash, key, value, null)
         if (linked) {
             val t = tail
@@ -292,11 +302,12 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
 
         override fun hasNext(): Boolean = nextNode != null
 
+        @ReturnsBorrowed
         override fun next(): HashNode<K, V> {
             val e = nextNode ?: mini.internal.throwNoSuchElement(null)
             current = e
             if (map.linked) nextNode = e.after else advanceFrom(e)
-            return e
+            return current!! // read again: a result borrowed from this iterator, not from the local
         }
 
         override fun remove() {
@@ -348,6 +359,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             object : MutableIterator<MutableMap.MutableEntry<K, V>> {
                 private val it = map.nodeIterator()
                 override fun hasNext(): Boolean = it.hasNext()
+                @ReturnsBorrowed
                 override fun next(): MutableMap.MutableEntry<K, V> = it.next()
                 override fun remove() = it.remove()
             }
@@ -369,6 +381,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         override fun iterator(): MutableIterator<K> = object : MutableIterator<K> {
             private val it = map.nodeIterator()
             override fun hasNext(): Boolean = it.hasNext()
+            @ReturnsBorrowed
             override fun next(): K = it.next().key
             override fun remove() = it.remove()
         }
@@ -389,6 +402,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         override fun iterator(): MutableIterator<V> = object : MutableIterator<V> {
             private val it = map.nodeIterator()
             override fun hasNext(): Boolean = it.hasNext()
+            @ReturnsBorrowed
             override fun next(): V = it.next().value
             override fun remove() = it.remove()
         }

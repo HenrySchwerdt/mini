@@ -17,6 +17,8 @@ class BodyCtx(val parent: BodyCtx?, val fn: IrFunction?, val label: String?, val
     var tmpCounter = 0
     /** a lambda passed to an inline function numbers its temporaries on in the counter of the enclosing body */
     var shareTmp = false
+    /** context parameters in scope at this level (the function's own, or those of a context lambda), for implicit context arguments */
+    val contexts = ArrayList<IrValueParameter>()
 }
 
 /**
@@ -53,6 +55,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         for (f in sema.files) {
             val irf = IrFile(f.path, f.text, f.pkg, !userPaths.contains(f.path))
             irf.isBuiltin = isBuiltinFile(f)
+            irf.annotations = annotationsOfEntries(f.ast.fileAnnotations)
             fileMap[f] = irf
             module.files.add(irf)
         }
@@ -221,6 +224,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             else -> IrModality.FINAL
         }
         c.visibility = if (sym.isLocal || sym.isAnonymous) "local" else visibilityOf(sym.mods())
+        c.annotations = annotationsOf(sym.mods())
         c.isInner = sym.isInner
         c.isValue = sym.isValue
         c.isCompanion = sym.isCompanion
@@ -368,11 +372,53 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
 
     // ---- functions ------------------------------------------------------------------------------------------------
 
+    /** The simple name of an annotation argument: `Mode.Strict` -> "Strict", `Heap::class` -> "Heap", a string literal's text. */
+    private fun annotationArgOf(e: Expr?): String? {
+        if (e == null) return null
+        if (e is ParenExpr) return annotationArgOf(e.inner)
+        if (e is NameExpr) return e.name
+        if (e is DotExpr) return annotationArgOf(e.selector)
+        if (e is CallableRefExpr) return if (e.name == "class") annotationArgOf(e.receiver) else null
+        if (e is StringExpr) {
+            val sb = StringBuilder()
+            for (p in e.parts) {
+                if (p is StrText) sb.append(p.text)
+            }
+            return sb.toString()
+        }
+        return null
+    }
+
+    fun annotationsOfEntries(list: List<AnnotationEntry>): List<IrAnnotation> {
+        if (list.isEmpty()) return emptyList()
+        val out = ArrayList<IrAnnotation>()
+        for (a in list) {
+            val t = a.type
+            if (t !is UserType || t.segments.isEmpty()) continue
+            val args = a.args
+            out.add(IrAnnotation(t.segments[t.segments.size - 1].name, if (args != null && args.isNotEmpty()) annotationArgOf(args[0].value) else null))
+        }
+        return out
+    }
+
+    fun annotationsOf(m: Modifiers?): List<IrAnnotation> = if (m == null) emptyList() else annotationsOfEntries(m.annotations())
+
+    /** Annotations written on a type (`@Borrowed Node?`), looking through nullable and parenthesized types. */
+    fun typeAnnotationsOf(t: TypeRef?): List<IrAnnotation> {
+        var x = t
+        val out = ArrayList<IrAnnotation>()
+        while (x != null) {
+            out.addAll(annotationsOf(x.mods))
+            x = if (x is NullableType) x.inner else if (x is ParenType) x.inner else null
+        }
+        return out
+    }
+
     fun cSymbolOf(m: Modifiers?): String? {
         if (m == null) return null
         for (a in m.annotations()) {
             val t = a.type
-            if (t is UserType && t.segments.isNotEmpty() && t.segments[t.segments.size - 1].name == "CSymbol") {
+            if (t is UserType && t.segments.isNotEmpty() && (t.segments[t.segments.size - 1].name == "CSymbol" || t.segments[t.segments.size - 1].name == "NativeSymbol")) {
                 val args = a.args ?: continue
                 if (args.isEmpty()) continue
                 val v = args[0].value
@@ -403,6 +449,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         fn.isOperator = m != null && m.has("operator")
         fn.isSuspend = m != null && m.has("suspend")
         fn.cSymbolName = cSymbolOf(m)
+        fn.annotations = annotationsOf(m)
         fn.typeParameters = sym.typeParams
         for (tp in sym.typeParams) sema.ensureBounds(tp)
         fn.modality = functionModality(sym, owner)
@@ -416,6 +463,18 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             val th = IrValueParameter("<this>", irType(owner.thisType()), IrParameterKind.DispatchReceiver, idx++)
             th.parent = fn
             fn.parameters.add(th)
+        }
+        // context parameters come after the dispatch receiver and before the extension receiver (the order of fir2ir)
+        val cps = sym.decl?.mods?.contextParams
+        if (cps != null && sym.kind != FunKind.LOCAL && sym.kind != FunKind.ANONYMOUS) {
+            for (cp in cps) {
+                val cpt = cp.type
+                val ct = if (cpt != null) sema.resolveType(cpt, sema.funScope(sym)) else sema.nullableAny
+                val cip = IrValueParameter(cp.name, irType(ct), IrParameterKind.Context, idx++)
+                cip.parent = fn
+                cip.annotations = annotationsOf(cp.mods)
+                fn.parameters.add(cip)
+            }
         }
         val r = sym.receiver
         if (r != null) {
@@ -438,6 +497,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             val pt = irType(p.type ?: sema.nullableAny)
             val ip = IrValueParameter(p.name, pt, IrParameterKind.Regular, idx++)
             ip.parent = fn
+            ip.annotations = annotationsOf(p.decl?.mods)
             ip.isNoinline = p.isNoinline
             ip.isCrossinline = p.isCrossinline
             val ve = p.varargElement
@@ -516,6 +576,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         p.isVar = sym.isVar
         p.isLateinit = m != null && m.has("lateinit")
         p.cSymbolName = cSymbolOf(m)
+        p.annotations = annotationsOf(m)
         val owner = sym.owner
         val type = irType(sema.typeOfProp(sym))
         val abstract = (m != null && m.has("abstract")) || (owner != null && owner.isInterface && (d == null || (d.getter?.body == null && d.initializer == null && d.delegate == null)))
@@ -559,6 +620,10 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             f.isFinal = !sym.isVar
             f.correspondingProperty = p
             p.backingField = f
+            val fa = ArrayList<IrAnnotation>()
+            fa.addAll(p.annotations)
+            fa.addAll(typeAnnotationsOf(if (d != null) d.type else sym.ctorParam?.type))
+            f.annotations = fa
             if (sym.decl == null) {
                 val cp = sym.ctorParam
                 f.initializerBuilder = { buildCtorPropInit(f, sym, c!!) }

@@ -140,6 +140,11 @@ class Ir2Mir {
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val typeSubst = HashMap<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>()
 
+    /** Strict mode (Ir2MirStrict.kt): the function being converted is Strict; the allocator context levels in scope. */
+    internal var currentStrict = false
+    internal var allocLevels = ArrayList<List<AllocRef>>()
+    internal val strictClassCache = HashMap<IrClass, Boolean>()
+
     /** `kotlin.reflect.KClassImpl` of the stdlib sources (what `Foo::class` creates), if present in the module. */
     internal var kclassImpl: IrClass? = null
 
@@ -198,7 +203,7 @@ class Ir2Mir {
             if (mf.cName == Mangling.MAIN && facades.isNotEmpty()) {
                 // top-level property initialisers run before main
                 val force = facades.values.map { MirStmt.Eval(MirExpr.ObjectGet(it.cName, it.type)) }
-                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf)
+                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects)
             }
             functions += mf
         }

@@ -30,6 +30,7 @@ public abstract class AbstractCollection<out E> protected constructor() : Collec
 
     override fun isEmpty(): Boolean = size == 0
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String {
         val sb = StringBuilder()
         sb.append('[')
@@ -121,6 +122,7 @@ public abstract class AbstractMutableCollection<E> protected constructor() : Mut
         }
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String {
         val sb = StringBuilder()
         sb.append('[')
@@ -176,6 +178,7 @@ public abstract class AbstractList<out E> protected constructor() : AbstractColl
         return SubList(this, fromIndex, toIndex)
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is List<*>) return false
@@ -188,6 +191,7 @@ public abstract class AbstractList<out E> protected constructor() : AbstractColl
         return true
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int {
         var hashCode = 1
         var i = 0
@@ -217,6 +221,7 @@ internal class ListIteratorImpl<out E>(private val list: List<E>, start: Int) : 
 
     override fun hasNext(): Boolean = index < list.size
 
+    @kotlin.internal.ReturnsBorrowed
     override fun next(): E {
         if (!hasNext()) mini.internal.throwNoSuchElement(null)
         return list[index++]
@@ -309,6 +314,7 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
         return MutableSubList(this, fromIndex, toIndex)
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is List<*>) return false
@@ -321,6 +327,7 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
         return true
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int {
         var hashCode = 1
         var i = 0
@@ -370,6 +377,7 @@ internal class MutableListIteratorImpl<E>(private val list: MutableList<E>, star
 
     override fun hasNext(): Boolean = index < list.size
 
+    @kotlin.internal.ReturnsBorrowed
     override fun next(): E {
         if (!hasNext()) mini.internal.throwNoSuchElement(null)
         last = index
@@ -409,6 +417,7 @@ internal class MutableListIteratorImpl<E>(private val list: MutableList<E>, star
 }
 
 public abstract class AbstractSet<out E> protected constructor() : AbstractCollection<E>(), Set<E> {
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is Set<*>) return false
@@ -416,6 +425,7 @@ public abstract class AbstractSet<out E> protected constructor() : AbstractColle
         return containsAll(other as Collection<E>)
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int {
         var h = 0
         val it = iterator()
@@ -428,6 +438,7 @@ public abstract class AbstractSet<out E> protected constructor() : AbstractColle
 }
 
 public abstract class AbstractMutableSet<E> protected constructor() : AbstractMutableCollection<E>(), MutableSet<E> {
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is Set<*>) return false
@@ -435,6 +446,7 @@ public abstract class AbstractMutableSet<E> protected constructor() : AbstractMu
         return containsAll(other as Collection<E>)
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int {
         var h = 0
         val it = iterator()
@@ -491,6 +503,7 @@ public abstract class AbstractMap<K, out V> protected constructor() : Map<K, V> 
             return result
         }
 
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is Map<*, *>) return false
@@ -508,6 +521,7 @@ public abstract class AbstractMap<K, out V> protected constructor() : Map<K, V> 
         return true
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int {
         var h = 0
         val it = entries.iterator()
@@ -515,6 +529,7 @@ public abstract class AbstractMap<K, out V> protected constructor() : Map<K, V> 
         return h
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String {
         val sb = StringBuilder()
         sb.append('{')
@@ -608,6 +623,7 @@ public abstract class AbstractMutableMap<K, V> protected constructor() : Mutable
             return result
         }
 
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is Map<*, *>) return false
@@ -625,6 +641,7 @@ public abstract class AbstractMutableMap<K, V> protected constructor() : Mutable
         return true
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int {
         var h = 0
         val it = entries.iterator()
@@ -632,6 +649,7 @@ public abstract class AbstractMutableMap<K, V> protected constructor() : Mutable
         return h
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String {
         val sb = StringBuilder()
         sb.append('{')

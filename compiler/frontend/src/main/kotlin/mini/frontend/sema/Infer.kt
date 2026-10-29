@@ -104,7 +104,7 @@ class ConstraintSystem(private val sema: Sema) {
                 val r = t.receiver
                 val ps = ArrayList<Type>()
                 for (p in t.params) ps.add(resolveFixed(p))
-                return FunType(if (r != null) resolveFixed(r) else null, ps, resolveFixed(t.ret), t.nullable, t.suspend)
+                return FunType(if (r != null) resolveFixed(r) else null, ps, resolveFixed(t.ret), t.nullable, t.suspend, t.contexts)
             }
             is IsectType -> {
                 val ps = ArrayList<Type>()
@@ -232,6 +232,25 @@ class ConstraintSystem(private val sema: Sema) {
                 }
             }
             i++
+        }
+        return true
+    }
+
+    /**
+     * Incorporation of the proper bounds: no variable may have a lower (or equal) bound that is not a subtype of one of its
+     * upper bounds (`out += v` with `out: MutableList<Set<String>>`: the `Iterable<T>` overload would need `String <: Set<String>`).
+     */
+    fun consistent(): Boolean {
+        for (v in vars) {
+            for (l in ArrayList(v.lower)) {
+                val lr = resolveFixed(l)
+                if (lr is IntLiteralType || lr is ErrType || hasVars(lr)) continue
+                for (u in ArrayList(v.upper)) {
+                    val ur = resolveFixed(u)
+                    if (ur is ErrType || hasVars(ur)) continue
+                    if (!ops.isSubtype(lr, ur)) return false
+                }
+            }
         }
         return true
     }

@@ -1,0 +1,11 @@
+conn1 true
+close conn1
+using conn2
+close conn2
+close maybe
+plain
+true
+close pooled
+true
+close arena
+false

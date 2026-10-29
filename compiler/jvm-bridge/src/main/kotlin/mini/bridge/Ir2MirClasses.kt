@@ -406,7 +406,7 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
     val capFields = classCaptures(c).mapIndexed { i, v -> MirField("cap$i", capturedType(v)) }
     val outerField = if (c.isInner) listOf(MirField("\$outer", typeOf(c.parent as IrClass))) else emptyList()
     val fields = if (isInterface) emptyList() else hiddenFields + outerField + capFields + ownFields(c).map { f ->
-        MirField(f.name.asString(), mirType(f.type, f))
+        MirField(f.name.asString(), mirType(f.type, f), isBorrowedField(f))
     }
     var vtable = emptyList<String?>()
     var itables = emptyList<MirItable>()
@@ -425,7 +425,7 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
     } else null
     return MirClass(
         info.qualified, info.cName, isInterface, superclassOf(c)?.let { info(it).cName }, fields,
-        ifaces.map { info(it).cName }, vtable, itables, objectCtor,
+        ifaces.map { info(it).cName }, vtable, itables, objectCtor, strict = isStrictClass(c),
     )
 }
 
@@ -452,8 +452,7 @@ internal fun Ir2Mir.checkFunctionShape(f: IrSimpleFunction, member: Boolean) {
     if (f.isSuspend) unsupported(f, "suspend function '${f.name}'")
     for (p in f.parameters) {
         when (p.kind) {
-            IrParameterKind.Regular, IrParameterKind.ExtensionReceiver -> {}
-            IrParameterKind.Context -> unsupported(f, "context parameter in '${f.name}'")
+            IrParameterKind.Regular, IrParameterKind.ExtensionReceiver, IrParameterKind.Context -> {}
             IrParameterKind.DispatchReceiver -> if (!member) unsupported(f, "member function '${f.name}'")
         }
     }

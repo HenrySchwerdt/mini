@@ -52,6 +52,7 @@ internal fun Ir2Mir.inlineLambdaCall(lam: InlineLambda, args: List<MirExpr>, at:
     val fn = lam.fn
     val ret = mirType(fn.returnType, fn)
     val saved = HashMap(locals)
+    val allocRefs = ArrayList<AllocRef>()
     try {
         for ((i, p) in fn.parameters.withIndex()) {
             val t = mirType(p.type, p)
@@ -59,8 +60,12 @@ internal fun Ir2Mir.inlineLambdaCall(lam: InlineLambda, args: List<MirExpr>, at:
             val l = MirLocal(localCounter++, p.name.ifEmpty { "p$i" }, t)
             out += MirStmt.Declare(l, v)
             locals[p] = l
+            if (currentStrict && p.kind == IrParameterKind.Context) {
+                val r = allocRefOf(p.type, l)
+                if (r != null) allocRefs.add(r)
+            }
         }
-        return expandBody(fn, ret, at, out)
+        return withAllocatorLevel(allocRefs) { expandBody(fn, ret, at, out) }
     } finally {
         locals = saved
     }

@@ -69,6 +69,17 @@ public external fun refArrayGet(array: Any, index: Int): Any?
 @CSymbol("mk_ref_array_set")
 public external fun refArraySet(array: Any, index: Int, value: Any?)
 
+/**
+ * Like [refArrayGet] but borrowed: no reference is added, the result is valid as long as the array keeps the slot
+ * (docs/benchmarks.md D2: `ReturnsBorrowed`).
+ */
+@CSymbol("mk_ref_array_get_b")
+public external fun refArrayGetBorrowed(array: Any, index: Int): Any?
+
+/** Like [refArraySet] but the caller hands over its reference to [value] (`TakesOwnership`): no retain. */
+@CSymbol("mk_ref_array_set_o")
+public external fun refArraySetOwned(array: Any, index: Int, value: Any?)
+
 @CSymbol("mk_ref_array_length")
 public external fun refArrayLength(array: Any): Int
 

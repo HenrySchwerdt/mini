@@ -31,6 +31,9 @@ typedef struct MkArena {
     size_t next_size;                  /* data size of the next regular chunk */
     size_t used_total;                 /* bytes handed out since the last reset */
     size_t reserved;
+#ifdef MK_STATS
+    size_t stat_objs, stat_bytes; /* objects allocated through mk_alloc_with since the last reset (statistics) */
+#endif
 } MkArena;
 
 static unsigned char *chunk_data(ArenaChunk *c) { return (unsigned char *)c + CHUNK_HEADER; }
@@ -121,11 +124,18 @@ void mk_arena_reset(MkAllocator *arena) {
     }
     a->current = a->head;
     a->used_total = 0;
+#ifdef MK_STATS
+    MK_STAT_FREE_N(a->stat_objs, a->stat_bytes);
+    a->stat_objs = a->stat_bytes = 0;
+#endif
 }
 
 void mk_arena_destroy(MkAllocator *arena) {
     if (arena == NULL) return;
     MkArena *a = (MkArena *)arena;
+#ifdef MK_STATS
+    MK_STAT_FREE_N(a->stat_objs, a->stat_bytes);
+#endif
     for (ArenaChunk *c = a->head; c != NULL;) {
         ArenaChunk *next = c->next;
         chunk_free(a, c);
@@ -138,6 +148,16 @@ void mk_arena_destroy(MkAllocator *arena) {
     }
     free(a);
 }
+
+#ifdef MK_STATS
+int mk_arena_is(const MkAllocator *a) { return a != NULL && a->allocate == arena_allocate; }
+
+void mk_arena_stat_alloc(MkAllocator *a, size_t bytes) {
+    MkArena *ar = (MkArena *)a;
+    ar->stat_objs++;
+    ar->stat_bytes += bytes;
+}
+#endif
 
 size_t mk_arena_used(const MkAllocator *arena) { return ((const MkArena *)arena)->used_total; }
 size_t mk_arena_reserved(const MkAllocator *arena) { return ((const MkArena *)arena)->reserved; }

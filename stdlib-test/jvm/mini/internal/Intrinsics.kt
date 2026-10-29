@@ -53,6 +53,14 @@ fun refArraySet(array: Any, index: Int, value: Any?) {
 }
 
 @Suppress("UNCHECKED_CAST")
+fun refArrayGetBorrowed(array: Any, index: Int): Any? = (array as Array<Any?>)[index]
+
+@Suppress("UNCHECKED_CAST")
+fun refArraySetOwned(array: Any, index: Int, value: Any?) {
+    (array as Array<Any?>)[index] = value
+}
+
+@Suppress("UNCHECKED_CAST")
 fun refArrayLength(array: Any): Int = (array as Array<Any?>).size
 
 fun throwIllegalArgument(message: String?): Nothing = throw IllegalArgumentException(message)

@@ -38,10 +38,13 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
     val vars = if (info != null) info.params else emptyList()
     var i = 0
     val destructs = ArrayList<IrValueParameter>()
+    val ctxParams = ArrayList<IrValueParameter>()
     for (pt in ft.params) {
         val vs = if (i < vars.size) vars[i] else null
         val name = if (vs != null) (if (vs.name == "_") "<unused var>" else vs.name) else "p" + i
-        val p = IrValueParameter(name, irType(pt), IrParameterKind.Regular, idx++)
+        val isCtx = i < ft.contexts
+        val p = IrValueParameter(if (isCtx) contextParamName(pt) else name, irType(pt), if (isCtx) IrParameterKind.Context else IrParameterKind.Regular, idx++)
+        if (isCtx) ctxParams.add(p)
         p.parent = fn
         if (vs != null) varMap[vs] = p
         fn.parameters.add(p)
@@ -52,6 +55,7 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
     bc.shareTmp = lambdaInline
     lambdaInline = false
     if (recvParam != null) bc.recvs.add(RecvEntry(null, null, lam, null, recvParam))
+    bc.contexts.addAll(ctxParams)
     withCtx(bc) {
         val stmts = ArrayList<IrStatement>()
         // destructured parameters
@@ -186,4 +190,11 @@ fun Ast2Ir.isClassQualifier(e: Expr): Boolean {
         return r.target == null
     }
     return false
+}
+
+/** The name fir2ir gives the parameter of a context lambda: `$context-` and the simple name of the type. */
+private fun Ast2Ir.contextParamName(t: Type): String {
+    val fq = irType(t).classFqName ?: return "\$context"
+    val i = fq.lastIndexOf('.')
+    return "\$context-" + (if (i < 0) fq else fq.substring(i + 1))
 }

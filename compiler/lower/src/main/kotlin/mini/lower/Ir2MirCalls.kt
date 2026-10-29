@@ -78,6 +78,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     lateinitIsInitialized(c, name, if (parent is IrClass) parent.kotlinFqName else (parent as? IrFile)?.packageFqName ?: "", out)?.let { return it }
     // natively implemented function (@CSymbol, docs/stdlib.md)
     Reachability.cSymbol(owner)?.let { return cSymbolCall(c, it, out) }
+    memoryApiCall(c, owner, out)?.let { return it }
 
     if (isFunctionInvoke(owner)) return invokeFunctionValue(c, out)
     // inline functions with a body (user code, or stdlib code compiled from source) are expanded in place

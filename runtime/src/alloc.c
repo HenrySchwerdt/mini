@@ -76,6 +76,7 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
     /* the padding of the prefix remembers the block size for mk_free_object_memory */
     *(size_t *)(void *)(block + sizeof(void *)) = total;
     MK_STAT_ALLOC(total);
+    if (mk_arena_is(allocator)) mk_arena_stat_alloc(allocator, total);
 #endif
     MkObject *object = (MkObject *)(void *)(block + MK_PREFIX_SIZE);
     object->type = type;
@@ -108,7 +109,7 @@ void mk_free_object_memory(MkObject *object) {
     unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
     MkAllocator *owner = *(MkAllocator **)(void *)block;
 #ifdef MK_STATS
-    MK_STAT_FREE(*(size_t *)(void *)(block + sizeof(void *)));
+    if (!mk_arena_is(owner)) MK_STAT_FREE(*(size_t *)(void *)(block + sizeof(void *))); /* an arena counts its objects when it dies */
 #endif
     object->refcount = 0;
     object->flags |= MK_FLAG_FREED;
@@ -140,3 +141,83 @@ static void free_with_site(MkObject *object, const char *site) {
 
 void mk_free(MkObject *object) { free_with_site(object, NULL); }
 void mk_free_with_site(MkObject *object, const char *site) { free_with_site(object, site); }
+
+/* ---- D2: handles for the mini.memory classes and the helpers of the Strict code generation ---- */
+
+int64_t mk_heap_allocator_h(void) { return (int64_t)(intptr_t)mk_heap_allocator(); }
+
+int64_t mk_arena_new_h(void) {
+    MkAllocator *a = mk_arena_create(0);
+    if (a == NULL) mk_panic("out of memory");
+    return (int64_t)(intptr_t)a;
+}
+
+void mk_arena_close_h(int64_t arena) {
+    if (arena != 0) mk_arena_destroy((MkAllocator *)(intptr_t)arena);
+}
+
+int64_t mk_pool_new_h(const MkTypeInfo *type, MkInt capacity) {
+    MkAllocator *p = mk_pool_create(mk_object_block_size(type), capacity > 0 ? (size_t)capacity : 0);
+    if (p == NULL) mk_panic("out of memory");
+    return (int64_t)(intptr_t)p;
+}
+
+void mk_pool_close_h(int64_t pool) {
+    if (pool != 0) mk_pool_destroy((MkAllocator *)(intptr_t)pool);
+}
+
+/* DebugAllocators of mini.memory have no close(): they report their leaks and are destroyed when the program ends. */
+#define MK_DEBUG_MAX 64
+static MkAllocator *debug_live[MK_DEBUG_MAX];
+static int debug_count;
+
+static void debug_at_exit(void) {
+    for (int i = debug_count - 1; i >= 0; i--) {
+        mk_debug_report_leaks(debug_live[i]);
+        mk_debug_allocator_destroy(debug_live[i]);
+    }
+    debug_count = 0;
+}
+
+int64_t mk_debug_new_h(int64_t inner) {
+    MkAllocator *d = mk_debug_allocator_create((MkAllocator *)(intptr_t)inner);
+    if (d == NULL) mk_panic("out of memory");
+    if (debug_count == 0) atexit(debug_at_exit);
+    if (debug_count < MK_DEBUG_MAX) debug_live[debug_count++] = d;
+    return (int64_t)(intptr_t)d;
+}
+
+void mk_free_dealloc(MkObject *object) {
+    if (object == NULL) return;
+    if (object->flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) return;
+    if (!(object->flags & MK_FLAG_FREED)) {
+        unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
+        MkAllocator *owner = *(MkAllocator **)(void *)block;
+        if (mk_allocator_traits(owner) & MK_ALLOCATOR_MANAGED) return; /* reference counted: frees itself */
+    }
+    free_with_site(object, NULL);
+}
+
+void mk_free_owned(MkObject *object) {
+    if (object == NULL) return;
+    if (object->flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) return;
+    if (!(object->flags & MK_FLAG_FREED)) {
+        unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
+        MkAllocator *owner = *(MkAllocator **)(void *)block;
+        if (mk_allocator_traits(owner) & MK_ALLOCATOR_MANAGED) {
+            mk_release(object); /* the owner's count; anybody else holding a reference keeps the object alive */
+            return;
+        }
+    }
+    free_with_site(object, NULL);
+}
+
+void mk_discard(MkObject *object) {
+    if (object == NULL) return;
+    unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
+    MkAllocator *owner = *(MkAllocator **)(void *)block;
+    uint32_t traits = mk_allocator_traits(owner);
+    if (traits & MK_ALLOCATOR_SCOPED) return;
+    if (traits & MK_ALLOCATOR_MANAGED) mk_release(object);
+    else free_with_site(object, NULL);
+}

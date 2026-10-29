@@ -116,6 +116,19 @@ fun Ast2Ir.buildFunctionBody(fn: IrSimpleFunction, sym: FunSym): IrBody? {
         bc = BodyCtx(parentCtx, fn, sym.name, false)
         for (p in fn.parameters) if (p.kind == IrParameterKind.ExtensionReceiver) bc.recvs.add(RecvEntry(null, sym, null, null, p))
     }
+    // the context parameters of the function are the implicit context arguments of the calls in its body, and are
+    // visible by name in it
+    val cps = d.mods?.contextParams
+    var ci = 0
+    for (p in fn.parameters) {
+        if (p.kind != IrParameterKind.Context) continue
+        bc.contexts.add(p)
+        if (cps != null && ci < cps.size) {
+            val v = rec(cps[ci])?.callee as? VarSym
+            if (v != null) varMap[v] = p
+        }
+        ci++
+    }
     return withCtx(bc) { functionBody(fn, body, d.expressionBody) }
 }
 

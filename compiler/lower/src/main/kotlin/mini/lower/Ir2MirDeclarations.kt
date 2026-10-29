@@ -33,6 +33,7 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
     currentReturn = ret
     unitAsNull = false
     finallyStack = ArrayList()
+    enterFunctionContext(f, params)
     val out = ArrayList<MirStmt>()
     (f.parent as? IrClass)?.takeIf { it in classInfos }?.let { enterClassMember(f, it, params, out) }
     if (f is IrSimpleFunction && f.origin == "DEFAULT_PROPERTY_ACCESSOR" && f.name.startsWith("<get-")) {
@@ -61,7 +62,7 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
         }
         else -> unsupported(f, "function body")
     }
-    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf)
+    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
 }
 
 internal fun Ir2Mir.newTemp(type: MirType, name: String = "tmp"): MirLocal = MirLocal(localCounter++, name, type)
@@ -257,5 +258,23 @@ internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirSt
     val cName = functionNames[k] ?: unsupported(c, "construction of '${cls.kotlinFqName}'")
     if (cls.kind != IrClassKind.CLASS) unsupported(c, "construction of ${classKind(cls)} '${cls.name}'")
     if (cls.modality == IrModality.ABSTRACT || cls.modality == IrModality.SEALED) unsupported(c, "construction of abstract class '${cls.name}'")
-    return MirExpr.New(cName, callArgs(c, k, out) + captureArgsFor(cls, c), typeOf(cls))
+    val args = callArgs(c, k, out) + captureArgsFor(cls, c)
+    if (cls.kotlinFqName == "mini.memory.Pool") return poolNew(c, cName, cls, args, out)
+    val (alloc, auto) = resolveAllocation(cls)
+    return MirExpr.New(cName, args, typeOf(cls), alloc, auto)
+}
+
+/**
+ * `Pool<T>(capacity)`: a pool needs the block size of `T`, which only the construction site knows; the pool object is
+ * created as usual and its native handle is set right after.
+ */
+private fun Ir2Mir.poolNew(c: IrConstructorCall, ctor: String, cls: IrClass, args: List<MirExpr>, out: MutableList<MirStmt>): MirExpr {
+    val ta = c.typeArguments.firstOrNull()?.classOrNull
+    if (ta == null || ta !in classInfos) unsupported(c, "Pool of a type that is not a class")
+    val obj = tmpOf(MirExpr.New(ctor, args, typeOf(cls)), out)
+    out += MirStmt.SetField(
+        obj, info(cls).cName, "handle", TLong,
+        MirExpr.RuntimeCall("mk_pool_new_h", listOf(MirExpr.TypeInfoOf(typeOf(ta)), args[0]), TLong),
+    )
+    return obj
 }

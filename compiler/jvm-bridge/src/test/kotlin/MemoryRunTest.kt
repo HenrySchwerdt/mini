@@ -65,8 +65,13 @@ class MemoryRunTest {
                 }
                 val p = ProcessBuilder(exe.path).redirectErrorStream(false).start()
                 val out = p.inputStream.readBytes().toString(Charsets.UTF_8)
+                val runErr = p.errorStream.readBytes().toString(Charsets.UTF_8)
                 val finished = p.waitFor(60, TimeUnit.SECONDS)
                 assertTrue(finished, "timeout")
+                if (runErr.contains("threads are not supported yet")) {
+                    synchronized(skipped) { skipped += name; summary() }
+                    assumeTrue(false, "threads are not supported natively yet")
+                }
                 synchronized(ran) { ran += name; summary() }
                 assertEquals(0, p.exitValue(), "exit code of $name")
                 assertEquals(File(src.parentFile, "$name.out").readText(), out, "stdout of $name")

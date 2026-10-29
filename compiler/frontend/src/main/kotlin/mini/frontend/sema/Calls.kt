@@ -497,6 +497,7 @@ fun BodyChecker.tryCandidate(c: Candidate, args: List<Arg>, typeArgs: List<Type>
         }
         i++
     }
+    if (!cs.consistent()) return null
     return Attempt(c, binding, cs, subst, params, att.argParam, att.cmp, cmpRecv, tps)
 }
 

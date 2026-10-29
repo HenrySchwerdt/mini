@@ -27,7 +27,7 @@ class TypeOps(private val sema: Sema) {
                 val r = t.receiver
                 val ps = ArrayList<Type>()
                 for (p in t.params) ps.add(substitute(p, m))
-                return FunType(if (r != null) substitute(r, m) else null, ps, substitute(t.ret, m), t.nullable, t.suspend)
+                return FunType(if (r != null) substitute(r, m) else null, ps, substitute(t.ret, m), t.nullable, t.suspend, t.contexts)
             }
             is IsectType -> {
                 val ps = ArrayList<Type>()
@@ -191,7 +191,7 @@ class TypeOps(private val sema: Sema) {
                 val r = t.receiver
                 val ps = ArrayList<Type>()
                 for (p in t.params) ps.add(approximate(p))
-                return FunType(if (r != null) approximate(r) else null, ps, approximate(t.ret), t.nullable, t.suspend)
+                return FunType(if (r != null) approximate(r) else null, ps, approximate(t.ret), t.nullable, t.suspend, t.contexts)
             }
             else -> return t
         }

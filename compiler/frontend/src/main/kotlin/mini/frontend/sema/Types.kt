@@ -28,8 +28,9 @@ class TypeParamType(val tp: TypeParamSym, override val nullable: Boolean, val de
 }
 
 /** `(P1, P2) -> R`, `R.(P) -> R2`, `suspend () -> R`. Structural; its supertypes are `Function<R>` and `Any`. */
-class FunType(val receiver: Type?, val params: List<Type>, val ret: Type, override val nullable: Boolean, val suspend: Boolean) : Type() {
-    override fun withNullable(n: Boolean): Type = if (n == nullable) this else FunType(receiver, params, ret, n, suspend)
+/** [contexts]: how many of the leading [params] are context parameters (`context(A) () -> R`); they are ordinary parameters for typing. */
+class FunType(val receiver: Type?, val params: List<Type>, val ret: Type, override val nullable: Boolean, val suspend: Boolean, val contexts: Int = 0) : Type() {
+    override fun withNullable(n: Boolean): Type = if (n == nullable) this else FunType(receiver, params, ret, n, suspend, contexts)
     val arity: Int get() = params.size + (if (receiver != null) 1 else 0)
 }
 
