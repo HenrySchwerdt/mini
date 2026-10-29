@@ -64,7 +64,7 @@ const rows = []
 for (const code of codes) {
   const m = meta[code]
   const entries = corpusByCode.get(code) ?? []
-  let page = `---\ntitle: ${code} ${m.title}\n---\n\n# ${code}: ${m.title}\n\n`
+  let page = `---\ntitle: ${JSON.stringify(code + " " + m.title)}\n---\n\n# ${code}: ${m.title}\n\n`
   page += `<span class="diag-badge ${m.severity}">${m.severity}</span>`
   if (m.status === 'planned') page += ` <span class="diag-badge planned">planned, not implemented</span>`
   page += `\n\n## What it means\n\n${m.meaning}\n\n`
