@@ -5,9 +5,15 @@
 #include <string.h>
 #include <limits.h>
 
+/* MSVC's C mode has no max_align_t; a union of the widest scalar types gives the same alignment. */
 struct Allocation {
     Allocation *next;
-    max_align_t alignment;
+    union {
+        long double long_double;
+        long long long_long;
+        void *pointer;
+        void (*function)(void);
+    } alignment;
 };
 
 void *mini_palloc(Context *c, size_t size) {
