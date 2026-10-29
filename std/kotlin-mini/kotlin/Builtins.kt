@@ -129,3 +129,6 @@ public class Array<T> {
 }
 
 public interface Function<out R>
+
+public val Char.code: Int
+    get() = this.toInt()

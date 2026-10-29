@@ -19,3 +19,8 @@ public annotation class UnsafeVariance
 
 @Target(FUNCTION, PROPERTY, PROPERTY_GETTER, PROPERTY_SETTER)
 public annotation class PublishedApi
+
+public enum class DeprecationLevel { WARNING, ERROR, HIDDEN }
+
+@Target(AnnotationTarget.ANNOTATION_CLASS, AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY, AnnotationTarget.CONSTRUCTOR)
+public annotation class DeprecatedSinceKotlin(val warningSince: String = "", val errorSince: String = "", val hiddenSince: String = "")

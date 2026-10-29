@@ -142,6 +142,9 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     val name = owner.name.asString()
     val parent = owner.parent
 
+    // natively implemented function (@CSymbol, docs/stdlib.md)
+    Reachability.cSymbol(owner)?.let { return cSymbolCall(c, it, out) }
+
     // user function of this module (top-level)
     functionNames[owner]?.let { cName ->
         if (parent !is IrClass) {

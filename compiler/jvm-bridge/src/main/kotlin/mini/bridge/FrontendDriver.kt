@@ -32,11 +32,18 @@ object FrontendDriver {
 
     class FrontendFailure(message: String) : Exception(message)
 
-    fun runFrontend(source: File, consumer: (IrModuleFragment, IrPluginContext) -> Unit) =
-        runFrontend(source, emptyList(), consumer)
-
-    /** [extraSources] are compiled together with [source] (e.g. the mini.memory API sources). */
-    fun runFrontend(source: File, extraSources: List<File>, consumer: (IrModuleFragment, IrPluginContext) -> Unit) {
+    /**
+     * Analyses [sources] (user files) together with [stdlib] (Mini stdlib sources, possibly empty)
+     * and calls [consumer] with the pruned module (see [Reachability]). With a non-empty [stdlib]
+     * the JVM kotlin-stdlib is not used at all: no stdlib jar, no JDK (`-no-jdk`); kotlin.* comes from
+     * the sources (`-Xallow-kotlin-package -Xstdlib-compilation`).
+     */
+    fun runFrontend(
+        sources: List<File>,
+        stdlib: List<File>,
+        consumer: (IrModuleFragment, IrPluginContext) -> Unit,
+    ) {
+        val source = sources.first()
         val work = Files.createTempDirectory("minic-").toFile()
         try {
             val services = File(work, "plugin/META-INF/services").also { it.mkdirs() }
@@ -44,28 +51,40 @@ object FrontendDriver {
                 .writeText(MiniPluginRegistrar::class.java.name + "\n")
             val out = File(work, "out").also { it.mkdirs() }
 
-            val stdlib = File(kotlin.Unit::class.java.protectionDomain.codeSource.location.toURI())
+            val jvmStdlib = File(kotlin.Unit::class.java.protectionDomain.codeSource.location.toURI())
+            val fromSource = stdlib.isNotEmpty()
 
             val compiler = K2JVMCompiler()
             val args = compiler.createArguments()
-            args.freeArgs = listOf(source.absolutePath) + extraSources.map { it.absolutePath }
+            args.freeArgs = (sources + stdlib).map { it.absolutePath }
             args.destination = out.absolutePath
             args.noStdlib = true
             args.noReflect = true
-            args.classpath = stdlib.absolutePath
+            if (fromSource) {
+                args.noJdk = true
+                args.allowKotlinPackage = true
+                args.stdlibCompilation = true
+            } else {
+                args.classpath = jvmStdlib.absolutePath
+            }
             args.moduleName = "main"
             args.pluginClasspaths = arrayOf(File(work, "plugin").absolutePath)
             args.jvmTarget = "21"
 
             val collector = Collector()
             var captured: Throwable? = null
+            val stdPaths = stdlib.map { it.absolutePath }.toSet()
+            collector.stdlibPaths = stdPaths
             pending = { m, c ->
                 try {
+                    if (fromSource) Reachability.prune(m) { f -> File(f.fileEntry.name).absolutePath in stdPaths }
                     consumer(m, c)
                 } catch (t: Throwable) {
                     // do not let the Kotlin compiler wrap our diagnostics; rethrow after it returns
                     captured = t
                 }
+                // nothing is left for the JVM backend to lower or to emit
+                m.files.clear()
             }
             val code = try {
                 compiler.exec(collector, Services.EMPTY, args)
@@ -82,6 +101,7 @@ object FrontendDriver {
     }
 
     private class Collector : MessageCollector {
+        var stdlibPaths: Set<String> = emptySet()
         val errors = mutableListOf<String>()
         private var error = false
 
@@ -97,7 +117,7 @@ object FrontendDriver {
             when {
                 severity.isError -> { error = true; errors += "${where}error: $message" }
                 severity == CompilerMessageSeverity.WARNING || severity == CompilerMessageSeverity.STRONG_WARNING ->
-                    System.err.println("${where}warning: $message")
+                    if (location == null || File(location.path).absolutePath !in stdlibPaths) System.err.println("${where}warning: $message")
                 else -> {}
             }
         }

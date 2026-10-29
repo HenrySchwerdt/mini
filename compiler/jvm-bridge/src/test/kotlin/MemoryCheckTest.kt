@@ -19,6 +19,9 @@ class MemoryCheckTest {
     private val corpus = File(System.getProperty("mini.memoryCorpus") ?: error("mini.memoryCorpus not set"))
     private val api = File(System.getProperty("mini.memoryApi") ?: error("mini.memoryApi not set"))
     private val apiFiles = api.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+    private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
+    // The Mini stdlib (std/kotlin-mini) already contains the mini.memory API; --extra-src copies are de-duplicated.
+    private val stdlib = mini.bridge.Cli.defaultStdlib(null, repoRoot) ?: error("Mini stdlib not found")
     // additional programs written for the checker itself (the spec corpus above is read-only)
     private val extra = File(System.getProperty("mini.memoryExtra") ?: error("mini.memoryExtra not set"))
     private val programs = (corpus.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name } +
@@ -49,7 +52,7 @@ class MemoryCheckTest {
     fun corpus(): List<DynamicTest> = programs.map { src ->
         DynamicTest.dynamicTest(src.nameWithoutExtension) {
             val want = expected(src)
-            val r = MemoryCheck.check(src, apiFiles)
+            val r = MemoryCheck.check(src, mini.bridge.Cli.withoutStdlib(apiFiles, stdlib), stdlib)
             val got = r.brief().sorted()
             val ok = want == got
             synchronized(perCode) {

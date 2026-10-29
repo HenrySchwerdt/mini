@@ -32,9 +32,9 @@ object MemoryCheck {
         return Result(m.fileName.ifEmpty { source.path }, diags, m.sources[m.fileName], facts.failures, facts.strictFailures)
     }
 
-    fun check(source: File, extraSources: List<File>): Result {
+    fun check(source: File, extraSources: List<File>, stdlib: List<File>): Result {
         var result: Result? = null
-        FrontendDriver.runFrontend(source, extraSources) { module, _ -> result = checkModule(module, source) }
+        FrontendDriver.runFrontend(listOf(source), stdlib + extraSources) { module, _ -> result = checkModule(module, source) }
         return result ?: Result(source.path, emptyList(), null, listOf("the frontend produced no IR"))
     }
 
@@ -61,8 +61,10 @@ object MemoryCheck {
     }
 
     /** Drops every file except [source] from [module] (the extra sources are not translated to C). */
-    fun keepOnly(module: org.jetbrains.kotlin.ir.declarations.IrModuleFragment, source: File) {
-        val canon = source.canonicalFile
-        module.files.removeAll { File(it.fileEntry.name).canonicalFile != canon }
+    /** Removes [files] (declaration-only extra sources) from [module] before code generation. */
+    fun dropFiles(module: org.jetbrains.kotlin.ir.declarations.IrModuleFragment, files: List<File>) {
+        if (files.isEmpty()) return
+        val drop = files.map { it.canonicalFile }.toSet()
+        module.files.removeAll { File(it.fileEntry.name).canonicalFile in drop }
     }
 }
