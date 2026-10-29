@@ -104,6 +104,23 @@ Platforms: Linux and macOS (CI). Windows follows later. The full plan is in
 
 ## Quickstart
 
+### Install a release
+
+Prebuilt `minic` for Linux (x64, arm64) and macOS (arm64), no JDK needed, only a C compiler (clang or gcc):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
+export PATH="$HOME/.mini/bin:$PATH"
+minic build hello.kt -o hello && ./hello
+```
+
+The script installs the latest [release](https://github.com/HenrySchwerdt/mini/releases) into `~/.mini` after checking its
+SHA256 (`MINI_VERSION=0.4.0` picks a version, `MINI_HOME` the directory). A release also carries a portable C bootstrap
+seed (`mini-<version>-bootstrap-c.tar.gz`): `./build.sh` in it builds a native compiler with `cc` alone. Details in
+[compiler/README.md](compiler/README.md#releases).
+
+### From a source checkout
+
 Requirements: JDK 21, clang (or gcc). libuv is only needed for the runtime tests.
 
 ```sh

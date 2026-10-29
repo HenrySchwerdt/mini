@@ -637,3 +637,22 @@ stage2 does the same (stage3); the C and MIR of stage2 and stage3 must be byte-i
 stage1 compiling the sources 4.4 s, each clang build about 75 s. `compiler/selfcompare.py` compares the self-compile MIR of K2 and of the own
 frontend after normalising local ids and `tmpN` numbers (41 lines of 96,774 differ, plus 16 allowlisted flow-fact casts; the count is checked against
 `selfcompare-baseline.txt` and must not grow).
+
+### Releases
+
+`.github/workflows/release.yml` (tag `v*` or manual run with a version) bootstraps on linux-x64, linux-arm64 and macos-arm64, packages
+`scripts/package-release.sh` and publishes to GitHub Releases:
+
+| Asset | Contents |
+|---|---|
+| `mini-<version>-<target>.tar.gz` | `bin/minic` (shell wrapper: `minic build foo.kt -o foo`, `emit-c`, `version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
+| `mini-<version>-bootstrap-c.tar.gz` | the generated C of the compiler (`minic.c`), `runtime/`, `build.sh`: `cc` alone builds a stage0 (`scripts/package-seed.sh`) |
+| `SHA256SUMS` | checksums of the above; `install.sh` verifies them |
+
+The `minic` wrapper is a shell script for v0: the native stdlib has no process API yet, so `minic-native` only emits C and the wrapper calls `cc`.
+
+`compiler/bootstrap.sh --stage0 <native minic>` replaces the JVM stage1 by a prebuilt native compiler (a release's `bin/minic-native` or the stage
+built from the seed): stage0 compiles the current sources, then stage1, stage2, stage3 follow and stage2 == stage3 is checked. It builds at -O0
+by default (clang takes 9 s instead of 73 s per stage), so the whole check takes about a minute without Gradle or the JVM. CI runs it as the
+`stage0` shard (`scripts/ci-stage0.sh`: downloads the latest release for the platform, verifies its SHA256, falls back to the JVM stage1 when there
+is no release, the download fails or stage0 cannot build the sources); the JVM-stage1 `bootstrap` shard (guards the K2 path) runs on main.
