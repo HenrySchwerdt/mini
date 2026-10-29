@@ -20,12 +20,22 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// the JVM run of the driver (compiler/frontend/driver/common); `native/Main.kt` only exists for minic
+sourceSets {
+    test {
+        kotlin.srcDir(rootProject.file("frontend/driver/common"))
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
     systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
     systemProperty("mini.testdata", rootProject.file("testdata").absolutePath)
     systemProperty("mini.frontendSrc", rootProject.file("frontend/src/main/kotlin").absolutePath)
     inputs.dir(rootProject.file("frontend/src/main/kotlin"))
+    inputs.dir(rootProject.file("frontend/driver"))
+    inputs.dir(rootProject.projectDir.parentFile.resolve("runtime"))
+    inputs.dir(rootProject.projectDir.parentFile.resolve("stdlib"))
     inputs.dir(rootProject.file("testdata"))
     maxHeapSize = "2g"
     testLogging {
