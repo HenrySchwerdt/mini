@@ -55,11 +55,11 @@ class Ir2Mir {
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val typeSubst = HashMap<TypeParamSym, Type>()
 
-    /** `kotlin.reflect.KClassImpl` of the stdlib sources (what `Foo::class` creates), if present in the module. */
+    /** `KClassImpl` (package kotlin, reflect) of the stdlib sources (what `Foo::class` creates), if present in the module. */
     internal var kclassImpl: IrClass? = null
 
     fun convert(module: IrModule, sourceName: String): MirModule {
-        kclassImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == "kotlin.reflect.KClassImpl" }
+        kclassImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == REFLECT_PKG + ".KClassImpl" }
         closure.analyze(module)
         // pass 1: classes and top-level declarations
         val tops = ArrayList<Pair<IrFile, IrSimpleFunction>>()

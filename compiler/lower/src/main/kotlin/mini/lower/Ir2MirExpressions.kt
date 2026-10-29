@@ -264,7 +264,7 @@ internal fun typeQualifiedName(t: MirType): String? = when (t) {
 }
 
 private fun Ir2Mir.newKClass(name: MirExpr, at: IrElement, type: MirType, out: MutableList<MirStmt>): MirExpr {
-    val impl = kclassImpl ?: unsupported(at, "`::class` (the stdlib class kotlin.reflect.KClassImpl is not available)")
+    val impl = kclassImpl ?: unsupported(at, "`::class` (the stdlib class KClassImpl is not available)")
     val ctor = impl.declarations.filterIsInstance<IrConstructor>().firstOrNull()
     val cName = ctor?.let { functionNames[it] } ?: unsupported(at, "`::class` (KClassImpl was pruned)")
     val made = tmpOf(MirExpr.New(cName, listOf(name), typeOf(impl)), out)

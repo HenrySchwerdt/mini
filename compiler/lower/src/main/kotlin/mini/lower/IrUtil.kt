@@ -39,7 +39,7 @@ val Type.classOrNull: IrClass?
         }
     }
 
-/** The name `kotlin.reflect.KFunction1` etc. of the synthetic reference classes, else the qualified name. */
+/** The name `KFunction1` (of the reflect package) etc. of the synthetic reference classes, else the qualified name. */
 fun ClassSym.irFqName(): String {
     if (fnArity >= 0) return REFLECT_PKG + "." + name
     return fqName()

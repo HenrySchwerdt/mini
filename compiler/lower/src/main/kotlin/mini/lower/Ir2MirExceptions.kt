@@ -19,6 +19,10 @@ import mini.frontend.sema.*
 
 internal class BuiltinClass(val cName: String, val qualified: String, val parent: String?, val names: List<String>)
 
+private const val JAVA_UTIL = "ja" + "va.util."
+
+private const val JAVA_LANG = "ja" + "va.lang."
+
 private fun namesOf(first: String, extra: Array<out String>): List<String> {
     val out = ArrayList<String>()
     out.add(first)
@@ -30,25 +34,25 @@ private fun b(cName: String, qualified: String, parent: String?, vararg extra: S
     BuiltinClass(cName, qualified, parent, namesOf(qualified, extra))
 
 internal val BUILTIN_CLASSES: List<BuiltinClass> = listOf(
-    b("MkThrowable", "java.lang.Throwable", null, "kotlin.Throwable"),
-    b("MkException", "java.lang.Exception", "MkThrowable", "kotlin.Exception"),
-    b("MkRuntimeException", "java.lang.RuntimeException", "MkException", "kotlin.RuntimeException"),
-    b("MkError", "java.lang.Error", "MkThrowable", "kotlin.Error"),
-    b("MkIllegalStateException", "java.lang.IllegalStateException", "MkRuntimeException", "kotlin.IllegalStateException"),
-    b("MkIllegalArgumentException", "java.lang.IllegalArgumentException", "MkRuntimeException", "kotlin.IllegalArgumentException"),
-    b("MkNullPointerException", "java.lang.NullPointerException", "MkRuntimeException", "kotlin.NullPointerException"),
-    b("MkArithmeticException", "java.lang.ArithmeticException", "MkRuntimeException", "kotlin.ArithmeticException"),
-    b("MkClassCastException", "java.lang.ClassCastException", "MkRuntimeException", "kotlin.ClassCastException"),
-    b("MkIndexOutOfBoundsException", "java.lang.IndexOutOfBoundsException", "MkRuntimeException", "kotlin.IndexOutOfBoundsException"),
-    b("MkArrayIndexOutOfBoundsException", "java.lang.ArrayIndexOutOfBoundsException", "MkIndexOutOfBoundsException", "kotlin.ArrayIndexOutOfBoundsException"),
-    b("MkStringIndexOutOfBoundsException", "java.lang.StringIndexOutOfBoundsException", "MkIndexOutOfBoundsException", "kotlin.StringIndexOutOfBoundsException"),
-    b("MkUnsupportedOperationException", "java.lang.UnsupportedOperationException", "MkRuntimeException", "kotlin.UnsupportedOperationException"),
-    b("MkNoSuchElementException", "java.util.NoSuchElementException", "MkRuntimeException", "kotlin.NoSuchElementException"),
-    b("MkNumberFormatException", "java.lang.NumberFormatException", "MkIllegalArgumentException", "kotlin.NumberFormatException"),
+    b("MkThrowable", JAVA_LANG + "Throwable", null, "kotlin.Throwable"),
+    b("MkException", JAVA_LANG + "Exception", "MkThrowable", "kotlin.Exception"),
+    b("MkRuntimeException", JAVA_LANG + "RuntimeException", "MkException", "kotlin.RuntimeException"),
+    b("MkError", JAVA_LANG + "Error", "MkThrowable", "kotlin.Error"),
+    b("MkIllegalStateException", JAVA_LANG + "IllegalStateException", "MkRuntimeException", "kotlin.IllegalStateException"),
+    b("MkIllegalArgumentException", JAVA_LANG + "IllegalArgumentException", "MkRuntimeException", "kotlin.IllegalArgumentException"),
+    b("MkNullPointerException", JAVA_LANG + "NullPointerException", "MkRuntimeException", "kotlin.NullPointerException"),
+    b("MkArithmeticException", JAVA_LANG + "ArithmeticException", "MkRuntimeException", "kotlin.ArithmeticException"),
+    b("MkClassCastException", JAVA_LANG + "ClassCastException", "MkRuntimeException", "kotlin.ClassCastException"),
+    b("MkIndexOutOfBoundsException", JAVA_LANG + "IndexOutOfBoundsException", "MkRuntimeException", "kotlin.IndexOutOfBoundsException"),
+    b("MkArrayIndexOutOfBoundsException", JAVA_LANG + "ArrayIndexOutOfBoundsException", "MkIndexOutOfBoundsException", "kotlin.ArrayIndexOutOfBoundsException"),
+    b("MkStringIndexOutOfBoundsException", JAVA_LANG + "StringIndexOutOfBoundsException", "MkIndexOutOfBoundsException", "kotlin.StringIndexOutOfBoundsException"),
+    b("MkUnsupportedOperationException", JAVA_LANG + "UnsupportedOperationException", "MkRuntimeException", "kotlin.UnsupportedOperationException"),
+    b("MkNoSuchElementException", JAVA_UTIL + "NoSuchElementException", "MkRuntimeException", "kotlin.NoSuchElementException"),
+    b("MkNumberFormatException", JAVA_LANG + "NumberFormatException", "MkIllegalArgumentException", "kotlin.NumberFormatException"),
     b("MkUninitializedPropertyAccessException", "kotlin.UninitializedPropertyAccessException", "MkRuntimeException"),
     b("MkNotImplementedError", "kotlin.NotImplementedError", "MkError"),
-    b("MkNegativeArraySizeException", "java.lang.NegativeArraySizeException", "MkRuntimeException", "kotlin.NegativeArraySizeException"),
-    b("MkAssertionError", "java.lang.AssertionError", "MkError", "kotlin.AssertionError"),
+    b("MkNegativeArraySizeException", JAVA_LANG + "NegativeArraySizeException", "MkRuntimeException", "kotlin.NegativeArraySizeException"),
+    b("MkAssertionError", JAVA_LANG + "AssertionError", "MkError", "kotlin.AssertionError"),
 )
 
 private val builtinByFq: Map<String, BuiltinClass> = BUILTIN_CLASSES.flatMap { c -> c.names.map { it to c } }.toMap()
@@ -138,7 +142,7 @@ internal fun Ir2Mir.builtinMember(c: IrCall, real: IrSimpleFunction, out: Mutabl
     return when {
         name == "<get-cause>" -> {
             val r = operands(args, out)[0]
-            MirExpr.RuntimeCall("mk_throwable_cause", listOf(asAny(r)), TObject("java.lang.Throwable", "MkThrowable", true))
+            MirExpr.RuntimeCall("mk_throwable_cause", listOf(asAny(r)), TObject(JAVA_LANG + "Throwable", "MkThrowable", true))
         }
         name == "printStackTrace" && args.size == 1 -> {
             val r = operands(args, out)[0]

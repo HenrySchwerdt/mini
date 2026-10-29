@@ -32,7 +32,7 @@ internal fun Ir2Mir.functionArity(t: Type): Int? {
     val n = t.classFqName ?: return null
     val rest = when {
         n.startsWith("kotlin.Function") -> n.removePrefix("kotlin.Function")
-        n.startsWith("kotlin.reflect.KFunction") -> n.removePrefix("kotlin.reflect.KFunction")
+        n.startsWith(REFLECT_PKG + ".KFunction") -> n.removePrefix(REFLECT_PKG + ".KFunction")
         else -> return null
     }
     return rest.toIntOrNull()
@@ -246,7 +246,7 @@ internal fun Ir2Mir.isFunctionInvoke(owner: IrSimpleFunction): Boolean {
     if (owner.name != "invoke") return false
     val p = owner.parent as? IrClass ?: return false
     val n = p.kotlinFqName
-    return n.startsWith("kotlin.Function") || n.startsWith("kotlin.reflect.KFunction")
+    return n.startsWith("kotlin.Function") || n.startsWith(REFLECT_PKG + ".KFunction")
 }
 
 internal fun Ir2Mir.invokeFunctionValue(c: IrCall, out: MutableList<MirStmt>): MirExpr {

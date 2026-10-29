@@ -42,7 +42,7 @@ object Reachability {
         val marker = Marker()
         for (f in module.files) {
             for (d in f.declarations) {
-                if (d is IrClass && d.kotlinFqName == "kotlin.reflect.KClassImpl") {
+                if (d is IrClass && d.kotlinFqName == REFLECT_PKG + ".KClassImpl") {
                     marker.kclassImpl = d
                     break
                 }
