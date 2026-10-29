@@ -287,7 +287,7 @@ internal class CfgBuilder(
     private fun buildTry(s: MStmt.Try) {
         val after = newBlock()
         val hasFin = s.finallyBody != null
-        if (hasFin) frames += Frame.Fin(s.finallyBody!!)
+        if (hasFin) frames += Frame.Fin(s.finallyBody)
         val finIdx = frames.size - 1
         var handler: Blk? = null
         if (s.catches.isNotEmpty()) {

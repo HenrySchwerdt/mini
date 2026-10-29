@@ -273,6 +273,10 @@ public class Long private constructor() : Number(), Comparable<Long> {
 
 public class Float private constructor() : Number(), Comparable<Float> {
     public companion object {
+        public const val MIN_VALUE: Float = 1.4E-45F
+        public const val MAX_VALUE: Float = 3.4028235E38F
+        public const val SIZE_BYTES: Int = 4
+        public const val SIZE_BITS: Int = 32
         public const val NaN: Float = 0.0f / 0.0f
         public const val POSITIVE_INFINITY: Float = 1.0f / 0.0f
         public const val NEGATIVE_INFINITY: Float = -1.0f / 0.0f
@@ -331,6 +335,10 @@ public class Float private constructor() : Number(), Comparable<Float> {
 
 public class Double private constructor() : Number(), Comparable<Double> {
     public companion object {
+        public const val MIN_VALUE: Double = 4.9E-324
+        public const val MAX_VALUE: Double = 1.7976931348623157E308
+        public const val SIZE_BYTES: Int = 8
+        public const val SIZE_BITS: Int = 64
         public const val NaN: Double = 0.0 / 0.0
         public const val POSITIVE_INFINITY: Double = 1.0 / 0.0
         public const val NEGATIVE_INFINITY: Double = -1.0 / 0.0
