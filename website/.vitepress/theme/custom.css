@@ -1,0 +1,50 @@
+:root {
+  --vp-c-brand-1: #6d4aff;
+  --vp-c-brand-2: #7f5fff;
+  --vp-c-brand-3: #5a39e6;
+  --vp-c-brand-soft: rgba(109, 74, 255, 0.14);
+}
+
+.dark {
+  --vp-c-brand-1: #a28bff;
+  --vp-c-brand-2: #8f74ff;
+  --vp-c-brand-3: #7c5cff;
+}
+
+.VPHome .vp-doc div[class*='language-'] {
+  text-align: left;
+}
+
+.diag-badge {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.diag-badge.error {
+  background: rgba(244, 63, 94, 0.15);
+  color: #e11d48;
+}
+.diag-badge.warning {
+  background: rgba(234, 179, 8, 0.18);
+  color: #a16207;
+}
+.diag-badge.info,
+.diag-badge.planned {
+  background: rgba(100, 116, 139, 0.18);
+  color: var(--vp-c-text-2);
+}
+.dark .diag-badge.error {
+  color: #fb7185;
+}
+.dark .diag-badge.warning {
+  color: #facc15;
+}
+
+.status-planned {
+  color: var(--vp-c-text-2);
+  font-style: italic;
+}

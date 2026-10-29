@@ -1779,3 +1779,8 @@ fun f() {
     )
     val z = [when (a) { else -> 2 }]
 }
+//---
+context(value value: A)
+fun <A> contextOf(): A = value
+context(data x: Int, y: String)
+fun g() = x

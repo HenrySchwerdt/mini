@@ -1,0 +1,11 @@
+/* half */
+MkInt kt_half_AI(MkInt v_n_0) {
+    if (v_n_0 < 0) {
+        MkObject * v_tmp_1 = NULL;
+        v_tmp_1 = MkIllegalArgumentException_new(((const MkString *)&kstr_0), NULL);
+        mk_throw((MkObject *)v_tmp_1);
+        mk_release((MkObject *)v_tmp_1);
+        return 0;
+    }
+    return mkh_div_int(v_n_0, 2);
+}

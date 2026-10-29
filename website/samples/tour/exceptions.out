@@ -1,0 +1,9 @@
+finally for 4
+ok 25
+finally for -1
+bad argument (negative: -1)
+finally for 0
+app error 404: zero
+caught: / by zero
+caught NPE
+zero is not positive

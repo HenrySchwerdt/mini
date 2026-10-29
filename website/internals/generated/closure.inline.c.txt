@@ -1,0 +1,15 @@
+    MkInt v_n_4 = 0;
+    for (;;) {
+        for (;;) {
+            v_n_4 = (MkInt)((uint32_t)v_n_4 + (uint32_t)1);
+            goto brk_1;
+        }
+        brk_1:;
+        for (;;) {
+            v_n_4 = (MkInt)((uint32_t)v_n_4 + (uint32_t)1);
+            goto brk_2;
+        }
+        brk_2:;
+        goto brk_0;
+    }
+    brk_0:;

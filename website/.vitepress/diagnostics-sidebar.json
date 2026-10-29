@@ -1,0 +1,90 @@
+[
+  {
+    "text": "Overview",
+    "link": "/reference/diagnostics/"
+  },
+  {
+    "text": "M0101 Use after free",
+    "link": "/reference/diagnostics/M0101"
+  },
+  {
+    "text": "M0102 Leak: allocation is never released",
+    "link": "/reference/diagnostics/M0102"
+  },
+  {
+    "text": "M0103 Double free",
+    "link": "/reference/diagnostics/M0103"
+  },
+  {
+    "text": "M0104 Use after move",
+    "link": "/reference/diagnostics/M0104"
+  },
+  {
+    "text": "M0105 Escape from a Scoped allocator",
+    "link": "/reference/diagnostics/M0105"
+  },
+  {
+    "text": "M0106 Individual free of a Scoped object",
+    "link": "/reference/diagnostics/M0106"
+  },
+  {
+    "text": "M0107 Release of a non-owned value",
+    "link": "/reference/diagnostics/M0107"
+  },
+  {
+    "text": "M0108 Wrong allocator when freeing",
+    "link": "/reference/diagnostics/M0108"
+  },
+  {
+    "text": "M0109 Loan is stored or returned as owned",
+    "link": "/reference/diagnostics/M0109"
+  },
+  {
+    "text": "M0110 Violation of the Strict/Managed boundary",
+    "link": "/reference/diagnostics/M0110"
+  },
+  {
+    "text": "M0111 Invalid ownership annotation",
+    "link": "/reference/diagnostics/M0111"
+  },
+  {
+    "text": "M0112 Owning value in an escaping lambda",
+    "link": "/reference/diagnostics/M0112"
+  },
+  {
+    "text": "M0113 Owned field stays moved",
+    "link": "/reference/diagnostics/M0113"
+  },
+  {
+    "text": "M0114 Ambiguous allocator",
+    "link": "/reference/diagnostics/M0114"
+  },
+  {
+    "text": "M0115 Arena object owns a foreign reference",
+    "link": "/reference/diagnostics/M0115"
+  },
+  {
+    "text": "M0201 Allocation moved to the stack",
+    "link": "/reference/diagnostics/M0201"
+  },
+  {
+    "text": "M0202 Allocation in an arena loop",
+    "link": "/reference/diagnostics/M0202"
+  },
+  {
+    "text": "M0203 Large object on the stack",
+    "link": "/reference/diagnostics/M0203"
+  },
+  {
+    "text": "M0204 No allocator for an escaping Strict value",
+    "link": "/reference/diagnostics/M0204"
+  },
+  {
+    "text": "M0205 Allocation in a @NoAlloc function",
+    "link": "/reference/diagnostics/M0205"
+  },
+  {
+    "text": "M0206 Object leaves the thread but its allocator is not ThreadSafe",
+    "link": "/reference/diagnostics/M0206"
+  }
+]

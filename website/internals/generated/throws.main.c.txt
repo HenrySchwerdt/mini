@@ -1,0 +1,31 @@
+/* main */
+void mkh_user_main(void) {
+    {
+        mk_println_int(({ MkInt mkt0 = kt_half_AI(8); if (mk_pending_exception != NULL) { goto mkcatch_0; } mkt0; }));
+        mk_println_int(({ MkInt mkt1 = kt_half_AI((-1)); if (mk_pending_exception != NULL) { goto mkcatch_0; } mkt1; }));
+        goto mkend_0;
+mkcatch_0:;
+        {
+            MkObject *mkex_0 = mk_catch();
+            if (mk_is_instance(mkex_0, &MkIllegalArgumentException_ti)) {
+                MkObject * v_e_0 = NULL;
+                const MkString * v_tmp_1 = NULL;
+                const MkString * v_tmp_2 = NULL;
+                const MkString * v_tmp_3 = NULL;
+                v_e_0 = mkex_0;
+                v_tmp_1 = (((const MkString * (*)(MkObject *))((MkObject *)v_e_0)->type->vtable[3]))(((MkObject *)v_e_0));
+                v_tmp_2 = ({ const MkString * mkt2 = mk_to_string(((MkObject *)v_tmp_1)); if (mk_pending_exception != NULL) { mk_release((MkObject *)v_tmp_1); mk_release((MkObject *)v_e_0); return; } mkt2; });
+                v_tmp_3 = mk_string_concat(((const MkString *)&kstr_1), v_tmp_2);
+                mk_println_string(v_tmp_3);
+                MKH_REL(v_tmp_3);
+                MKH_REL(v_tmp_2);
+                MKH_REL(v_tmp_1);
+                MKH_REL(v_e_0);
+            } else {
+                mk_rethrow(mkex_0);
+                return;
+            }
+        }
+mkend_0:;
+    }
+}

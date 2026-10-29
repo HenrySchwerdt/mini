@@ -1,0 +1,8 @@
+/* main */
+void mkh_user_main(void) {
+    MkObject * v_c_1 = NULL;
+    v_c_1 = kc_Counter_C_AI_new(0);
+    mk_println_int(kt_fib_AI(10));
+    mk_println_int(kc_Counter_Minc(v_c_1));
+    mk_release((MkObject *)v_c_1);
+}

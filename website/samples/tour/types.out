@@ -1,0 +1,6 @@
+Point(x=1, y=2) x=1 y=2
+true
+Point(x=1, y=5)
+EAST 1,0 1
+SOUTH
+-10
