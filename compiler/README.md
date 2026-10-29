@@ -21,14 +21,18 @@ compiler/jvm-bridge/build/install/minic/bin/minic build hello.kt -o build/hello
 ```
 
 ```
-minic build <file.kt> -o <out> [--emit-c <path>] [--cc clang]
-            [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]... [--extra-src <file.kt>]...
+minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
+            [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
+            [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [-Werror]
 minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
 ```
 
+* Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.
+* The Mini standard library (`std/kotlin-mini`, found next to `runtime/` or via `--stdlib <dir>`) is compiled from source together
+  with the user files; only the reachable part ends up in the C file. `--no-stdlib` uses the JVM kotlin-stdlib jar instead
+  (no stdlib functions then have bodies). Details: `docs/stdlib.md`. The `mini.memory` API is part of it.
 * `--extra-src <file.kt>` (repeatable): additional Kotlin sources compiled together with the program, only
-  as declarations (they are not translated to C). The memory-model programs need the `mini.memory` API:
-  `--extra-src std/kotlin-mini/mini/memory/Allocator.kt ...` (all four files).
+  as declarations (they are not translated to C). Files that are already part of the stdlib are ignored.
 * `minic check`: only the Strict-mode ownership checker (see "Memory-model checker" below); prints rustc-like
   diagnostics to stderr, or with `--brief` `line:col: CODE` lines to stdout. Exit 1 on an error, 0 otherwise
   (warnings do not fail, unless `-Werror`; `build` accepts `-Werror` too). `minic build` runs the same checker after the frontend and before the C backend:
@@ -272,13 +276,13 @@ K2 -> Kotlin IR --+--> Ir2Mir -> MIR -> C                      (code generation,
 
 ## Known gaps
 
-* No exceptions (`throw`, `try`), no lambdas/function references, no generics, no arrays or collections,
-  no `vararg`, no extension or local functions, no local/anonymous/inner classes, no `lateinit`, no
+* No exceptions (`throw`, `try`), no lambdas/function references, no generics, no arrays or collections (the stdlib sources exist, see above),
+  no `vararg`, no local functions (extension functions work, also those of the stdlib), no local/anonymous/inner classes, no `lateinit`, no
   delegated properties, no sealed-class exhaustiveness beyond what K2 lowers, no `Byte`/`Short`/`Float`,
   no top-level properties, no multi-file input, no `fun main(args)`, no `Any()` construction, no enum
   entries with bodies, no `values()`/`valueOf()`.
-* Calls into the Kotlin stdlib are limited to the intrinsics listed above; the stdlib is not
-  compiled (plan P2). Ordinary string methods (`startsWith`, `substring`, ...) are therefore unsupported.
+* The stdlib is compiled from `std/kotlin-mini` (see `docs/stdlib.md`); what natively compiles today is its String/StringBuilder/Char/number
+  part. Collections and `map`/`filter` are written but need generics and lambdas in the backend.
 * Cycles leak (see above); RC elision (borrow inference, move on last use) is a later phase.
 * Generated names for members are long (`kc_Foo_Mbar_AI`); `Int?` fields cost a heap box per assignment.
 * `>>` on negative Int/Long relies on arithmetic shift (clang/gcc behaviour, implementation-defined in C17).
