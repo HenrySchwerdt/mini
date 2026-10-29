@@ -1,0 +1,6 @@
+using a
+close a
+open b
+close b
+using c
+close c
