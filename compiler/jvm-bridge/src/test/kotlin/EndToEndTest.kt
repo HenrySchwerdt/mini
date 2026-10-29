@@ -80,7 +80,10 @@ class EndToEndTest {
                 }
                 assertEquals(0, rc, "sanitizer build of $name failed:\n${errBuf.toString("UTF-8")}")
                 val pb = ProcessBuilder(exe.path)
-                pb.environment()["ASAN_OPTIONS"] = "detect_leaks=1:exitcode=99"
+                // LeakSanitizer is unsupported on macOS (ASan aborts if asked for it); there the run
+                // still checks memory errors and UB, and leak coverage comes from Linux.
+                val leaks = if (System.getProperty("os.name").lowercase().contains("mac")) 0 else 1
+                pb.environment()["ASAN_OPTIONS"] = "detect_leaks=$leaks:exitcode=99"
                 val proc = pb.start()
                 val stdout = proc.inputStream.readBytes().toString(Charsets.UTF_8)
                 val stderr = proc.errorStream.readBytes().toString(Charsets.UTF_8)
