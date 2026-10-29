@@ -9,6 +9,8 @@ val kotlinVersion: String by project
 
 dependencies {
     implementation(project(":backend"))
+    implementation(project(":lower"))
+    implementation(project(":frontend"))
     implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion")
     testImplementation(project(":native-driver"))

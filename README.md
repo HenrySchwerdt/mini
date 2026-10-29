@@ -88,9 +88,9 @@ In Strict mode a separate checker runs before code generation.
 | **Own parser (B2-1)** | **Done.** 0 mismatches against K2's PSI tree on the repo sources, ~230 tricky snippets, 30k random expressions, 20k random declarations and ~12k mutated repo files. |
 | **Own type checker (B2-2)** | **Done.** 99.99 % agreement with K2 FIR (86658 of 86668 positions). Builds natively with the same result as on the JVM. |
 | **RC elision (D1)** | **Done.** `arraylist` 405 to 265 ms, `tree` retains 8.3M to 0, self-hosted backend 749 to 603 ms. See [docs/benchmarks.md](docs/benchmarks.md). |
-| **Own frontend to MIR without K2 (B2-3)** | In progress. On the working branch all 47 test programs already lower to MIR identical to the K2 path, also from a natively built, K2-free `minic-native`. |
+| **Own frontend to MIR without K2 (B2-3)** | **Done.** `--frontend=mini` gives MIR and C byte-identical to the K2 path for all 47 test programs. The natively built `minic-native` (no JVM, no K2) compiles the whole compiler in about 5 s. |
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. |
-| **Full bootstrap, stage 2 == stage 3 (B3)** | Next. `minic` compiles itself without a JVM. |
+| **Full bootstrap, stage 2 == stage 3 (B3)** | **Done.** `compiler/bootstrap.sh`: stage1 builds stage2, stage2 builds stage3, and the C and MIR of stage 2 and stage 3 are byte-identical. Checked in CI. |
 | Project tool `mini` (`mini new/build/run/test`, `mini.toml`, no Gradle) | Planned, right after B2-3. |
 | Reflection (static metadata, ownership-aware), JSON (kotlinx.serialization API), compile-time DI and a web framework with one arena per request | Planned after B3. |
 | LLVM as the primary backend (in-process via its C API, embedded lld, single binary, no clang), statically bundled libuv, `.kts` scripts and a REPL on the LLVM ORC JIT | Planned after B3. |

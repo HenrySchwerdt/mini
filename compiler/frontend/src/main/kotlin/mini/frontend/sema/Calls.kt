@@ -45,6 +45,14 @@ fun unwrapPostponed(e0: Expr): Expr {
 class Candidate(val fn: FunSym, val subst: Map<TypeParamSym, Type>, val extRecv: Type?) {
     /** for the implicit `invoke` of a function-typed value */
     var invokeType: FunType? = null
+    /** the implicit receiver the member (or member extension) is dispatched on */
+    var dispatchRef: RecvRef? = null
+    /** the implicit receiver an extension candidate is applied to */
+    var extRef: RecvRef? = null
+    /** `invoke` of a variable / property: where the function value comes from */
+    var invokeVar: VarSym? = null
+    var invokeProp: PropSym? = null
+    var invokePropRecv: RecvRef? = null
 }
 
 class Binding(val paramOfArg: IntArray, val defaultsUsed: Int, val usesVararg: Boolean)
@@ -63,7 +71,9 @@ class Attempt(
     var ok = true
 }
 
-class CallRes(val ret: Type, val callee: Sym?, val calleeText: String?, val paramTypes: List<Type?>)
+class CallRes(val ret: Type, val callee: Sym?, val calleeText: String?, val paramTypes: List<Type?>) {
+    var info: CallInfo? = null
+}
 
 sealed class RecvInfo
 class ValueRecv(val type: Type, val expr: Expr?, val safe: Boolean) : RecvInfo()
@@ -112,10 +122,14 @@ fun BodyChecker.ctorCandidates(c: ClassSym): List<Candidate> {
 }
 
 /** extension functions named [name] from the top-level scopes, as candidate groups for a receiver of type [recv] */
-fun BodyChecker.extensionGroups(name: String, recv: Type, out: ArrayList<List<Candidate>>) {
+fun BodyChecker.extensionGroups(name: String, recv: Type, out: ArrayList<List<Candidate>>, ref: RecvRef? = null) {
     for (g in fileTopFuns(name)) {
         val l = ArrayList<Candidate>()
-        for (f in g) if (f.isExtension) l.add(Candidate(f, HashMap(), recv))
+        for (f in g) if (f.isExtension) {
+            val c = Candidate(f, HashMap(), recv)
+            c.extRef = ref
+            l.add(c)
+        }
         if (l.isNotEmpty()) out.add(l)
     }
 }
@@ -154,7 +168,11 @@ fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boole
     for (r in implicitReceivers()) {
         if (r.cls == null) continue
         for (m in members.funsNamed(r.type, name)) {
-            if (m.fn.decl?.receiver != null) ext.add(Candidate(m.fn, m.subst, t))
+            if (m.fn.decl?.receiver != null) {
+                val c = Candidate(m.fn, m.subst, t)
+                c.dispatchRef = r.ref
+                ext.add(c)
+            }
         }
     }
     if (ext.isNotEmpty()) groups.add(ext)
@@ -213,7 +231,11 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                     // local extension functions on implicit receivers
                     for (r in implicitReceivers()) {
                         val le = ArrayList<Candidate>()
-                        for (f in fs) if (f.receiver != null) le.add(Candidate(f, HashMap(), r.type))
+                        for (f in fs) if (f.receiver != null) {
+                            val c = Candidate(f, HashMap(), r.type)
+                            c.extRef = r.ref
+                            le.add(c)
+                        }
                         if (le.isNotEmpty()) groups.add(le)
                     }
                 }
@@ -222,6 +244,7 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                     val vt = v.type
                     if (vt != null) {
                         val ic = invokeCandidates(typeWithFlowVar(v, vt))
+                        for (c in ic) c.invokeVar = v
                         if (ic.isNotEmpty()) groups.add(ic)
                     }
                 }
@@ -230,17 +253,23 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
             }
             is ClassScope -> if (pass == 1) {
                 if (s.instance) {
-                    addReceiverGroups(narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv), name, groups)
+                    val nrt = narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv)
+                    val nref = RecvRef(s.cls, null, false)
+                    if (nrt !== s.cls.thisType()) nref.smart = nrt
+                    addReceiverGroups(nrt, name, groups, nref)
                     seenRecv = true
                 }
                 val comp = s.cls.companion
-                if (comp != null) addReceiverGroups(comp.thisType(), name, groups)
-                if (s.cls.isObject && !s.instance) addReceiverGroups(s.cls.thisType(), name, groups)
+                if (comp != null) addReceiverGroups(comp.thisType(), name, groups, RecvRef(comp, null, true))
+                if (s.cls.isObject && !s.instance) addReceiverGroups(s.cls.thisType(), name, groups, RecvRef(s.cls, null, true))
                 val nc = s.cls.nested[name]
                 if (nc != null) groups.add(ctorCandidates(nc))
             }
             is ReceiverScope -> if (pass == 1) {
-                addReceiverGroups(narrowRecv(s.type, s.label, !seenRecv), name, groups)
+                val nrt2 = narrowRecv(s.type, s.label, !seenRecv)
+                val nref2 = RecvRef(null, s, false)
+                if (nrt2 !== s.type) nref2.smart = nrt2
+                addReceiverGroups(nrt2, name, groups, nref2)
                 seenRecv = true
             }
             is FileScope -> if (pass == 1) {
@@ -261,9 +290,15 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                         if (x is PropSym && x.decl?.receiver == null) {
                             sema.ensurePropSig(x)
                             val pt = sema.typeOfProp(x)
-                            il.addAll(invokeCandidates(pt))
+                            for (ic in invokeCandidates(pt)) {
+                                ic.invokeProp = x
+                                il.add(ic)
+                            }
                         } else if (x is ClassSym && x.isObject) {
-                            il.addAll(invokeCandidates(x.thisType()))
+                            for (ic in invokeCandidates(x.thisType())) {
+                                ic.dispatchRef = RecvRef(x, null, true)
+                                il.add(ic)
+                            }
                         }
                     }
                     if (il.isNotEmpty()) groups.add(il)
@@ -281,11 +316,13 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
 fun BodyChecker.aliasSubst(a: TypeAliasSym, et: ClassType): Map<TypeParamSym, Type> = HashMap()
 
 /** members of an implicit receiver, then top-level extensions applicable to it */
-fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List<Candidate>>) {
+fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List<Candidate>>, ref: RecvRef? = null) {
     val mem = ArrayList<Candidate>()
     for (m in members.funsNamed(rt, name)) {
         if (m.fn.decl?.receiver != null) continue
-        mem.add(Candidate(m.fn, m.subst, null))
+        val c = Candidate(m.fn, m.subst, null)
+        c.dispatchRef = ref
+        mem.add(c)
     }
     if (mem.isNotEmpty()) groups.add(mem)
     // member properties of function type with invoke
@@ -293,10 +330,14 @@ fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List
     for (mp in members.propsNamed(rt, name)) {
         if (mp.prop.receiver != null) continue
         val pt = ops.substitute(sema.typeOfProp(mp.prop), mp.subst)
-        il.addAll(invokeCandidates(pt))
+        for (ic in invokeCandidates(pt)) {
+            ic.invokeProp = mp.prop
+            ic.invokePropRecv = ref
+            il.add(ic)
+        }
     }
     if (il.isNotEmpty()) groups.add(il)
-    extensionGroups(name, rt, groups)
+    extensionGroups(name, rt, groups, ref)
 }
 
 // ---- argument binding ------------------------------------------------------------------------------------------------------------
@@ -748,7 +789,18 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
         i++
     }
     val text: String? = if (fn.kind == FunKind.FUNCTION_INVOKE) null else null
-    return CallRes(ret, fn, text, pts)
+    val res = CallRes(ret, fn, text, pts)
+    val targs = ArrayList<Type>()
+    for (tp in att.tps) {
+        val x = att.subst[tp]
+        targs.add(if (x != null) cs.resolveFixed(x) else sema.nullableAny)
+    }
+    val info = CallInfo(fn, targs, args, att.binding.paramOfArg)
+    info.ret = ret
+    info.paramTypes = pts
+    info.cand = att.cand
+    res.info = info
+    return res
 }
 
 fun BodyChecker.samFunType(t: ClassType): FunType? {
@@ -784,7 +836,9 @@ fun BodyChecker.finalizePostponed(a: Arg, cs: ConstraintSystem, pt: Type?) {
 
 // ---- operators ----------------------------------------------------------------------------------------------------------------------
 
-class OpResult(val ret: Type, val callee: Sym?, val calleeText: String?, val paramTypes: List<Type?>)
+class OpResult(val ret: Type, val callee: Sym?, val calleeText: String?, val paramTypes: List<Type?>) {
+    var info: CallInfo? = null
+}
 
 /** resolves an operator function `recv.name(args)` for pre-typed arguments */
 fun BodyChecker.resolveOperator(name: String, recv0: Type, argTypes: List<Type>, pos: Int, expected: Type?): OpResult? {
@@ -798,7 +852,9 @@ fun BodyChecker.resolveOperator(name: String, recv0: Type, argTypes: List<Type>,
     }
     val groups = memberAndExtensionGroups(recv, name, true)
     val res = resolveCallGroups(BodyDummy.node, groups, args, null, expected, true) ?: return null
-    return OpResult(res.ret, res.callee, res.calleeText, res.paramTypes)
+    val r = OpResult(res.ret, res.callee, res.calleeText, res.paramTypes)
+    r.info = res.info
+    return r
 }
 
 object BodyDummy {

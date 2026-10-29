@@ -214,6 +214,23 @@ private fun Parser.parsePrefixInner(): Expr {
             done(m, NodeKind.MODIFIERS)
             return parseAnonFun(m, s, fin(Modifiers(items, emptyList()), s))
         }
+        if (kind() == Tk.IDENT && atModifierKeyword()) {
+            // `@A public external fun f()`: modifier keywords after the annotations belong to the function as well
+            val sn2 = snap()
+            val items = ArrayList<ModItem>()
+            for (a in anns) items.add(fin(AnnotationMod(a), a.start))
+            while (atModifierKeyword()) {
+                val ks = tokStart()
+                val t = tokText()
+                advance()
+                items.add(fin(KeywordMod(t), ks))
+            }
+            if (kind() == Tk.FUN) {
+                done(m, NodeKind.MODIFIERS)
+                return parseAnonFun(m, s, fin(Modifiers(items, emptyList()), s))
+            }
+            restore(sn2)
+        }
         val e = parsePrefixOperand()
         done(m, NodeKind.ANNOTATED)
         return fin(AnnotatedExpr(anns, e), s)

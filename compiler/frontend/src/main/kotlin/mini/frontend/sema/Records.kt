@@ -12,11 +12,64 @@ class ExprRec(var type: Type, var callee: Sym?) {
     var target: Type? = null
     var thisKey: String? = null
     var declRec: ExprRec? = null
+    /** B2-3: what the lowering needs besides type and callee (resolution details of calls, operators and accesses) */
+    var call: CallInfo? = null
+    var access: Access? = null
+    var extra: Any? = null
+    /** the type of a safe-called member before it became nullable */
+    var baseType: Type? = null
+}
+
+/** the parameters of an analysed lambda, in order (`it`, named parameters, `<destruct>` placeholders) */
+class LambdaInfo(val params: List<VarSym>)
+
+/** An implicit receiver: `this` of a class, an object / companion value, or a receiver of an extension function / lambda. */
+class RecvRef(val cls: ClassSym?, val scope: ReceiverScope?, val isObject: Boolean) {
+    /** the type of the receiver after smart casts (`this` of a class inside `if (this is X)`), null when unchanged */
+    var smart: Type? = null
+}
+
+/** How a receiver is provided: an explicit expression (possibly safe-called) or an implicit receiver. */
+class RecvUse(val expr: Expr?, val safe: Boolean, val ref: RecvRef?, val type: Type?)
+
+/** the operator functions of a delegated property: `getValue`, `setValue` (var), `provideDelegate` */
+class DelegateInfo(val delegateType: Type, val getValue: CallInfo?, val setValue: CallInfo?)
+
+/** `a op= b`: whether `opAssign` was used (else `a = a op b`), the `set` of an indexed target */
+class CompoundInfo(val assignOp: Boolean, val set: CallInfo?)
+
+/** The resolution of a `for` loop: the iterator protocol functions. */
+class ForInfo(val iterator: CallInfo?, val hasNext: CallInfo?, val next: CallInfo?, val elemType: Type)
+
+/** The receivers of a property or function access. */
+class Access(var dispatch: RecvUse?, var ext: RecvUse?)
+
+/**
+ * The resolution of a call: callee, the final type arguments of its own type parameters, the arguments in source order
+ * with their parameter binding, the receivers.
+ */
+class CallInfo(val fn: FunSym, val typeArgs: List<Type>, val args: List<Arg>, val paramOfArg: IntArray) {
+    var ret: Type? = null
+    var paramTypes: List<Type?> = emptyList()
+    var dispatch: RecvUse? = null
+    var ext: RecvUse? = null
+    /** `v(args)` / `a.v(args)` on a value of function type or with an `invoke` operator: the value (a name, property or expression) */
+    var invokeValue: RecvUse? = null
+    var invokeProp: PropSym? = null
+    var invokeVar: VarSym? = null
+    /** the super type of `super.f()` / `super<T>.f()` */
+    var superType: Type? = null
+    var cand: Candidate? = null
+    var isInvoke = false
+    /** the receiver is the first argument of an `invoke` of a function type with receiver */
+    var recvAsFirstArg = false
 }
 
 class Records {
     val map = HashMap<Ast, ExprRec>()
     val order = ArrayList<Ast>()
+    /** B2-3: the variable a `when (val x = e)` subject declares */
+    val subjectVars = HashMap<Ast, VarSym>()
 
     fun put(node: Ast, type: Type, callee: Sym?): ExprRec {
         var r = map[node]

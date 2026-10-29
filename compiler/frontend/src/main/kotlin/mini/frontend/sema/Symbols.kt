@@ -277,4 +277,8 @@ class LocalScope(parent: Scope?) : Scope(parent) {
 /** An implicit receiver introduced by an extension function or a lambda with receiver. */
 class ReceiverScope(val type: Type, val label: String?, parent: Scope?) : Scope(parent) {
     var fn: FunSym? = null
+    /** the lambda this is the receiver of (B2-3) */
+    var lambda: LambdaExpr? = null
+    /** the extension property this is the receiver of (B2-3) */
+    var prop: PropSym? = null
 }

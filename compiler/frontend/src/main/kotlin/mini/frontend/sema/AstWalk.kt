@@ -122,6 +122,18 @@ object AstWalk {
         }
     }
 
+    /** is there a simple name [name] anywhere below [n] (a syntactic scan) */
+    fun mentionsName(n: Ast, name: String): Boolean {
+        if (n is NameExpr && n.name == name) return true
+        if (n is StringExpr) {
+            for (p in n.parts) if (p is StrShortRef && p.name == name) return true
+        }
+        val ch = ArrayList<Ast>()
+        children(n, ch)
+        for (c in ch) if (mentionsName(c, name)) return true
+        return false
+    }
+
     /** names assigned (`x = `, `x += `, `x++`) anywhere below [n] */
     fun assignedNames(n: Ast, out: HashSet<String>) {
         if (n is BinaryExpr && isAssignOp(n.op)) {

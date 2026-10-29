@@ -18,15 +18,21 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     pendingLabel = null
     var base: Scope = scope
     val recvT = ef?.receiver
-    if (recvT != null) base = ReceiverScope(recvT, label, base)
+    if (recvT != null) {
+        val rsc = ReceiverScope(recvT, label, base)
+        rsc.lambda = lam
+        base = rsc
+    }
     val l = LocalScope(base)
     scope = l
     flow = flow.copy()
     val paramTypes = ArrayList<Type>()
+    val lamVars = ArrayList<VarSym>()
     if (lam.params.isEmpty()) {
         if (ef != null && ef.params.size == 1 && !lam.hasArrow) {
             val v = VarSym("it", ef.params[0], false, true, lam.start)
             l.vars["it"] = v
+            lamVars.add(v)
             paramTypes.add(ef.params[0])
         } else if (ef != null && !lam.hasArrow) {
             for (p in ef.params) paramTypes.add(p)
@@ -44,10 +50,13 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
                 val pv = VarSym("<destruct>", t, false, true, p.start)
                 destructure(names, t, l, p.start)
                 recordDeclAt(p.start, p.end, t)
+                record(p, t, pv)
+                lamVars.add(pv)
             } else {
                 val v = VarSym(p.name ?: "_", t, false, true, p.start)
                 l.vars[v.name] = v
                 record(p, t, v)
+                lamVars.add(v)
             }
             paramTypes.add(t)
             i++
@@ -98,7 +107,8 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
         }
     }
     val ft = FunType(recvT, paramTypes, ret, false, false)
-    record(lam, ft, null)
+    val lamRec = record(lam, ft, null)
+    lamRec.extra = LambdaInfo(lamVars)
     if (stmts.isNotEmpty()) {
         val bn = BlockExpr(stmts)
         bn.start = stmts[0].start
@@ -337,7 +347,8 @@ fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {
     sema.declSyms[decl] = c
     sema.checkClass(c)
     val t = c.thisType()
-    record(e, t, null)
+    val orr = record(e, t, null)
+    orr.extra = c
     return t
 }
 

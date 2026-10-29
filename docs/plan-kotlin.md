@@ -353,6 +353,8 @@ exactly the features that real Kotlin code needs:
 `compiler/frontend`, package `mini.frontend.sema`) are reached; K2 (FIR) is the oracle and agrees on the stdlib, compiler sources and test programs in
 99.99 % of positions, and built natively it gives the same result as on the JVM. See `compiler/README.md`. Open: Ir/MIR generation from the own frontend (B2-3).
 
+**Status B2-3 / B3:** `--frontend=mini` produces MIR and C identical to the K2 path for all test programs; `minic-native` (own frontend + lowering + backend) is built by minic, runs the programs correctly and bootstraps: `compiler/bootstrap.sh` shows stage2 == stage3 (C and MIR byte-identical). The self-compile MIR differs from K2 only in numbering and a few flow-fact casts (`compiler/selfcompare.py`). See `compiler/README.md`.
+
 **Bootstrap stages after that:**
 1. **B1 (= v1):** backend self-hosted. The native `minic-backend` reads serialized MIR
    (written to a file by the JVM frontend) and produces C. This makes half the compiler run natively.
@@ -410,6 +412,18 @@ Order, each with the existing C tests as acceptance (same ABI from `minirt.h`):
 number and string formatting → UTF-8/16 → allocators (Heap, Arena, Pool, Debug) →
 object model and refcounting → console/entry point. After that `runtime/src/*.c` is gone.
 For the bootstrap this is a win: compiler, stdlib and runtime are then all Kotlin.
+
+**IO and threads in Kotlin, libuv as a fallback.** `mini.io` (suspend APIs) and `mini.concurrent`
+are our own Kotlin interfaces. They first run on libuv (coroutines and async IO, §5), then get
+native Kotlin backends over libc syscalls, each passing the same test suite as the libuv variant:
+- Linux: io_uring (network and truly asynchronous file IO, fewer syscalls), epoll as fallback.
+- macOS: kqueue; file IO on a thread pool.
+- Threads, mutexes, condition variables, timers (a timer heap), atomics: pthreads and C11/LLVM atomics.
+- Processes and signals (`posix_spawn`, `signalfd`/kqueue) last, they carry most of libuv's edge cases.
+
+Why: IO completions resume coroutines directly, all buffers go through our allocators (one arena per
+request covers its IO buffers too, and the checker sees them), io_uring performance, no C. libuv
+stays as the fallback backend, mainly for Windows, until the Kotlin backends reach parity; then it goes.
 
 ### 10a. Self-hosting
 
@@ -524,6 +538,19 @@ compiler underneath (like `rustc`).
 - v0 as commands of the current `minic`. After B3 it is rewritten in Mini, as a native
   binary with instant startup (dogfooding: file IO and process spawning on libuv).
 - Release: prebuilt `mini`/`minic` binaries for Linux and macOS on GitHub Releases.
+- **Precompiled libraries (later):** a library can be published as a `.mlib` package instead of (or
+  next to) its sources, so users do not wait for it to compile (unlike Rust crates):
+  - **API metadata:** public declarations with types, ownership annotations (`@Owned`, borrowed, allocator
+    traits) and `@Throws`/`@NoAlloc` facts, so our frontend and the memory checker work without the sources.
+  - **MIR** of all functions (the format exists: B1), including bodies of `inline` functions and generic
+    functions that need specialization for primitives.
+  - **Optional object code per target** (`.o`, later LLVM bitcode for LTO), keyed by compiler version,
+    target and flags. On a mismatch `mini` falls back to the MIR, then to the sources.
+  - Generics are erased (shared code for references), so most of a library compiles once; only
+    primitive specializations and inlined bodies are generated in the using program.
+  - The stdlib ships precompiled with every release (also needed by the JIT, §10g).
+  - Plus a build cache: local per user (`~/.mini/cache`, content-addressed) and optionally shared
+    (CI or team cache), like sccache. A package registry comes after that.
 
 **The repository itself drops Gradle after B3.** The compiler is then just another Mini
 project built by `mini`:
@@ -578,6 +605,27 @@ without LLVM; new optimizations and features target LLVM first.
 Order after B3: C interop complete (§7: pointers, structs, callbacks) → LLVM backend reaching parity
 with the C backend (same test suite, byte-identical program output) → switch the default to LLVM,
 embedded lld, single binary → ORC JIT, `.kts`, REPL → cross-compilation and static musl binaries.
+
+### 10h. Performance phase (after the features are complete)
+
+Goal: peak performance with numbers to prove it. **Measure first:** a benchmark suite (Benchmarks Game
+programs binary-trees, n-body, fannkuch, spectral-norm, mandelbrot, plus JSON and the compiler itself)
+against C, Rust, Go, Swift, Kotlin/JVM and Kotlin/Native; Mini in Managed, Arena and Strict variants;
+time, peak memory, startup and `mem-report` counters; results published on the website per release.
+Every optimization has to show up in that table.
+
+Candidates:
+- **Object layout:** 8-byte header (compressed type index + refcount + flags in one word), field
+  reordering and packing, immortal static objects (literals, singletons, empty collections), no
+  refcount word for arena objects.
+- **Values instead of objects:** primitive specialization of generics (`List<Int>` stores ints),
+  `value class` and small data classes inline in fields, arrays and on the stack, escape analysis to
+  stack allocation, Perceus-style reuse of dying objects of the same size.
+- **Strings:** compact Latin-1 strings, small-string optimization, ropes for concatenation.
+- **Allocators:** bump-pointer arenas, thread-local size-class pools (mimalloc-style) instead of
+  `malloc`, non-atomic refcounting by default (atomic only for shared objects).
+- **Code:** whole-program devirtualization, and with LLVM (§10g) LTO, PGO and zero-cost unwinding.
+- **IO:** the Kotlin io_uring/kqueue backends (§10c) against libuv.
 
 ## 11. Working method: manager and Sonnet agents
 

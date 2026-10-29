@@ -14,7 +14,7 @@ object Cli {
     private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt]"""
+             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--frontend=k2|mini]"""
 
     class Options(
         val sources: List<File>,
@@ -34,6 +34,8 @@ object Cli {
         val stats: Boolean = false,
         /** `--no-rc-opt`: skip the reference-count elision pass (RcOpt). */
         val noRcOpt: Boolean = false,
+        /** `--frontend=mini`: the own frontend (parser + sema + Ast2Ir in `:lower`) instead of K2. */
+        val miniFrontend: Boolean = false,
     )
 
     /** Returns the process exit code. */
@@ -123,6 +125,7 @@ object Cli {
         var werror = false
         var stats = false
         var noRcOpt = false
+        var mini = false
         var stdlib: File? = null
         var noStdlib = false
         var out: File? = null
@@ -150,6 +153,8 @@ object Cli {
                 "-Werror" -> werror = true
                 "--stats" -> stats = true
                 "--no-rc-opt" -> noRcOpt = true
+                "--frontend=mini" -> mini = true
+                "--frontend=k2" -> mini = false
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     sources += File(x)
@@ -158,7 +163,7 @@ object Cli {
             i++
         }
         if (sources.isEmpty() || out == null) { System.err.println(USAGE); return null }
-        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt)
+        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, mini)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -171,8 +176,18 @@ object Cli {
     }
 
     /** K2 -> IR -> MIR for [sources] plus [stdlibFiles] and declaration-only [extra] sources. */
-    fun frontendToMir(sources: List<File>, stdlibFiles: List<File>, extra: List<File>, werror: Boolean): mini.backend.MirModule {
+    fun frontendToMir(sources: List<File>, stdlibFiles: List<File>, extra: List<File>, werror: Boolean, miniFrontend: Boolean = false): mini.backend.MirModule {
         val sourceName = sources.first().name
+        if (miniFrontend) {
+            val inputs = ArrayList<mini.lower.LowerInput>()
+            for (f in sources) inputs.add(mini.lower.LowerInput(f.path, f.readText(), false))
+            for (f in stdlibFiles + extra) inputs.add(mini.lower.LowerInput(f.path, f.readText(), true))
+            try {
+                return mini.lower.lowerToMir(inputs, sourceName)
+            } catch (e: mini.lower.LowerDiagnostics) {
+                throw BuildFailure(e.message ?: "compilation failed")
+            }
+        }
         var mir: mini.backend.MirModule? = null
         FrontendDriver.runFrontend(sources, stdlibFiles + extra) { module, _ ->
             // Strict-mode ownership checker (user files only): errors stop the build, warnings are printed
@@ -191,7 +206,7 @@ object Cli {
                 ?: throw BuildFailure("Mini stdlib sources not found (${Stdlib.RELATIVE_DIR}); pass --stdlib <dir> or --no-stdlib")
             Stdlib.sources(dir).also { if (it.isEmpty()) throw BuildFailure("no .kt files in $dir") }
         }
-        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror)
+        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror, o.miniFrontend)
         o.output.absoluteFile.parentFile?.mkdirs()
         o.output.writeText(mini.backend.MirWriter.write(module))
         return 0
@@ -218,7 +233,7 @@ object Cli {
 
         // 2. K2 -> IR -> MIR
         val extra = withoutStdlib(o.extraSrc, stdlibFiles)
-        val module = frontendToMir(o.sources, stdlibFiles, extra, o.werror)
+        val module = frontendToMir(o.sources, stdlibFiles, extra, o.werror, o.miniFrontend)
         val mainCount = module.functions.count { it.cName == mini.backend.Mangling.MAIN }
         if (mainCount != 1) throw BuildFailure("${module.sourceName}: expected exactly one `fun main()`, found $mainCount")
 

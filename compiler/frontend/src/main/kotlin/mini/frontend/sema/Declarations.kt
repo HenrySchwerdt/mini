@@ -102,8 +102,12 @@ fun Sema.checkProp(p: PropSym) {
     accBase = TypeParamScope(p.typeParams, accBase)
     val recv = p.receiver
     if (recv != null) {
-        base = ReceiverScope(recv, p.name, base)
-        accBase = ReceiverScope(recv, p.name, accBase)
+        val rs1 = ReceiverScope(recv, p.name, base)
+        rs1.prop = p
+        base = rs1
+        val rs2 = ReceiverScope(recv, p.name, accBase)
+        rs2.prop = p
+        accBase = rs2
     }
     bc.scope = base
     val declared = if (!needsInference) p.type else null
@@ -167,7 +171,11 @@ fun Sema.checkProp(p: PropSym) {
         sc.blockBody(s.body, null)
         bc.record(s, unitType, null)
     }
-    bc.record(d, p.type ?: ErrType("?"), p)
+    val pr = bc.record(d, p.type ?: ErrType("?"), p)
+    if (deleg != null) {
+        val dtp = records.get(deleg)?.type
+        if (dtp != null) pr.extra = bc.delegateInfo(bc.fin(dtp), p.isVar, p.type ?: nullableAny, d.start)
+    }
 }
 
 fun Sema.checkClass(c: ClassSym) {
@@ -304,6 +312,7 @@ fun BodyChecker.superConstructorCall(c: ClassSym, s: SuperCall) {
     // the super class' type parameters are already instantiated
     val res = resolveCallGroups(s, listOf(cands), args, null, null, false)
     val rr = record(s, sema.unitType, res?.callee)
+    rr.call = res?.info
     if (res == null) err(s.start, "no matching super constructor")
 }
 
@@ -330,7 +339,9 @@ fun BodyChecker.delegationCall(c: ClassSym, d: CtorDelegation) {
     val text = file.text
     var kw = text.indexOf(if (d.isThis) "this" else "super", d.start)
     if (kw < 0 || kw > d.end) kw = d.start
-    recordAt(kw, d.end, sema.unitType, res?.callee, res?.calleeText)
+    val dr = recordAt(kw, d.end, sema.unitType, res?.callee, res?.calleeText)
+    dr.call = res?.info
+    rec.map[d] = dr
 }
 
 fun BodyChecker.enumEntryCall(c: ClassSym, en: EnumEntryDecl) {
@@ -340,7 +351,8 @@ fun BodyChecker.enumEntryCall(c: ClassSym, en: EnumEntryDecl) {
     val cands = ArrayList<Candidate>()
     for (k in c.ctors) cands.add(Candidate(k, HashMap(), null))
     val res = resolveCallGroups(en, listOf(cands), args, null, null, false)
-    record(en, c.thisType(), res?.callee)
+    val enr = record(en, c.thisType(), res?.callee)
+    enr.call = res?.info
     val text = file.text
     var from = text.indexOf(en.name, en.start)
     if (from >= 0) {
