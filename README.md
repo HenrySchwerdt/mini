@@ -3,6 +3,7 @@
 **Kotlin, compiled to native code, with manual memory management the compiler can check.**
 
 [![Build and test](https://github.com/HenrySchwerdt/mini/actions/workflows/build.yml/badge.svg)](https://github.com/HenrySchwerdt/mini/actions/workflows/build.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Mini is **Kotlin**: same grammar, same semantics, same standard library. The compiler `minic` does not
 target the JVM. It translates Kotlin through C into **native binaries** and adds its own
@@ -143,3 +144,8 @@ Expected outputs always come from real Kotlin on the JVM. CI runs both suites on
 
 The earlier C bootstrap compiler `mini0`, with its own syntax, has been removed. Its last state is
 merge commit `391270a` on `main`.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). The stdlib contains code ported from the
+Kotlin standard library (Apache-2.0, JetBrains and contributors), see [stdlib/NOTICE](stdlib/NOTICE).
