@@ -23,7 +23,7 @@ compiler/jvm-bridge/build/install/minic/bin/minic build hello.kt -o build/hello
 ```
 minic build <file.kt> -o <out> [--emit-c <path>] [--cc clang]
             [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]... [--extra-src <file.kt>]...
-minic check <file.kt> [--extra-src <file.kt>]... [--brief]
+minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
 ```
 
 * `--extra-src <file.kt>` (repeatable): additional Kotlin sources compiled together with the program, only
@@ -31,7 +31,7 @@ minic check <file.kt> [--extra-src <file.kt>]... [--brief]
   `--extra-src std/kotlin-mini/mini/memory/Allocator.kt ...` (all four files).
 * `minic check`: only the Strict-mode ownership checker (see "Memory-model checker" below); prints rustc-like
   diagnostics to stderr, or with `--brief` `line:col: CODE` lines to stdout. Exit 1 on an error, 0 otherwise
-  (warnings do not fail). `minic build` runs the same checker after the frontend and before the C backend:
+  (warnings do not fail, unless `-Werror`; `build` accepts `-Werror` too). `minic build` runs the same checker after the frontend and before the C backend:
   errors stop the build (exit 1), warnings are printed.
 
 * `--emit-c <path>`: keep the generated C file there (otherwise a temporary file is used).

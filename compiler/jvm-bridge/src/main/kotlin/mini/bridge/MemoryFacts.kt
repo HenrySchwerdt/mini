@@ -352,8 +352,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             return l
         }
 
-        private fun tmp(type: MType, p: Pos): MLocal {
-            val l = newLocal("\$tmp", type, p)
+        private fun tmp(type: MType, p: Pos, name: String = "\$tmp"): MLocal {
+            val l = newLocal(name, type, p)
             owner[l.id] = frames.size
             return l
         }
@@ -821,8 +821,15 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             val ctor = c.symbol.owner
             val m = funOf(ctor)
             val margs = ArrayList<MExpr>()
+            val isThread = (ctor.parent as? IrClass)?.kotlinFqName?.asString() == "java.lang.Thread"
             for ((i, p) in ctor.parameters.withIndex()) {
                 val a = c.arguments[i]
+                val fe = if (isThread) (a as? IrTypeOperatorCall)?.argument as? IrFunctionExpression ?: a as? IrFunctionExpression else null
+                if (fe != null) {
+                    scope(ScopeKind.Thread, fe, out, null, emptyList(), emptyList(), pos(c))
+                    margs += MExpr.Opaque(mapType(p.type), pos(c))
+                    continue
+                }
                 margs += if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out)
             }
             val cls = ctor.parent as IrClass
@@ -837,7 +844,10 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             val p = pos(c)
             val fq = (pkg ?: "") + "." + name
             // thread boundary
-            val tIdx = ps.indices.firstOrNull { annos(ps[it].annotations, THREAD_BOUNDARY) != null && args[it] is IrFunctionExpression }
+            val tIdx = ps.indices.firstOrNull {
+                (annos(ps[it].annotations, THREAD_BOUNDARY) != null || fq == "kotlin.concurrent.thread" && ps[it].name.asString() == "block") &&
+                    args[it] is IrFunctionExpression
+            }
             if (tIdx != null) {
                 val rest = generalCallWithLambdasOpaque(c, callee, out)
                 scope(ScopeKind.Thread, args[tIdx] as IrFunctionExpression, out, null, emptyList(), emptyList(), p)
@@ -854,7 +864,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     val recvE = expr(args[recvIdx]!!, out)
                     var target: MLocal
                     if (recvE is MExpr.Local) target = recvE.local else {
-                        target = tmp(recvE.type, p)
+                        val pn = (args[lamIdx[0]] as IrFunctionExpression).function.parameters.firstOrNull { it.kind == IrParameterKind.Regular }?.name?.asString()
+                        target = tmp(recvE.type, p, pn ?: "receiver")
                         out += MStmt.Decl(target, recvE, MAnnot.NONE, p)
                     }
                     val res = scope(ScopeKind.Use, args[lamIdx[0]] as IrFunctionExpression, out, target, emptyList(), listOf(MExpr.Local(target, p)), p)
