@@ -66,7 +66,7 @@ jobs:
         # All shards on Linux; macOS runs every shard on main and only the platform-sensitive
         # ones (e2e, selfhost, modules) on pull requests, since macOS runners are scarce.
         os: ${{ fromJSON(github.ref == 'refs/heads/main' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
-        shard: [modules, e2e, selfhost, bridge, oracle, frontend-selfhost, sema-selfhost]
+        shard: [modules, e2e, selfhost, bridge, oracle, frontend-selfhost, sema-selfhost, bootstrap]
         include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"selfhost"},{"os":"macos-latest","shard":"modules"}]') }}
     name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -84,6 +84,8 @@ jobs:
             oracle)            args=(:frontend-oracle:test -PtestExclude=FrontendSelfHostTest,SemaSelfHostTest) ;;
             frontend-selfhost) args=(:frontend-oracle:test --tests FrontendSelfHostTest) ;;
             sema-selfhost)     args=(:frontend-oracle:test --tests SemaSelfHostTest) ;;
+            # B3: stage1 -> stage2 -> stage3 without K2, stage2 == stage3 byte for byte.
+            bootstrap)         ./gradlew :jvm-bridge:installDist --console=plain && ./bootstrap.sh "$RUNNER_TEMP/b3"; exit ;;
           esac
           ./gradlew "${args[@]}" --console=plain
 
