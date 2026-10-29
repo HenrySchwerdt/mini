@@ -282,6 +282,75 @@ _Noreturn void mk_panic(const char *message);
 /* Same with a Kotlin string message (NULL prints "null"). */
 _Noreturn void mk_panic_string(const MkString *message);
 
+/* ---- P1-A: classes ------------------------------------------------------------ */
+
+/* Class model used by generated code.
+ *
+ * Virtual dispatch: `MkTypeInfo.vtable` of every compiler-generated class starts with
+ * three fixed slots (the kotlin.Any members), followed by one slot per user-declared
+ * open/abstract/override member in declaration order (superclass slots first).
+ * Slot functions take the receiver as first (MkObject *) argument. Reference results
+ * are owned (+1); reference arguments are borrowed.
+ *
+ * Interface dispatch (per-class itable lookup by interface type info): the class'
+ * `interfaces` array lists ALL interfaces the class implements, transitively and
+ * including those of its superclasses. The vtable holds, after the class slots, one
+ * pointer per entry of `interfaces` (same order), each pointing to that interface's
+ * function table for this class (an array of function pointers indexed by the method
+ * index the interface declares). `vtable_length` counts class slots + interface
+ * entries, so the interface block starts at vtable[vtable_length - interface_count]. */
+enum {
+    MK_VSLOT_TO_STRING = 0,
+    MK_VSLOT_EQUALS = 1,
+    MK_VSLOT_HASH_CODE = 2,
+    MK_VSLOT_FIRST_USER = 3,
+};
+
+/* Default kotlin.Any members. toString gives "Name@<hex identity hash>". */
+MkString *mk_any_to_string(MkObject *self); /* refcount 1 */
+bool mk_any_equals(MkObject *self, MkObject *other);
+MkInt mk_any_hash_code(MkObject *self);
+
+/* Null-safe virtual versions (also correct for strings and boxed primitives).
+ * mk_to_string(NULL) is "null" and returns an owned string; mk_hash_code(NULL) is 0;
+ * mk_equals(NULL, NULL) is true. */
+MkString *mk_to_string(MkObject *object);
+bool mk_equals(MkObject *left, MkObject *right);
+MkInt mk_hash_code(MkObject *object);
+
+/* Function table of `object`'s class for `iface`, or NULL if it does not implement it. */
+void *const *mk_itable(const MkObject *object, const MkTypeInfo *iface);
+
+/* Failures with Kotlin exception names (until exceptions exist these abort). */
+_Noreturn void mk_throw_npe(void);
+_Noreturn void mk_throw_class_cast(const MkObject *object, const MkTypeInfo *target);
+
+/* `as`: returns `object` (NULL passes) or aborts with ClassCastException. */
+MkObject *mk_cast(MkObject *object, const MkTypeInfo *target);
+/* `!!`: returns `object` or aborts with NullPointerException. */
+MkObject *mk_not_null(MkObject *object);
+
+/* Boxed primitives (representation of Int?, Long?, Boolean?, Double?, Char?, and of
+ * primitives stored as Any). Boxes are ordinary reference-counted objects. */
+extern const MkTypeInfo mk_type_Int;
+extern const MkTypeInfo mk_type_Long;
+extern const MkTypeInfo mk_type_Boolean;
+extern const MkTypeInfo mk_type_Double;
+extern const MkTypeInfo mk_type_Char;
+MkObject *mk_box_int(MkInt value); /* refcount 1 */
+MkObject *mk_box_long(MkLong value);
+MkObject *mk_box_boolean(MkBoolean value);
+MkObject *mk_box_double(MkDouble value);
+MkObject *mk_box_char(MkChar value);
+/* Unboxing aborts with NullPointerException on NULL. */
+MkInt mk_unbox_int(const MkObject *box);
+MkLong mk_unbox_long(const MkObject *box);
+MkBoolean mk_unbox_boolean(const MkObject *box);
+MkDouble mk_unbox_double(const MkObject *box);
+MkChar mk_unbox_char(const MkObject *box);
+
+/* ---- end P1-A ------------------------------------------------------------------- */
+
 /* ---- Program entry ------------------------------------------------------------- */
 
 /* Generated code defines `void mk_main(void)` for Kotlin `fun main()`.
