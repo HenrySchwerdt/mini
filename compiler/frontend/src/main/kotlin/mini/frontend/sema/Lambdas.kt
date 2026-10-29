@@ -327,6 +327,8 @@ fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {
         if (sc is TypeParamScope) {
             for (tp in sc.tps) if (!outerTps.contains(tp)) outerTps.add(0, tp)
         }
+        // the type parameters of an enclosing class are not accessible from one of its nested (not inner) classes
+        if (sc is ClassScope && !sc.instance) break
         sc = sc.parent
     }
     c.typeParams.addAll(outerTps)

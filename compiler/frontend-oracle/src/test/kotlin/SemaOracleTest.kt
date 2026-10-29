@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
  * test programs). Writes `build/reports/sema-oracle.txt` (per file and overall agreement, per expression kind, the
  * first mismatches) and compares every file with the checked-in baseline
  * `src/test/resources/sema-oracle-baseline.txt`: agreement may not drop. Run with MINI_SEMA_UPDATE=1 to rewrite the
- * baseline; MINI_SEMA_AREAS=testdata,stdlib,backend,native-driver,frontend selects areas (default all).
+ * baseline; MINI_SEMA_AREAS=testdata,stdlib,backend,native-driver,frontend,selfhost selects areas (default all).
  */
 class SemaOracleTest {
     private val root = Corpus.repoRoot
@@ -30,6 +30,8 @@ class SemaOracleTest {
         out.add(Area("backend", listOf(Pair(stdlib + backend, backend))))
         out.add(Area("native-driver", listOf(Pair(stdlib + backend + nativeDriver, nativeDriver))))
         out.add(Area("frontend", listOf(Pair(stdlib + frontend, frontend))))
+        val selfhost = kt("compiler/selfhost")
+        out.add(Area("selfhost", listOf(Pair(stdlib + backend + nativeDriver + selfhost, selfhost))))
         return out
     }
 
@@ -47,11 +49,13 @@ class SemaOracleTest {
 
     @Test
     fun semaAgreesWithK2() {
-        val wanted = (System.getenv("MINI_SEMA_AREAS") ?: "testdata,stdlib,backend,native-driver,frontend").split(',').toSet()
+        val wanted = (System.getenv("MINI_SEMA_AREAS") ?: "testdata,stdlib,backend,native-driver,frontend,selfhost").split(',').toSet()
         val baseline = readBaseline()
         val update = System.getenv("MINI_SEMA_UPDATE") != null
         val report = StringBuilder()
         val all = StringBuilder()
+        val allDiags = StringBuilder()
+        var totalDiags = 0
         val newBaseline = StringBuilder("# file matched total (positions where K2 resolved a type; see SemaOracleTest)\n")
         val regressions = ArrayList<String>()
         val overall = SemaOracle.Stat()
@@ -60,6 +64,8 @@ class SemaOracleTest {
         for (area in areas()) {
             if (area.name !in wanted) continue
             val areaStat = SemaOracle.Stat()
+            var areaDiags = 0
+            var areaUnsupported = 0
             report.append("== area ${area.name}\n")
             for ((inputs, reported) in area.runs) {
                 val (stats, diags) = SemaOracle.run(inputs, reported)
@@ -80,10 +86,18 @@ class SemaOracleTest {
                         for (m in st.mismatches.take(5)) report.append("        L${m.line} [${m.category}] `${m.snippet}`\n          K2:   ${m.fir}\n          ours: ${m.ours}\n")
                     }
                 }
-                val unsupported = diags.filter { it.contains("unsupported") }
-                if (unsupported.isNotEmpty()) report.append("  unsupported constructs: ${unsupported.size}, e.g. ${unsupported.take(3)}\n")
+                val ours = diags.filter { it.startsWith("OURS") }
+                val unsupported = ours.filter { it.contains("unsupported") }
+                areaDiags += ours.size
+                totalDiags += ours.size
+                areaUnsupported += unsupported.size
+                if (ours.isNotEmpty()) {
+                    allDiags.append("== ${area.name}\n")
+                    for (d in ours) allDiags.append("  $d\n")
+                }
             }
             report.append(String.format("  AREA %s: %d/%d = %.2f%%\n", area.name, areaStat.matched, areaStat.total, areaStat.pct()))
+            report.append("  our diagnostics on code K2 accepts: $areaDiags (unsupported constructs: $areaUnsupported)\n")
             report.append("  by expression kind: " + areaStat.byCategory.entries.joinToString(", ") { "${it.key} ${it.value[1]}/${it.value[0]}" } + "\n")
             overall.merge(areaStat)
         }
@@ -95,12 +109,14 @@ class SemaOracleTest {
         out.mkdirs()
         File(out, "sema-oracle.txt").writeText(report.toString())
         File(out, "sema-oracle-mismatches.txt").writeText(all.toString())
+        File(out, "sema-oracle-diagnostics.txt").writeText(allDiags.toString())
         println(report.toString().lines().filter { it.startsWith("  AREA") || it.startsWith("OVERALL") }.joinToString("\n"))
         if (update) {
             val bf = System.getProperty("mini.semaBaseline")
             if (bf != null) File(bf).writeText(newBaseline.toString())
         } else {
             assertTrue(regressions.isEmpty(), "agreement regressed:\n" + regressions.joinToString("\n"))
+            assertTrue(totalDiags == 0, "our analysis reported $totalDiags diagnostics on code that K2 accepts, see sema-oracle-diagnostics.txt")
         }
     }
 }

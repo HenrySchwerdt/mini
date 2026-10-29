@@ -121,13 +121,14 @@ compiler/frontend/src/main/kotlin/mini/frontend/sema/Calls.kt 2800 2800
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Collector.kt 724 724
 compiler/frontend/src/main/kotlin/mini/frontend/sema/DataFlow.kt 298 298
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Declarations.kt 1800 1800
-compiler/frontend/src/main/kotlin/mini/frontend/sema/Exprs.kt 4775 4775
+compiler/frontend/src/main/kotlin/mini/frontend/sema/Exprs.kt 4772 4772
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Infer.kt 1210 1210
-compiler/frontend/src/main/kotlin/mini/frontend/sema/Lambdas.kt 1508 1508
+compiler/frontend/src/main/kotlin/mini/frontend/sema/Lambdas.kt 1525 1525
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Members.kt 716 716
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Names.kt 1974 1974
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Records.kt 453 453
-compiler/frontend/src/main/kotlin/mini/frontend/sema/Sema.kt 2206 2208
+compiler/frontend/src/main/kotlin/mini/frontend/sema/Sema.kt 2211 2213
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Symbols.kt 641 641
 compiler/frontend/src/main/kotlin/mini/frontend/sema/TypeOps.kt 2300 2301
 compiler/frontend/src/main/kotlin/mini/frontend/sema/Types.kt 748 748
+compiler/selfhost/SelfMain.kt 5490 5490
