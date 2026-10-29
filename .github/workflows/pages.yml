@@ -1,18 +1,14 @@
 name: Documentation site
 
 # Builds the VitePress site in website/ and deploys it to GitHub Pages (https://henryschwerdt.github.io/mini/).
-# Pull requests run the same checks and build the site, but do not deploy.
+# Pull requests run the same checks and build the site, but do not deploy, and only when the site itself
+# changes. Compiler changes that break a sample or make a generated page stale show up on the push to main.
 on:
   push:
     branches: [main]
   pull_request:
     paths:
       - 'website/**'
-      - 'docs/**'
-      - 'compiler/**'
-      - 'stdlib/**'
-      - 'runtime/**'
-      - 'minic'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
