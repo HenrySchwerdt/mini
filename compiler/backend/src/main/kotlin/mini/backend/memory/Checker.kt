@@ -95,6 +95,8 @@ object MemoryChecker {
                 else -> return
             }
             if (fn.mode != MemMode.Strict || fn.external) return
+            // the kotlinx.cinterop API (C interop) is checked like Strict code but is no boundary: Managed code may call it
+            if (fn.qname.startsWith("kotlinx.cinterop.")) return
             for ((i, a) in args.withIndex()) {
                 val p = fn.params.getOrNull(i) ?: continue
                 if (p.isContext || !p.owned || !a.type.tracked) continue
