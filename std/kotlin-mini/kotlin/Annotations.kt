@@ -8,7 +8,8 @@ package kotlin
 
 import kotlin.annotation.AnnotationTarget.*
 
-@Target(CLASS, FUNCTION, PROPERTY, FIELD, LOCAL_VARIABLE, VALUE_PARAMETER, CONSTRUCTOR, PROPERTY_GETTER, PROPERTY_SETTER, TYPEALIAS, FILE)
+@Target(CLASS, FUNCTION, PROPERTY, FIELD, LOCAL_VARIABLE, VALUE_PARAMETER, CONSTRUCTOR, PROPERTY_GETTER, PROPERTY_SETTER, TYPEALIAS, EXPRESSION, FILE)
+@Retention(AnnotationRetention.SOURCE)
 public annotation class Suppress(vararg val names: String)
 
 @Target(CLASS, FUNCTION, PROPERTY, ANNOTATION_CLASS, CONSTRUCTOR, PROPERTY_SETTER, PROPERTY_GETTER, TYPEALIAS)
@@ -24,3 +25,8 @@ public enum class DeprecationLevel { WARNING, ERROR, HIDDEN }
 
 @Target(AnnotationTarget.ANNOTATION_CLASS, AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY, AnnotationTarget.CONSTRUCTOR)
 public annotation class DeprecatedSinceKotlin(val warningSince: String = "", val errorSince: String = "", val hiddenSince: String = "")
+
+/** Lets `sumOf { ... }` style overloads that differ only in the lambda's return type be resolved by that type. */
+@Target(FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+public annotation class OverloadResolutionByLambdaReturnType

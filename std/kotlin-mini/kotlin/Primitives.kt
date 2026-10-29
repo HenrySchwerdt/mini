@@ -272,6 +272,11 @@ public class Long private constructor() : Number(), Comparable<Long> {
 }
 
 public class Float private constructor() : Number(), Comparable<Float> {
+    public companion object {
+        public const val NaN: Float = 0.0f / 0.0f
+        public const val POSITIVE_INFINITY: Float = 1.0f / 0.0f
+        public const val NEGATIVE_INFINITY: Float = -1.0f / 0.0f
+    }
     public operator fun compareTo(other: Byte): Int
     public operator fun compareTo(other: Short): Int
     public operator fun compareTo(other: Int): Int
@@ -325,6 +330,11 @@ public class Float private constructor() : Number(), Comparable<Float> {
 }
 
 public class Double private constructor() : Number(), Comparable<Double> {
+    public companion object {
+        public const val NaN: Double = 0.0 / 0.0
+        public const val POSITIVE_INFINITY: Double = 1.0 / 0.0
+        public const val NEGATIVE_INFINITY: Double = -1.0 / 0.0
+    }
     public operator fun compareTo(other: Byte): Int
     public operator fun compareTo(other: Short): Int
     public operator fun compareTo(other: Int): Int

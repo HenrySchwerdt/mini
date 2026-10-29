@@ -12,3 +12,8 @@ import kotlin.annotation.AnnotationTarget
  */
 @Target(AnnotationTarget.FILE)
 internal annotation class Builtin
+
+/** Type inference may only pick a type argument that already occurs in the argument types (e.g. `plus`, `contains`). */
+@Target(AnnotationTarget.TYPE, AnnotationTarget.TYPE_PARAMETER)
+@Retention(AnnotationRetention.BINARY)
+internal annotation class OnlyInputTypes

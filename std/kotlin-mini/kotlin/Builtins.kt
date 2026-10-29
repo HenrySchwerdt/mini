@@ -8,7 +8,7 @@
  * converted to C themselves. Derived from the Kotlin standard library's builtin sources
  * (Any.kt, Nothing.kt, Unit.kt, Boolean.kt, Char.kt, String.kt, Enum.kt, Array.kt, Number.kt).
  */
-@file:Suppress("NON_ABSTRACT_FUNCTION_WITH_NO_BODY", "MUST_BE_INITIALIZED_OR_BE_ABSTRACT", "INAPPLICABLE_OPERATOR_MODIFIER")
+@file:Suppress("NON_ABSTRACT_FUNCTION_WITH_NO_BODY", "MUST_BE_INITIALIZED_OR_BE_ABSTRACT", "INAPPLICABLE_OPERATOR_MODIFIER", "NON_MEMBER_FUNCTION_NO_BODY")
 @file:kotlin.internal.Builtin
 
 package kotlin
@@ -95,16 +95,13 @@ public class String : Comparable<String>, CharSequence {
     @CSymbol("mk_string_char_at")
     public override fun get(index: Int): Char
 
-    @CSymbol("mk_string_sub_sequence")
     public override fun subSequence(startIndex: Int, endIndex: Int): CharSequence
 
     @CSymbol("mk_string_compare")
     public override fun compareTo(other: String): Int
 
-    @CSymbol("mk_string_equals")
     public override fun equals(other: Any?): Boolean
 
-    @CSymbol("mk_string_hash")
     public override fun hashCode(): Int
 
     public override fun toString(): String
@@ -132,3 +129,5 @@ public interface Function<out R>
 
 public val Char.code: Int
     get() = this.toInt()
+
+public fun Any?.toString(): String

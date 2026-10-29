@@ -359,6 +359,36 @@ MkChar mk_unbox_char(const MkObject *box);
  * flushes output and returns 0. */
 void mk_main(void);
 
+/* ---- v1-S: stdlib primitives (std/kotlin-mini/mini/internal/Intrinsics.kt) --------- */
+/* Arguments are borrowed; reference results are owned (+1). Out-of-range indices abort via mk_panic. */
+
+MkString *mk_type_name(MkObject *object);  /* MkTypeInfo.name, e.g. "kotlin.Int" */
+MkInt mk_identity_hash(MkObject *object);
+
+MkChar mk_string_char_at(const MkString *s, MkInt index);
+MkInt mk_string_compare(const MkString *a, const MkString *b); /* java.lang.String.compareTo */
+MkString *mk_string_substring(const MkString *s, MkInt start, MkInt end);
+MkBoolean mk_string_is_double(const MkString *s); /* Java Double.parseDouble syntax (decimal), trimmed */
+MkDouble mk_string_parse_double(const MkString *s);
+
+/* Growable UTF-16 buffer behind kotlin.text.StringBuilder (an opaque heap object). */
+MkObject *mk_sb_new(void);
+void mk_sb_append_string(MkObject *sb, const MkString *s);
+void mk_sb_append_char(MkObject *sb, MkChar c);
+MkInt mk_sb_length(MkObject *sb);
+MkChar mk_sb_char_at(MkObject *sb, MkInt index);
+void mk_sb_set_char_at(MkObject *sb, MkInt index, MkChar c);
+void mk_sb_set_length(MkObject *sb, MkInt length); /* truncates, or pads with NUL characters */
+MkString *mk_sb_to_string(MkObject *sb);
+
+/* Fixed-size array of retained `Any?` slots (storage of ArrayList, HashMap, ...). */
+MkObject *mk_ref_array_new(MkInt size); /* all slots null */
+MkObject *mk_ref_array_get(MkObject *array, MkInt index); /* returns +1 (or NULL) */
+void mk_ref_array_set(MkObject *array, MkInt index, MkObject *value); /* retains value, releases the old one */
+MkInt mk_ref_array_length(MkObject *array);
+
+/* ---- end v1-S ------------------------------------------------------------------- */
+
 #ifdef __cplusplus
 }
 #endif

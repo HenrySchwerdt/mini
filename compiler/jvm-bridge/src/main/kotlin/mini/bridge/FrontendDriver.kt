@@ -41,6 +41,7 @@ object FrontendDriver {
     fun runFrontend(
         sources: List<File>,
         stdlib: List<File>,
+        pruneStdlib: Boolean = true,
         consumer: (IrModuleFragment, IrPluginContext) -> Unit,
     ) {
         val source = sources.first()
@@ -77,7 +78,7 @@ object FrontendDriver {
             collector.stdlibPaths = stdPaths
             pending = { m, c ->
                 try {
-                    if (fromSource) Reachability.prune(m) { f -> File(f.fileEntry.name).absolutePath in stdPaths }
+                    if (fromSource && pruneStdlib) Reachability.prune(m) { f -> File(f.fileEntry.name).absolutePath in stdPaths }
                     consumer(m, c)
                 } catch (t: Throwable) {
                     // do not let the Kotlin compiler wrap our diagnostics; rethrow after it returns
