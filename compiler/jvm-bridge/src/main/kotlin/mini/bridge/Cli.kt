@@ -30,6 +30,7 @@ object Cli {
             System.err.println(USAGE)
             return if (args.isEmpty()) 2 else 0
         }
+        if (args[0] == "check") return check(args.drop(1))
         if (args[0] == "dump-ir") { MemDump.run(File(args[1]), args.drop(2).map { File(it) }); return 0 }
         if (args[0] != "build") {
             System.err.println("minic: unknown command '${args[0]}'\n$USAGE")
@@ -55,6 +56,40 @@ object Cli {
     }
 
     class BuildFailure(message: String) : Exception(message)
+
+    /**
+     * `minic check <file.kt> [--extra-src <file.kt>]... [--brief]`: the Strict-mode ownership checker only.
+     * Prints rustc-like diagnostics to stderr (or, with `--brief`, `line:col: CODE` lines to stdout);
+     * exit 1 when there is an error, 0 otherwise (warnings do not fail).
+     */
+    private fun check(a: List<String>): Int {
+        var source: File? = null
+        val extra = mutableListOf<File>()
+        var brief = false
+        var i = 0
+        while (i < a.size) {
+            when (val x = a[i]) {
+                "--extra-src" -> { if (i + 1 >= a.size) { System.err.println("minic: missing value for $x"); return 2 }; extra += File(a[++i]) }
+                "--brief" -> brief = true
+                else -> {
+                    if (x.startsWith("-")) { System.err.println("minic: unknown option $x"); return 2 }
+                    source = File(x)
+                }
+            }
+            i++
+        }
+        if (source == null) { System.err.println("usage: minic check <file.kt> [--extra-src <file.kt>]... [--brief]"); return 2 }
+        if (!source.isFile) { System.err.println("minic: no such file: $source"); return 1 }
+        return try {
+            val r = MemoryCheck.check(source, extra)
+            if (brief) r.brief().forEach { println(it) } else if (r.diags.isNotEmpty()) System.err.println(r.render())
+            for (f in r.failures) System.err.println("minic: warning: memory checker skipped $f")
+            if (r.hasErrors) 1 else 0
+        } catch (e: FrontendDriver.FrontendFailure) {
+            System.err.println(e.message)
+            1
+        }
+    }
 
     private fun parse(a: List<String>): Options? {
         var source: File? = null
