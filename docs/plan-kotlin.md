@@ -202,6 +202,17 @@ error[M0102]: allocation from `Heap` (Deallocating) is never released
 | M0205 (warn) | Allokation in `@NoAlloc`-Funktion oder Hot-Path |
 | M0206 (error) | Objekt aus nicht `ThreadSafe`-Allocator verlässt den Thread |
 
+### 4.4a Refcounting sichtbar machen (geplant)
+
+Nach Escape-Analyse und RC-Elision meldet der Compiler auf Wunsch jede Stelle, an der
+**noch** Refcounting übrig bleibt: `M0207 (warn)`, mit Grund (Objekt wird geteilt, entkommt
+in ein Feld unbekannter Lebensdauer, Zyklus möglich …) und konkretem Vorschlag (`Arena` um
+den Block, `@Owned`-Rückgabe, `x.free()`). Steuerbar pro Datei oder Modul
+(`@file:MemoryMode(Mode.Guided)` bzw. Compiler-Flag `-Wrc`). Dazu kommt `minic mem-report`:
+eine Übersicht pro Funktion, was auf Stack, Arena, manuell oder per RC landet.
+Refcounting ist nicht automatisch schlechter (geteilte Graphen, Caches). Deshalb ist es
+eine Warnung, kein Fehler.
+
 ### 4.5 Modi
 
 - `@file:MemoryMode(Managed)`: **Default**, für alle fremden Kotlin-Libs. Refcounting
@@ -226,6 +237,7 @@ error[M0102]: allocation from `Heap` (Deallocating) is never released
 | Lambdas/Closures | Closure-Objekt geht über die normale Allokationsplatzierung, nicht entkommende Lambdas liegen auf dem Stack |
 | `String`, `StringBuilder` | UTF-16 wie Kotlin (Kompatibilität bei `Char`/Indexen), aus der std mit `actual`s |
 | Coroutines/`suspend` | State-Machine-Lowering aus `backend.common`. Dispatcher läuft auf der libuv-Loop. `Dispatchers.IO`/`Default` nutzen den libuv-Threadpool (`uv_queue_work`). |
+| Async-IO (`mini.io`) | `suspend`-APIs über libuv (Timer, Dateien, TCP/UDP, DNS, Prozesse): Der Callback setzt die Continuation fort, kein Thread blockiert. API-Form angelehnt an kotlinx-io/ktor-io, damit Ktor & Co. später darauf laufen können. Speicher: Coroutine-Frames gehen über die normale Allocator-Auflösung. Pro `coroutineScope` kann eine `Arena` laufen (z. B. eine Arena pro HTTP-Request, am Scope-Ende alles weg). |
 | `object`/Companion, `lateinit`, `lazy` | Runtime-Init-Guards, threadsicher über atomics |
 
 ## 6. Standardbibliothek
