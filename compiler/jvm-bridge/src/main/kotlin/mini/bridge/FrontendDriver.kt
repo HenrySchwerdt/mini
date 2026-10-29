@@ -32,7 +32,11 @@ object FrontendDriver {
 
     class FrontendFailure(message: String) : Exception(message)
 
-    fun runFrontend(source: File, consumer: (IrModuleFragment, IrPluginContext) -> Unit) {
+    fun runFrontend(source: File, consumer: (IrModuleFragment, IrPluginContext) -> Unit) =
+        runFrontend(source, emptyList(), consumer)
+
+    /** [extraSources] are compiled together with [source] (e.g. the mini.memory API sources). */
+    fun runFrontend(source: File, extraSources: List<File>, consumer: (IrModuleFragment, IrPluginContext) -> Unit) {
         val work = Files.createTempDirectory("minic-").toFile()
         try {
             val services = File(work, "plugin/META-INF/services").also { it.mkdirs() }
@@ -44,7 +48,7 @@ object FrontendDriver {
 
             val compiler = K2JVMCompiler()
             val args = compiler.createArguments()
-            args.freeArgs = listOf(source.absolutePath)
+            args.freeArgs = listOf(source.absolutePath) + extraSources.map { it.absolutePath }
             args.destination = out.absolutePath
             args.noStdlib = true
             args.noReflect = true

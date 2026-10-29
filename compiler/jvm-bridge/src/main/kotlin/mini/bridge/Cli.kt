@@ -30,6 +30,7 @@ object Cli {
             System.err.println(USAGE)
             return if (args.isEmpty()) 2 else 0
         }
+        if (args[0] == "dump-ir") { MemDump.run(File(args[1]), args.drop(2).map { File(it) }); return 0 }
         if (args[0] != "build") {
             System.err.println("minic: unknown command '${args[0]}'\n$USAGE")
             return 2
