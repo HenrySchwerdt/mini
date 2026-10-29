@@ -75,6 +75,8 @@ Tests: `gradle -p compiler test`.
 | `compiler/backend` | MIR data model (`Mir.kt`), name mangling (`Mangling.kt`), MIR → C emitter (`CEmitter.kt`) | **No** |
 | `compiler/native-driver` | B1: `main(args)` that reads a `.mir` file, runs `CEmitter`, writes the `.c` file (runs on the JVM via Gradle, natively once minic can compile the backend) | **No** (file access through `mini.io`) |
 | `compiler/frontend` | B2-1: own Kotlin frontend: lexer, lossless CST parser, typed AST, outline renderer (`mini.frontend`); B2-2: symbols, types, inference, call resolution, smart casts (`mini.frontend.sema`); `driver/` holds the self-compilation driver | **No** (PurityTest) |
+| `compiler/lower` | B2-3: `Ast2Ir` (analysed AST to a K2-shaped IR), `Reachability`, and `Ir2Mir` (a port of the jvm-bridge one) behind `lowerToMir` | **No** (LowerPurityTest) |
+| `compiler/minic-native` | B2-3: `minic-native`, the compiler without K2 (own frontend + lowering + backend, `main(args)` on `mini.io`) | **No** (MinicNativePurityTest) |
 | `compiler/frontend-oracle` | Test-only: compares the frontend with the K2 PSI parser and the semantic analysis with K2's FIR resolution, hosts the native self-compilation tests | Yes (tests) |
 | `compiler/jvm-bridge` | Runs K2 (`FrontendDriver`), converts Kotlin IR to MIR (`Ir2Mir*.kt`, see the source layout below), CLI (`Cli`, `Main`), starts clang | Yes, and the only module allowed to touch compiler internals |
 
@@ -611,3 +613,19 @@ the JVM (cold), 0.5 s warm, 1.7 s native.
 Known gaps: only the subset the corpus needs (no Java interop, no coroutines / `suspend` typing beyond the type, no contracts, no context
 receivers beyond function types, no `kotlin.js` / multiplatform `expect`/`actual`); inference is a simplified constraint solver (no PCLA, arguments are resolved
 independently of the callee except for single candidates); K2's flexible loop analysis for smart casts is approximated by killing facts of reassigned variables.
+
+## Bootstrap B2-3: MIR from our own frontend (no K2)
+
+`minic build|emit-mir --frontend=mini` (K2 stays the default) runs parser + sema (B2-1/B2-2), `Ast2Ir` (builds the IR shapes K2's fir2ir
+produces: declaration order, fake overrides with substituted signatures, `tmpN_*` temporaries, origins, smart-cast and SAM wrappers, constant
+folding), `Reachability` and the ported `Ir2Mir` (all in `compiler/lower`, pure Kotlin) and then the unchanged backend. `compiler/minic-native` wraps
+this in a `main(args)` (`minic-native [-o out.c] [--emit-mir out.mir] <user.kt>... --stdlib <files>...`).
+
+Tests: `MiniFrontendTest` (jvm-bridge) checks, for every `compiler/testdata/*.kt`, that the MIR and the C of the own frontend equal the K2 path
+byte for byte, and that the programs built from it print the expected output. Status: 47 of 47 programs identical (plus the `type_error` diagnostic).
+
+Native: minic compiles `minic-native` (frontend, lowering, backend, driver) without K2 on the way; the binary reproduces the MIR (hence the C) of the K2
+path for all 47 programs, the programs run correctly, and the binary compiles its own sources in about 5 s. The C it produces for its own sources
+builds and again reproduces 47 of 47 programs. Not byte-identical yet: the MIR for the self-compilation differs from the K2 path in about 250
+of 96,700 lines (K2 flow-sensitive smart casts the analysis does not model, e.g. through `val b = x != null && ...`, `as?` with `?: error`, and
+some `tmpN` numbering inside lambdas).

@@ -353,6 +353,8 @@ exactly the features that real Kotlin code needs:
 `compiler/frontend`, package `mini.frontend.sema`) are reached; K2 (FIR) is the oracle and agrees on the stdlib, compiler sources and test programs in
 99.99 % of positions, and built natively it gives the same result as on the JVM. See `compiler/README.md`. Open: Ir/MIR generation from the own frontend (B2-3).
 
+**Status B2-3 / B3:** `--frontend=mini` produces MIR and C identical to the K2 path for all test programs; `minic-native` (own frontend + lowering + backend) is built by minic, runs the programs correctly and bootstraps: `compiler/bootstrap.sh` shows stage2 == stage3 (C and MIR byte-identical). The self-compile MIR differs from K2 only in numbering and a few flow-fact casts (`compiler/selfcompare.py`). See `compiler/README.md`.
+
 **Bootstrap stages after that:**
 1. **B1 (= v1):** backend self-hosted. The native `minic-backend` reads serialized MIR
    (written to a file by the JVM frontend) and produces C. This makes half the compiler run natively.
