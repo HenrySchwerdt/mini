@@ -15,6 +15,7 @@ object Cli {
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
              [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=k2|mini]
+             [--backend=c|llvm] [--emit-ll <path>] [--link-cc <compiler>]
        minic mem-report <file.kt>... [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [--top <n>] [--user-only]
              [--no-rc-opt] [--no-strict] [--no-conv]"""
 
@@ -50,6 +51,12 @@ object Cli {
         val top: Int = 40,
         /** `mem-report --user-only`: list only functions of the user files (not the stdlib). */
         val userOnly: Boolean = false,
+        /** `--backend=llvm`: MIR to textual LLVM IR (`mini.backend.llvm`) instead of C; clang compiles the `.ll`. */
+        val llvm: Boolean = false,
+        /** `--emit-ll <path>`: where the LLVM IR is written (default: a temporary file). */
+        val emitLl: File? = null,
+        /** `--link-cc <compiler>`: compiler that compiles libminirt and links an `--backend=llvm` build (default: `--cc`). */
+        val linkCc: String? = null,
     )
 
     /** Returns the process exit code. */
@@ -147,6 +154,9 @@ object Cli {
         var wrc = false
         var top = 40
         var userOnly = false
+        var llvm = false
+        var emitLl: File? = null
+        var linkCc: String? = null
         var stdlib: File? = null
         var noStdlib = false
         var out: File? = null
@@ -182,6 +192,10 @@ object Cli {
                 "-Wrc" -> wrc = true
                 "--top" -> top = (next(x) ?: return null).toIntOrNull() ?: run { System.err.println("minic: --top needs a number"); return null }
                 "--user-only" -> userOnly = true
+                "--backend=llvm" -> llvm = true
+                "--backend=c" -> llvm = false
+                "--emit-ll" -> emitLl = File(next(x) ?: return null)
+                "--link-cc" -> linkCc = next(x) ?: return null
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     sources += File(x)
@@ -190,7 +204,7 @@ object Cli {
             i++
         }
         if (sources.isEmpty() || (needOutput && out == null)) { System.err.println(USAGE); return null }
-        return Options(sources, out ?: File("mem-report"), emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport, wrc = wrc, top = top, userOnly = userOnly)
+        return Options(sources, out ?: File("mem-report"), emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport, wrc = wrc, top = top, userOnly = userOnly, llvm = llvm, emitLl = emitLl, linkCc = linkCc)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -286,8 +300,9 @@ object Cli {
         val mainCount = module.functions.count { it.cName == mini.backend.Mangling.MAIN }
         if (mainCount != 1) throw BuildFailure("${module.sourceName}: expected exactly one `fun main()`, found $mainCount")
 
-        // 3. MIR -> C
-        val c = CEmitter.emitDetailed(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv).also { r ->
+        // 3. MIR -> C (or textual LLVM IR with --backend=llvm)
+        val llvm = o.llvm
+        val c = if (llvm) mini.backend.llvm.LlvmEmitter.emit(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv, stats = o.stats) else CEmitter.emitDetailed(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv).also { r ->
             if (o.wrc) for (w in mini.backend.MemReport.m0207(mini.backend.MemReport.build(module, r)) { f -> !isStdlibName(f.name) }) System.err.print(w)
             if (o.convReport) r.plan?.conv?.summary()?.forEach { System.err.println("conv: $it") }
             val dbg = System.getenv("MINIC_RC_EXPLAIN")
@@ -295,12 +310,13 @@ object Cli {
                 System.err.println("rc: ${f.qualifiedName} effects: ${r.plan?.effectsOf(f.cName)}")
             }
         }.c
-        val cFile = o.emitC ?: File.createTempFile("minic-", ".c")
+        val cFile = (if (llvm) o.emitLl else o.emitC) ?: File.createTempFile("minic-", if (llvm) ".ll" else ".c")
         cFile.absoluteFile.parentFile?.mkdirs()
         cFile.writeText(c)
 
         // 4. clang
         o.output.absoluteFile.parentFile?.mkdirs()
+        if (llvm) return compileLlvm(o, cFile, include, runtimeFiles)
         val cmd = mutableListOf(o.cc, "-std=c17", "-O1", "-Wall", "-Wno-unused-label", "-Wno-unused-variable", "-Wno-unused-but-set-variable", "-I", include.path)
         if (o.stats) cmd += "-DMK_STATS"
         cmd += o.cflags
@@ -315,6 +331,41 @@ object Cli {
             throw BuildFailure("C compiler failed (exit $rc): ${cmd.joinToString(" ")}\n$text")
         }
         if (text.isNotBlank()) System.err.print(text)
+        return 0
+    }
+
+    private fun runTool(cmd: List<String>, what: String): String {
+        val proc = ProcessBuilder(cmd).redirectErrorStream(true).start()
+        val text = proc.inputStream.bufferedReader().readText()
+        val rc = proc.waitFor()
+        if (rc != 0) throw BuildFailure("$what failed (exit $rc): ${cmd.joinToString(" ")}\n$text")
+        return text
+    }
+
+    /**
+     * `--backend=llvm`: `--cc` (clang) turns the `.ll` into an object file, `--link-cc` (default: `--cc`) compiles
+     * libminirt and links. The two steps let a sanitizer build instrument the IR with clang and link with another driver.
+     */
+    private fun compileLlvm(o: Options, ll: File, include: File, runtimeFiles: List<File>): Int {
+        val obj = File.createTempFile("minic-", ".o")
+        val warnings = StringBuilder()
+        try {
+            val compile = mutableListOf(o.cc, "-O1", "-Wno-override-module", "-Wno-unused-command-line-argument")
+            compile += o.cflags
+            compile += listOf("-c", ll.path, "-o", obj.path)
+            warnings.append(runTool(compile, "LLVM IR compilation"))
+            val link = mutableListOf(o.linkCc ?: o.cc, "-std=c17", "-O1", "-Wall", "-Wno-unused-label", "-Wno-unused-variable", "-Wno-unused-but-set-variable", "-I", include.path)
+            if (o.stats) link += "-DMK_STATS"
+            link += o.cflags.filter { !it.startsWith("-Wno-override-module") }
+            link += obj.path
+            runtimeFiles.forEach { link += it.path }
+            link += listOf("-o", o.output.path, "-lm")
+            warnings.append(runTool(link, "linking"))
+        } finally {
+            obj.delete()
+            if (o.emitLl == null) ll.delete()
+        }
+        if (warnings.isNotBlank()) System.err.print(warnings)
         return 0
     }
 }

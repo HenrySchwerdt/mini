@@ -656,3 +656,88 @@ built from the seed): stage0 compiles the current sources, then stage1, stage2, 
 by default (clang takes 9 s instead of 73 s per stage), so the whole check takes about a minute without Gradle or the JVM. CI runs it as the
 `stage0` shard (`scripts/ci-stage0.sh`: downloads the latest release for the platform, verifies its SHA256, falls back to the JVM stage1 when there
 is no release, the download fails or stage0 cannot build the sources); the JVM-stage1 `bootstrap` shard (guards the K2 path) runs on main.
+
+## LLVM backend
+
+`compiler/backend/.../llvm` (package `mini.backend.llvm`, pure Kotlin, scanned by `PurityTest`, compiled by minic like the rest of the backend) is the
+second code generator: MIR to **textual LLVM IR** (`.ll`), an alternative to `CEmitter` (docs/plan-kotlin.md section 10g, phase 1). Phase 2
+(not done) replaces the text by the in-process LLVM C API and ORC JIT and reuses the lowering.
+
+```
+MIR ─► RcOpt (RcPlan) ─► LlvmEmitter ─► prog.ll ─► clang (-c) ─► prog.o ─► clang + libminirt (runtime/src/*.c) ─► binary
+```
+
+```sh
+minic build hello.kt -o build/hello --backend=llvm [--emit-ll hello.ll] [--cc clang] [--link-cc gcc] [--stats] [--no-rc-opt] [--cflag -O2]
+native-driver hello.mir --backend=llvm -o hello.ll [--no-rc-opt] [--stats]       # MIR text to IR (JVM or native `minic-backend`)
+minic-native <user.kt>... --emit-ll out.ll --stdlib <files>...                    # the compiler without K2: sources to IR
+```
+
+`--cc` compiles the `.ll` to an object file (`clang -O1 -Wno-override-module`), `--link-cc` (default: `--cc`) compiles `libminirt` and links. With a
+sanitizer, clang instruments the IR and gcc can link `libasan` when clang has no sanitizer runtime (the situation on the dev box). `--stats` makes the
+emitter call the runtime for every retain/release (`MK_STATS`) and compiles the runtime with `-DMK_STATS`.
+
+**What is identical to `CEmitter`** (the emitter is a statement-by-statement port that consumes the same `RcPlan`, `ThrowAnalysis` and `Mangling`):
+object layouts and headers, `MkTypeInfo`, class vtables (slots 0-2 toString/equals/hashCode, then user slots, then one itable pointer per interface),
+itables, `dispose`, `<ctor>_new`, lazy `object` singletons, boxing, strings (`static const MkString` literals), RcOpt (borrowed locals, moves, owned
+constructor parameters, self takes, closed moves, fresh stores), the error-return exception ABI (`mk_pending_exception` test after every call that
+`ThrowAnalysis` says can throw, cold exit blocks that release the scopes they leave, `Try` as a handler block with `mk_catch`/`mk_is_instance`/`mk_rethrow`),
+Kotlin integer semantics (wrapping `add/sub/mul`, `mkh_div_*` helpers, masked shifts, saturating `fptosi.sat` for Double to Int/Long, `frem` for `%`), the
+`mk_main` wrapper, and `fun main(args)`.
+
+**How it differs.**
+* Locals are `alloca`s in the entry block (LLVM's mem2reg/SROA makes them SSA). Reference locals are NULL-initialised at the top of their scope exactly as in C.
+* No data layout is assumed: struct layouts are computed in `LlvmTarget.kt` (natural alignment, a subclass embeds the superclass struct including its tail
+  padding, so a subclass field starts at `sizeof(super)`) and every field access is a byte-offset `getelementptr`. `LlvmTarget` has the pointer size (8, or 4
+  for `wasm32`), so the same lowering serves ILP32 targets. The type infos are `<{ ptr, size_t, ptr, ptr, ptr, size_t, ptr, size_t }>` constants.
+* The C ABI is spelled out: `bool` and `MkChar` are `zeroext i1` / `zeroext i16` on parameters and results; runtime functions are declared from the MIR types of
+  their first use (`declare i32 @mk_string_hash(ptr)`), vtable / itable entries that are runtime functions (`mk_throwable_message`, `mk_any_to_string`) are declared
+  by address only.
+* Retain/release fast paths (`MKH_RETAIN` / `MKH_REL` in C) are `alwaysinline` helper functions `@mkh_retain` / `@mkh_rel` in the module (so `-O0` inlines them too);
+  cold exit paths and `--no-rc-opt` call `mk_release` directly. `MkObject` accesses use offsets (type 0, refcount `ptr`, flags `ptr+4`).
+* Double constants are Kotlin's shortest round-trip text (LLVM rounds a decimal literal correctly; NaN and infinities are hex), so no `toRawBits` is needed.
+* Branch weights (`!prof`) mark the pending-exception tests and exit blocks as cold. Every function has `nounwind` (error-return ABI, no unwinding)
+  and `sanitize_address`, so `clang -fsanitize=address -c prog.ll` instruments the generated code (UBSan needs no instrumentation: wrapping arithmetic and explicit
+  division checks leave no undefined behaviour to detect).
+* Unlike C, an unreachable block after `return`/`break` is just a block without predecessors; the `goto`-style labels of `Break`/`Continue` are blocks `brk_N` / `cont_N`.
+
+**Tests.** `backend` `LlvmEmitterTest` (IR shape), `PurityTest.llvmBackendIsScannedToo`; `jvm-bridge` `LlvmEndToEndTest`: every program of
+`compiler/testdata` through `--backend=llvm` (same `.out`/`.err`/`.cerr` expectations and `-Werror` as `EndToEndTest`), the leak check (ASan/LSan/UBSan; the
+runtime with sanitizers, the IR instrumented by clang) and the `--stats` / `--no-rc-opt` variants; `SelfHostTest.nativeMinicBackendOnAllTestPrograms` additionally
+requires the natively compiled backend's `--backend=llvm` output to equal the JVM's byte for byte. `compiler/bootstrap.sh --backend=llvm` is the self-host check
+(below). `compiler/bench/run-llvm.sh` compares the two backends (below).
+
+### LLVM backend: status, measurements, stretch goals
+
+**Parity.** 53/53 programs (47 + the six `strict_*` ones) of `compiler/testdata` build with `--backend=llvm` and give the same stdout/stderr/exit code as the C backend (plus the `type_error`
+diagnostic), also with `--no-rc-opt`, `--no-strict`, `--no-conv` and `--stats`; all 48 leak-check programs are clean under ASan/LSan/UBSan. No known gaps against the C backend. Still C-only / not
+Strict mode (D2) is covered: tracked values without counts, `_newa` allocator constructors (`mk_alloc_with`, `mk_discard` on a failing initialiser), `mk_free_owned` in dispose glue, borrowed results, owned parameters of virtual/interface calls and of `mk_ref_array_set_o`, `Any` casts reduced to the null check (`mkh_nn`).
+done: debug info (`!dbg`), TBAA metadata (C gets it from clang), real unwinding (the error-return ABI is kept on purpose).
+
+**Self-host via LLVM** (`compiler/bootstrap.sh --backend=llvm --reference <C bootstrap dir>`): stage1 = JVM `minic --frontend=mini --backend=llvm`; stage2/3 are built from
+the `.ll` the previous stage writes (`minic-native --emit-ll`). C, MIR and IR of stage2 and stage3 are byte-identical, and the C and MIR equal those of the C-built chain. Wall
+times on the dev box: stage1 65 s (C: 81 s), clang on the compiler's IR 60 s (clang on its C: 75-79 s), compiling the sources 6 s.
+
+**Performance** (`compiler/bench/run-llvm.sh`; same MIR, same RcOpt plan, same clang `-O` level, same libminirt, best of 5, ms; ratio LLVM/C):
+
+| benchmark | -O0 | -O1 | -O2 | -O3 |
+|---|---|---|---|---|
+| arraylist | 300 / 298 (0.99) | 251 / 245 (0.98) | 252 / 232 (0.92) | 254 / 244 (0.96) |
+| hashmap | 89 / 81 (0.91) | 75 / 74 (0.99) | 72 / 80 (1.11) | 71 / 73 (1.03) |
+| mapfilter | 172 / 172 (1.00) | 145 / 149 (1.03) | 150 / 149 (0.99) | 152 / 143 (0.94) |
+| stringbuilder | 72 / 66 (0.92) | 58 / 56 (0.97) | 56 / 57 (1.02) | 57 / 61 (1.07) |
+| templates | 116 / 111 (0.96) | 109 / 115 (1.06) | 110 / 110 (1.00) | 114 / 111 (0.97) |
+| tree | 79 / 72 (0.91) | 61 / 64 (1.05) | 63 / 61 (0.97) | 65 / 65 (1.00) |
+| selfhost (minic-backend, 6.6 MB of C) | 969 / 888 (0.92) | 754 / 735 (0.97) | 748 / 705 (0.94) | 731 / 701 (0.96) |
+
+Run time is at parity (noise is about +-5 %; the self-hosted backend is 3-8 % faster). clang needs about 20 % less time on the `.ll` than on the equivalent C
+(selfhost -O1: 16.8 s vs 21.4 s; no C parsing), the `.ll` is 1.5x the size of the C file.
+
+**wasm32-wasi (stretch).** The box has clang with the `wasm32` target, `wasm-ld` and node 22, but no WASI sysroot (no wasi-libc; the GitHub release is blocked by the sandbox proxy and apt has
+no package), so libminirt cannot be compiled for wasm32 yet. What works: `native-driver prog.mir --backend=llvm --target=wasm32 -o prog.ll` (ILP32 layouts: 12-byte header,
+4-byte pointers and `size_t`) compiles with `clang --target=wasm32 -O2 -c` for the programs tried (hello, fib, classes_basic, exceptions, strings), `wasm-ld --no-entry --export=mk_main --allow-undefined`
+links them, and hello runs under node with a 10-line JS host that provides `mk_println_string` and reads the wasm32 `MkString` layout (`length` at 12, chars at 16): it prints `Hello, Mini!`.
+Needed for the rest: a wasi-libc sysroot (`clang --target=wasm32-wasi --sysroot=...`), libminirt without `alloc_debug.c` (the only pthread user) and without libuv, and `--target=wasm32-wasi`
+plumbing in `Cli` (target triple, `.wasm` output, runtime file list).
+
+**JIT via `lli` (evaluated, dropped).** `lli` with a shared libminirt cannot resolve the thread-local `mk_pending_exception` from JIT-compiled code; making it work needs a runtime accessor or a compiler hook that exists only for the JIT. The real JIT is ORC through the LLVM C API (phase 2).

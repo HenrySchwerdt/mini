@@ -41,6 +41,16 @@ class PurityTest {
         assertEquals(emptyList(), found, "JVM API use in compiler/backend:\n" + found.joinToString("\n"))
     }
 
+    /** The LLVM backend (package mini.backend.llvm, docs/plan-kotlin.md 10g) is part of the self-hosted compiler: it is scanned like the rest. */
+    @Test
+    fun llvmBackendIsScannedToo() {
+        val dir = File(System.getProperty("mini.backendMain") ?: error("mini.backendMain not set"))
+        val llvm = dir.walkTopDown().filter { it.isFile && it.extension == "kt" && it.parentFile.name == "llvm" }.toList()
+        assertTrue(llvm.any { it.name == "LlvmEmitter.kt" }, "mini.backend.llvm sources not found under $dir")
+        val found = llvm.flatMap { violations(it.name, it.readText()) }
+        assertEquals(emptyList(), found, "JVM API use in compiler/backend/.../llvm:\n" + found.joinToString("\n"))
+    }
+
     @Test
     fun backendDependsOnNothingButTheStandardLibrary() {
         val text = File(System.getProperty("mini.backendBuildFile") ?: error("mini.backendBuildFile not set")).readText()
