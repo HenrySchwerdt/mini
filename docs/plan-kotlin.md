@@ -347,6 +347,9 @@ genau die Features herbei, die echter Kotlin-Code braucht:
 | stdlib | `String`/`StringBuilder`, `List`/`MutableList`/`Map`/`Set` (+ `ArrayList`, `HashMap`, `LinkedHashMap`, `HashSet`), `map`/`filter`/`joinToString`/`forEach`/`associate`…, `Pair`, Ranges, `buildString`, `println` |
 | Speicher | Managed (RC) überall. Strict-Prüfung läuft als eigener Strang parallel. |
 
+**Status:** v1/B1 ist erreicht. `SelfHostTest` baut `native-driver` und Backend nativ als
+`minic-backend`. Für alle Testprogramme ist dessen C byte-identisch zur JVM-Ausgabe.
+
 **Bootstrap-Stufen danach:**
 1. **B1 (= v1):** Backend self-hosted. Native `minic-backend` liest serialisiertes MIR
    (vom JVM-Frontend als Datei geschrieben) und erzeugt C. Damit läuft der halbe Compiler nativ.
