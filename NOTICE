@@ -1,0 +1,9 @@
+Mini
+Copyright 2026 The Mini Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The standard library in stdlib/ contains source code ported or derived from the Kotlin standard
+library (https://github.com/JetBrains/kotlin), Copyright 2010-2025 JetBrains s.r.o. and Kotlin
+Programming Language contributors, licensed under the Apache License, Version 2.0.
+See stdlib/NOTICE for details.

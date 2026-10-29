@@ -1,99 +1,98 @@
-# Kotlin/Mini: Das Speichermodell (Spezifikation P1)
+# Kotlin/Mini: The Memory Model (Specification P1)
 
-Status: **normativ für P1, Test-first.** Die Analyse existiert noch nicht. Dieses Dokument,
-die API `stdlib/mini/memory/*.kt` und der Korpus `compiler/testdata/memory/` legen
-fest, was der Compiler später akzeptieren und ablehnen muss. Der Entwurf steht in
-`docs/plan-kotlin.md` (Abschnitt 4). Wo dieses Dokument davon abweicht, gilt dieses Dokument;
-die Abweichungen stehen in Abschnitt 10.
+Status: **normative for P1, test-first.** The analysis does not exist yet. This document,
+the API `stdlib/mini/memory/*.kt` and the corpus `compiler/testdata/memory/` define
+what the compiler must later accept and reject. The design is in
+`docs/plan-kotlin.md` (section 4). Where this document deviates from it, this document wins;
+the deviations are listed in section 10.
 
-Schlüsselwörter MUSS, DARF NICHT, SOLL sind im Sinn von RFC 2119 gemeint.
-
----
-
-## 1. Grundsätze
-
-1. **Jedes Mini-Programm ist ein gültiges Kotlin-Programm.** Das Speichermodell besteht nur
-   aus Annotationen, Interfaces, gewöhnlichen Funktionen und Context-Parametern
-   (`context(alloc: Arena)`, Kotlin 2.2+, in 2.4.21 ohne Zusatzflag). Der gesamte Korpus
-   wird mit dem echten `kotlinc` (K2) übersetzt, siehe Abschnitt 11. Auf der JVM sind
-   `free`, Allocatoren und Annotationen wirkungslos beziehungsweise naiv (`free` ruft `close()`
-   auf, wenn das Objekt `AutoCloseable` ist). Die Programme verhalten sich dort genauso wie
-   unter Mini, solange kein Fehler vorliegt.
-2. **Zwei Modi, pro Datei oder Klasse.** `Managed` (Default) = Refcounting, keine Pflichten.
-   `Strict` = jede Allokation hat einen bewiesenen Besitzer, sonst Compile-Fehler.
-3. **Die Analyse ist unabhängig von der Platzierung.** Ob ein Objekt am Ende auf dem Stack,
-   in einer Arena oder auf dem Heap liegt, ändert nie, ob ein Programm akzeptiert wird.
-   Die Escape-Analyse (Stack-Verschiebung) ist eine reine Optimierung (Abschnitt 2.1).
-   Damit sind Diagnosen stabil, auch wenn sich Optimierungen ändern.
-4. **Eine Schreibweise pro Konzept.** Wo Kotlin mehrere Wege bietet, nennt dieses Dokument
-   den Hauptweg; Nebenwege sind ausdrücklich als gleichwertig markiert.
-5. **Lokal prüfbar.** Jede Funktion wird allein anhand ihrer Signatur und der Signaturen der
-   Aufgerufenen geprüft. Es gibt keine globale Inferenz über Funktionsgrenzen (nur das
-   Standard-Ownership der Signatur, Abschnitt 4.2).
+The keywords MUST, MUST NOT, SHOULD are meant as in RFC 2119.
 
 ---
 
-## 2. Allokation
+## 1. Principles
 
-### 2.1 Jeder Konstruktoraufruf ist eine Allokationsstelle
+1. **Every Mini program is a valid Kotlin program.** The memory model consists only of
+   annotations, interfaces, ordinary functions and context parameters
+   (`context(alloc: Arena)`, Kotlin 2.2+, no extra flag in 2.4.21). The whole corpus
+   is compiled with the real `kotlinc` (K2), see section 11. On the JVM, `free`, allocators
+   and annotations are ineffective or naive (`free` calls `close()` if the object is
+   `AutoCloseable`). The programs behave there exactly as under Mini, as long as there is no error.
+2. **Two modes, per file or class.** `Managed` (default) = refcounting, no obligations.
+   `Strict` = every allocation has a proven owner, otherwise a compile error.
+3. **The analysis is independent of placement.** Whether an object ends up on the stack,
+   in an arena or on the heap never changes whether a program is accepted.
+   Escape analysis (stack promotion) is a pure optimization (section 2.1).
+   Diagnostics are thus stable even when optimizations change.
+4. **One notation per concept.** Where Kotlin offers several ways, this document names
+   the main one; alternatives are explicitly marked as equivalent.
+5. **Locally checkable.** Each function is checked solely from its signature and the signatures
+   of its callees. There is no global inference across function boundaries (only the
+   default ownership of the signature, section 4.2).
 
-`Foo(...)` für eine Klasse `Foo` ist eine Allokationsstelle, ebenso Aufrufe, die ein solches
-Objekt als Rückgabewert erzeugen (Factory-Funktion mit `@Owned`-Rückgabe, siehe 4.2).
-Arrays und lokale Klassen/Lambdas verhalten sich wie Klassen.
+---
 
-Zwei Dinge werden strikt getrennt:
+## 2. Allocation
 
-* **Nomineller Allocator** (statisch, bestimmt die Pflichten): Regeln 2.2.
-* **Tatsächliche Platzierung** (Codegen): Ein Objekt, das nicht entkommt, liegt auf dem
-  **Stack**, unabhängig vom nominellen Allocator. Erst wenn es entkommt, wird tatsächlich
-  über den nominellen Allocator alloziert. Das meldet die Info M0201 (nicht im `.diag`).
+### 2.1 Every constructor call is an allocation site
 
-**Entkommen** heißt: der Wert fließt in eine Rückgabe, in einen `@Owned`-Parameter, in ein
-Feld oder eine globale Variable, in die Captures eines entkommenden Lambdas (5.5) oder über
-eine Thread-Grenze (5.9). Das Übergeben an einen geliehenen Parameter, Methodenaufrufe und
-Feldzugriffe lassen einen Wert nicht entkommen.
+`Foo(...)` for a class `Foo` is an allocation site, as are calls that produce such an
+object as their return value (factory function with `@Owned` return, see 4.2).
+Arrays and local classes/lambdas behave like classes.
+
+Two things are kept strictly separate:
+
+* **Nominal allocator** (static, determines the obligations): rules 2.2.
+* **Actual placement** (codegen): An object that does not escape lives on the
+  **stack**, regardless of the nominal allocator. Only when it escapes is it actually
+  allocated via the nominal allocator. This is reported by the info M0201 (not in the `.diag`).
+
+**Escaping** means: the value flows into a return, into an `@Owned` parameter, into a
+field or a global variable, into the captures of an escaping lambda (5.5) or across a
+thread boundary (5.9). Passing to a borrowed parameter, method calls and
+field accesses do not make a value escape.
 
 ```kotlin
 class Vec(val x: Int, val y: Int)
 fun len2(v: Vec): Int = v.x * v.x + v.y * v.y
 
 fun main() {
-    val v = Vec(3, 4)        // entkommt nicht: Stack, kein Allocator nötig, kein free
+    val v = Vec(3, 4)        // does not escape: stack, no allocator needed, no free
     println(len2(v))
 }
 ```
 
-### 2.2 Wie eine Allokationsstelle ihren Allocator wählt
+### 2.2 How an allocation site chooses its allocator
 
-Reihenfolge, die erste zutreffende Regel gilt:
+Order; the first applicable rule wins:
 
-1. **Context-Allocator.** Im Scope ist mindestens ein Context-Parameter eines
-   `Allocator`-Typs sichtbar (`context(alloc: Arena)` an der Funktion oder
-   `context(arena) { ... }` als Block). Der lexikalisch **innerste** gewinnt.
-   Sind auf derselben Ebene mehrere Allocator-Parameter sichtbar
-   (`context(a: Arena, h: Heap)`), ist die Wahl **mehrdeutig**: M0114. Lösung:
-   verschachtelte `context(x) { ... }`-Blöcke (der innere gewinnt).
-2. **Klassen-Annotation** `@AllocatedBy(X::class)` an der Klasse. Sie ist eine
-   **Einschränkung**: gilt sie, kommen in Regel 1 nur Context-Allocatoren in Frage, die
-   Instanzen von `X` sind. Gibt es keinen, benutzt der Compiler die globale Standardinstanz
-   von `X`, falls es eine gibt. Das ist nur bei `Heap` und `Rc` der Fall (zustandslos);
-   `Arena` und `Pool` brauchen immer einen Context.
-3. **Modul-Default.** In **Managed**-Dateien ist der Default `Rc`. In **Strict**-Dateien
-   gibt es keinen Default.
-4. Kein Allocator gefunden:
-   * Der Wert entkommt nicht: er liegt auf dem Stack, ohne Pflichten (2.1).
-   * Der Wert entkommt: Fehler **M0204**.
+1. **Context allocator.** At least one context parameter of an
+   `Allocator` type is visible in scope (`context(alloc: Arena)` on the function or
+   `context(arena) { ... }` as a block). The lexically **innermost** wins.
+   If several allocator parameters are visible at the same level
+   (`context(a: Arena, h: Heap)`), the choice is **ambiguous**: M0114. Solution:
+   nested `context(x) { ... }` blocks (the inner one wins).
+2. **Class annotation** `@AllocatedBy(X::class)` on the class. It is a
+   **restriction**: if it applies, rule 1 only considers context allocators that are
+   instances of `X`. If there is none, the compiler uses the global default instance
+   of `X`, if there is one. That is only the case for `Heap` and `Rc` (stateless);
+   `Arena` and `Pool` always need a context.
+3. **Module default.** In **Managed** files the default is `Rc`. In **Strict** files
+   there is no default.
+4. No allocator found:
+   * The value does not escape: it lives on the stack, without obligations (2.1).
+   * The value escapes: error **M0204**.
 
-Abgeleitet daraus, welche Klasse welches Verhalten hat (bestimmt durch die Datei oder
-Klasse, in der die **Klasse deklariert** ist, nicht den Aufrufer):
+Derived from this, which class has which behavior (determined by the file or
+class in which the **class is declared**, not by the caller):
 
-| Klasse deklariert in | nomineller Allocator ohne Context |
+| Class declared in | nominal allocator without context |
 |---|---|
-| `Managed`-Datei/Klasse | `Rc` (keine Pflichten) |
-| `Strict`-Datei/Klasse | keiner: Stack oder M0204 |
+| `Managed` file/class | `Rc` (no obligations) |
+| `Strict` file/class | none: stack or M0204 |
 
-Eine Strict-Klasse in Managed-Code zu konstruieren, ist erlaubt und benutzt Regel 1 und 2,
-sonst `Rc` (siehe 6.2 für die Grenze).
+Constructing a Strict class in Managed code is allowed and uses rules 1 and 2,
+otherwise `Rc` (see 6.2 for the boundary).
 
 ```kotlin
 class Node(val value: Int, var next: Node?)
@@ -101,87 +100,87 @@ class Node(val value: Int, var next: Node?)
 context(alloc: Arena)
 fun buildList(n: Int): Node? {
     var head: Node? = null
-    for (i in n downTo 1) head = Node(i, head)    // Regel 1: alloc (Arena)
-    return head                                   // Region des Aufrufers, siehe 2.4
+    for (i in n downTo 1) head = Node(i, head)    // rule 1: alloc (Arena)
+    return head                                   // caller's region, see 2.4
 }
 ```
 
 ```kotlin
-fun make(): @Owned Box = Box(1)     // Strict, entkommt, kein Allocator: M0204
+fun make(): @Owned Box = Box(1)     // Strict, escapes, no allocator: M0204
 ```
 
-Ein nomineller Allocator mit dem Trait `Deallocating` erzeugt die Pflicht „genau einmal
-freigeben oder weiterreichen“ (Abschnitt 3 und 5). Ein `Scoped`-Allocator erzeugt die Pflicht
-„darf den Scope nicht verlassen“ (2.4). Ein `Managed`-Allocator (`Rc`) erzeugt keine Pflicht.
+A nominal allocator with the trait `Deallocating` creates the obligation "free exactly
+once or pass on" (sections 3 and 5). A `Scoped` allocator creates the obligation
+"must not leave the scope" (2.4). A `Managed` allocator (`Rc`) creates no obligation.
 
-### 2.3 Die mitgelieferten Allocatoren (`mini.memory`)
+### 2.3 The bundled allocators (`mini.memory`)
 
-Alle als Kotlin-Quelltext in `stdlib/mini/memory/`.
+All as Kotlin source in `stdlib/mini/memory/`.
 
-| Typ | Traits | Ressource? | Bemerkung |
+| Type | Traits | Resource? | Remark |
 |---|---|---|---|
-| `Heap` | `Deallocating`, `ThreadSafe` | nein | malloc/free. Zustandslos: `Heap()` zu erzeugen kostet nichts und erzeugt keine Pflicht. |
-| `Arena` | `Scoped` (also `AutoCloseable`) | **ja** | Region. Muss geschlossen werden (`use {}` oder `close()`): sonst M0102. Nicht `ThreadSafe`. |
-| `Pool<T>` | `Deallocating`, `AutoCloseable` | **ja** | Feste Kapazität, Objekte einzeln freigegeben. Muss geschlossen werden. Nicht `ThreadSafe`. |
-| `Rc` | `Managed`, `ThreadSafe` | nein | Refcounting, Default von Managed-Code. |
-| `DebugAllocator(inner)` | `Deallocating`, `ThreadSafe` | nein | Umhüllt einen `Deallocating`-Allocator und meldet unter Mini beim Programmende Lecks mit Allokationsstelle. |
+| `Heap` | `Deallocating`, `ThreadSafe` | no | malloc/free. Stateless: creating `Heap()` costs nothing and creates no obligation. |
+| `Arena` | `Scoped` (hence `AutoCloseable`) | **yes** | Region. Must be closed (`use {}` or `close()`): otherwise M0102. Not `ThreadSafe`. |
+| `Pool<T>` | `Deallocating`, `AutoCloseable` | **yes** | Fixed capacity, objects freed individually. Must be closed. Not `ThreadSafe`. |
+| `Rc` | `Managed`, `ThreadSafe` | no | Refcounting, default of Managed code. |
+| `DebugAllocator(inner)` | `Deallocating`, `ThreadSafe` | no | Wraps a `Deallocating` allocator and, under Mini, reports leaks with their allocation site at program end. |
 
 Interfaces: `Allocator { allocate(size, align): NativePtr? }`,
 `Deallocating : Allocator { free(ptr); free(obj) }`, `Scoped : Allocator, AutoCloseable`,
-`Managed : Allocator`, `ThreadSafe` (Marker).
+`Managed : Allocator`, `ThreadSafe` (marker).
 
-**Regel: Allocator-Instanzen sind selbst keine verfolgten Werte**, mit Ausnahme der
-Ressourcen der Tabelle (`Arena`, `Pool`): diese sind `AutoCloseable`-Besitzer wie jedes
-andere Strict-Objekt und folgen 3.2. Sie leben im Normalfall auf dem Stack.
+**Rule: allocator instances are themselves not tracked values**, with the exception of the
+resources in the table (`Arena`, `Pool`): these are `AutoCloseable` owners like any
+other Strict object and follow 3.2. They normally live on the stack.
 
-### 2.4 Arena und `Scoped`
+### 2.4 Arena and `Scoped`
 
-Alle Objekte einer Arena sterben gemeinsam, wenn die Arena geschlossen wird. Für sie gibt
-es **keine Free-Pflicht**, aber eine **Lebensdauerbeschränkung**:
+All objects of an arena die together when the arena is closed. For them there is
+**no free obligation**, but a **lifetime restriction**:
 
-> Ein Wert, der in der Arena `a` alloziert wurde (Regel 2.2/1 mit `a`), darf den Scope von
-> `a` nicht verlassen. Der Scope von `a` ist bei `a = Arena().use { a -> ... }` der
-> Lambda-Körper, bei `val a = Arena()` der Bereich bis zu `a.close()`.
+> A value allocated in the arena `a` (rule 2.2/1 with `a`) must not leave the scope of
+> `a`. The scope of `a` is the lambda body for `a = Arena().use { a -> ... }`, and the
+> region up to `a.close()` for `val a = Arena()`.
 
-Verboten (M0105) sind insbesondere:
+In particular, the following are forbidden (M0105):
 
-* `return` aus dem Scope, Wert des `use`-Blocks, Wert eines `context(a) { ... }`-Blocks,
-  der außerhalb des Scopes von `a` benutzt wird,
-* Zuweisung an ein Feld eines Objekts, das länger lebt, oder an eine globale Variable,
-* Capture in einem Lambda, das den Scope verlässt (5.5).
+* `return` from the scope, the value of the `use` block, the value of a `context(a) { ... }` block
+  that is used outside the scope of `a`,
+* assignment to a field of an object that lives longer, or to a global variable,
+* capture in a lambda that leaves the scope (5.5).
 
-Erlaubt ist das Weiterreichen **nach innen** (Aufrufargumente an geliehene Parameter) und
-das Herauskopieren von Werten ohne Allokation (`Int`, `Boolean`, ...). Eine Funktion mit
-`context(a: Arena)` darf Arena-Objekte an ihren Aufrufer zurückgeben: Die Region ist die
-des Aufrufers, und dort wird der Scope-Test fortgesetzt.
+Passing **inward** (call arguments to borrowed parameters) and copying out values
+without allocation (`Int`, `Boolean`, ...) are allowed. A function with
+`context(a: Arena)` may return arena objects to its caller: the region is
+the caller's, and the scope test continues there.
 
 ```kotlin
 fun main() {
     val total = Arena().use { arena ->
         context(arena) {
-            val list = buildList(1000)        // Arena-Objekte
-            sum(list)                         // Int verlässt den Scope: ok
+            val list = buildList(1000)        // arena objects
+            sum(list)                         // Int leaves the scope: ok
         }
-    }                                         // Arena freigegeben
+    }                                         // arena released
     println(total)
 }
 ```
 
-**Arena-Objekte besitzen keine fremden Referenzen (M0115).** Eine Arena führt beim
-`close()`/Reset **nie** `dispose` (weder `close()` noch Feld-Glue) der Objekte aus; sie
-führt keine Einzelbuchführung (so arbeitet die Runtime, siehe `runtime/README.md`).
-Deshalb darf ein Objekt, das in einer Arena liegt, in seinen **besitzenden** Feldern
-(auch Property-Parametern des Konstruktors) nur enthalten: Primitive, konstante String-Literale
-(statisch, ohne Refcount), und Objekte **derselben Arena**. Der Compiler meldet M0115, wenn ein
-Wert eines anderen Allocators in ein besitzendes Feld eines Arena-Objekts fließt (Konstruktor-
-argument oder Zuweisung): refcounted `String`, Managed-Objekte (`Rc`), Heap- und Pool-Objekte.
-Nicht besitzende Felder (`@Borrowed`) sind erlaubt, z. B. `@Borrowed val name: String`;
-dann ist der Aufrufer für die Lebensdauer verantwortlich (Lücke wie bei 5.3).
+**Arena objects do not own foreign references (M0115).** On `close()`/reset an arena
+**never** runs `dispose` (neither `close()` nor field glue) of the objects; it keeps
+no per-object bookkeeping (this is how the runtime works, see `runtime/README.md`).
+Therefore an object that lives in an arena may contain in its **owning** fields
+(including property parameters of the constructor) only: primitives, constant string literals
+(static, without refcount), and objects **of the same arena**. The compiler reports M0115 when a
+value of another allocator flows into an owning field of an arena object (constructor
+argument or assignment): refcounted `String`, Managed objects (`Rc`), heap and pool objects.
+Non-owning fields (`@Borrowed`) are allowed, e.g. `@Borrowed val name: String`;
+the caller is then responsible for the lifetime (gap as in 5.3).
 
-Ein einzelnes Arena-Objekt kann nicht freigegeben und nicht an einen `@Owned`-Parameter
-übergeben werden (M0106). Hat ein Arena-Objekt `close()` (Ressourcen, die ein Ende brauchen),
-darf `close()` direkt aufgerufen werden (es gibt den Speicher nicht frei, der Speicher
-gehört der Arena); `free()` bleibt verboten.
+A single arena object cannot be freed and cannot be passed to an `@Owned` parameter
+(M0106). If an arena object has `close()` (resources that need an end),
+`close()` may be called directly (it does not release the memory, the memory
+belongs to the arena); `free()` remains forbidden.
 
 ### 2.5 `@AllocatedBy`
 
@@ -191,7 +190,7 @@ class Item(val id: Int)
 
 Pool<Item>(64).use { pool ->
     context(pool) {
-        val i = Item(1)          // Pool<Item> aus dem Context (Regel 2)
+        val i = Item(1)          // Pool<Item> from the context (rule 2)
         i.free()
     }
 }
@@ -199,45 +198,45 @@ Pool<Item>(64).use { pool ->
 
 ---
 
-## 3. Freigabe
+## 3. Release
 
-### 3.1 Hauptschreibweise: `x.free()`
+### 3.1 Main notation: `x.free()`
 
-Es gibt **eine** Hauptschreibweise für das Beenden des Besitzes: die Erweiterungsfunktion
+There is **one** main notation for ending ownership: the extension function
 
 ```kotlin
 fun Any?.free()          // package mini.memory
 ```
 
-Begründung:
+Rationale:
 
-* Sie ist gültiges Kotlin und kompiliert mit dem echten `kotlinc` ohne Sonderstatus.
-* Sie braucht den Allocator nicht zu nennen. Das Objekt weiß zur Laufzeit, woher es kommt;
-  der Compiler weiß es statisch aus dem Datenfluss und prüft es (M0106, M0107).
-  Das ist wichtig für `@Owned`-Parameter, deren Allocator der Aufrufer wählt.
-* Sie ist auf `Any?` definiert. `x.free()` und `x?.free()` sind für `T?` beide korrekt
-  (5.10), und `free` auf `null` ist ein No-op.
-* Sie liest sich in Ketten (`make().free()`) und im `finally` kurz.
+* It is valid Kotlin and compiles with the real `kotlinc` without special status.
+* It does not need to name the allocator. The object knows at runtime where it came from;
+  the compiler knows it statically from the data flow and checks it (M0106, M0107).
+  This matters for `@Owned` parameters whose allocator the caller chooses.
+* It is defined on `Any?`. `x.free()` and `x?.free()` are both correct for `T?`
+  (5.10), and `free` on `null` is a no-op.
+* It reads briefly in chains (`make().free()`) and in `finally`.
 
-Bedeutung: `x.free()` (1) ruft `close()` auf, wenn `x` `AutoCloseable` ist; (2) gibt dann alle
-**Felder frei, die `x` besitzt** (rekursiv, 5.3); (3) gibt den Speicher von `x` an den
-Allocator zurück, der ihn geliefert hat (bei Stack-Objekten No-op).
+Meaning: `x.free()` (1) calls `close()` if `x` is `AutoCloseable`; (2) then frees all
+**fields that `x` owns** (recursively, 5.3); (3) returns the memory of `x` to the
+allocator that supplied it (no-op for stack objects).
 
-Gleichwertige Nebenwege (keine zusätzliche Pflicht, dieselbe Analyse):
+Equivalent alternatives (no additional obligation, same analysis):
 
-* `alloc.free(x)` (3.3), wenn man den Allocator ausdrücklich nennen will.
-* `x.close()` auf einem `AutoCloseable`-Besitzer und `x.use { ... }` (3.2).
-* Das Ende des Scopes einer Arena (3.4).
+* `alloc.free(x)` (3.3), if you want to name the allocator explicitly.
+* `x.close()` on an `AutoCloseable` owner and `x.use { ... }` (3.2).
+* The end of an arena's scope (3.4).
 
-### 3.2 `use {}` und `close()`
+### 3.2 `use {}` and `close()`
 
-Für `AutoCloseable`-Klassen ist `close()` der Destruktor. `x.use { ... }` ruft `close()` am
-Ende des Blocks auf **jedem** Pfad auf (auch bei `throw`, `return`, `break`) und beendet
-damit den Besitz von `x`. Im Block ist `it` (oder der Lambda-Parameter) **geliehen**. Der
-Aufruf `x.close()` auf einem Besitzer zählt wie `x.free()`: ein zweiter Aufruf von `close()`
-oder `free()` ist M0103.
+For `AutoCloseable` classes, `close()` is the destructor. `x.use { ... }` calls `close()` at the
+end of the block on **every** path (also on `throw`, `return`, `break`) and thereby ends
+the ownership of `x`. Inside the block, `it` (or the lambda parameter) is **borrowed**. The
+call `x.close()` on an owner counts like `x.free()`: a second call of `close()`
+or `free()` is M0103.
 
-`use` ist `inline`. Die Analyse sieht in den Block hinein (5.5).
+`use` is `inline`. The analysis sees into the block (5.5).
 
 ```kotlin
 class Res(val name: String) : AutoCloseable {
@@ -246,71 +245,71 @@ class Res(val name: String) : AutoCloseable {
 
 context(h: Heap)
 fun run() {
-    Res("a").use { println("using " + it.name) }   // close am Ende
+    Res("a").use { println("using " + it.name) }   // close at the end
     val b = Res("b")
-    b.free()                                       // ruft close() auf
+    b.free()                                       // calls close()
 }
 ```
 
-Nach `close()`/`free()` laufen die generierten Felderfreigaben (5.3). Ein
-`close()`-Körper darf **keine** besessenen Felder selbst freigeben: dafür sorgt der Compiler.
+After `close()`/`free()`, the generated field releases run (5.3). A
+`close()` body must **not** free owned fields itself: the compiler takes care of that.
 
 ### 3.3 `alloc.free(x)`
 
-`Deallocating.free(obj: Any?)` ist `x.free()` mit ausdrücklich genanntem Allocator. Kennt
-der Compiler den Allocator von `x`, wird verglichen: `pool.free(x)` für ein Heap-Objekt ist
-**M0108**. Ist der Allocator nicht statisch bekannt (z. B. `@Owned`-Parameter), wird die
-Prüfung in `DebugAllocator`/Debug-Builds zur Laufzeit gemacht. Der Aufruf von
-`scopedAlloc.free(x)` compiliert nicht (Kotlin-Fehler), denn `Scoped` hat kein `free`.
+`Deallocating.free(obj: Any?)` is `x.free()` with the allocator named explicitly. If
+the compiler knows the allocator of `x`, it compares: `pool.free(x)` for a heap object is
+**M0108**. If the allocator is not statically known (e.g. an `@Owned` parameter), the
+check is done at runtime in `DebugAllocator`/debug builds. The call
+`scopedAlloc.free(x)` does not compile (Kotlin error), because `Scoped` has no `free`.
 
-### 3.4 Arena-Ende
+### 3.4 End of an arena
 
-`Arena.close()` (auch durch `use`) gibt alle Arena-Objekte frei, **ohne** `close()` ihrer
-Klassen und ohne Feld-Glue aufzurufen (Entscheidung des Projekteigners, passend zur Runtime).
-Deshalb M0115 (2.4). Ressourcen in Arenen müssen einzeln mit `close()` beendet werden (2.4).
+`Arena.close()` (also via `use`) frees all arena objects **without** calling `close()` of their
+classes and without field glue (decision of the project owner, matching the runtime).
+Hence M0115 (2.4). Resources in arenas must be ended individually with `close()` (2.4).
 
 ---
 
-## 4. Ownership: Grundbegriffe
+## 4. Ownership: Basic Concepts
 
-### 4.1 Was verfolgt wird
+### 4.1 What is tracked
 
-Die Analyse verfolgt **Referenzen auf Instanzen von Klassen, die in einer Strict-Datei
-(oder Strict-Klasse) deklariert sind**, sowie `AutoCloseable`-Allocatoren (`Arena`, `Pool`).
-Alles andere ist **nicht verfolgt** und unterliegt keinen Pflichten: Primitive, `String`,
-Objekte von Managed-Klassen (Refcount, „Lebensdauer extern“), Funktionstypen ohne
-verfolgte Captures, `Heap`/`Rc`/`DebugAllocator` (Allocatoren ohne Ressource).
+The analysis tracks **references to instances of classes declared in a Strict file
+(or Strict class)**, as well as `AutoCloseable` allocators (`Arena`, `Pool`).
+Everything else is **not tracked** and subject to no obligations: primitives, `String`,
+objects of Managed classes (refcount, "lifetime external"), function types without
+tracked captures, `Heap`/`Rc`/`DebugAllocator` (allocators without a resource).
 
-Eine verfolgte Referenz ist in einem Moment in genau einem **Zustand** (5.2). Verfolgte
-Referenzen haben einen **Besitzer**: eine lokale Variable, ein Parameter, ein Feld.
+A tracked reference is in exactly one **state** at any moment (5.2). Tracked
+references have an **owner**: a local variable, a parameter, a field.
 
-### 4.2 Owned und Borrowed: Defaults
+### 4.2 Owned and Borrowed: defaults
 
 | Position | Default | Annotation |
 |---|---|---|
-| Parameter einer Funktion | **geliehen** | `p: @Owned T` übernimmt den Besitz |
-| Rückgabe einer Funktion | **besitzend** | `: @Borrowed T` gibt eine Leihgabe zurück (4.3) |
-| Property-Parameter des Konstruktors (`class C(var x: T)`) | **besitzend** (= Feld) | `@Borrowed` |
-| Feld | **besitzend** | `@Borrowed var f: T?` (ungeprüfte Rückverweise, 5.3) |
-| lokale Variable | **besitzend**, wenn mit einem frischen Wert (`Foo(...)`, Aufruf mit besitzender Rückgabe) oder `a.move()` initialisiert; **Alias (Leihgabe)**, wenn mit einem bestehenden Besitzer initialisiert/zugewiesen (`val b = a`) | `a.move()` oder `val b: @Owned T = a` macht `b` zum Besitzer; `@Borrowed val b = a` ist redundant (erlaubt, ohne Wirkung) |
-| `this` und Extension-Receiver | **geliehen** | – |
-| Parameter von Managed-Funktionen | **extern verwaltet** (6.2) | `@Borrowed` |
+| Parameter of a function | **borrowed** | `p: @Owned T` takes over ownership |
+| Return of a function | **owning** | `: @Borrowed T` returns a loan (4.3) |
+| Property parameter of the constructor (`class C(var x: T)`) | **owning** (= field) | `@Borrowed` |
+| Field | **owning** | `@Borrowed var f: T?` (unchecked back references, 5.3) |
+| Local variable | **owning** if initialized with a fresh value (`Foo(...)`, call with owning return) or `a.move()`; **alias (loan)** if initialized/assigned with an existing owner (`val b = a`) | `a.move()` or `val b: @Owned T = a` makes `b` an owner; `@Borrowed val b = a` is redundant (allowed, no effect) |
+| `this` and extension receiver | **borrowed** | – |
+| Parameters of Managed functions | **externally managed** (6.2) | `@Borrowed` |
 
-Es gibt in P1 **keine Inferenz über Funktionsgrenzen**: Eine Funktion, die ihren Parameter
-speichert, freigibt oder als besessen zurückgibt, braucht `@Owned`, sonst M0107/M0109. Die
-Hilfe der Diagnose nennt die Annotation.
+In P1 there is **no inference across function boundaries**: a function that stores,
+frees or returns its parameter as owned needs `@Owned`, otherwise M0107/M0109. The
+diagnostic's help names the annotation.
 
-Als Annotation steht in Typposition die Hauptform (`b: @Owned Buffer`, `: @Owned Buffer?`,
-`List<@Owned T>` ist P3, siehe 5.4). Deklarationsposition (`@Owned fun f()`, `@Owned val x`)
-ist gleichwertig.
+As an annotation, the main form is in type position (`b: @Owned Buffer`, `: @Owned Buffer?`;
+`List<@Owned T>` is P3, see 5.4). Declaration position (`@Owned fun f()`, `@Owned val x`)
+is equivalent.
 
-### 4.3 Geliehene Ergebnisse
+### 4.3 Borrowed results
 
-Eine Funktion mit `: @Borrowed T` liefert eine Leihgabe. Die Leihgabe ist gültig, **bis
-einer der Besitzer, aus denen sie hervorging (Receiver und alle geliehenen Argumente), frei-
-gegeben, verschoben oder überschrieben wird.** Jede Verwendung danach ist M0101. Eine
-Leihgabe darf weder in einem besitzenden Feld gespeichert noch als besessen zurückgegeben
-werden: M0109.
+A function with `: @Borrowed T` returns a loan. The loan is valid **until
+one of the owners it derives from (receiver and all borrowed arguments) is freed,
+moved or overwritten.** Any use afterwards is M0101. A
+loan must neither be stored in an owning field nor returned as owned:
+M0109.
 
 ```kotlin
 fun first(h: Holder): @Borrowed Box? = h.item
@@ -321,178 +320,178 @@ holder.free()
 println(peek?.v)               // M0101
 ```
 
-### 4.4 Gültigkeit der Annotationen
+### 4.4 Validity of the annotations
 
-`@Owned`/`@Borrowed` sind nur auf Typen verfolgter Klassen (4.1, auch nullable) sinnvoll.
-`@Owned` auf Primitiven, `String` oder Managed-Klassen ist ein Fehler: **M0111**.
-`@Borrowed` ist zusätzlich auf Feldern und Parametern beliebiger Referenztypen (auch `String`,
-Managed) erlaubt und bedeutet dort „nicht besitzend“ (nötig für Felder von Arena-Objekten, 2.4). Beide
-zugleich an derselben Stelle: ebenfalls M0111. `@Borrowed` auf einer `@Owned`-Rückgabe
-widerspricht sich: M0111.
+`@Owned`/`@Borrowed` only make sense on types of tracked classes (4.1, also nullable).
+`@Owned` on primitives, `String` or Managed classes is an error: **M0111**.
+`@Borrowed` is additionally allowed on fields and parameters of arbitrary reference types (also `String`,
+Managed) and there means "non-owning" (needed for fields of arena objects, 2.4). Both
+at the same place: likewise M0111. `@Borrowed` on an `@Owned` return
+is contradictory: M0111.
 
 ---
 
-## 5. Flussregeln (Strict)
+## 5. Flow Rules (Strict)
 
-### 5.1 Moves und Borrows
+### 5.1 Moves and borrows
 
-**Einfache Zuweisung leiht.** `val b = a`, `var b = a` und `b = a` mit einem bestehenden
-Besitzer `a` (lokale Variable, besessener Parameter, besessenes Feld) auf der rechten Seite
-machen `b` zu einem **Alias** (Leihgabe): `a` bleibt Besitzer, `b` darf lesen, aber nicht
-freigeben oder besitzen. Ein Alias lebt höchstens so lange wie sein Besitzer (siehe 4.3).
+**Simple assignment borrows.** `val b = a`, `var b = a` and `b = a` with an existing
+owner `a` (local variable, owned parameter, owned field) on the right-hand side
+make `b` an **alias** (loan): `a` stays the owner, `b` may read, but not
+free or own. An alias lives at most as long as its owner (see 4.3).
 
-Ein **Move** überträgt den Besitz. Er geschieht **implizit** genau an diesen Stellen:
+A **move** transfers ownership. It happens **implicitly** at exactly these places:
 
-1. `return a` aus einer Funktion mit besitzender Rückgabe,
-2. Argument an einen `@Owned`-Parameter (auch Property-Parameter des Konstruktors),
-3. Zuweisung an ein besitzendes **Feld** (`s.item = a`),
-4. Capture in einem Thread-Lambda (5.9); ferner `a.use { }` / `a.close()` (3.2),
+1. `return a` from a function with owning return,
+2. argument to an `@Owned` parameter (also property parameter of the constructor),
+3. assignment to an owning **field** (`s.item = a`),
+4. capture in a thread lambda (5.9); also `a.use { }` / `a.close()` (3.2),
 
-und **ausdrücklich** durch die Hauptschreibweise `a.move()`:
+and **explicitly** through the main notation `a.move()`:
 
 ```kotlin
-fun <T> T.move(): T = this      // package mini.memory, vom Compiler erkannt
+fun <T> T.move(): T = this      // package mini.memory, recognized by the compiler
 ```
 
-`val b = a.move()` verschiebt `a` in die neue lokale Variable `b`; `b` ist Besitzer.
-Gleichwertig ist die Typannotation `val b: @Owned Box = a`. Begründung für `move()` als
-Hauptform: Es ist ein gewöhnlicher Ausdruck und funktioniert an jeder Stelle (Argument,
-`return`, rechte Seite, Teil-Move aus Feldern: `s.item.move()`), braucht keine Deklaration und
-ist beim Lesen auffällig. Frische Werte (`val b = Box(1)`, `val b = make()`) sind ohnehin
-Besitzer; eine Variable, die einen Besitzer bekommt, wird mit `move()` neu gesetzt
+`val b = a.move()` moves `a` into the new local variable `b`; `b` is the owner.
+The type annotation `val b: @Owned Box = a` is equivalent. Rationale for `move()` as
+the main form: it is an ordinary expression and works at any place (argument,
+`return`, right-hand side, partial move out of fields: `s.item.move()`), needs no declaration and
+stands out when reading. Fresh values (`val b = Box(1)`, `val b = make()`) are owners
+anyway; a variable that receives an owner is reassigned with `move()`
 (`b = a.move()`).
 
-**Regeln für Aliase**
+**Rules for aliases**
 
-* Verwendung eines Alias, nachdem sein Besitzer freigegeben wurde: **M0101**; nachdem er
-  verschoben wurde: **M0104**; nachdem der Scope des Besitzers endete: ebenso (Besitzer
-  `Freed`/`Moved`, je nachdem, wie er den Scope verließ). Gemeldet wird an der Verwendung des Alias.
-* `alias.free()`, `alias.close()`, `alias.use { }`, Übergabe an einen `@Owned`-Parameter,
-  Zuweisung an ein besitzendes Feld und `return alias` aus einer besitzenden Funktion:
-  **M0107** (Freigabe) beziehungsweise **M0109** (speichern/zurückgeben). Das ändert den
-  Zustand des Besitzers nicht.
-* Ein Alias kann neu zugewiesen werden (`var cur = n; cur = cur.next`): er leiht dann vom
-  neuen Besitzer.
+* Using an alias after its owner was freed: **M0101**; after it
+  was moved: **M0104**; after the owner's scope ended: likewise (owner
+  `Freed`/`Moved`, depending on how it left the scope). Reported at the use of the alias.
+* `alias.free()`, `alias.close()`, `alias.use { }`, passing to an `@Owned` parameter,
+  assignment to an owning field and `return alias` from an owning function:
+  **M0107** (release) or **M0109** (store/return). This does not change the
+  owner's state.
+* An alias can be reassigned (`var cur = n; cur = cur.next`): it then borrows from the
+  new owner.
 
-**Nutzung nach Move** (M0104): Jeder Zugriff auf einen verschobenen Slot (außer einer
-neuen Zuweisung, die ihn wieder initialisiert). Ebenso ein Move in einer Schleife, der im
-nächsten Durchlauf wieder trifft (5.7).
+**Use after move** (M0104): any access to a moved slot (except a
+new assignment that reinitializes it). Likewise a move in a loop that hits again in the
+next iteration (5.7).
 
 ```kotlin
 val a = Box(1)
-val b = a               // Alias: a bleibt Besitzer
+val b = a               // alias: a stays owner
 println(b.v)            // ok
 a.free()
-println(b.v)            // M0101: b leiht von a, a ist freigegeben
+println(b.v)            // M0101: b borrows from a, a is freed
 
 val c = Box(2)
-val d = c.move()        // Besitz wandert nach d
+val d = c.move()        // ownership moves to d
 println(c.v)            // M0104
 d.free()
 
 var list: Node? = null
-for (i in 1..5) list = push(list, i)   // ok: list wird an @Owned-Parameter verschoben und neu gesetzt
+for (i in 1..5) list = push(list, i)   // ok: list is moved into the @Owned parameter and reassigned
 ```
 
-Herausnehmen aus einem Feld ist ein **Teil-Move** und braucht `move()`: siehe 5.3.
+Taking out of a field is a **partial move** and needs `move()`: see 5.3.
 
-### 5.2 Zustände (Modell der Analyse)
+### 5.2 States (model of the analysis)
 
-Für jeden besitzenden Slot gilt an jedem Programmpunkt ein Zustand:
+For every owning slot, a state holds at every program point:
 
-| Zustand | Bedeutung |
+| State | Meaning |
 |---|---|
-| `Owned` | gültig, Pflicht offen |
-| `Null` | bei `T?` bekannt `null`, keine Pflicht |
-| `Freed` | freigegeben (3) |
-| `Moved` | verschoben (5.1) |
-| `Maybe(a, b)` | Vereinigung zweier Pfade; Verbund an Zusammenführungen |
+| `Owned` | valid, obligation open |
+| `Null` | for `T?` known to be `null`, no obligation |
+| `Freed` | freed (3) |
+| `Moved` | moved (5.1) |
+| `Maybe(a, b)` | union of two paths; join at merge points |
 
-Regeln:
+Rules:
 
-* **Verwendung** (Lesen, Methodenaufruf, Borrow) in `Freed`/`Moved`/`Maybe` mit solchem
-  Anteil: M0101 bzw. M0104. Die Meldung sagt „may have been freed“, wenn nur ein Pfad
-  betroffen ist.
-* **Freigabe** (`free`, `close`, `use`-Ende) in `Freed`/`Maybe` mit `Freed`-Anteil: M0103.
-  In `Moved`: M0107 (nicht mehr besessen).
-* **Scope-Ende, Return, Break, Continue, Throw-Kante** eines Slots in `Owned` oder in
-  `Maybe` mit `Owned`-Anteil: M0102 mit Pfadart (7.2).
-* **Überschreiben** eines Slots in `Owned`: M0102, Pfadart `overwritten`.
-* **Kaskadenunterdrückung:** Nach einer Meldung zu einem Slot setzt die Analyse ihn auf
-  den Zustand, der den nächsten Schritt konsistent macht (nach M0101/M0104: `Owned`; nach
-  M0103: `Freed`; nach M0108: `Freed`). So erzeugt eine Ursache genau eine Meldung.
-* Zwei Pfade mit `Null` und `Owned` ergeben einen Zustand, bei dem `free()` erlaubt ist und
-  `x == null` die Pflicht beseitigt (5.10).
+* **Use** (read, method call, borrow) in `Freed`/`Moved`/`Maybe` with such a
+  component: M0101 or M0104. The message says "may have been freed" if only one path
+  is affected.
+* **Release** (`free`, `close`, end of `use`) in `Freed`/`Maybe` with a `Freed` component: M0103.
+  In `Moved`: M0107 (no longer owned).
+* **Scope end, return, break, continue, throw edge** of a slot in `Owned` or in
+  `Maybe` with an `Owned` component: M0102 with path kind (7.2).
+* **Overwriting** a slot in `Owned`: M0102, path kind `overwritten`.
+* **Cascade suppression:** After a report about a slot, the analysis sets it to
+  the state that makes the next step consistent (after M0101/M0104: `Owned`; after
+  M0103: `Freed`; after M0108: `Freed`). Thus one cause produces exactly one message.
+* Two paths with `Null` and `Owned` yield a state in which `free()` is allowed and
+  `x == null` removes the obligation (5.10).
 
-### 5.3 Felder
+### 5.3 Fields
 
-* Felder verfolgter Typen sind **besitzend**. Ein Objekt besitzt seine Felder; `x.free()`
-  gibt sie rekursiv frei (Feld-Glue), nachdem `close()` gelaufen ist. Ein Objekt, das
-  Teil eines besessenen Baumes ist, wird nie einzeln freigegeben, sondern mit der Wurzel.
-* Property-Parameter des Konstruktors besitzen (= Feld): `Node(i, head)` **verschiebt** `head`.
-* **Überschreiben** eines besitzenden Feldes mit unbekanntem altem Inhalt: M0102 (Pfadart
-  `overwritten`, Position: die Zuweisung). Vorher `f.free()` oder aus dem Feld herausverschieben.
-* **Teil-Moves:** `val old = s.item.move()` (ohne `move()` wäre `old` nur ein Alias; rechte Seite ein besitzendes Feld einer lokalen Wurzel `s`,
-  auch wenn `s` ein geliehener Parameter ist) verschiebt das Feld heraus. Das Feld ist
-  danach `Moved`. Vor **jedem Aufruf** (außer Methoden von lokalen Besitzern mit Borrow) und
-  vor dem **Funktionsende** muss jedes verschobene Feld wieder gültig sein (neue
-  Zuweisung, auch `null`), sonst **M0113**. Die Verfolgung ist **eine Ebene tief** (`local.field`).
-* `@Borrowed var parent: Node?` an einem Feld ist ein **ungeprüfter Rückverweis**: Zuweisung
-  erlaubt, keine Lebensdauerprüfung (Lücke, in P3 geschlossen).
-* Felder in `Managed`-Klassen: siehe 6.2.
+* Fields of tracked types are **owning**. An object owns its fields; `x.free()`
+  frees them recursively (field glue) after `close()` has run. An object that is
+  part of an owned tree is never freed individually, but together with the root.
+* Property parameters of the constructor own (= field): `Node(i, head)` **moves** `head`.
+* **Overwriting** an owning field with unknown old content: M0102 (path kind
+  `overwritten`, position: the assignment). Beforehand `f.free()` or move out of the field.
+* **Partial moves:** `val old = s.item.move()` (without `move()`, `old` would only be an alias; right-hand side an owning field of a local root `s`,
+  even if `s` is a borrowed parameter) moves the field out. The field is
+  then `Moved`. Before **any call** (except methods of local owners with borrow) and
+  before the **end of the function**, every moved field must be valid again (new
+  assignment, also `null`), otherwise **M0113**. Tracking is **one level deep** (`local.field`).
+* `@Borrowed var parent: Node?` on a field is an **unchecked back reference**: assignment
+  allowed, no lifetime check (gap, closed in P3).
+* Fields in `Managed` classes: see 6.2.
 
 ```kotlin
 fun swapOut(s: Slot): @Owned Box? {
-    val old = s.item.move() // Teil-Move
-    s.item = null           // wiederhergestellt
+    val old = s.item.move() // partial move
+    s.item = null           // restored
     return old
 }
 ```
 
-### 5.4 Collections besessener Werte
+### 5.4 Collections of owned values
 
-**In P1 nicht unterstützt.** Verfolgte Werte dürfen nicht in Kotlin-Collections
-(`List`, `MutableList`, `Map`, ...) abgelegt werden: M0110 (Strict → Managed). Typ-Argumente
-wie `List<@Owned T>` und Arrays besessener Elemente sind Teil von P3 (Abschnitt 9). In P1
-baut man eigene Container-Klassen aus besitzenden Feldern (siehe `ok_linked_list`).
-Managed-Klassen dürfen weiterhin in Collections liegen.
+**Not supported in P1.** Tracked values must not be put into Kotlin collections
+(`List`, `MutableList`, `Map`, ...): M0110 (Strict → Managed). Type arguments
+like `List<@Owned T>` and arrays of owned elements are part of P3 (section 9). In P1
+you build your own container classes from owning fields (see `ok_linked_list`).
+Managed classes may still be put in collections.
 
-### 5.5 Lambdas und Captures
+### 5.5 Lambdas and captures
 
-* **Inline-Lambdas** (Parameter einer `inline`-Funktion, nicht `crossinline`/`noinline`:
-  `use`, `repeat`, `run`, `let`, `forEach`, `context(x) { }` ...) sind **durchsichtig**: Die
-  Analyse liest den Körper wie Code an dieser Stelle. Besitzer dürfen darin freigegeben oder
-  verschoben werden.
-* **Thread-Lambdas** (Parameter mit `@ThreadBoundary`, siehe 5.9): Captures verschiebender
-  Wert, das Lambda läuft genau einmal und besitzt danach.
-* **Alle anderen Lambdas** sind **entkommend**. Für sie gilt:
-  * Capture eines **besitzenden** Werts: **M0112** (in P1 nicht unterstützt).
-  * Capture eines **geliehenen** Werts: M0109 (die Leihgabe überlebt ihren Verleiher).
-  * Capture eines **Arena-Objekts**, wenn das Lambda den Arena-Scope verlässt: M0105
-    (Position: das Lambda).
-  * Capture eines nicht verfolgten Werts (Primitiv, Managed): immer erlaubt.
-* Ein Lambda, das nicht entkommt (sofort aufgerufen, lokal gehalten und nur lokal
-  benutzt), darf Arena-Objekte und Leihgaben capturen.
+* **Inline lambdas** (parameter of an `inline` function, not `crossinline`/`noinline`:
+  `use`, `repeat`, `run`, `let`, `forEach`, `context(x) { }` ...) are **transparent**: the
+  analysis reads the body like code at this place. Owners may be freed or
+  moved inside.
+* **Thread lambdas** (parameter with `@ThreadBoundary`, see 5.9): captures are a moving
+  value, the lambda runs exactly once and owns afterwards.
+* **All other lambdas** are **escaping**. For them:
+  * Capture of an **owning** value: **M0112** (not supported in P1).
+  * Capture of a **borrowed** value: M0109 (the loan outlives its lender).
+  * Capture of an **arena object** if the lambda leaves the arena scope: M0105
+    (position: the lambda).
+  * Capture of an untracked value (primitive, Managed): always allowed.
+* A lambda that does not escape (called immediately, held locally and used only
+  locally) may capture arena objects and loans.
 
-### 5.6 `try`, `finally`, frühe `return`, `throw`
+### 5.6 `try`, `finally`, early `return`, `throw`
 
-Die Analyse arbeitet auf dem Kontrollflussgraphen mit diesen Kanten:
+The analysis works on the control flow graph with these edges:
 
-* **Normale Kanten.** `return`, `break`, `continue` verlassen Scopes. Jeder Besitzer, der den
-  Scope verlässt und nicht `Freed`/`Moved`/`Null` ist, ist ein Leck: M0102 (Pfadart
+* **Normal edges.** `return`, `break`, `continue` leave scopes. Every owner that leaves the
+  scope and is not `Freed`/`Moved`/`Null` is a leak: M0102 (path kind
   `early return`, `break`, `continue`).
-* **`finally`** wird in jede ausgehende Kante des `try` eingefügt. Eine Freigabe im
-  `finally` deckt daher alle Pfade ab. Der Zustand nach dem `try` ist der Zustand nach dem
-  `finally`: Wurde im `finally` freigegeben, ist der Wert danach `Freed`.
-* **Exception-Kanten (P1-Näherung).** Eine Exception-Kante entsteht nur an `throw`-Ausdrücken
-  und an Aufrufen von `error`, `require`, `check`, `requireNotNull`, `checkNotNull`,
-  `TODO` sowie an Aufrufen von Funktionen derselben Strict-Module, die (transitiv, laut
-  Zusammenfassung) ein `throw` enthalten. Beliebige andere Aufrufe, Division durch null,
-  Array-Index usw. erzeugen **keine** Exception-Kante (sonst wäre jeder Code ein Leck).
-  Eine `catch`-Klausel fängt die Kante und setzt den Zustand dort fort; ohne passendes
-  `catch` verlässt die Kante die Funktion: Leck M0102 (Pfadart `throw`).
-  Siehe Abschnitt 10, Frage 3.
-* **`use`** ist ein `try/finally` mit `close()`.
+* **`finally`** is inserted into every outgoing edge of the `try`. A release in the
+  `finally` therefore covers all paths. The state after the `try` is the state after the
+  `finally`: if freed in the `finally`, the value is `Freed` afterwards.
+* **Exception edges (P1 approximation).** An exception edge arises only at `throw` expressions
+  and at calls of `error`, `require`, `check`, `requireNotNull`, `checkNotNull`,
+  `TODO`, as well as at calls of functions of the same Strict modules that (transitively, according to
+  the summary) contain a `throw`. Any other calls, division by zero,
+  array index etc. produce **no** exception edge (otherwise all code would be a leak).
+  A `catch` clause catches the edge and continues the state there; without a matching
+  `catch` the edge leaves the function: leak M0102 (path kind `throw`).
+  See section 10, item 3.
+* **`use`** is a `try/finally` with `close()`.
 
 ```kotlin
 context(h: Heap)
@@ -502,103 +501,103 @@ fun risky(n: Int): Int {
         if (n < 0) throw IllegalStateException("neg")
         return b.v * 2
     } finally {
-        b.free()           // deckt return und throw
+        b.free()           // covers return and throw
     }
 }
 ```
 
-### 5.7 Schleifen
+### 5.7 Loops
 
-Der Zustand am Schleifenkopf ist die Vereinigung aus Eintritt und Rückkante (Fixpunkt).
-Konsequenzen:
+The state at the loop head is the union of entry and back edge (fixed point).
+Consequences:
 
-* **Pro-Iteration-Besitzer** (in der Schleife deklariert) müssen in jedem Durchlauf und auf
-  jedem Ausgang (`break`, `continue`, Ende) freigegeben oder verschoben sein: M0102.
-* **Außenbesitzer** dürfen im Schleifenkörper weder verschoben noch freigegeben werden,
-  außer der Körper stellt sie vor der Rückkante wieder her (`x = ...`). Sonst: M0104
-  (Move) beziehungsweise M0103 (Free) beim zweiten Durchlauf, Position der Stelle.
-* In Arena-Scopes ist eine Allokation in einer Schleife erlaubt, aber unbeschränkt
-  wachsend: Lint M0202.
+* **Per-iteration owners** (declared in the loop) must be freed or moved in every iteration and on
+  every exit (`break`, `continue`, end): M0102.
+* **Outer owners** must be neither moved nor freed in the loop body,
+  unless the body restores them before the back edge (`x = ...`). Otherwise: M0104
+  (move) or M0103 (free) on the second iteration, position of the site.
+* In arena scopes an allocation in a loop is allowed, but grows
+  without bound: lint M0202.
 
 ### 5.8 `if`, `when`
 
-An jeder Zusammenführung wird der Zustand pro Slot vereinigt. Eine Verzweigung, die einen
-Besitzer in `Owned` lässt, während eine andere ihn freigibt oder verschiebt, führt zu
-`Maybe` und damit zu M0102 am Scope-Ende (oder M0103/M0101 bei weiterer Verwendung).
-Ein `when` ohne `else`, das als Statement benutzt wird, hat eine implizite leere
-Verzweigung. Smart-Casts auf `null` bestimmen `Null`-Zustände (5.10).
+At every merge point the state is joined per slot. A branch that leaves an
+owner in `Owned` while another frees or moves it leads to
+`Maybe` and thus to M0102 at scope end (or M0103/M0101 on further use).
+A `when` without `else` that is used as a statement has an implicit empty
+branch. Smart casts on `null` determine `Null` states (5.10).
 
-### 5.9 Threads und `ThreadSafe`
+### 5.9 Threads and `ThreadSafe`
 
-Eine **Thread-Grenze** ist der Aufruf einer Funktion, deren Lambda-Parameter mit
-`@ThreadBoundary` markiert ist (`mini.memory.spawn`), sowie die vom Compiler gelisteten
-Standard-Stellen (`kotlin.concurrent.thread`, `Thread(Runnable)`). Für das Lambda gilt:
+A **thread boundary** is the call of a function whose lambda parameter is marked with
+`@ThreadBoundary` (`mini.memory.spawn`), as well as the standard sites listed by the compiler
+(`kotlin.concurrent.thread`, `Thread(Runnable)`). For the lambda:
 
-* Captures **besitzender** Werte sind Moves (5.1.4). Das Lambda besitzt sie und muss sie
-  freigeben oder weiterreichen. Danach im Aufrufer Zugriff: M0104.
-* Ein Wert, dessen nomineller Allocator **nicht** `ThreadSafe` ist (`Arena`, `Pool`), darf
-  die Grenze nicht überqueren, und der Allocator selbst auch nicht: **M0206** (Position: das
-  Lambda). Heap-Objekte dürfen.
-* Geliehene Werte und Arena-Objekte dürfen nicht in ein Thread-Lambda (M0109 / M0105).
+* Captures of **owning** values are moves (5.1.4). The lambda owns them and must
+  free or pass them on. Afterwards, access in the caller: M0104.
+* A value whose nominal allocator is **not** `ThreadSafe` (`Arena`, `Pool`) must not
+  cross the boundary, nor may the allocator itself: **M0206** (position: the
+  lambda). Heap objects may.
+* Borrowed values and arena objects must not go into a thread lambda (M0109 / M0105).
 
 ```kotlin
 context(h: Heap)
 fun run() {
     val b = Box(41)
-    val t = spawn { println(b.v + 1); b.free() }   // b wandert in den Thread
+    val t = spawn { println(b.v + 1); b.free() }   // b moves into the thread
     t.join()
 }
 ```
 
 ### 5.10 Nullability
 
-* `T?` ist besitzend wie `T`. `null` trägt keine Pflicht.
-* `free()` auf `T?` ist erlaubt (`x.free()` und `x?.free()`); auf `null` ein No-op. Nach
-  `x.free()` ist `x` `Freed` (nicht `Null`).
-* `var b: Box? = null; if (flag) b = Box(1)` ergibt `Maybe(Null, Owned)`. Das ist
-  vollständig freigegeben durch `b.free()` (oder `b?.free()`) oder durch `if (b != null) {
-  b.free() }` (der Else-Zweig ist `Null`).
-* Das Ergebnis einer Funktion mit `@Owned T?`, das verworfen wird, ist ein Leck (M0102,
-  Pfadart `result discarded`): auch wenn es zur Laufzeit `null` sein könnte.
-* Zuweisung von `null` an einen Slot in `Owned` ist ein Überschreiben (M0102).
+* `T?` is owning like `T`. `null` carries no obligation.
+* `free()` on `T?` is allowed (`x.free()` and `x?.free()`); on `null` a no-op. After
+  `x.free()`, `x` is `Freed` (not `Null`).
+* `var b: Box? = null; if (flag) b = Box(1)` yields `Maybe(Null, Owned)`. This is
+  completely released by `b.free()` (or `b?.free()`) or by `if (b != null) {
+  b.free() }` (the else branch is `Null`).
+* The result of a function with `@Owned T?` that is discarded is a leak (M0102,
+  path kind `result discarded`): even if it could be `null` at runtime.
+* Assigning `null` to a slot in `Owned` is an overwrite (M0102).
 
 ---
 
-## 6. Modi und Managed-Code
+## 6. Modes and Managed Code
 
-### 6.1 Moduswahl
+### 6.1 Mode selection
 
-* `@file:MemoryMode(Mode.Strict)` oder `Mode.Managed` an der Datei.
-* `@MemoryMode(Mode.Managed)` an einer Klasse **überschreibt** die Datei für diese Klasse
-  (Zusatz gegenüber dem Plan, damit gemischter Code in einer Datei geht und testbar ist).
-* Ohne Annotation: **Managed**. Managed-Code unterliegt keiner Analyse (keine M01xx,
-  außer M0110 an der Grenze). Managed-Klassen sind `Rc` und brauchen kein `free`.
+* `@file:MemoryMode(Mode.Strict)` or `Mode.Managed` on the file.
+* `@MemoryMode(Mode.Managed)` on a class **overrides** the file for that class
+  (addition relative to the plan, so that mixed code in one file works and is testable).
+* Without annotation: **Managed**. Managed code is subject to no analysis (no M01xx,
+  except M0110 at the boundary). Managed classes are `Rc` and need no `free`.
 
-Hinweis zur Schreibweise: Der Plan zeigt `@file:MemoryMode(Strict)`. In Kotlin muss der
-Enum-Eintrag qualifiziert oder importiert werden; wir schreiben `Mode.Strict`.
+Note on notation: the plan shows `@file:MemoryMode(Strict)`. In Kotlin the
+enum entry must be qualified or imported; we write `Mode.Strict`.
 
-### 6.2 Grenze Strict <-> Managed
+### 6.2 Strict <-> Managed boundary
 
-| Richtung | Regel |
+| Direction | Rule |
 |---|---|
-| Strict ruft Managed, Argument **nicht verfolgt** (Int, String, Managed-Objekt) | erlaubt. |
-| Strict ruft Managed, Argument **verfolgt** | nur, wenn der Parameter der Managed-Funktion `@Borrowed` ist (Versprechen des Autors, ungeprüft in P1). Sonst **M0110**. Standard-Bibliotheksfunktionen (`println`, `toString`, ...) sind als `@Borrowed` bekannt. |
-| Strict speichert verfolgten Wert in Feld oder Global einer Managed-Klasse | **M0110**. |
-| Strict legt verfolgten Wert in eine Kotlin-Collection | **M0110** (5.4). |
-| Strict benutzt Managed-Objekte | sie sind **geliehen mit externer Lebensdauer**: kein `free` (M0107). |
-| Managed ruft Strict-Funktion mit geliehenen Parametern/ohne besitzende Rückgabe | erlaubt. |
-| Managed ruft Strict-Funktion mit `@Owned`-Parameter oder besitzender Rückgabe | **M0110**: Managed-Code kann die Pflicht nicht erfüllen. Lösung: Strict-Wrapper, der intern freigibt. |
+| Strict calls Managed, argument **not tracked** (Int, String, Managed object) | allowed. |
+| Strict calls Managed, argument **tracked** | only if the parameter of the Managed function is `@Borrowed` (promise of the author, unchecked in P1). Otherwise **M0110**. Standard library functions (`println`, `toString`, ...) are known as `@Borrowed`. |
+| Strict stores a tracked value in a field or global of a Managed class | **M0110**. |
+| Strict puts a tracked value into a Kotlin collection | **M0110** (5.4). |
+| Strict uses Managed objects | they are **borrowed with external lifetime**: no `free` (M0107). |
+| Managed calls a Strict function with borrowed parameters/without owning return | allowed. |
+| Managed calls a Strict function with an `@Owned` parameter or owning return | **M0110**: Managed code cannot fulfill the obligation. Solution: Strict wrapper that frees internally. |
 
-Der Check am Parameter ist eine bewusste Unsicherheit: Die Annahme „`@Borrowed` an einer
-Managed-Funktion stimmt“ wird in P3 durch Zusammenfassungen der Managed-Funktion geprüft.
+The check at the parameter is a deliberate uncertainty: the assumption "`@Borrowed` on a
+Managed function is correct" will be checked in P3 through summaries of the Managed function.
 
 ---
 
-## 7. Diagnosekatalog
+## 7. Diagnostic Catalog
 
-### 7.0 Format und Positionen
+### 7.0 Format and positions
 
-Das Ausgabeformat ist rustc-ähnlich (`plan-kotlin.md` 4.3):
+The output format is rustc-like (`plan-kotlin.md` 4.3):
 
 ```
 error[M0102]: allocation from `Heap` (Deallocating) is never released
@@ -607,64 +606,64 @@ error[M0102]: allocation from `Heap` (Deallocating) is never released
   help: call `buf.close()` before returning, or wrap in `buf.use { … }`
 ```
 
-Genauer:
+More precisely:
 
 ```
 <severity>[<code>]: <message>
-  --> <file>:<line>:<col>   <label>        (erste Zeile: Primärposition, genau eine)
-  --> <file>:<line>:<col>   <label>        (null oder mehr Sekundärpositionen)
-  help: <text>                             (null oder mehr)
+  --> <file>:<line>:<col>   <label>        (first line: primary position, exactly one)
+  --> <file>:<line>:<col>   <label>        (zero or more secondary positions)
+  help: <text>                             (zero or more)
 ```
 
-* `severity` ist `error`, `warning` oder `info`. Spalten und Zeilen zählen ab 1; die Spalte
-  zählt UTF-16-Einheiten wie Kotlin.
-* Meldungstext, Labels und `help` sind **nicht stabil**. Stabil sind der **Code** und die
-  **Primärposition**. Tests vergleichen `line:col: code`.
-* Pro Ursache **genau eine** Meldung (Kaskadenunterdrückung, 5.2). Reihenfolge: nach
-  Datei, Zeile, Spalte.
-* Kotlin-eigene Fehler gehen den Mini-Diagnosen voraus. Gibt es einen, laufen die Mini-Analysen nicht.
-* Mini-Diagnosen mit `info`-Schwere (M0201) stehen nur mit `-Minfo` in der Ausgabe und
-  nicht in `.diag`-Dateien. Warnungen stehen in `.diag`; `error` lässt den Build
-  scheitern (Exit 1), `warning` nicht.
+* `severity` is `error`, `warning` or `info`. Columns and lines count from 1; the column
+  counts UTF-16 units like Kotlin.
+* Message text, labels and `help` are **not stable**. The **code** and the
+  **primary position** are stable. Tests compare `line:col: code`.
+* **Exactly one** message per cause (cascade suppression, 5.2). Order: by
+  file, line, column.
+* Kotlin's own errors precede the Mini diagnostics. If there is one, the Mini analyses do not run.
+* Mini diagnostics with `info` severity (M0201) appear in the output only with `-Minfo` and
+  not in `.diag` files. Warnings appear in `.diag`; an `error` makes the build
+  fail (exit 1), a `warning` does not.
 
-Die Primärposition ist je Code der Anfang des genannten Ausdrucks (Spalte des ersten Zeichens):
+The primary position per code is the start of the named expression (column of the first character):
 
-| Code | Primärposition |
+| Code | Primary position |
 |---|---|
-| M0101, M0104 | der verwendende Ausdruck (Anfang von `b.v`, `peek?.v`, `b` im Argument) |
-| M0102 | die Allokationsstelle (Anfang von `Buffer(n)`, `make(3)`, `Arena()`); bei `@Owned`-Parametern der Parametername; bei Überschreiben eines Felds mit unbekanntem Inhalt die Zuweisung (Anfang des Ziels) |
-| M0103, M0106 (free), M0107, M0108 | der `free`-Aufruf, Anfang des Ausdrucks einschließlich Receiver (`b.free()`, `pool.free(b)`) |
-| M0106 (`@Owned`-Argument), M0109, M0110, M0105 (Wert) | der Ausdruck, der den Wert transportiert (Argument, rechte Seite, zurückgegebener Ausdruck) |
-| M0105 (Lambda-Capture), M0112, M0206 | der Anfang des Lambdas (`{`) |
-| M0111 | die Annotation (`@Owned`) |
-| M0113 | der Teil-Move (Anfang von `s.item`) |
-| M0114, M0204, M0205 | die Allokationsstelle |
-| M0202 | die Allokationsstelle |
+| M0101, M0104 | the using expression (start of `b.v`, `peek?.v`, `b` in the argument) |
+| M0102 | the allocation site (start of `Buffer(n)`, `make(3)`, `Arena()`); for `@Owned` parameters the parameter name; when overwriting a field with unknown content, the assignment (start of the target) |
+| M0103, M0106 (free), M0107, M0108 | the `free` call, start of the expression including receiver (`b.free()`, `pool.free(b)`) |
+| M0106 (`@Owned` argument), M0109, M0110, M0105 (value) | the expression that carries the value (argument, right-hand side, returned expression) |
+| M0105 (lambda capture), M0112, M0206 | the start of the lambda (`{`) |
+| M0111 | the annotation (`@Owned`) |
+| M0113 | the partial move (start of `s.item`) |
+| M0114, M0204, M0205 | the allocation site |
+| M0202 | the allocation site |
 
-### 7.1 M0101 Nutzung nach Freigabe
+### 7.1 M0101 Use after free
 
-**Regel:** Ein Slot in Zustand `Freed` (oder `Maybe` mit `Freed`-Anteil) wird gelesen, aufgerufen oder
-geliehen. Gilt auch für Leihgaben, deren Besitzer freigegeben wurde (4.3).
+**Rule:** A slot in state `Freed` (or `Maybe` with a `Freed` component) is read, called or
+borrowed. Also applies to loans whose owner was freed (4.3).
 
 ```kotlin
 val b = Box(1)
 b.free()
 println(b.v)          // error[M0101]: use of `b` after it was freed
 ```
-Behoben:
+Fixed:
 ```kotlin
 val b = Box(1)
 println(b.v)
 b.free()
 ```
-Korpus: `borrow_use_after_free`, `uaf_simple`, `uaf_borrowed_result`, `uaf_finally`, `uaf_loop`.
+Corpus: `borrow_use_after_free`, `uaf_simple`, `uaf_borrowed_result`, `uaf_finally`, `uaf_loop`.
 
-### 7.2 M0102 Leck: Allokation wird nie freigegeben
+### 7.2 M0102 Leak: allocation is never released
 
-**Regel:** Ein besitzender Slot verlässt seinen Gültigkeitsbereich in `Owned`. Pfadarten
-(im Label): `end of scope`, `early return`, `break`, `continue`, `throw`,
-`not released on all branches`, `overwritten`, `result discarded`, `parameter`. Gilt auch für
-`Arena`/`Pool`, die nicht geschlossen werden.
+**Rule:** An owning slot leaves its scope of validity in `Owned`. Path kinds
+(in the label): `end of scope`, `early return`, `break`, `continue`, `throw`,
+`not released on all branches`, `overwritten`, `result discarded`, `parameter`. Also applies to
+`Arena`/`Pool` that are not closed.
 
 ```kotlin
 context(h: Heap)
@@ -674,313 +673,313 @@ fun load(n: Int): @Owned Buffer? {
     return buf
 }
 ```
-Behoben:
+Fixed:
 ```kotlin
     if (!fill(buf)) { buf.free(); return null }
 ```
-Korpus: `leak_end_of_scope`, `leak_early_return`, `leak_branch`, `leak_when_branch`,
+Corpus: `leak_end_of_scope`, `leak_early_return`, `leak_branch`, `leak_when_branch`,
 `leak_loop_break`, `leak_loop_body`, `leak_overwrite`, `leak_overwrite_field`, `leak_throw`,
 `leak_owned_param`, `leak_arena_not_closed`, `leak_ignored_result`, `leak_pool`.
 
-### 7.3 M0103 Doppelte Freigabe
+### 7.3 M0103 Double free
 
-**Regel:** `free`/`close`/`use`-Ende auf einem Slot in `Freed` (oder `Maybe` mit `Freed`-Anteil).
+**Rule:** `free`/`close`/end of `use` on a slot in `Freed` (or `Maybe` with a `Freed` component).
 
 ```kotlin
 b.free()
 b.free()          // error[M0103]: `b` is freed twice
 ```
-Behoben: den zweiten Aufruf löschen. Korpus: `dfree_simple`, `dfree_branch`, `dfree_loop`.
+Fixed: delete the second call. Corpus: `dfree_simple`, `dfree_branch`, `dfree_loop`.
 
-### 7.4 M0104 Nutzung nach Move
+### 7.4 M0104 Use after move
 
-**Regel:** Zugriff auf einen Slot in `Moved` (5.1).
+**Rule:** Access to a slot in `Moved` (5.1).
 
 ```kotlin
 val a = Box(1)
 val b = a.move()
 println(a.v)      // error[M0104]: use of moved value `a`
 ```
-Behoben: `b` statt `a` benutzen, oder `val b = a` (Alias) schreiben, wenn kein Move gewollt ist.
-Korpus: `move_explicit`, `borrow_use_after_move`, `borrow_scope_moved`, `move_param`, `move_loop`, `move_into_field`, `move_thread`.
+Fixed: use `b` instead of `a`, or write `val b = a` (alias) if no move is intended.
+Corpus: `move_explicit`, `borrow_use_after_move`, `borrow_scope_moved`, `move_param`, `move_loop`, `move_into_field`, `move_thread`.
 
-### 7.5 M0105 Entkommen aus einem Scoped-Allocator
+### 7.5 M0105 Escape from a Scoped allocator
 
-**Regel:** Ein Arena-Objekt verlässt den Scope seiner Arena (2.4, 5.5).
+**Rule:** An arena object leaves the scope of its arena (2.4, 5.5).
 
 ```kotlin
 fun build(): Box = Arena().use { a -> context(a) { Box(1) } }
 //                                                 ^ error[M0105]: value allocated in arena `a` escapes its scope
 ```
-Behoben: einen Wert ohne Allokation (Int) zurückgeben, oder die Arena in den Aufrufer
-verlegen (`context(a: Arena) fun build(): Box`).
-Korpus: `arena_escape_return`, `arena_escape_use_result`, `arena_escape_field`,
+Fixed: return a value without allocation (Int), or move the arena into the caller
+(`context(a: Arena) fun build(): Box`).
+Corpus: `arena_escape_return`, `arena_escape_use_result`, `arena_escape_field`,
 `arena_escape_global`, `arena_escape_lambda`.
 
-### 7.6 M0106 Einzelfreigabe eines Scoped-Objekts
+### 7.6 M0106 Individual free of a Scoped object
 
-**Regel:** `free()` auf ein Arena-Objekt, oder Übergabe eines Arena-Objekts an einen
-`@Owned`-Parameter (der Aufgerufene dürfte es freigeben).
-
-```kotlin
-Arena().use { a -> context(a) { val b = Box(1); b.free() } }   // error[M0106]
-```
-Behoben: `free()` weglassen, die Arena räumt auf. Korpus: `free_scoped`, `scoped_to_owned_param`.
-
-### 7.7 M0107 Freigabe eines nicht besessenen Werts
-
-**Regel:** `free()` auf einen geliehenen Wert (Parameter ohne `@Owned`, `@Borrowed`-Slot,
-Receiver), auf einen Managed-Wert oder auf einen bereits verschobenen Slot.
+**Rule:** `free()` on an arena object, or passing an arena object to an
+`@Owned` parameter (the callee could free it).
 
 ```kotlin
-fun drop(b: Box) { b.free() }          // error[M0107]: `b` is borrowed and cannot be freed
+Arena().use { a -> context(a) { val b = Box(1); b.free() } }   // error[M0106]: arena object `b` cannot be freed individually
 ```
-Behoben: `fun drop(b: @Owned Box)`. Korpus: `borrow_free_via_alias`, `free_borrowed_param`, `free_managed_object`.
+Fixed: omit `free()`, the arena cleans up. Corpus: `free_scoped`, `scoped_to_owned_param`.
 
-### 7.8 M0108 Falscher Allocator beim Freigeben
+### 7.7 M0107 Release of a non-owned value
 
-**Regel:** `alloc.free(x)`, wobei `x` statisch nachweislich von einem anderen Allocator stammt.
+**Rule:** `free()` on a borrowed value (parameter without `@Owned`, `@Borrowed` slot,
+receiver), on a Managed value or on an already moved slot.
+
+```kotlin
+fun drop(b: Box) { b.free() }          // error[M0107]: cannot free a borrowed value
+```
+Fixed: `fun drop(b: @Owned Box)`. Corpus: `borrow_free_via_alias`, `free_borrowed_param`, `free_managed_object`.
+
+### 7.8 M0108 Wrong allocator when freeing
+
+**Rule:** `alloc.free(x)`, where `x` demonstrably comes from a different allocator, as determined statically.
 
 ```kotlin
 context(heap) { val b = Box(1); pool.free(b) }   // error[M0108]: `b` was allocated by `Heap`, not `Pool`
 ```
-Behoben: `b.free()` oder `heap.free(b)`. Korpus: `free_wrong_allocator`.
+Fixed: `b.free()` or `heap.free(b)`. Corpus: `free_wrong_allocator`.
 
-### 7.9 M0109 Leihgabe wird gespeichert oder als besessen zurückgegeben
+### 7.9 M0109 Loan is stored or returned as owned
 
-**Regel:** Ein geliehener Wert fließt in ein besitzendes Feld, in ein besitzendes Rückgabe-
-oder ein `@Owned`-Argument, oder wird von einem entkommenden Lambda gecaptured (5.5).
+**Rule:** A borrowed value flows into an owning field, into an owning return
+or an `@Owned` argument, or is captured by an escaping lambda (5.5).
 
 ```kotlin
 fun keep(h: Holder, i: Item) { h.item = i }   // error[M0109]: borrowed `i` is stored in an owned field
 fun pick(a: Item): Item = a                   // error[M0109]: borrowed `a` is returned as owned
 ```
-Behoben: `i: @Owned Item` (und der Aufrufer verschiebt), oder `: @Borrowed Item`.
-Korpus: `borrow_alias_stored`, `borrow_stored_field`, `borrow_returned_owned`.
+Fixed: `i: @Owned Item` (and the caller moves), or `: @Borrowed Item`.
+Corpus: `borrow_alias_stored`, `borrow_stored_field`, `borrow_returned_owned`.
 
-### 7.10 M0110 Verletzung der Strict/Managed-Grenze
+### 7.10 M0110 Violation of the Strict/Managed boundary
 
-**Regel:** Siehe 6.2.
+**Rule:** See 6.2.
 
 ```kotlin
 val list = ArrayList<Box>()
-list.add(b)            // error[M0110]: Strict value `b` handed to Managed code
+list.add(b)            // error[M0110]: Strict value handed to Managed code
 ```
-Behoben: eigene Container-Klasse mit besitzenden Feldern; für den Managed-Aufruf einen
-Strict-Wrapper. Korpus: `boundary_store_managed`, `boundary_collection`,
+Fixed: your own container class with owning fields; for the Managed call a
+Strict wrapper. Corpus: `boundary_store_managed`, `boundary_collection`,
 `boundary_managed_calls_owned`.
 
-### 7.11 M0111 Ungültige Ownership-Annotation
+### 7.11 M0111 Invalid ownership annotation
 
-**Regel:** 4.4.
+**Rule:** 4.4.
 
 ```kotlin
 fun twice(x: @Owned Int): Int = x * 2         // error[M0111]: `@Owned` on `Int`, which has no ownership
 ```
-Behoben: Annotation entfernen. Korpus: `annotation_misuse`.
+Fixed: remove the annotation. Corpus: `annotation_misuse`.
 
-### 7.12 M0112 Besitzender Wert in entkommendem Lambda
+### 7.12 M0112 Owning value in escaping lambda
 
-**Regel:** 5.5 (P1 unterstützt kein Move-Capture in entkommenden Lambdas).
-
-```kotlin
-return { b.v }         // error[M0112]: owned `b` captured by a lambda that escapes
-```
-Behoben: den Wert als Parameter durchreichen, oder `b.v` vor dem Lambda auslesen.
-Korpus: `capture_escaping_lambda`.
-
-### 7.13 M0113 Besessenes Feld bleibt verschoben
-
-**Regel:** 5.3, Teil-Moves.
+**Rule:** 5.5 (P1 does not support move capture in escaping lambdas).
 
 ```kotlin
-fun steal(s: Slot): @Owned Box? { val b = s.item.move(); return b }   // error[M0113]: field `item` of `s` is moved out and not restored
+return { b.v }         // error[M0112]: owned `b` is captured by a lambda that escapes
 ```
-Behoben: `s.item = null` vor dem `return`. Korpus: `field_left_moved`.
+Fixed: pass the value through as a parameter, or read `b.v` before the lambda.
+Corpus: `capture_escaping_lambda`.
 
-### 7.14 M0114 Mehrdeutiger Allocator
+### 7.13 M0113 Owned field stays moved
 
-**Regel:** 2.2, Regel 1.
+**Rule:** 5.3, partial moves.
+
+```kotlin
+fun steal(s: Slot): @Owned Box? { val b = s.item.move(); return b }   // error[M0113]: field `s.item` is moved out and not restored
+```
+Fixed: `s.item = null` before the `return`. Corpus: `field_left_moved`.
+
+### 7.14 M0114 Ambiguous allocator
+
+**Rule:** 2.2, rule 1.
 
 ```kotlin
 context(a: Arena, h: Heap)
-fun both() { val b = Box(1) }    // error[M0114]: ambiguous allocator: `a: Arena` and `h: Heap`
+fun both() { val b = Box(1) }    // error[M0114]: ambiguous allocator for `Box`
 ```
-Behoben: `context(h) { Box(1) }` (der innere Block gewinnt). Korpus: `ambiguous_allocator`.
+Fixed: `context(h) { Box(1) }` (the inner block wins). Corpus: `ambiguous_allocator`.
 
-### 7.14a M0115 Arena-Objekt besitzt fremde Referenz
+### 7.14a M0115 Arena object owns a foreign reference
 
-**Regel:** 2.4. Ein Wert, der nicht aus derselben Arena stammt und kein Primitiv/String-
-Literal ist, fließt in ein besitzendes Feld eines Arena-Objekts. Primärposition: der Wert.
+**Rule:** 2.4. A value that does not come from the same arena and is not a primitive/string
+literal flows into an owning field of an arena object. Primary position: the value.
 
 ```kotlin
 val s = 5.toString()
-val l = Label(5, s)       // error[M0115]: arena object `Label` would own refcounted `s`; the arena never releases it
+val l = Label(5, s)       // error[M0115]: arena object `Label` would own a foreign reference in field `text`; the arena never releases it
 ```
-Behoben: `@Borrowed val text: String` im Label, oder das Label und der String leben beide ohne
-Arena (Heap + `free`). Korpus: `arena_owns_string`, `arena_owns_heap`, `arena_owns_managed`,
+Fixed: `@Borrowed val text: String` in the label, or the label and the string both live without
+an arena (heap + `free`). Corpus: `arena_owns_string`, `arena_owns_heap`, `arena_owns_managed`,
 `ok_arena_plain_data`, `ok_arena_borrowed_ref`.
 
-### 7.15 M0204 Strict: Allokation ohne wählbaren Allocator (Fehler)
+### 7.15 M0204 Strict: allocation without a selectable allocator (error)
 
-**Regel:** 2.2, Regel 4 (Plan: „braucht Managed-Fallback“). Ein Strict-Wert entkommt, und
-kein Context und keine `@AllocatedBy`-Standardinstanz ist verfügbar.
+**Rule:** 2.2, rule 4 (plan: "needs Managed fallback"). A Strict value escapes, and
+no context and no `@AllocatedBy` default instance is available.
 
 ```kotlin
 fun make(): @Owned Box = Box(1)      // error[M0204]: no allocator for an escaping Strict value
 ```
-Behoben: `context(h: Heap)` an `make` oder `@AllocatedBy(Heap::class)` an `Box`. Korpus:
+Fixed: `context(h: Heap)` on `make` or `@AllocatedBy(Heap::class)` on `Box`. Corpus:
 `no_allocator_escape`.
 
-### 7.16 M0205 Allokation in `@NoAlloc`
+### 7.16 M0205 Allocation in `@NoAlloc`
 
-`@NoAlloc` an einer Funktion: Jede Allokationsstelle der Funktion, die **tatsächlich nicht
-auf dem Stack liegt** (sie entkommt) und jeder Aufruf `alloc.allocate(...)` ist ein Fehler.
-Stack-Objekte sind erlaubt. P1 prüft **nur den Körper selbst**; Aufrufe anderer Funktionen
-werden erst in P3 transitiv geprüft (Zusammenfassungen). Außerhalb von `@NoAlloc`
-(Hot-Path-Heuristik) ist M0205 eine Warnung (P3).
+`@NoAlloc` on a function: every allocation site of the function that is **actually not
+on the stack** (it escapes) and every call `alloc.allocate(...)` is an error.
+Stack objects are allowed. P1 checks **only the body itself**; calls of other functions
+are checked transitively only in P3 (summaries). Outside `@NoAlloc`
+(hot-path heuristic) M0205 is a warning (P3).
 
 ```kotlin
 @NoAlloc context(h: Heap)
-fun make(): @Owned Box = Box(1)      // error[M0205]: allocation in `@NoAlloc` function
+fun make(): @Owned Box = Box(1)      // error[M0205]: allocation in `@NoAlloc` function `make`
 ```
-Korpus: `noalloc_alloc`, `ok_noalloc`.
+Corpus: `noalloc_alloc`, `ok_noalloc`.
 
-### 7.17 M0206 Objekt aus nicht-ThreadSafe-Allocator verlässt den Thread
+### 7.17 M0206 Object from a non-ThreadSafe allocator leaves the thread
 
-**Regel:** 5.9.
+**Rule:** 5.9.
 
 ```kotlin
 Pool<Item>(2).use { pool -> context(pool) {
     val item = Item(1)
-    spawn { println(item.id); item.free() }     // error[M0206]: `Pool` is not ThreadSafe
+    spawn { println(item.id); item.free() }     // error[M0206]: `Pool` is not ThreadSafe and cannot cross a thread boundary
 }}
 ```
-Behoben: einen `Heap` benutzen. Korpus: `thread_nonsafe`.
+Fixed: use a `Heap`. Corpus: `thread_nonsafe`.
 
 ### 7.18 Lints M0201–M0203
 
-| Code | Schwere | Meldung |
+| Code | Severity | Message |
 |---|---|---|
-| M0201 | info | Allokation entkommt nicht und wurde auf den Stack verschoben |
-| M0202 | warning | Allokation in Schleife in einer `Scoped`-Arena: unbeschränktes Wachstum (Korpus: `arena_loop_warn`) |
-| M0203 | warning | Objekt größer als N KB (Default 64) auf dem Stack |
+| M0201 | info | Allocation does not escape and was moved to the stack |
+| M0202 | warning | Allocation in a loop in a `Scoped` arena: unbounded growth (corpus: `arena_loop_warn`) |
+| M0203 | warning | Object larger than N KB (default 64) on the stack |
 
-Lints ändern nie, ob ein Programm akzeptiert wird. `-Werror` macht Warnungen zu Fehlern.
+Lints never change whether a program is accepted. `-Werror` turns warnings into errors.
 
-### 7.19 Übersicht der Codes
+### 7.19 Overview of the codes
 
-| Code | Schwere | Kurz |
+| Code | Severity | Short |
 |---|---|---|
-| M0101 | error | Nutzung nach Freigabe |
-| M0102 | error | Leck |
-| M0103 | error | doppelte Freigabe |
-| M0104 | error | Nutzung nach Move |
-| M0105 | error | Entkommen aus Scoped-Allocator |
-| M0106 | error | Einzelfreigabe eines Scoped-Objekts |
-| M0107 | error | Freigabe eines nicht besessenen Werts |
-| M0108 | error | falscher Allocator beim Freigeben |
-| M0109 | error | Leihgabe gespeichert / als besessen zurückgegeben |
-| M0110 | error | Strict/Managed-Grenze |
-| M0111 | error | ungültige Ownership-Annotation |
-| M0112 | error | besitzender Wert in entkommendem Lambda |
-| M0113 | error | besessenes Feld bleibt verschoben |
-| M0114 | error | mehrdeutiger Allocator |
-| M0201 | info | auf den Stack verschoben |
-| M0202 | warning | Schleifen-Allokation in Arena |
-| M0203 | warning | großes Stack-Objekt |
-| M0115 | error | Arena-Objekt besitzt Referenz eines anderen Allocators |
-| M0204 | error | Strict: kein Allocator wählbar |
-| M0205 | error (`@NoAlloc`) / warning | Allokation in `@NoAlloc` |
-| M0206 | error | Objekt verlässt den Thread, Allocator nicht ThreadSafe |
+| M0101 | error | use after free |
+| M0102 | error | leak |
+| M0103 | error | double free |
+| M0104 | error | use after move |
+| M0105 | error | escape from Scoped allocator |
+| M0106 | error | individual free of a Scoped object |
+| M0107 | error | release of a non-owned value |
+| M0108 | error | wrong allocator when freeing |
+| M0109 | error | loan stored / returned as owned |
+| M0110 | error | Strict/Managed boundary |
+| M0111 | error | invalid ownership annotation |
+| M0112 | error | owning value in escaping lambda |
+| M0113 | error | owned field stays moved |
+| M0114 | error | ambiguous allocator |
+| M0201 | info | moved to the stack |
+| M0202 | warning | loop allocation in arena |
+| M0203 | warning | large stack object |
+| M0115 | error | arena object owns a reference of another allocator |
+| M0204 | error | Strict: no allocator selectable |
+| M0205 | error (`@NoAlloc`) / warning | allocation in `@NoAlloc` |
+| M0206 | error | object leaves the thread, allocator not ThreadSafe |
 
 ---
 
-## 8. Lints und `@NoAlloc` im Überblick
+## 8. Lints and `@NoAlloc` at a Glance
 
-Fehler (M01xx und die Fehlercodes in M02xx) brechen den Build ab. Warnungen sind
-abschaltbar (`@Suppress("M0202")`). `@NoAlloc` gilt für den Körper der Funktion einschließlich
-Property-Accessoren (Ziele `FUNCTION`, `PROPERTY_GETTER`, `PROPERTY_SETTER`).
-
----
-
-## 9. Bewusst nicht in P1 (kommt in P3)
-
-* **Escape-Analyse als Optimierung** (Stack-Verschiebung, M0201, M0203) und ihr
-  Zusammenspiel mit Inlining. P1 behandelt Escape nur syntaktisch (2.1).
-* **Collections besessener Werte** (`List<@Owned T>`, `Array`, `Map`): P1 lehnt sie mit M0110 ab.
-* **Echte Lebensdauern** (Regionsvariablen für Leihgaben über Funktionsgrenzen hinaus,
-  mehrere Verleiher); P1: eine Leihgabe hängt an Receiver und allen geliehenen Argumenten.
-* **Move-Capture in entkommenden Lambdas** (Closures als Besitzer), M0112.
-* **Transitive `@NoAlloc`-Prüfung** und Funktionszusammenfassungen; Hot-Path-Heuristik.
-* **Allgemeine Exception-Kanten** (jeder Aufruf kann werfen): P1 nur `throw`/`require`...
-  (5.6). `@NoThrow`-Inferenz kommt mit dem Exception-ABI.
-* **Prüfung von `@Borrowed` an Managed-Funktionen** und von `@Borrowed`-Feldern.
-* **Mehr als eine Ebene** bei Teil-Moves (`a.b.c`).
-* **Wechsel des Modus pro Funktion**, Allocatoren als Typparameter (`class Box<A : Allocator>`).
-* **Zyklen** zwischen besessenen Objekten (Eigentum ist ein Baum; Graphen brauchen Arena
-  oder `@Borrowed`-Rückverweise).
-* **Globale besitzende Variablen**: erlaubt, ohne Lecks zu prüfen (Programmlebensdauer;
-  `DebugAllocator` meldet am Ende).
-* **FIR-Checker für IDE-Anzeige**: P1 liefert die Diagnosen im Build-Pass (IR); die
-  Aufteilung in FIR (syntaktisch) und IR (Fluss) folgt dem Plan.
-* **Kotlin/Native-`memScoped`/cinterop-Allocatoren** (P4).
+Errors (M01xx and the error codes in M02xx) abort the build. Warnings can be
+turned off (`@Suppress("M0202")`). `@NoAlloc` applies to the body of the function including
+property accessors (targets `FUNCTION`, `PROPERTY_GETTER`, `PROPERTY_SETTER`).
 
 ---
 
-## 10. Entscheidungen
+## 9. Deliberately Not in P1 (comes in P3)
 
-Status: vom Projekteigner geprüft. Punkte 1-3 ausdrücklich bestätigt, 4-8 und 10-14 mit ihnen
-bestätigt, Punkt 9 **geändert** (siehe dort); String-Literale sind statisch (Punkt 13 bestätigt).
-
-1. **`x.free()` als Hauptform** (3.1) statt `alloc.free(x)`; `alloc.free(x)` bleibt Nebenweg.
-2. **`@AllocatedBy` ist eine Einschränkung** des Context (2.2) und nicht nachrangig wie im
-   Plan (4.2: Context vor `@AllocatedBy`). So kann ein Ambient-`Arena` keine Klasse
-   verdrängen, die ausdrücklich einen `Pool` verlangt.
-3. **Exception-Kanten nur an `throw` und `require`-artigen Aufrufen** (5.6). Die
-   strengere Variante („jeder Aufruf kann werfen“) wäre im Alltag unbrauchbar.
-4. **Analyse unabhängig von der Platzierung** (1.3): ein Heap-Objekt, das der Compiler auf den
-   Stack legt, muss trotzdem freigegeben werden. Die Alternative (Pflicht entfällt bei
-   Stack-Promotion) macht Diagnosen optimierungsabhängig.
-5. **`MemoryMode` auch auf Klassen** (6.1) und `Mode.Strict` statt nacktem `Strict`.
-6. **`Pool` und `Arena` sind `AutoCloseable`-Ressourcen** mit Pflicht (2.3); `Heap`/`Rc` nicht.
-7. **Managed-Parameter nehmen verfolgte Werte nur mit `@Borrowed`** (6.2), ein Versprechen ohne
-   Prüfung. Alternativ: alle Managed-Parameter generell borrowed (unsicherer, bequemer).
-8. **Strikte Defaults:** Parameter geliehen, Rückgabe/Felder besitzend, Property-Parameter
-   besitzend; **keine** Inferenz von `@Owned` aus dem Körper (4.2). Der Plan lässt das
-   offen („nur an Modulgrenzen“).
-9. **Zuweisung leiht, Move ist ausdrücklich** (5.1; geändert durch den Projekteigner): `val b = a`
-   ist ein Alias. Implizite Moves nur bei `return`, `@Owned`-Argument, besitzendem Feld und
-   Thread-Capture. Ausdrücklicher Move: `a.move()` (Hauptform, `fun <T> T.move(): T`), gleichwertig
-   `val b: @Owned T = a`. `@Borrowed val b = a` ist redundant, aber erlaubt.
-10. **Teil-Moves aus Feldern** mit `s.item.move()` und Wiederherstellungspflicht (M0113).
-11. **`Heap` und `Rc` sind zustandslose Allocatoren ohne Pflicht**; Standardinstanz nur für diese.
-12. **`@NoAlloc` prüft in P1 nur den eigenen Körper** und nur Allokationen, die tatsächlich
-    nicht auf dem Stack liegen (7.16).
-13. **M0115** (Auftrag des Projekteigners): Arena führt nie `dispose` aus; Strings in Arena-Objekten nur als Literal oder `@Borrowed`. String-Literale sind statisch (bestätigt).
-14. **Codevergabe:** M0101–M0115 ersetzen die Reihenfolge des Plans (der nur M0102 nennt);
-    M0201–M0206 behalten die Bedeutung aus dem Plan (M0205 ist im `@NoAlloc` ein Fehler).
+* **Escape analysis as an optimization** (stack promotion, M0201, M0203) and its
+  interplay with inlining. P1 treats escape only syntactically (2.1).
+* **Collections of owned values** (`List<@Owned T>`, `Array`, `Map`): P1 rejects them with M0110.
+* **True lifetimes** (region variables for loans beyond function boundaries,
+  multiple lenders); P1: a loan hangs on the receiver and all borrowed arguments.
+* **Move capture in escaping lambdas** (closures as owners), M0112.
+* **Transitive `@NoAlloc` check** and function summaries; hot-path heuristic.
+* **General exception edges** (any call may throw): P1 only `throw`/`require`...
+  (5.6). `@NoThrow` inference comes with the exception ABI.
+* **Checking of `@Borrowed` on Managed functions** and of `@Borrowed` fields.
+* **More than one level** for partial moves (`a.b.c`).
+* **Mode switching per function**, allocators as type parameters (`class Box<A : Allocator>`).
+* **Cycles** between owned objects (ownership is a tree; graphs need an arena
+  or `@Borrowed` back references).
+* **Global owning variables**: allowed, without leak checking (program lifetime;
+  `DebugAllocator` reports at the end).
+* **FIR checker for IDE display**: P1 delivers the diagnostics in the build pass (IR); the
+  split into FIR (syntactic) and IR (flow) follows the plan.
+* **Kotlin/Native `memScoped`/cinterop allocators** (P4).
 
 ---
 
-## 11. Der Testkorpus
+## 10. Decisions
 
-Verzeichnis `compiler/testdata/memory/`. Der Gradle-Test `:memory-spec:test`
-(`MemoryCorpusTest`) prüft:
+Status: reviewed by the project owner. Items 1-3 explicitly confirmed, 4-8 and 10-14 confirmed
+along with them, item 9 **changed** (see there); string literals are static (item 13 confirmed).
 
-1. Alle Programme und `stdlib/mini/memory/*.kt` kompilieren zusammen mit dem
-   echten Kotlin-Compiler (K2, 2.4.21, JVM) ohne Fehler.
-2. Jede Datei hat eine Kopfzeile (`// REJECT <Code>: ...` oder `// ACCEPT: ...`) und liegt in
-   `package memory.<dateiname>`.
-3. `name.diag` (abgelehnte Programme; eine Zeile `<Zeile>:<Spalte>: <Code>`) stimmt mit den
-   Caret-Zeilen im Quelltext überein (`//        ^ M0102`, das `^` steht in der Spalte
-   des Fehlers über der Zeile davor). So kann keine Spalte unbemerkt verrutschen.
-4. `name.out` (akzeptierte Programme) ist die erwartete Standardausgabe; das Programm
-   läuft auf der JVM. `-Pregen` schreibt die `.out`-Dateien neu.
+1. **`x.free()` as the main form** (3.1) instead of `alloc.free(x)`; `alloc.free(x)` remains an alternative.
+2. **`@AllocatedBy` is a restriction** of the context (2.2) and not subordinate as in
+   the plan (4.2: context before `@AllocatedBy`). This way an ambient `Arena` cannot displace a class
+   that explicitly demands a `Pool`.
+3. **Exception edges only at `throw` and `require`-like calls** (5.6). The
+   stricter variant ("every call may throw") would be unusable in everyday code.
+4. **Analysis independent of placement** (1.3): a heap object that the compiler puts on the
+   stack must still be freed. The alternative (obligation lapses on stack
+   promotion) makes diagnostics depend on optimization.
+5. **`MemoryMode` also on classes** (6.1) and `Mode.Strict` instead of bare `Strict`.
+6. **`Pool` and `Arena` are `AutoCloseable` resources** with an obligation (2.3); `Heap`/`Rc` are not.
+7. **Managed parameters accept tracked values only with `@Borrowed`** (6.2), an unchecked
+   promise. Alternative: all Managed parameters generally borrowed (less safe, more convenient).
+8. **Strict defaults:** parameters borrowed, return/fields owning, property parameters
+   owning; **no** inference of `@Owned` from the body (4.2). The plan leaves this
+   open ("only at module boundaries").
+9. **Assignment borrows, move is explicit** (5.1; changed by the project owner): `val b = a`
+   is an alias. Implicit moves only for `return`, `@Owned` argument, owning field and
+   thread capture. Explicit move: `a.move()` (main form, `fun <T> T.move(): T`), equivalent
+   `val b: @Owned T = a`. `@Borrowed val b = a` is redundant but allowed.
+10. **Partial moves out of fields** with `s.item.move()` and a restoration obligation (M0113).
+11. **`Heap` and `Rc` are stateless allocators without obligation**; default instance only for these.
+12. **`@NoAlloc` checks only its own body in P1** and only allocations that are actually
+    not on the stack (7.16).
+13. **M0115** (commissioned by the project owner): an arena never runs `dispose`; strings in arena objects only as a literal or `@Borrowed`. String literals are static (confirmed).
+14. **Code assignment:** M0101–M0115 replace the plan's numbering (which only names M0102);
+    M0201–M0206 keep the meaning from the plan (M0205 is an error in `@NoAlloc`).
 
-Das Korpusverzeichnis liegt in einem Unterordner, den `EndToEndTest` (er listet nur
-`compiler/testdata/*.kt`) nicht aufnimmt. Sobald die Analyse existiert, läuft ein zweiter
-Test mit `minic check`, vergleicht die ausgegebenen `line:col: code`-Zeilen mit `.diag`
-und baut/führt die akzeptierten Programme aus (`.out`).
+---
 
-Ein Programm mit `.diag` und `.out` (`arena_loop_warn`) ist akzeptiert, hat aber eine Warnung.
+## 11. The Test Corpus
+
+Directory `compiler/testdata/memory/`. The Gradle test `:memory-spec:test`
+(`MemoryCorpusTest`) checks:
+
+1. All programs and `stdlib/mini/memory/*.kt` compile together with the
+   real Kotlin compiler (K2, 2.4.21, JVM) without errors.
+2. Each file has a header line (`// REJECT <code>: ...` or `// ACCEPT: ...`) and lives in
+   `package memory.<filename>`.
+3. `name.diag` (rejected programs; one line `<line>:<column>: <code>`) matches the
+   caret lines in the source (`//        ^ M0102`, the `^` stands in the column
+   of the error, above the preceding line). This way no column can drift unnoticed.
+4. `name.out` (accepted programs) is the expected standard output; the program
+   runs on the JVM. `-Pregen` rewrites the `.out` files.
+
+The corpus directory lies in a subfolder that `EndToEndTest` (which lists only
+`compiler/testdata/*.kt`) does not pick up. Once the analysis exists, a second
+test runs with `minic check`, compares the emitted `line:col: code` lines with `.diag`
+and builds/runs the accepted programs (`.out`).
+
+A program with `.diag` and `.out` (`arena_loop_warn`) is accepted, but has a warning.

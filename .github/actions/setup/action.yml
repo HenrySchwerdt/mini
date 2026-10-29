@@ -1,0 +1,31 @@
+name: Setup
+description: JDK, Gradle cache and (optionally) libuv for the build jobs
+inputs:
+  libuv:
+    description: Install libuv (only the runtime tests need it)
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        # Only main writes the Gradle cache; pull requests read it.
+        cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+    - name: Install libuv (Linux)
+      if: inputs.libuv == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libuv1-dev
+        # ThreadSanitizer cannot map its shadow memory with the runner's default ASLR entropy.
+        sudo sysctl vm.mmap_rnd_bits=28
+    - name: Install libuv (macOS)
+      if: inputs.libuv == 'true' && runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install libuv
+        echo "LIBUV_ROOT=$(brew --prefix libuv)" >> "$GITHUB_ENV"
