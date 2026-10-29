@@ -336,8 +336,34 @@ generierte Lexer, `java.util`). Zwei Wege:
    Testsuite und für den Compiler selbst muss unser Frontend dasselbe IR liefern wie K2
    (differentielles Testen). Das ist viel leichter als „Frontend ohne Referenz“ (Weg A
    aus Abschnitt 2), weil jede Abweichung automatisch auffällt.
-2. **Java-Teile von K2 nach Kotlin portieren** (intellij-core-Subset), das Kotlin-Frontend
-   dann mit unserem Backend kompilieren. Das ist eine Option, falls Weg 1 stockt.
+2. **Java-Teile von K2 automatisch nach Kotlin konvertieren** (J2K aus IntelliJ, bzw.
+   das Kommandozeilen-J2K aus dem Kotlin-Repo) und dann das echte K2-Frontend mit
+   unserem Backend kompilieren. Schritte:
+   1. **Inventur:** Welche Java-Klassen erreicht K2 im LightTree-Modus (ohne PSI-Editor-
+      Features) tatsächlich? Aufrufgraph ab `FirSession`/LightTree-Parser messen. Ziel ist
+      ein möglichst kleines intellij-core-Subset.
+   2. **J2K + Nacharbeit:** Konvertierter Code kompiliert selten sofort. Nullability,
+      statische Member, Generics-Wildcards und Raw Types brauchen Handarbeit. Der Lexer
+      wird aus der `.flex`-Grammatik neu erzeugt (JFlex kann auch anderes ausgeben, sonst
+      schreiben wir einen eigenen Generator), statt generierten Java-Code zu konvertieren.
+   3. **`java.*`-Shim:** Was übrig bleibt (`java.util`-Collections, `ConcurrentHashMap`,
+      `ThreadLocal`, `WeakReference`/`SoftReference`, `ServiceLoader`, Datei-IO, einfache
+      Reflection), bekommt eine eigene `mini.jdk`-Bibliothek in Kotlin auf libuv. Nur das,
+      was die Inventur verlangt, nicht das ganze JDK.
+   4. **Speichermodell anpassen:** Ein Compiler ist der Idealfall für Arenas. Fast alles
+      (FIR-Bäume, IR, Symboltabellen) lebt genau eine Kompilierung oder eine Phase lang
+      und hat viele Zyklen (Parent-Pointer). Daher bekommt jede Phase eine `Arena` über
+      `context(arena)`. Nur, was über Phasen hinweg lebt, wird explizit herauskopiert.
+      Damit entfallen die Zyklen-Probleme des Refcountings, und der Speicher wird pro Phase
+      in einem Rutsch freigegeben. `WeakReference`/`SoftReference`-Caches werden zu
+      Phasen-Caches.
+   5. **Pflegeproblem:** Jeder Kotlin-Versionssprung bringt neuen Java-Code mit. Daher läuft
+      die Konvertierung als reproduzierbare Pipeline (Skript + Patch-Serie), nicht als
+      Einmal-Fork.
+
+   Bewertung: Weg 2 liefert 100 % K2-Semantik, kostet aber dauerhaft Pflege. Weg 1 ist mehr
+   Arbeit am Anfang, danach aber unabhängig. Die Entscheidung fällt nach der Inventur
+   (Schritt 1). Die liefert die harte Zahl: wie viele Zeilen Java.
 
 Bootstrap-Kette: JVM-Compiler (K2 + unser Backend) → kompiliert unser Frontend und
 Backend → `minic` Stage 1 (nativ) → Stage 2 → Stage 3 und Vergleich Stage 2 == Stage 3.
