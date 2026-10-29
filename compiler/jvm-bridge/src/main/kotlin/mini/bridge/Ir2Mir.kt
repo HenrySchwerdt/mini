@@ -176,8 +176,8 @@ class Ir2Mir {
             setFile(file)
             checkFunctionShape(f, member = false)
             val params = f.parameters.map { mirType(it.type, it) }
-            if (f.name.asString() == "main" && params.isNotEmpty()) {
-                unsupported(f, "main function with parameters (only `fun main()` is supported)")
+            if (f.name.asString() == "main" && params.isNotEmpty() && !isArgsMain(f)) {
+                unsupported(f, "main function with unsupported parameters (only `fun main()` and `fun main(args: Array<String>)`)")
             }
             functionNames[f] = Mangling.function(file.packageFqName.asString(), f.name.asString(), params)
         }

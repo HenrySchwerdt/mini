@@ -12,13 +12,13 @@ package mini.backend
  *
  * Parameter letters: I Int, J Long, Z Boolean, D Double, C Char, S String.
  *
- * `fun main()` is special: it is always `mk_main` (the runtime calls it).
+ * `fun main()` and `fun main(args: Array<String>)` are special: always `mk_main` (the runtime calls it).
  */
 object Mangling {
     const val MAIN = "mk_main"
 
     fun function(packageName: String, name: String, params: List<MirType>): String {
-        if (name == "main" && params.isEmpty()) return MAIN
+        if (name == "main" && (params.isEmpty() || isArgsArray(params))) return MAIN
         val segments = (if (packageName.isEmpty()) emptyList() else packageName.split('.')) + name
         val sb = StringBuilder("kt_")
         segments.forEachIndexed { i, s ->
@@ -30,6 +30,13 @@ object Mangling {
             for (p in params) sb.append(typeLetter(p))
         }
         return sb.toString()
+    }
+
+    /** `fun main(args: Array<String>)`: the single parameter is an object array (the producer checks the element type). */
+    private fun isArgsArray(params: List<MirType>): Boolean {
+        if (params.size != 1) return false
+        val t = params[0]
+        return t is TObject && !t.nullable && t.cName == "MkObjectArray"
     }
 
     /** C identifier for a local variable or parameter: `v_<name>_<id>`. */

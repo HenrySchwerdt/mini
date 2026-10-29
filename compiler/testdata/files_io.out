@@ -1,0 +1,7 @@
+args: 0
+true
+25
+line one
+ä€ "quoted"
+last
+caught: cannot read file: /nonexistent-dir/none.txt

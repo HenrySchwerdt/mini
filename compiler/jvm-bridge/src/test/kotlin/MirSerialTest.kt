@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Bootstrap B1: for every program of compiler/testdata, MIR -> text -> MIR -> C must be byte-identical
@@ -35,6 +36,16 @@ class MirSerialTest {
                 val back = MirReader.read(text)
                 assertEquals(CEmitter.emit(module), CEmitter.emit(back), "C differs after the MIR round trip of ${src.name}")
                 assertEquals(text, MirWriter.write(back), "text format is not a fixed point for ${src.name}")
+                // the native driver (running on the JVM here): .mir file in, .c file out, same C as the direct path
+                val dir = Files.createTempDirectory("native-driver-").toFile()
+                try {
+                    val mirFile = File(dir, "p.mir").also { it.writeText(text) }
+                    val cFile = File(dir, "p.c")
+                    mini.nativedriver.main(arrayOf(mirFile.path, "-o", cFile.path))
+                    assertEquals(CEmitter.emit(module), cFile.readText(), "native-driver output differs for ${src.name}")
+                } finally {
+                    dir.deleteRecursively()
+                }
             }
         }
     }
