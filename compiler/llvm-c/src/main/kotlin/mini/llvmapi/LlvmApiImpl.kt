@@ -30,9 +30,8 @@ class LlvmApiImpl : LlvmApi {
         return (status shr 8) and 255
     }
 
-    override fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean): Int {
-        throw IllegalStateException("--run: not implemented yet")
-    }
+    override fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean, timing: Boolean): Int =
+        LlvmJit.run(module, programArgs, optLevel, rcOpt, timing)
 
     private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 }

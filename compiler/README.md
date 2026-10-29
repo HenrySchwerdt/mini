@@ -738,6 +738,46 @@ runtime with sanitizers, the IR instrumented by clang) and the `--stats` / `--no
 requires the natively compiled backend's `--backend=llvm` output to equal the JVM's byte for byte. `compiler/bootstrap.sh --backend=llvm` is the self-host check
 (below). `compiler/bench/run-llvm.sh` compares the two backends (below).
 
+### LLVM C API binding and the in-process backend (phase 2, step 1)
+
+The lowering is written once against `IrBuilder<V, B>` (`backend/.../llvm/IrBuilder.kt`: scalar types, constants, globals, functions, blocks and the
+instruction kinds the lowering needs). `Lowering.kt` is the former `LlvmEmitter`; `TextIrBuilder` prints the textual IR (`LlvmEmitter.emit`, unchanged
+output except the order of some external type-info declarations and an explicit `entry:` label on the generated helper functions) and `ApiIrBuilder`
+(`compiler/llvm-c`) builds the module through the LLVM C API. Both are pure with respect to the lowering; only the API builder needs C interop, so it is
+not part of the Gradle build (the JVM cannot run `external fun`): it is compiled by `minic` into the native compiler.
+
+```
+MIR ─► RcOpt ─► Lowering ─► ApiIrBuilder ─► LLVMModuleRef ─► verify ─► LLVMRunPasses(default<O1>) ─► TargetMachine ─► prog.o ─► system linker
+                                                          └─► ORC LLJIT (minic-native --run): no file, no link
+```
+
+`compiler/llvm-c/src/main/kotlin`:
+* `mini/llvm/Core.kt`, `Backend.kt`, `Orc.kt`: the **bindings** of LLVM 18 (`@file:CInclude("llvm-c/Core.h")`, `@file:CLink("LLVM-18")`, `external fun` + `@CName`, handles are
+  `COpaquePointer` typealiases under their C names, `@Owned(free = "LLVMDispose...")` on everything LLVM hands out). Covered: contexts, modules (name, target, data
+  layout, print, named lookup), types (ints, float/double, `ptr`, void, function, array, packed and named struct), constants (int, real, null, string, array,
+  struct), globals (linkage, constant, unnamed_addr, alignment, thread_local, initializer), functions (params, attributes by name, call-site attributes, intrinsic
+  declarations), basic blocks, the whole instruction builder the lowering uses (arithmetic, shifts, compare, load/store with alignment, GEP, casts, phi, select, call,
+  branches, `unreachable`, `freeze`), metadata for `!prof` branch weights, the verifier (`LLVMVerifyModule`), the bitcode writer, targets (x86 and AArch64 initializers: the
+  `LLVMInitializeNativeTarget` family is `static inline` in the header), target machines and object emission, `LLVMRunPasses` (new pass manager, `opt -passes=` strings), and
+  ORC: `LLVMOrcCreateLLJIT`, thread-safe contexts and modules, process-symbol generators, lookup. Not bound: debug-info metadata, vectors, atomics, inline asm, comdats.
+* `mini/llvmapi/ApiIrBuilder.kt`, `LlvmApiEmitter.kt` (build, verify, optimize, emit object), `LlvmJit.kt`, `LlvmApiImpl.kt` (the `LlvmApi` of the driver), `MainApi.kt`.
+
+```sh
+# the compiler with the API: minic-native without Main.kt + llvm-c, built by minic (needs the LLVM 18 headers and libLLVM: llvm-config)
+minic-native --backend=llvm-api -o prog.o [--opt=O0..O3] [--emit-ll prog.ll] [--emit-c prog.c] <user.kt>... --stdlib <stdlib.kt>...
+minic-native --backend=llvm-api --exe prog [--link-arg libminirt.o ...] [--cc clang] ...      # object + system linker (embedded lld is a later step)
+minic-native --backend=llvm-api --run [--time] [--opt=O1] <user.kt>... --stdlib <stdlib.kt>... [-- args]   # ORC JIT, in this process
+```
+
+**JIT and the thread-local pending exception.** ORC's loader cannot resolve the TLS relocation of `mk_pending_exception` in generated code (the reason `lli` was dropped).
+The runtime now exports `MkObject **mk_pending_slot(void)` and `LlvmTarget(pendingAccessor = true)` makes the lowering test `*mk_pending_slot()` instead of the TLS
+global (declared `memory(none)`: LLVM computes it once per function). This is a target option of the code generator, not a JIT special case: any target whose loader has no TLS
+(wasm32 without threads, a JIT) uses it; ordinary builds keep the direct thread-local access. JIT'd code finds `mk_*` in the compiler's own process (a Mini program contains
+libminirt; the compiler is linked with `-rdynamic`), so script and compiler share one runtime.
+
+**Tests.** `LlvmApiEndToEndTest` (builds the API compiler, runs all of `compiler/testdata` through `--backend=llvm-api` with the C build's expectations, skipped without LLVM
+headers); `bootstrap.sh --backend=llvm-api` (stage2 == stage3: C, MIR, module text and object file byte-identical).
+
 ### LLVM backend: status, measurements, stretch goals
 
 **Parity.** 53/53 programs (47 + the six `strict_*` ones) of `compiler/testdata` build with `--backend=llvm` and give the same stdout/stderr/exit code as the C backend (plus the `type_error`

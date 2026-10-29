@@ -14,7 +14,7 @@ import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
 
 /*
- *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--emit-c out.c] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
  *   minic-native --backend=llvm-api -o out.o [--exe prog [--link-arg a]...] [--opt=O1] ...       (LLVM C API build only)
  *   minic-native --backend=llvm-api --run [--opt=O1] <user.kt>... --stdlib <std.kt>... [-- program args]
  *   minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
@@ -29,7 +29,7 @@ import mini.lower.lowerToMir
  * 10g phase 2): [runDriver] gets an [LlvmApi] there, `null` in the plain build.
  */
 
-const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]\n       minic-native --backend=llvm-api -o <out.o> [--exe <prog> [--link-arg <arg>]...] [--opt=O0..O3] [--no-rc-opt] <user.kt>... --stdlib <stdlib.kt>...\n       minic-native --backend=llvm-api --run [--opt=O0..O3] <user.kt>... --stdlib <stdlib.kt>... [-- <program args>]\n       minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]"
+const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--emit-c <out.c>] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]\n       minic-native --backend=llvm-api -o <out.o> [--exe <prog> [--link-arg <arg>]...] [--opt=O0..O3] [--no-rc-opt] <user.kt>... --stdlib <stdlib.kt>...\n       minic-native --backend=llvm-api --run [--time] [--opt=O0..O3] <user.kt>... --stdlib <stdlib.kt>... [-- <program args>]\n       minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]"
 
 /** What the build of the compiler with the LLVM C API bound in (compiler/llvm-c) adds: object files, linking, the ORC JIT. */
 interface LlvmApi {
@@ -40,13 +40,14 @@ interface LlvmApi {
     fun link(objects: List<String>, exe: String, libs: List<String>, linkArgs: List<String>, cc: String): Int
 
     /** Compiles [module] in memory, adds it to an ORC JIT and runs its `main` in this process; the exit status of the program. */
-    fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean): Int
+    fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean, timing: Boolean): Int
 }
 
 fun runDriver(args: Array<String>, llvm: LlvmApi?) {
     var output: String? = null
     var mirOut: String? = null
     var llOut: String? = null
+    var cOut: String? = null
     var rcOpt = true
     var check = false
     var brief = false
@@ -56,6 +57,7 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
     var exe: String? = null
     var cc = "cc"
     var run = false
+    var timing = false
     val linkArgs = ArrayList<String>()
     val programArgs = ArrayList<String>()
     val inputs = ArrayList<LowerInput>()
@@ -75,6 +77,10 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
         } else if (a == "--emit-ll") {
             if (i + 1 >= args.size) throw IllegalArgumentException("missing value for --emit-ll\n" + USAGE)
             llOut = args[i + 1]
+            i += 2
+        } else if (a == "--emit-c") {
+            if (i + 1 >= args.size) throw IllegalArgumentException("missing value for --emit-c\n" + USAGE)
+            cOut = args[i + 1]
             i += 2
         } else if (a.startsWith("--backend=")) {
             backend = a.substring("--backend=".length)
@@ -98,6 +104,9 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
             if (i + 1 >= args.size) throw IllegalArgumentException("missing value for --cc\n" + USAGE)
             cc = args[i + 1]
             i += 2
+        } else if (a == "--time") {
+            timing = true
+            i += 1
         } else if (a == "--run") {
             run = true
             i += 1
@@ -132,7 +141,7 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
     val api = backend == "llvm-api"
     if (api && llvm == null) throw IllegalArgumentException("--backend=llvm-api needs the build of minic-native with the LLVM C API (compiler/llvm-c)")
     if ((run || exe != null) && !api) throw IllegalArgumentException("--run and --exe need --backend=llvm-api\n" + USAGE)
-    if (firstName == null || (!check && output == null && mirOut == null && llOut == null && exe == null && !run)) throw IllegalArgumentException(USAGE)
+    if (firstName == null || (!check && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run)) throw IllegalArgumentException(USAGE)
     val name: String = firstName
     if (check) {
         val report = try {
@@ -151,9 +160,10 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
         throw IllegalStateException(e.message)
     }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
+    if (cOut != null) writeTextFile(cOut, CEmitter.emit(module, rcOpt))
     if (api && llvm != null) {
         if (run) {
-            val status = llvm.run(module, programArgs, optLevel, rcOpt)
+            val status = llvm.run(module, programArgs, optLevel, rcOpt, timing)
             if (status != 0) throw IllegalStateException("the program exited with status " + status)
             return
         }

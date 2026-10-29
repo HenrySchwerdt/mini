@@ -16,12 +16,19 @@
 # stage0 may come from an older compiler version, so stage1 is not compared (stage2 == stage3 is the fixpoint).
 # Environment: CC (default clang), BOOT_OPT (default -O1, -O0 with --stage0, the optimization level of the built stages).
 #
-#   compiler/bootstrap.sh [--backend=llvm [--reference <dir>]] [work-dir]
+#   compiler/bootstrap.sh [--backend=llvm|llvm-api [--reference <dir>]] [work-dir]
 #
 # --backend=llvm (docs/plan-kotlin.md 10g): every stage is built through the LLVM backend (MIR -> textual LLVM IR ->
 # clang) instead of C: stage1 = JVM minic --frontend=mini --backend=llvm; stage2 and stage3 are built from the .ll files
 # written by the previous stage (`--emit-ll`). Check: C, MIR and LLVM IR of stage2 and stage3 are byte-identical; with
 # --reference <dir> (the work dir of a C bootstrap) the C and MIR of stage2 must also equal the C-built compiler's.
+#
+# --backend=llvm-api (docs/plan-kotlin.md 10g phase 2): the compiler that has the LLVM C API bound in (compiler/llvm-c, needs the LLVM 18
+# headers and libLLVM: `llvm-config`) builds itself with no text IR and no clang for the code: every stage compiles the sources to MIR,
+# builds the LLVM module in memory and writes the object file through the target machine (`--backend=llvm-api -o x.o`); only the final link
+# runs the system C compiler. stage1 = JVM minic builds the API compiler (llvm-c sources, mini.llvmapi.main instead of Main.kt); stage2 and
+# stage3 are built by the previous stage. Check: C, MIR, the LLVM module text and the object file of stage2 and stage3 are byte-identical.
+# Then stage3 builds the plain compiler (no llvm-c) through the API too; with --reference <dir> its C and MIR must equal the C-built chain's.
 set -e
 STAGE0=""
 if [ "$1" = "--stage0" ]; then
@@ -36,6 +43,7 @@ REFERENCE=""
 while [ $# -gt 0 ]; do
     case "$1" in
     --backend=llvm) BACKEND=llvm; shift ;;
+    --backend=llvm-api) BACKEND=llvm-api; shift ;;
     --backend=c) BACKEND=c; shift ;;
     --reference) REFERENCE="$2"; shift 2 ;;
     *) break ;;
@@ -55,6 +63,47 @@ RT=$(ls "$ROOT"/runtime/src/*.c)
 
 stamp() { date +%s.%N; }
 elapsed() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f s", b - a }'; }
+
+if [ "$BACKEND" = llvm-api ]; then
+    LLVM_INC="${LLVM_INC:-$(llvm-config --includedir)}"
+    LLVM_LIB="${LLVM_LIB:-$(llvm-config --libdir)}"
+    APISRCS=$(find "$HERE/minic-native/src/main/kotlin" -name '*.kt' ! -name Main.kt | sort; find "$HERE/lower/src/main/kotlin" "$HERE/frontend/src/main/kotlin" "$HERE/backend/src/main/kotlin" "$HERE/llvm-c/src/main/kotlin" -name '*.kt' | sort)
+    t0=$(stamp)
+    "$MINIC" build $APISRCS -o "$WORK/stage1" --frontend=mini --cflag "-I$LLVM_INC" --cflag "-L$LLVM_LIB" --cflag -rdynamic --cflag -w
+    t1=$(stamp)
+    echo "stage1 (JVM minic --frontend=mini builds the compiler with the LLVM C API: $(elapsed $t0 $t1))"
+    mkdir -p "$WORK/rt"
+    for f in $RT; do "$CC" -std=c17 -O1 -w -I "$ROOT/runtime/include" -c "$f" -o "$WORK/rt/$(basename "$f" .c).o"; done
+    prev="$WORK/stage1"
+    t_prev=$t1
+    for stage in 2 3; do
+        "$prev" --backend=llvm-api --opt=O1 -o "$WORK/stage$stage.o" --emit-c "$WORK/stage$stage.c" --emit-mir "$WORK/stage$stage.mir" --emit-ll "$WORK/stage$stage.ll" $APISRCS --stdlib $STD
+        ta=$(stamp)
+        "$CC" "$WORK/stage$stage.o" "$WORK/rt"/*.o -o "$WORK/stage$stage" -rdynamic -L"$LLVM_LIB" -lLLVM-18 -lm
+        tb=$(stamp)
+        echo "stage$stage (stage$((stage - 1)) compiles the sources and builds the object through the API: $(elapsed $t_prev $ta); system link: $(elapsed $ta $tb))"
+        prev="$WORK/stage$stage"
+        t_prev=$tb
+    done
+    cmp "$WORK/stage2.c" "$WORK/stage3.c"
+    cmp "$WORK/stage2.mir" "$WORK/stage3.mir"
+    cmp "$WORK/stage2.ll" "$WORK/stage3.ll"
+    cmp "$WORK/stage2.o" "$WORK/stage3.o"
+    echo "stage2 == stage3 (C, MIR, LLVM module text and object file byte-identical)"
+    # the plain compiler (no LLVM binding) built through the API by the API compiler: its C and MIR are the C-built chain's
+    "$WORK/stage3" --backend=llvm-api --opt=O1 -o "$WORK/plain.o" --emit-c "$WORK/plain.c" --emit-mir "$WORK/plain.mir" $SRCS --stdlib $STD
+    "$CC" "$WORK/plain.o" "$WORK/rt"/*.o -o "$WORK/plain" -lm
+    "$WORK/plain" -o "$WORK/plain2.c" --emit-mir "$WORK/plain2.mir" $SRCS --stdlib $STD
+    cmp "$WORK/plain.c" "$WORK/plain2.c"
+    cmp "$WORK/plain.mir" "$WORK/plain2.mir"
+    if [ -n "$REFERENCE" ]; then
+        cmp "$WORK/plain.c" "$REFERENCE/stage2.c"
+        cmp "$WORK/plain.mir" "$REFERENCE/stage2.mir"
+        echo "the plain compiler built through the API compiles to the same C and MIR as the C-built compiler in $REFERENCE"
+    fi
+    echo "bootstrap via the LLVM C API OK: stage2 == stage3, work dir $WORK"
+    exit 0
+fi
 
 if [ "$BACKEND" = llvm ]; then
     t0=$(stamp)
