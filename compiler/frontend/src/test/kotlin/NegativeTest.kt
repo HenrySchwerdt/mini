@@ -39,7 +39,7 @@ class NegativeTest {
         "val s = \"abc\nval t = 1\n" to "1:13 unterminated string literal",
         "val s = \"abc\${1 + }\"\n" to "1:18 Expecting an element",
         "/* never closed\nfun f() {}\n" to "1:1 unterminated block comment",
-        "val c = 'ab'\n" to "1:9 unterminated character literal",
+        "val c = 'a\n" to "1:9 unterminated character literal",
         "package\nfun f() {}\n" to "1:8 Expecting package name",
         "import\nfun f() {}\n" to "1:7 Expecting qualified name",
         "fun f() { a.() }\n" to "1:14 Expecting an element",

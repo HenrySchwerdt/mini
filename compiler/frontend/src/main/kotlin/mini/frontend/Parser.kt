@@ -619,12 +619,30 @@ class Parser(internal val lex: LexResult) {
         var args: List<Arg>? = null
         if (kind() == Tk.LPAR) {
             val ws = !adjacentPrevToCurrent()
-            if (!(typeMode && ws)) args = parseArgs()
+            if (!(typeMode && ws && (la(1) == Tk.LPAR || parenFollowedByArrowOrDot()))) args = parseArgs()
         }
         return fin(AnnotationEntry(target, t, args), s)
     }
 
     internal fun prevIsSemi(): Boolean = lastSigRaw >= 0 && toks[lastSigRaw].kind == Tk.SEMI
+
+    /** at `(`: does the matching `)` continue a function type (`->`) or a receiver (`.`)? */
+    private fun parenFollowedByArrowOrDot(): Boolean {
+        var depth = 0
+        var i = 0
+        while (p + i < stoks.size) {
+            val k = la(i)
+            if (k == Tk.LPAR) depth++
+            else if (k == Tk.ARROW) return true
+            else if (k == Tk.RPAR) {
+                depth--
+                // no arrow inside: an argument list only when the declaration continues on the next line
+                if (depth == 0) return p + i + 1 < nlBefore.size && !nlBefore[p + i + 1]
+            } else if (k == Tk.EOF) return false
+            i++
+        }
+        return false
+    }
 
     /** no whitespace or comment between the previous significant token and the current one */
     internal fun adjacentPrevToCurrent(): Boolean = lastSigRaw >= 0 && lastEnd == tokStart()
@@ -962,7 +980,7 @@ class Parser(internal val lex: LexResult) {
         advance()
         var tps: List<TypeParam> = emptyList()
         if (kind() == Tk.LT) tps = parseTypeParams()
-        if (kind() == Tk.LPAR || kind() == Tk.LBRACKET) {
+        if ((kind() == Tk.LPAR || kind() == Tk.LBRACKET) && (ctx == CTX_LOCAL || !parenReceiverAhead())) {
             // destructuring declaration
             if (ctx != CTX_LOCAL) error("Destructuring declarations are only allowed for local variables/values")
             val bracketed = kind() == Tk.LBRACKET
@@ -1032,6 +1050,23 @@ class Parser(internal val lex: LexResult) {
         }
         done(m, NodeKind.PROPERTY)
         return fin(PropertyDecl(mods, isVar, tps, receiver, name, type, cons, init, delegate, getter, setter, backing), s)
+    }
+
+    /** at `(`: is this a parenthesised receiver type, `val (A.() -> B).x`? (matching `)` followed by `.`) */
+    private fun parenReceiverAhead(): Boolean {
+        if (kind() != Tk.LPAR) return false
+        var depth = 0
+        var i = 0
+        while (p + i < stoks.size) {
+            val k = la(i)
+            if (k == Tk.LPAR) depth++
+            else if (k == Tk.RPAR) {
+                depth--
+                if (depth == 0) return la(i + 1) == Tk.DOT || (la(i + 1) == Tk.QUEST && la(i + 2) == Tk.DOT)
+            } else if (k == Tk.EOF) return false
+            i++
+        }
+        return false
     }
 
     private fun accessorAheadAfterSemi(): Boolean {
@@ -1277,7 +1312,7 @@ class Parser(internal val lex: LexResult) {
             }
             if (kind() == Tk.RBRACE || kind() == Tk.EOF) break
             // an entry starts with annotations and an identifier that is not a declaration modifier
-            val isEntry = if (kind() == Tk.AT) true else atEnumEntryStart()
+            val isEntry = if (kind() == Tk.AT) annotatedEnumEntryAhead() else atEnumEntryStart()
             if (!isEntry) break
             val before = p
             val m = mark()
@@ -1309,12 +1344,22 @@ class Parser(internal val lex: LexResult) {
         return list
     }
 
+    /** at `@`: annotations (and modifiers) followed by an entry name rather than a declaration keyword */
+    private fun annotatedEnumEntryAhead(): Boolean {
+        val sn = snap()
+        parseModifierList()
+        val ok = kind() == Tk.IDENT && (la(1) == Tk.COMMA || la(1) == Tk.SEMI || la(1) == Tk.LPAR || la(1) == Tk.LBRACE || la(1) == Tk.RBRACE || la(1) == Tk.EOF)
+        restore(sn)
+        return ok
+    }
+
     /** `[modifiers] Name` followed by something that ends or continues an entry (not a member declaration) */
     private fun atEnumEntryStart(): Boolean {
         var j = 0
         while (la(j) == Tk.IDENT && isModifierWord(textAt(j)) && la(j + 1) == Tk.IDENT) j++
         if (la(j) != Tk.IDENT) return false
         if (j == 0) return !isIdent("init") && !isIdent("constructor") && !isIdent("context") && !atModifierKeyword()
+        if (textAt(j) == "constructor" || textAt(j) == "init") return false
         val n = la(j + 1)
         return n == Tk.COMMA || n == Tk.SEMI || n == Tk.LPAR || n == Tk.LBRACE || n == Tk.RBRACE || n == Tk.EOF
     }

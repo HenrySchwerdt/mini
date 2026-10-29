@@ -69,6 +69,8 @@ Tests: `gradle -p compiler test`.
 |---|---|---|
 | `compiler/backend` | MIR data model (`Mir.kt`), name mangling (`Mangling.kt`), MIR → C emitter (`CEmitter.kt`) | **No** |
 | `compiler/native-driver` | B1: `main(args)` that reads a `.mir` file, runs `CEmitter`, writes the `.c` file (runs on the JVM via Gradle, natively once minic can compile the backend) | **No** (file access through `mini.io`) |
+| `compiler/frontend` | B2-1: own Kotlin frontend: lexer, lossless CST parser, typed AST, outline renderer (`mini.frontend`); `driver/` holds the self-compilation driver | **No** (PurityTest) |
+| `compiler/frontend-oracle` | Test-only: compares the frontend with the K2 PSI parser, hosts the native self-compilation test | Yes (tests) |
 | `compiler/jvm-bridge` | Runs K2 (`FrontendDriver`), converts Kotlin IR to MIR (`Ir2Mir*.kt`, see the source layout below), CLI (`Cli`, `Main`), starts clang | Yes, and the only module allowed to touch compiler internals |
 
 ### How the IR is obtained
@@ -469,3 +471,20 @@ entry wrapper takes the array from `mk_b1_args()`).
   `CharRange` classes (literal `for`/`in` shapes are still pattern-matched, no object); `Foo::class` and `x::class` give a `KClass`
   with `simpleName`/`qualifiedName` (from the type info name; no other reflection); expanding an inline function inside
   itself (`xs.any { ys.any { } }`) keeps the outer `return` target. Everything else was stdlib API (see `docs/stdlib.md`, section 9).
+
+## Bootstrap B2-1: own frontend (lexer, parser, AST)
+
+`compiler/frontend` (`mini.frontend`, pure Kotlin, compiled by minic itself): `lexKotlin` (all tokens, trivia kept, offset/line/col,
+nested string templates, raw and multi-dollar strings), `parseKotlin` (hand-written recursive descent, newline rules of the
+reference PSI parser, error recovery with positions) giving a lossless CST (`printCst` reproduces the source byte for byte) and a
+typed AST (`Ast.kt`, sealed classes), and `Outline` (canonical text of every declaration and fully parenthesised expression).
+
+Tests (`frontend` + `frontend-oracle`, all in `gradle test`): lossless + error-free parse of every `.kt` in the repo; the
+Outline of our AST equals the same rendering of K2's PSI tree on the repo sources, ~230 tricky snippets, 30k random expressions,
+20k random declarations and ~12k mutated repo files (whenever PSI accepts them); malformed input (positions, first error line vs PSI,
+mutation/truncation fuzz, hostile nesting); native self-compilation (`FrontendSelfHostTest`): frontend + driver built by minic
+(`-Werror`, ASan/UBSan clean), output identical to the JVM on all repo sources.
+
+Known gaps: no semantic checks; no `.kts` script statements; PSI quirks not modelled (declaration used as operand, `>>=`, etc.);
+non-ASCII characters are all treated as identifier characters; recovery is coarse (skip to next declaration/statement).
+Native parse speed is ~70k lines/s against ~900k (JVM warm), dominated by reference counting traffic.
