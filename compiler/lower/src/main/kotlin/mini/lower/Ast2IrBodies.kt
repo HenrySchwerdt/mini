@@ -482,9 +482,9 @@ fun Ast2Ir.buildAccessorBody(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c
 /** the property reference passed to `getValue` / `setValue` (not used by the lowering) */
 fun Ast2Ir.delegateReference(name: String, type: Type, arity: Int): IrExpression {
     val dummy = IrProperty(name, null)
-    val kind = if (arity == 0) "KProperty" else "KProperty"
-    val cls = sema.kRefClass(kind, arity)
+    val cls = sema.classNamed(REFLECT_PKG + ".KProperty" + arity) ?: sema.kRefClass("KProperty", arity)
     val args = ArrayList<TArg>()
+    if (arity == 1) args.add(TArg(sema.nullableAny, Variance.INV))
     args.add(TArg(type, Variance.INV))
     val t = ClassType(cls, args, false)
     val ref = IrPropertyReference(dummy, t)

@@ -173,7 +173,17 @@ fun Ast2Ir.buildFakeOverrides(c: IrClass, cs: ClassSym) {
             declared.overridden = minimal
             continue
         }
-        fakes.add(makeFakeFunction(c, group[0].site, group[0].subst, group[0].fn, minimal, null))
+        // the most specific result type among the inherited members wins (K2 intersects them)
+        var best = group[0]
+        var bt = ops.substitute(best.fn.returnType, best.subst)
+        for (g in group) {
+            val gt = ops.substitute(g.fn.returnType, g.subst)
+            if (!typeEquals(gt, bt) && ops.isSubtype(gt, bt)) {
+                best = g
+                bt = gt
+            }
+        }
+        fakes.add(makeFakeFunction(c, best.site, best.subst, best.fn, minimal, null))
     }
     // functions that are accessors of declared properties are not in `declarations`; nothing else to do
     for (f in fakes) c.declarations.add(f)

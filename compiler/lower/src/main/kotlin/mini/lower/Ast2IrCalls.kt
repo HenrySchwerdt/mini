@@ -108,6 +108,11 @@ fun Ast2Ir.callWithInfo(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrE
     val fn = info.fn
     if (info.isInvoke) return invokeCall(e, info, type, node)
     if (fn.kind == FunKind.CONSTRUCTOR) return constructorCall(e, info, type, node)
+    if (fn.kind == FunKind.SYNTH && fn.owner == null && info.args.size == 1) {
+        // `Iface { ... }`: the SAM constructor of a fun interface
+        val rt = type
+        if (rt is ClassType && rt.cls.isFunInterface) return samConversion(convertArg(info.args[0], null, null), rt)
+    }
     val label = fn.name
     val d = info.dispatch
     val x = info.ext
@@ -263,9 +268,12 @@ private fun Ast2Ir.argFor(info: CallInfo, j: Int, p: IrValueParameter, subst: Ma
 private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpression {
     val ex = a.expr!!
     val u = unwrapPostponed(ex)
-    if (u is LambdaExpr) return lambdaExpr(u, label)
-    return convert(ex)
+    val v = if (u is LambdaExpr) lambdaExpr(u, label) else convert(ex)
+    if (expected is ClassType && expected.cls.isFunInterface && rec(u)?.type is FunType) return samConversion(v, irType(expected))
+    return v
 }
+
+fun samConversion(v: IrExpression, t: Type): IrExpression = IrTypeOperatorCall(IrTypeOperator.SAM_CONVERSION, t, v, t)
 
 // ---- invoke ---------------------------------------------------------------------------------------------------------------
 

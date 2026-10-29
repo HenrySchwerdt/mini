@@ -17,7 +17,7 @@ fun Ast2Ir.assignExpr(e: BinaryExpr): IrExpression {
         val args = ArrayList<IrExpression>()
         for (i in left.indices) args.add(convert(i))
         args.add(convert(e.right))
-        return callOperator(info, recv, args, unit, "EQ")
+        return callOperator(info, recv, args, irType(info.ret ?: unit), "EQ")
     }
     val lr = rec(left) ?: fail(left, "assignment target without record")
     val sym = lr.callee
@@ -453,7 +453,11 @@ fun Ast2Ir.forExpr(e: ForExpr, label: String?): IrExpression {
     val nextInfo = fi.next ?: fail(e, "next() is not resolved")
     val hasNextInfo = fi.hasNext ?: fail(e, "hasNext() is not resolved")
     val iterable = convert(e.iterable)
-    val iterCall = callOperator(iterInfo, iterable, emptyList(), irType(iterInfo.ret ?: sema.nullableAny), "FOR_LOOP_ITERATOR")
+    var iterT = irType(iterInfo.ret ?: sema.nullableAny)
+    val itc = functionFor(iterInfo.fn, if (iterInfo.fn.receiver == null) iterable.type else null)
+    val ist = iterable.type
+    if (itc.isFakeOverride && ist is ClassType) iterT = irType(ops.substitute(itc.returnType, ops.substOf(ist)))
+    val iterCall = callOperator(iterInfo, iterable, emptyList(), iterT, "FOR_LOOP_ITERATOR")
     val itVar = IrVariable("<iterator>", iterCall.type, false)
     itVar.origin = "FOR_LOOP_ITERATOR"
     itVar.parent = ctx?.fn
