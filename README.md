@@ -3,12 +3,15 @@
 **Kotlin, compiled to native code, with manual memory management the compiler can check.**
 
 [![Build and test](https://github.com/HenrySchwerdt/mini/actions/workflows/build.yml/badge.svg)](https://github.com/HenrySchwerdt/mini/actions/workflows/build.yml)
+[![Documentation](https://img.shields.io/badge/docs-henryschwerdt.github.io%2Fmini-6d4aff.svg)](https://henryschwerdt.github.io/mini/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Mini is **Kotlin**: same grammar, same semantics, same standard library. The compiler `minic` does not
 target the JVM. It translates Kotlin through C into **native binaries** and adds its own
 **memory model** on top. Write ordinary Kotlin with reference counting by default, or opt a file into
 **Strict** mode and let the compiler prove that every allocation has an owner and is released exactly once.
+
+**Documentation: https://henryschwerdt.github.io/mini/** (guide, language tour, memory guide, diagnostics reference, how the compiler works).
 
 Every Mini program is valid Kotlin. Mini-specific things (allocators, `@Owned`, `x.free()`) are a plain
 Kotlin library that also compiles on the JVM, so IDEs, formatters and syntax highlighting work unchanged.
@@ -151,6 +154,7 @@ clang -std=c17 -O2 -Iruntime/include build/shapes.c runtime/src/*.c -lm -o build
 | `stdlib/` | Mini stdlib as Kotlin source (ported from the Kotlin stdlib, Apache-2.0) |
 | `stdlib-test/` | stdlib tests that run on the JVM against the real Kotlin stdlib |
 | `examples/` | example programs |
+| `website/` | the [documentation site](https://henryschwerdt.github.io/mini/) (VitePress), its checked code samples and generators |
 | `docs/` | [plan and roadmap](docs/plan-kotlin.md), [memory model](docs/memory-model.md), [stdlib](docs/stdlib.md), [benchmarks](docs/benchmarks.md) |
 
 ## Testing
