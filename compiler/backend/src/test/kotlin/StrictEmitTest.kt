@@ -164,4 +164,24 @@ class StrictEmitTest {
         assertTrue(back.functions.first { it.cName == "f" }.strict)
         assertEquals(CEmitter.emit(m), CEmitter.emit(back))
     }
+
+    @Test
+    fun memReportClassifiesAllocationsAndReasons() {
+        val m = module(build(true))
+        val r = CEmitter.emitDetailed(m)
+        val rep = mini.backend.MemReport.build(m, r)
+        val f = rep.functions.first { it.cName == "f" }
+        assertEquals(1, f.allocs["arena"], f.allocs.toString())
+        assertEquals(0, f.rcSites, f.toString())
+        val text = mini.backend.MemReport.text(rep)
+        assertTrue("allocation sites: " in text && "arena 1" in text, text)
+        // the same module without Strict code generation: reference counting and counted allocations everywhere
+        val base = mini.backend.MemReport.build(m, CEmitter.emitDetailed(m, strict = false))
+        val g = base.functions.first { it.cName == "f" }
+        assertTrue(g.rcSites > 0 && g.rcAllocs == 1, g.toString())
+        val warnings = mini.backend.MemReport.m0207(base) { it.cName == "f" }
+        assertEquals(1, warnings.size)
+        assertTrue(warnings[0].startsWith("warning[M0207]: reference counting remains in `f`"), warnings[0])
+        assertTrue("help:" in warnings[0], warnings[0])
+    }
 }

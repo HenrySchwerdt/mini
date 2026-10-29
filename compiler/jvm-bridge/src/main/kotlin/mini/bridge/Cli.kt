@@ -14,7 +14,9 @@ object Cli {
     private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [--frontend=k2|mini]"""
+             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=k2|mini]
+       minic mem-report <file.kt>... [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [--top <n>] [--user-only]
+             [--no-rc-opt] [--no-strict] [--no-conv]"""
 
     class Options(
         val sources: List<File>,
@@ -42,6 +44,12 @@ object Cli {
         val noConv: Boolean = false,
         /** `--conv-report`: print the calling conventions that were kept / dropped (stderr). */
         val convReport: Boolean = false,
+        /** `-Wrc`: M0207 warnings (reference counting remains in a function of the user files). */
+        val wrc: Boolean = false,
+        /** `mem-report --top n`: functions listed in detail. */
+        val top: Int = 40,
+        /** `mem-report --user-only`: list only functions of the user files (not the stdlib). */
+        val userOnly: Boolean = false,
     )
 
     /** Returns the process exit code. */
@@ -52,13 +60,14 @@ object Cli {
         }
         if (args[0] == "check") return check(args.drop(1), repoRoot)
         val emit = args[0] == "emit-mir"
-        if (args[0] != "build" && !emit) {
+        val memReport = args[0] == "mem-report"
+        if (args[0] != "build" && !emit && !memReport) {
             System.err.println("minic: unknown command '${args[0]}'\n$USAGE")
             return 2
         }
-        val opts = parse(args.drop(1)) ?: return 2
+        val opts = parse(args.drop(1), needOutput = !memReport) ?: return 2
         return try {
-            if (emit) emitMir(opts, repoRoot) else build(opts, repoRoot)
+            if (emit) emitMir(opts, repoRoot) else if (memReport) memReport(opts, repoRoot) else build(opts, repoRoot)
         } catch (e: UnsupportedConstruct) {
             if (System.getenv("MINIC_DEBUG") != null) e.printStackTrace()
             System.err.println(e.message)
@@ -125,7 +134,7 @@ object Cli {
         }
     }
 
-    private fun parse(a: List<String>): Options? {
+    private fun parse(a: List<String>, needOutput: Boolean = true): Options? {
         val sources = mutableListOf<File>()
         val extra = mutableListOf<File>()
         var werror = false
@@ -135,6 +144,9 @@ object Cli {
         var noStrict = false
         var noConv = false
         var convReport = false
+        var wrc = false
+        var top = 40
+        var userOnly = false
         var stdlib: File? = null
         var noStdlib = false
         var out: File? = null
@@ -167,6 +179,9 @@ object Cli {
                 "--no-strict" -> noStrict = true
                 "--no-conv" -> noConv = true
                 "--conv-report" -> convReport = true
+                "-Wrc" -> wrc = true
+                "--top" -> top = (next(x) ?: return null).toIntOrNull() ?: run { System.err.println("minic: --top needs a number"); return null }
+                "--user-only" -> userOnly = true
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     sources += File(x)
@@ -174,8 +189,8 @@ object Cli {
             }
             i++
         }
-        if (sources.isEmpty() || out == null) { System.err.println(USAGE); return null }
-        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport)
+        if (sources.isEmpty() || (needOutput && out == null)) { System.err.println(USAGE); return null }
+        return Options(sources, out ?: File("mem-report"), emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport, wrc = wrc, top = top, userOnly = userOnly)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -224,6 +239,28 @@ object Cli {
         return 0
     }
 
+    /** Is [name] (a qualified function name) from the Mini stdlib rather than from a user file? */
+    private fun isStdlibName(name: String) = name.startsWith("kotlin.") || name.startsWith("mini.") || name.startsWith("java.") ||
+        name.startsWith("<dispose kotlin.") || name.startsWith("<dispose mini.") || name.contains("\$bridge")
+
+    /**
+     * `minic mem-report <file.kt>... [--top n] [--user-only]`: where reference counting remains after the Strict code
+     * generation, RcOpt and the calling conventions, and why (plan 4.4a). Prints to stdout.
+     */
+    private fun memReport(o: Options, repoRoot: File?): Int {
+        for (src in o.sources) if (!src.isFile) throw BuildFailure("no such file: $src")
+        val stdlibFiles = if (o.noStdlib) emptyList() else {
+            val dir = Stdlib.findDir(o.stdlib, repoRoot)
+                ?: throw BuildFailure("Mini stdlib sources not found (${Stdlib.RELATIVE_DIR}); pass --stdlib <dir> or --no-stdlib")
+            Stdlib.sources(dir).also { if (it.isEmpty()) throw BuildFailure("no .kt files in $dir") }
+        }
+        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror)
+        val r = CEmitter.emitDetailed(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv)
+        val report = mini.backend.MemReport.build(module, r)
+        print(mini.backend.MemReport.text(report, o.top) { f -> !o.userOnly || !isStdlibName(f.name) })
+        return 0
+    }
+
     fun build(o: Options, repoRoot: File?): Int {
         for (src in o.sources) if (!src.isFile) throw BuildFailure("no such file: $src")
         val sourceName = o.sources.first().name
@@ -251,12 +288,11 @@ object Cli {
 
         // 3. MIR -> C
         val c = CEmitter.emitDetailed(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv).also { r ->
+            if (o.wrc) for (w in mini.backend.MemReport.m0207(mini.backend.MemReport.build(module, r)) { f -> !isStdlibName(f.name) }) System.err.print(w)
             if (o.convReport) r.plan?.conv?.summary()?.forEach { System.err.println("conv: $it") }
             val dbg = System.getenv("MINIC_RC_EXPLAIN")
             if (dbg != null) for (f in module.functions) if (f.qualifiedName.contains(dbg)) {
                 System.err.println("rc: ${f.qualifiedName} effects: ${r.plan?.effectsOf(f.cName)}")
-                val fk = System.getenv("MINIC_RC_PATH")
-                if (fk != null) System.err.println("rc:   path to $fk: ${r.plan?.tracePath(f.cName, fk)}")
             }
         }.c
         val cFile = o.emitC ?: File.createTempFile("minic-", ".c")

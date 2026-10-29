@@ -99,7 +99,7 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
     fun fieldEff(id: Int): Eff {
         while (fieldEffs.size <= id) fieldEffs.add(Eff())
         val e = fieldEffs[id]
-        if (e.bits.isEmpty()) e.addField(id)
+        if (e.bits.size == 0) e.addField(id)
         return e
     }
 
@@ -129,7 +129,7 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
         while (changed) {
             changed = false
             groupEff.clear()
-            anySlotEff.fill(null)
+            for (k in 0 until 3) anySlotEff[k] = null
             allDynEff = null
             for (f in module.functions) {
                 val mine = eff[f.cName]!!
@@ -159,6 +159,12 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
     }
 
     internal fun groupUnionByKey(key: String, targets: Set<String>): Eff = groupEff.getOrPut(key) { unionOf(targets) }
+
+    private fun allTargetsFlat(): Set<String> {
+        val out = HashSet<String>()
+        for (s in groups.allTargets()) out.addAll(s)
+        return out
+    }
 
     internal fun unionOf(targets: Set<String>): Eff {
         val u = Eff()
@@ -276,6 +282,9 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
         else -> unknownEff
     }
 
+    /** Functions that may run something the analysis knows nothing about (a runtime call that may overwrite references). */
+    fun unknownEffectFunctions(): List<String> = module.functions.filter { eff[it.cName]?.unknown == true }.map { it.qualifiedName }
+
     /** The effect of function [cName] as text (for `mem-report`): the fields it may store into, array slots, unknown. */
     fun describe(cName: String): String {
         val e = eff[cName] ?: return "?"
@@ -284,30 +293,6 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
         for ((k, id) in fieldIds) if (id ushr 6 < e.bits.size && (e.bits[id ushr 6] ushr (id and 63)) and 1L != 0L) names += k
         names.sort()
         return (names.joinToString(", ") + (if (e.slots) " [array slots]" else "") + (if (e.unknown) " [unknown]" else "")).trim()
-    }
-
-    /** Debug: a call path from [cName] to a function that stores into [fieldKey] (`Owner#field`), or null. */
-    fun tracePath(cName: String, fieldKey: String): String? {
-        val id = fieldIds[fieldKey] ?: return null
-        val seen = HashSet<String>()
-        fun has(e: Eff?) = e != null && id ushr 6 < e.bits.size && (e.bits[id ushr 6] ushr (id and 63)) and 1L != 0L
-        fun go(n: String, depth: Int): String? {
-            if (depth > 12 || !seen.add(n)) return null
-            val f = byName[n] ?: return null
-            val l = Eff(); val es = ArrayList<Any>()
-            scan(f, l, es)
-            if (has(l)) return f.qualifiedName
-            for (edge in es) {
-                if (edge is String) {
-                    if (has(eff[edge])) go(edge, depth + 1)?.let { return f.qualifiedName + " -> " + it }
-                } else if (edge is Edge) {
-                    val targets = edge.targets ?: (if (edge.kind in 1..3) groups.anySlot[edge.kind - 1] else groups.allTargets().flatMap { it.asSequence() }.toSet())
-                    for (t in targets) if (has(eff[t])) go(t, depth + 1)?.let { return f.qualifiedName + " ~> " + it }
-                }
-            }
-            return null
-        }
-        return go(cName, 0)
     }
 
     /** The first reason [f] has a heap effect (for `mem-report`), or null. */

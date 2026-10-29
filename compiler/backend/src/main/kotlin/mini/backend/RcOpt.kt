@@ -28,7 +28,7 @@ package mini.backend
 /** Decisions for one function (see the file comment). Keys: local ids / consumer statements. */
 class RcFunctionPlan(
     /** Ids of the reference locals that borrow instead of own. */
-    val borrowed: HashSet<Int>,
+    val borrowed: BitIds,
     /** Consumer statement (Declare / Assign / SetField / Return) to the owned local whose reference it takes over. */
     val moves: HashMap<MirStmt, MirLocal>,
     /** Call argument expression to the owned local whose reference the callee takes over (see [RcPlan.ownedMask]). */
@@ -72,7 +72,8 @@ class RcPlan internal constructor(
 
     fun effectsOf(cName: String): String = fx.describe(cName)
 
-    fun tracePath(cName: String, fieldKey: String): String? = fx.tracePath(cName, fieldKey)
+    fun unknownEffectFunctions(): List<String> = fx.unknownEffectFunctions()
+
 
     fun of(f: MirFunction): RcFunctionPlan? = byFunction[f.cName]
 
@@ -156,7 +157,17 @@ object RcOpt {
 }
 
 /** Operands of [e] in evaluation order. */
-internal fun mirChildren(e: MirExpr): List<MirExpr> = when (e) {
+internal fun mirChildren(e: MirExpr): List<MirExpr> {
+    val c = e.childCache
+    if (c != null) return c
+    val n = computeChildren(e)
+    e.childCache = n
+    return n
+}
+
+private val NO_CHILDREN: List<MirExpr> = emptyList()
+
+private fun computeChildren(e: MirExpr): List<MirExpr> = when (e) {
     is MirExpr.Binary -> listOf(e.left, e.right)
     is MirExpr.Unary -> listOf(e.operand)
     is MirExpr.Convert -> listOf(e.operand)
@@ -175,7 +186,7 @@ internal fun mirChildren(e: MirExpr): List<MirExpr> = when (e) {
     is MirExpr.StringLength -> listOf(e.operand)
     is MirExpr.IntConst, is MirExpr.LongConst, is MirExpr.DoubleConst, is MirExpr.BooleanConst, is MirExpr.CharConst,
     is MirExpr.StringConst, MirExpr.UnitValue, is MirExpr.Local, is MirExpr.NullConst, is MirExpr.ObjectGet,
-    is MirExpr.Unreachable, is MirExpr.CaughtException, is MirExpr.TypeInfoOf -> emptyList()
+    is MirExpr.Unreachable, is MirExpr.CaughtException, is MirExpr.TypeInfoOf -> NO_CHILDREN
 }
 
 /** A small bit set over dense local indices. */
@@ -224,9 +235,9 @@ private class LocalInfo(val local: MirLocal, val index: Int, val isParam: Boolea
     /** Declared without a value (assigned later): NULL on some paths. */
     var declaredEmpty = false
     val chains = ArrayList<Chain>()
-    val usePos = ArrayList<Int>()
+    val usePos = IntList()
     val useLoop = ArrayList<LoopRange?>()
-    val assignPos = ArrayList<Int>()
+    val assignPos = IntList()
     val assignLoop = ArrayList<LoopRange?>()
     var borrowed = false
     /** A parameter with the owned convention: handled like an owned local from the function start on. */
@@ -263,19 +274,19 @@ private class RcAnalyzer(
     val tr: Tracking,
 ) {
     private val infos = ArrayList<LocalInfo>()
-    private val byId = HashMap<Int, LocalInfo>()
+    private val byId = IdMap<LocalInfo>()
     private var pos = 0
-    private val events = ArrayList<Int>()
+    private val events = IntList()
     /** The effect of the event at the same index of [events]. */
     private val eventEffs = ArrayList<Eff>()
     private val loops = ArrayList<LoopRange>()
-    private val scopeParent = ArrayList<Int>()
+    private val scopeParent = IntList()
     private var scope = 0
     private val moves = HashMap<MirStmt, MirLocal>()
     private val takes = HashMap<MirExpr, MirLocal>()
     private val dead = HashMap<MirStmt, ArrayList<MirLocal>>()
     private var curList: List<MirStmt> = f.body
-    private val consumedTop = HashSet<Int>()
+    private val consumedTop = BitIds()
     private val fresh = HashSet<MirStmt>()
     private val selfTakes = HashSet<MirStmt>()
 
@@ -312,9 +323,9 @@ private class RcAnalyzer(
         if (candidates > 0) validate()
         liveness()
         var borrowedCount = 0
-        val borrowedIds = HashSet<Int>()
+        val borrowedIds = BitIds()
         for (i in infos) if (i.borrowed) {
-            borrowedIds += i.local.id
+            borrowedIds.add(i.local.id)
             borrowedCount++
         }
         val ownedParams = ArrayList<MirLocal>()
@@ -755,8 +766,8 @@ private class RcAnalyzer(
 
     // ---- liveness and moves --------------------------------------------------------------------------------
 
-    private val breakLive = HashMap<Int, RcBits>()
-    private val contLive = HashMap<Int, RcBits>()
+    private val breakLive = IdMap<RcBits>()
+    private val contLive = IdMap<RcBits>()
     private var excLive: RcBits? = null
 
     private fun empty() = RcBits(infos.size)
@@ -835,7 +846,7 @@ private class RcAnalyzer(
     }
 
     private fun noteConsumed(x: LocalInfo, s: MirStmt) {
-        if (x.isParam && ctxStack.isNotEmpty() && ctxStack[ctxStack.size - 1].list === f.body) consumedTop += x.local.id
+        if (x.isParam && ctxStack.isNotEmpty() && ctxStack[ctxStack.size - 1].list === f.body) consumedTop.add(x.local.id)
         if (closed(x)) {
             var l = dead[s]
             if (l == null) {

@@ -263,6 +263,9 @@ class MirCatch(val type: MirType, val body: List<MirStmt>)
 sealed class MirExpr {
     abstract val type: MirType
 
+    /** Cache of [mirChildren] (the analyses walk the same trees many times; computing the operand list allocates). */
+    var childCache: List<MirExpr>? = null
+
     class IntConst(val value: Int) : MirExpr() { override val type: MirType get() = TInt }
     class LongConst(val value: Long) : MirExpr() { override val type: MirType get() = TLong }
     class DoubleConst(val value: Double) : MirExpr() { override val type: MirType get() = TDouble }

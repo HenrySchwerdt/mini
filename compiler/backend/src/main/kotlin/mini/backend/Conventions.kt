@@ -117,7 +117,9 @@ class Conventions private constructor(
         for ((r, m) in rootMask.entries.sortedBy { it.key }) {
             if (!seen.add(r)) continue
             val fns = members[r] ?: continue
-            out += "owned parameters " + m.withIndex().filter { it.value }.joinToString(",") { it.index.toString() } + ": " + fns.map { it.qualifiedName }.sorted().joinToString(", ")
+            val idx = ArrayList<String>()
+            for (k in m.indices) if (m[k]) idx += k.toString()
+            out += "owned parameters " + idx.joinToString(",") + ": " + fns.map { it.qualifiedName }.sorted().joinToString(", ")
         }
         return out
     }
@@ -148,6 +150,8 @@ class Conventions private constructor(
  */
 class DispatchGroups(module: MirModule) {
     val classes = HashMap<String, MirClass>()
+    private val vKeys = HashMap<String, Array<String?>>()
+    private val iKeys = HashMap<String, Array<String?>>()
     private val vMembers = HashMap<String, HashSet<String>>()
     private val iMembers = HashMap<String, HashSet<String>>()
     /** The overrides of `toString` / `equals` / `hashCode` (slots 0..2) of every class: what `mk_to_string` & co. can reach. */
@@ -180,12 +184,33 @@ class DispatchGroups(module: MirModule) {
     private fun vKeyOf(c: MirClass, slot: Int) = "V:" + introducer(c, slot).cName + "#" + slot
 
     fun vKey(recv: MirType, slot: Int): String? {
-        val c = (recv as? TObject)?.let { classes[it.cName] } ?: return null
-        if (c.isInterface || slot >= nslots(c)) return null
-        return vKeyOf(c, slot)
+        val cn = (recv as? TObject)?.cName ?: return null
+        var arr = vKeys[cn]
+        if (arr == null) {
+            val c = classes[cn]
+            arr = arrayOfNulls<String>(if (c == null || c.isInterface) 0 else nslots(c))
+            if (c != null) for (k in arr.indices) arr[k] = vKeyOf(c, k)
+            vKeys[cn] = arr
+        }
+        return if (slot < arr.size) arr[slot] else null
     }
 
-    fun iKey(iface: String, index: Int) = "I:$iface#$index"
+    fun iKey(iface: String, index: Int): String {
+        var arr = iKeys[iface]
+        if (arr == null || index >= arr.size) {
+            val n = if (index + 1 > 16) index + 1 else 16
+            val bigger = arrayOfNulls<String>(n)
+            if (arr != null) for (k in arr.indices) bigger[k] = arr[k]
+            arr = bigger
+            iKeys[iface] = arr
+        }
+        var k = arr[index]
+        if (k == null) {
+            k = "I:$iface#$index"
+            arr[index] = k
+        }
+        return k
+    }
 
     /** Key of the dispatch group of a virtual / interface call, or null when unknown. */
     fun key(e: MirExpr): String? = when (e) {
@@ -206,5 +231,12 @@ class DispatchGroups(module: MirModule) {
 
     fun groupKeys(): List<Pair<String, Set<String>>> = vMembers.entries.map { it.key to it.value as Set<String> } + iMembers.entries.map { it.key to it.value as Set<String> }
 
-    fun allTargets(): Sequence<Set<String>> = vMembers.values.asSequence() + iMembers.values.asSequence() + anySlot.asSequence()
+    /** Every group (class slots, interface entries, slots 0..2): for effects of calls with unknown receivers. */
+    fun allTargets(): List<Set<String>> {
+        val out = ArrayList<Set<String>>()
+        for (v in vMembers.values) out += v
+        for (v in iMembers.values) out += v
+        for (v in anySlot) out += v
+        return out
+    }
 }
