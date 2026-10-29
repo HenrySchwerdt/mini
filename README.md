@@ -93,7 +93,8 @@ In Strict mode a separate checker runs before code generation.
 | **Full bootstrap, stage 2 == stage 3 (B3)** | Next. `minic` compiles itself without a JVM. |
 | Project tool `mini` (`mini new/build/run/test`, `mini.toml`, no Gradle) | Planned, right after B2-3. |
 | Reflection (static metadata, ownership-aware), JSON (kotlinx.serialization API), compile-time DI and a web framework with one arena per request | Planned after B3. |
-| Coroutines and async IO on libuv, LLVM backend, runtime written in Kotlin, Windows | Later. |
+| LLVM as the primary backend (in-process via its C API, embedded lld, single binary, no clang), statically bundled libuv, `.kts` scripts and a REPL on the LLVM ORC JIT | Planned after B3. |
+| Coroutines and async IO on libuv, runtime written in Kotlin, Windows | Later. |
 
 Platforms: Linux and macOS (CI). Windows follows later. The full plan is in
 [docs/plan-kotlin.md](docs/plan-kotlin.md).

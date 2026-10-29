@@ -544,6 +544,41 @@ project built by `mini`:
   with `mini` in CI next to Gradle and compare the outputs, (3) switch CI and the README,
   (4) delete `compiler/gradle*`, `settings.gradle.kts`, `build.gradle.kts`.
 
+### 10g. Toolchain without clang: LLVM as the primary backend, static libuv, JIT and scripts (after B3)
+
+Decision: after the full self-host (B3) Mini moves **fully to the LLVM backend**. The C backend stays
+only as the portable bootstrap seed (`bootstrap/minic.c`, §10f) and as a fallback for platforms
+without LLVM; new optimizations and features target LLVM first.
+
+- **LLVM in-process through its C API**, bound with Mini's own C interop (§7): `external` functions
+  with `@CName("LLVMBuildAdd")` etc. Handles that LLVM disposes (`LLVMDispose*`) are `@Owned`, so the
+  binding is the big real-world test of §7 and of the memory model. No textual `.ll` files and no
+  `llc`/`clang` process.
+- **lld embedded** (through a small C shim around its library entry point) for linking: `minic` is a
+  single self-contained binary (LLVM + lld inside, like Zig). LLVM is not built by us: the release CI
+  links the official prebuilt LLVM static libraries per platform. Expected size 60-100 MB.
+- **What LLVM gives us beyond C:** real exception unwinding instead of the error-return ABI (§5),
+  precise debug info (DWARF with Kotlin source lines, lldb/gdb step through `.kt` files), LTO across
+  stdlib and program, intrinsics for atomics and overflow checks, cross-compilation to every LLVM
+  target (`mini build --target linux-arm64`).
+- **libuv statically bundled:** each release ships a prebuilt `libuv.a` per target (MIT licence) and
+  `minic` links it automatically. Users never install libuv. Later a prebuilt musl for fully static
+  Linux binaries. (Bundling libuv does not need B3 and can come earlier with the C backend.)
+- **JIT and Kotlin scripts:** LLVM ORC JIT through the C API.
+  - `mini run script.main.kts`, shebang scripts (`#!/usr/bin/env mini`), `mini repl`.
+  - Pipeline: own frontend → MIR → LLVM IR → ORC, executed in memory without object files or linking.
+  - The stdlib is compiled once into a cached object/bitcode that the JIT links against; scripts are
+    cached by content hash. Target: a new script starts in about 50-150 ms, a cached one in a few ms.
+  - Script features: top-level statements, `args`, `@file:DependsOn` mapped to `mini` dependencies,
+    Managed memory by default (allocators still available).
+  - The REPL adds one small module per input to the ORC session.
+- **Together with §10c** (runtime in Kotlin) Mini programs then contain no C at all; only libc and libuv
+  remain, both as prebuilt libraries.
+
+Order after B3: C interop complete (§7: pointers, structs, callbacks) → LLVM backend reaching parity
+with the C backend (same test suite, byte-identical program output) → switch the default to LLVM,
+embedded lld, single binary → ORC JIT, `.kts`, REPL → cross-compilation and static musl binaries.
+
 ## 11. Working method: manager and Sonnet agents
 
 - **Manager** (this agent): architecture, interfaces between packages,
