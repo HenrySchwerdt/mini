@@ -324,6 +324,31 @@ die Analyse dann aus (Escape-Analyse, Lints, Thread-Regeln).
 | **P7** | LLVM-Backend, Zyklensammler, Performance | Box-Tests ≥ 80 %, Benchmarks gegen Kotlin/Native |
 | **P8 Self-Hosting** | siehe Abschnitt 10a | Mini-Compiler baut sich selbst, Stage 2 == Stage 3 |
 
+### 10b. v1 und Bootstrap: konkrete Meilensteine
+
+**v1 ist fertig, wenn `minic` sein eigenes Backend kompiliert** (`compiler/backend`, reines
+Kotlin, Regel aus 10a) und das native Ergebnis für alle Testprogramme dieselbe C-Ausgabe
+erzeugt wie das JVM-Backend. Das ist ein harter, automatisch prüfbarer Maßstab. Er zwingt
+genau die Features herbei, die echter Kotlin-Code braucht:
+
+| Bereich | Für v1 nötig |
+|---|---|
+| Sprache | Klassen, `sealed`/`data`/`enum`/`object`, Interfaces, Generics (Klassen + Funktionen), Lambdas und Closures, Extension-Funktionen, `when`, Nullability, Exceptions (`error()`, `require`, `try/catch/finally`), Default- und Named-Args, `vararg`, Properties mit Gettern, `lazy` |
+| stdlib | `String`/`StringBuilder`, `List`/`MutableList`/`Map`/`Set` (+ `ArrayList`, `HashMap`, `LinkedHashMap`, `HashSet`), `map`/`filter`/`joinToString`/`forEach`/`associate`…, `Pair`, Ranges, `buildString`, `println` |
+| Speicher | Managed (RC) überall. Strict-Prüfung läuft als eigener Strang parallel. |
+
+**Bootstrap-Stufen danach:**
+1. **B1 (= v1):** Backend self-hosted. Native `minic-backend` liest serialisiertes MIR
+   (vom JVM-Frontend als Datei geschrieben) und erzeugt C. Damit läuft der halbe Compiler nativ.
+2. **B2:** Eigenes Frontend in `common`-Kotlin (Lexer → Parser → Resolver → MIR), K2 als
+   Orakel. Wachstum Datei für Datei: Jede Testdatei muss dasselbe MIR liefern wie der K2-Pfad.
+3. **B3:** Komplett nativ: `minic` kompiliert sich selbst ohne JVM, Stage 2 == Stage 3.
+
+Der stdlib-Weg für v1: Kotlin-stdlib-Quellen (`common`, Apache-2.0) **zusammen mit dem
+Programm** als Quelltext durch K2 schicken, mit `-Xallow-kotlin-package` und eigenen `actual`s.
+So haben auch `inline`-Funktionen wie `map`/`filter` IR-Bodies, die unser Backend
+kompilieren kann. Aus der JVM-stdlib-JAR gibt es nur Bytecode, kein IR.
+
 ### 10a. Self-Hosting
 
 Ziel: Der Compiler wird von sich selbst kompiliert und läuft als natives Binary ohne JVM.
