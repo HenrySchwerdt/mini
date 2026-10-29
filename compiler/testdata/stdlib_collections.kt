@@ -1,4 +1,4 @@
-// The real stdlib collections (std/kotlin-mini, compiled natively) with lambdas, generics, extension
+// The real stdlib collections (stdlib, compiled natively) with lambdas, generics, extension
 // functions, vararg and exceptions.
 
 data class Person(val name: String, val age: Int)

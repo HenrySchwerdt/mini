@@ -297,7 +297,7 @@ block `/* ---- v1-L ---- */` in `minirt.h` / `src/v1l.c` (tests: `tests/test_v1l
 | `Ir2MirArrays.kt` | arrays, `vararg`/spread, `for` over arrays |
 | `Ir2MirTopLevel.kt` | top-level properties (file facade object) |
 | `Ir2MirLocalClasses.kt` | inner / local / anonymous classes |
-| `Intrinsics.kt` | **stopgap** stdlib functions (see below); self-contained, delete when the stdlib is compiled from source |
+| (removed) | the planned `Intrinsics.kt` stopgap is gone: `let`/`run`/`require`/`error`/... now come from `stdlib/` as inline functions with bodies |
 
 ### Lambdas and function types
 
@@ -381,14 +381,17 @@ implemented in the bridge:
   same `try`'s catch-all (the finalizer would run twice); exceptions inside object/file-facade initialisers
   propagate lazily; `suppressed` exceptions are not recorded.
 
-### Intrinsics (stopgap)
+### Stdlib integration
 
-K2 resolves against the JVM stdlib jar, so `let`, `repeat`, `error`, `require`, ... have no IR bodies.
-`Intrinsics.kt` special-cases `let/also/apply/run/with/takeIf/takeUnless/repeat`, `maxOf/minOf` (Int/Long/Double/Char),
-`error`, `TODO`, `require`, `check`, `requireNotNull`, `checkNotNull`, `isInitialized`. Lambdas passed to them are
-expanded in place like for user inline functions. When the stdlib-from-source mechanism lands, those functions
-have bodies and the generic inline expansion takes over; the file can then be deleted (`intrinsicCall` is the
-only entry point).
+The stdlib sources have IR bodies, so `let`, `repeat`, `require`, `error`, `listOf`, `map`, ... are ordinary functions: inline
+ones are expanded by `Ir2MirInline`, the rest are compiled as top-level functions (generics by erasure, lambdas as closures,
+`vararg` as arrays, `fun interface Comparator` through SAM conversion, `by lazy` through delegated-property accessors).
+The throw seam `mini.internal.throwXxx` is now plain Kotlin (`throw IllegalStateException(message)`). The exception classes in
+`stdlib/kotlin/Throwable.kt` are *replaced* by the runtime-provided classes (`isRuntimeProvided`): their source declarations
+are not compiled, constructors and members map to `MkThrowable` & co. Additions made to `stdlib/` for the backend:
+`kotlin/Arrays.kt` (`arrayOf` family, `contentToString`, `lastIndex`, `String?.plus`, `isInitialized` marker),
+`kotlin/ArrayIndices.kt` (Builtin file: `array.indices`, only pattern-matched in `for`), more `Throwable` subclasses and
+constructors. `Comparable` and `CharSequence` are erased (`Any` / `String`); `compareTo` on such values is `mk_compare_to`.
 
 ### Arrays, `vararg`, enums
 
@@ -415,12 +418,15 @@ only entry point).
 
 ## Known gaps
 
-* Collections and most of the stdlib are not compiled (stdlib-from-source is a separate effort): `listOf`, `map`,
-  `StringBuilder`, string methods other than `length`, `get`, `+`, `==`, `toString`, ... are unsupported calls.
-* No `fun interface` / SAM conversion, property references (`::prop`), `KClass` (`::class`), delegated
-  properties (`by lazy`), `suspend`/coroutines, type aliases are ignored (no code), `Byte`/`Short`/`Float`,
-  `value class`, annotations with arguments, multi-file input, `fun main(args)`, enum entries with bodies,
-  `Unit?`, local `object` declarations, nested classes inside local classes.
+* The stdlib (`stdlib/`, see `docs/stdlib.md`) is compiled natively from source with the user program: collections,
+  `map`/`filter`/`joinToString`, `StringBuilder`, `lazy`, `Pair`, ... work (`stdlib_collections`, `stdlib_maps` tests).
+  Gaps of the stdlib itself (ranges as iterables, `entries`-style APIs, JDK message wording) are not backend issues.
+  The stdlib's hash maps keep before/after links (reference cycles) and therefore leak under RC
+  (`stdlib_maps.noleakcheck` excludes that test from the leak check).
+* No property references (`::prop`), `KClass` (`::class`), `suspend`/coroutines, type aliases are ignored (no code),
+  `Byte`/`Short`/`Float`, `value class`, annotations with arguments, `fun main(args)`, enum entries with bodies,
+  `Unit?`, local `object` declarations, nested classes inside local classes. SAM conversion works for `fun interface`s
+  (lambda literals and function values), not for Java interfaces.
 * A lambda parameter of an `inline` function may only be invoked or forwarded to another inline function.
 * Unit values boxed in generic code are `null` (`println(listOf(f()))` of a Unit lambda prints `null`).
 * Reference cycles leak (no cycle collector): e.g. a closure stored in a field of the object it captures.
