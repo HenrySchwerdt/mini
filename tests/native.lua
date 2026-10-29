@@ -12,7 +12,9 @@ function main(target)
         local arguments = {"build"}
         for _, source in ipairs(sources) do table.insert(arguments, fixture(source)) end
         table.join2(arguments, extra or {}, {"-o", output})
-        os.iorunv(compiler, arguments)
+        -- execv streams the compiler's output, so linker diagnostics (MSVC link.exe writes
+        -- them to stdout) reach the CI log on failure.
+        os.execv(compiler, arguments)
         local actual = os.iorunv(output, {}, {timeout = 30000}):gsub("\r\n", "\n")
         assert(actual == expected, "%s: expected %s, got %s", name, expected, actual)
     end

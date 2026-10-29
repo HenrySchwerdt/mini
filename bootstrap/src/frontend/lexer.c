@@ -47,6 +47,14 @@ static Token make_token(TokenKind kind, size_t start, size_t end) {
     return (Token){.kind = kind, .start = start, .length = end - start};
 }
 
+/* Consume `expected` if present, then build the token. The match must be sequenced before the
+ * end position is read: as call arguments their evaluation order is unspecified (GCC evaluates
+ * right to left), which truncated two-character tokens such as `!=` to `!`. */
+static Token make_token_if(Lexer *lexer, size_t start, char expected, TokenKind yes, TokenKind no) {
+    bool matched = match(lexer, expected);
+    return make_token(matched ? yes : no, start, lexer->position);
+}
+
 static bool keyword(const char *text, size_t length, const char *expected) {
     size_t expected_length = strlen(expected);
 
@@ -241,7 +249,7 @@ Token lexer_next(Lexer *lexer) {
     case ';':
         return make_token(TOKEN_SEMICOLON, start, lexer->position);
     case ':':
-        return make_token(match(lexer, ':') ? TOKEN_SCOPE : TOKEN_COLON, start, lexer->position);
+        return make_token_if(lexer, start, ':', TOKEN_SCOPE, TOKEN_COLON);
     case '.':
         return make_token(TOKEN_DOT, start, lexer->position);
 
@@ -255,28 +263,24 @@ Token lexer_next(Lexer *lexer) {
         return make_token(TOKEN_PERCENT, start, lexer->position);
 
     case '-':
-        return make_token(match(lexer, '>') ? TOKEN_ARROW : TOKEN_MINUS, start, lexer->position);
+        return make_token_if(lexer, start, '>', TOKEN_ARROW, TOKEN_MINUS);
 
     case '=':
-        return make_token(match(lexer, '=')   ? TOKEN_EQUAL_EQUAL
-                          : match(lexer, '>') ? TOKEN_FAT_ARROW
-                                              : TOKEN_EQUAL,
-                          start, lexer->position);
+        if (match(lexer, '='))
+            return make_token(TOKEN_EQUAL_EQUAL, start, lexer->position);
+        return make_token_if(lexer, start, '>', TOKEN_FAT_ARROW, TOKEN_EQUAL);
 
     case '!':
-        return make_token(match(lexer, '=') ? TOKEN_BANG_EQUAL : TOKEN_BANG, start,
-                          lexer->position);
+        return make_token_if(lexer, start, '=', TOKEN_BANG_EQUAL, TOKEN_BANG);
 
     case '<':
-        return make_token(match(lexer, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS, start,
-                          lexer->position);
+        return make_token_if(lexer, start, '=', TOKEN_LESS_EQUAL, TOKEN_LESS);
 
     case '>':
-        return make_token(match(lexer, '=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER, start,
-                          lexer->position);
+        return make_token_if(lexer, start, '=', TOKEN_GREATER_EQUAL, TOKEN_GREATER);
 
     case '&':
-        return make_token(match(lexer, '&') ? TOKEN_AMP_AMP : TOKEN_AMP, start, lexer->position);
+        return make_token_if(lexer, start, '&', TOKEN_AMP_AMP, TOKEN_AMP);
 
     case '|':
         if (match(lexer, '|'))

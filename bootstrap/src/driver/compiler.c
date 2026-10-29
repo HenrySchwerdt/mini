@@ -21,9 +21,69 @@
 extern char **environ;
 #endif
 
+#ifdef _WIN32
+/* _spawnvp joins arguments with spaces without quoting them, so an argument containing spaces
+ * (e.g. a temp directory) would be split. Quote per the MSVC CRT command-line parsing rules. */
+static char *quote_argument(const char *arg) {
+    if (*arg && !strpbrk(arg, " \t\n\v\""))
+        return _strdup(arg);
+    size_t length = strlen(arg);
+    char *quoted = malloc(length * 2 + 3);
+    if (!quoted)
+        return NULL;
+    size_t out = 0;
+    quoted[out++] = '"';
+    for (size_t i = 0;; i++) {
+        size_t backslashes = 0;
+        while (arg[i] == '\\') {
+            backslashes++;
+            i++;
+        }
+        if (!arg[i]) {
+            /* Double trailing backslashes so they do not escape the closing quote. */
+            for (size_t k = 0; k < backslashes * 2; k++)
+                quoted[out++] = '\\';
+            break;
+        }
+        if (arg[i] == '"') {
+            for (size_t k = 0; k < backslashes * 2 + 1; k++)
+                quoted[out++] = '\\';
+        } else {
+            for (size_t k = 0; k < backslashes; k++)
+                quoted[out++] = '\\';
+        }
+        quoted[out++] = arg[i];
+    }
+    quoted[out++] = '"';
+    quoted[out] = '\0';
+    return quoted;
+}
+#endif
+
 static int execute(const char *program, char *const *args) {
 #ifdef _WIN32
-    intptr_t code = _spawnvp(_P_WAIT, program, (const char *const *)args);
+    size_t count = 0;
+    while (args[count])
+        count++;
+    char **quoted = calloc(count + 1, sizeof(*quoted));
+    if (!quoted) {
+        fprintf(stderr, "cannot execute %s: out of memory\n", program);
+        return 1;
+    }
+    for (size_t i = 0; i < count; i++) {
+        quoted[i] = quote_argument(args[i]);
+        if (!quoted[i]) {
+            for (size_t k = 0; k < i; k++)
+                free(quoted[k]);
+            free(quoted);
+            fprintf(stderr, "cannot execute %s: out of memory\n", program);
+            return 1;
+        }
+    }
+    intptr_t code = _spawnvp(_P_WAIT, program, (const char *const *)quoted);
+    for (size_t i = 0; i < count; i++)
+        free(quoted[i]);
+    free(quoted);
     if (code == -1) {
         fprintf(stderr, "cannot execute %s: %s\n", program, strerror(errno));
         return 1;
@@ -170,6 +230,11 @@ int mini_build_output_with_options(const char *source, const char *output, const
             }
             args[i++] = temporary;
             if (libuv && mode == MINI_BUILD_NATIVE) {
+#if defined(_WIN32) && !defined(__MINGW32__)
+                /* The xmake libuv package links the dynamic CRT (/MD); clang defaults to the
+                 * static one, which leaves libuv's __imp_ CRT imports unresolved. */
+                args[i++] = "-fms-runtime-lib=dll";
+#endif
                 if (library)
                     args[i++] = library;
                 for (size_t j = 0; mini_uv_link_flags[j]; j++) {
