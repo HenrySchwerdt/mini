@@ -135,9 +135,11 @@ object CEmitter {
                 // C functions of the program (C interop): own C names bound to the real symbols with asm labels, so
                 // the declarations never clash with a header and calls are the same in the C and the LLVM backend
                 out.append("\n/* C functions (external fun) */\n")
+                // the label of a C symbol carries the platform's user label prefix ("_" on Mach-O, empty on ELF)
+                out.append("#define MKX_STR2(x) #x\n#define MKX_STR(x) MKX_STR2(x)\n#define MKX_SYM(s) MKX_STR(__USER_LABEL_PREFIX__) s\n")
                 for ((key, x) in externProtos) {
                     val ps = x.prototypeParams.map { cType(it) } + (if (x.isVariadic) listOf("...") else emptyList())
-                    out.append("extern ${cType(x.returnType)} ${externNames[key]}(${if (ps.isEmpty()) "void" else ps.joinToString(", ")}) __asm__(\"${asmLabel(x.symbol)}\");\n")
+                    out.append("extern ${cType(x.returnType)} ${externNames[key]}(${if (ps.isEmpty()) "void" else ps.joinToString(", ")}) __asm__(MKX_SYM(\"${asmLabel(x.symbol)}\"));\n")
                 }
             }
             out.append("\n/* classes */\n")

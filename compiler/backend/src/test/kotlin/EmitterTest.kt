@@ -51,6 +51,17 @@ class EmitterTest {
     }
 
     @Test
+    fun externDeclarationsUseThePlatformLabelPrefix() {
+        // On Mach-O the C symbol `atoi` is `_atoi`: the asm label must carry __USER_LABEL_PREFIX__ (empty on ELF)
+        val main = MirFunction("main", "mk_main", emptyList(), TUnit, emptyList())
+        val m = MirModule("test.kt", listOf(main), externs = listOf(mini.backend.MirExtern("atoi", listOf(TInt), TInt)))
+        val c = CEmitter.emit(m)
+        assertTrue("#define MKX_SYM(s) MKX_STR(__USER_LABEL_PREFIX__) s" in c, c)
+        assertTrue("__asm__(MKX_SYM(\"atoi\"));" in c, c)
+        assertFalse("__asm__(\"atoi\")" in c, c)
+    }
+
+    @Test
     fun divisionGoesThroughCheckedHelper() {
         val main = MirFunction(
             "main", "mk_main", emptyList(), TUnit,
