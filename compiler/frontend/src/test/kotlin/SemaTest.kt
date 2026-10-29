@@ -124,4 +124,23 @@ class SemaTest {
         assertTrue("P.copy(kotlin.Int,kotlin.String)" in r.dump, r.dump)
         assertTrue("C.valueOf(kotlin.String)" in r.dump, r.dump)
     }
+
+    /** a file's result may not depend on which unrelated files are analysed with it */
+    @Test
+    fun resultsDoNotDependOnUnrelatedFiles() {
+        val files = listOf("compiler/backend/src/main", "compiler/frontend/src/main/kotlin").flatMap { d ->
+            File(repoRoot, d).walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
+                .map { SourceInput(it.path, it.readText()) }.toList()
+        }
+        val base = stdlib + files
+        val extra = SourceInput("extra/Unrelated.kt", "package extra\nclass Zed<T>(val v: T) { fun f() = listOf(v).map { it.hashCode() } }\nfun <T> id(x: T): T = x\n")
+        val a = analyzeSources(base)
+        val b = analyzeSources(listOf(extra) + base)
+        val da = HashMap<String, String>()
+        for (f in a.files) da[f.path] = a.dumpText(f)
+        for (f in b.files) {
+            if (f.path == extra.path) continue
+            assertEquals(da[f.path], b.dumpText(f), f.path)
+        }
+    }
 }

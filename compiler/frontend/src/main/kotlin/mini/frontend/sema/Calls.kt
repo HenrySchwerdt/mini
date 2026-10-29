@@ -706,6 +706,10 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
             if (u is LambdaExpr) {
                 if (expectedFun != null) {
                     cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
+                    // result variables that the other arguments determine exactly (`getOrPut(k) { HashSet() }`) are known too
+                    val rv = ArrayList<TypeVariable>()
+                    cs.unfixedVars(cs.resolveFixed(expectedFun.ret), rv)
+                    for (v in rv) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) cs.fix(v)
                     val ef = cs.resolveFixed(expectedFun) as FunType
                     val lt = analyzeLambda(u, ef, cs)
                     cs.addSub(lt, pt)

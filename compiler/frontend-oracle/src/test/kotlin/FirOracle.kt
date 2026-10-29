@@ -39,7 +39,7 @@ object FirOracle {
     @Volatile
     internal var sink: ((String, List<FirRec>) -> Unit)? = null
 
-    private const val CACHE_VERSION = "v1"
+    private const val CACHE_VERSION = "v2"
 
     /** Like [analyze], but caches the records of the requested files on disk (keyed by the content of all inputs). */
     fun analyzeCached(files: List<File>, only: Set<String>): Pair<Map<String, List<FirRec>>, List<String>> {

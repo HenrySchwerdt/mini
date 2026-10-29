@@ -356,10 +356,7 @@ class TypeOps(private val sema: Sema) {
                 val v = if (ba.variance != Variance.INV) ba.variance else tp.variance
                 if (st == null) {
                     // star projection in the subtype: only fine for `out` positions with an `Any?` supertype argument
-                    if (!(v == Variance.OUT && isAnyNullable(bt))) {
-                        if (v == Variance.IN) return false
-                        if (!isAnyNullable(bt)) return false
-                    }
+                    if (!(v == Variance.OUT && isAnyNullable(bt))) return false
                 } else {
                     val sv = if (sa.variance != Variance.INV) sa.variance else Variance.INV
                     when (v) {

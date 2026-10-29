@@ -43,6 +43,11 @@ private fun BodyChecker.expr0(e: Expr, expected: Type?): Type {
             expr(e.expr, null)
             val target = sema.resolveType(e.type, scope)
             val t = if (e.safe) target.withNullable(true) else target
+            if (!e.safe) {
+                // after `x as T` the value is known to have type T
+                val k = stableKey(e.expr)
+                if (k != null) flow.add(FactAdd(k.key, k.root, target))
+            }
             val r = record(e, t, null)
             r.target = target
             return t
@@ -548,10 +553,14 @@ fun BodyChecker.postfix(e: PostfixExpr, expected: Type?): Type {
 
 /** `x` was assigned: forget what is known about it */
 fun BodyChecker.invalidate(target: Expr) {
-    val k = stableKeyAny(target)
-    if (k != null) flow.killRoot(k.root)
     val x = AstWalk.unparen(target)
-    if (x is NameExpr) flow.killRoot(x.name)
+    if (x is NameExpr) {
+        flow.killRoot(x.name)
+    } else {
+        // a member assignment forgets what is known about that member chain, not about the receiver itself
+        val k = stableKeyAny(target)
+        if (k != null) flow.kill(k.key)
+    }
 }
 
 fun BodyChecker.assign(e: BinaryExpr): Type {
