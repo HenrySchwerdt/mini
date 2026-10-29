@@ -139,12 +139,16 @@ private fun Parser.parsePrefix(): Expr {
         return fin(PrefixExpr(op, e), s)
     }
     if (k == Tk.EXCLEXCL) {
-        // `!!x` is two negations
+        // `!!x` is two negations (one token)
         val m = mark()
         advance()
+        val is2 = tokStart()
+        val inner = mark()
         val e = parsePrefix()
+        done(inner, NodeKind.PREFIX)
         done(m, NodeKind.PREFIX)
-        return fin(PrefixExpr("!!", e), s)
+        val innerNode = fin(PrefixExpr("!", e), is2)
+        return fin(PrefixExpr("!", innerNode), s)
     }
     if (k == Tk.AT) {
         val m = mark()
@@ -153,6 +157,13 @@ private fun Parser.parsePrefix(): Expr {
             val before = p
             parseAnnotationInto(anns, false)
             if (p == before) break
+        }
+        if (kind() == Tk.FUN) {
+            // an anonymous function takes the annotations as its modifiers
+            val items = ArrayList<ModItem>()
+            for (a in anns) items.add(fin(AnnotationMod(a), a.start))
+            done(m, NodeKind.MODIFIERS)
+            return parseAnonFun(m, s, fin(Modifiers(items, emptyList()), s))
         }
         val e = parsePrefix()
         done(m, NodeKind.ANNOTATED)
@@ -173,7 +184,16 @@ private fun Parser.parsePrefix(): Expr {
     return parsePostfix()
 }
 
+/** `(`, `{` or `label@ {` right after a callee */
+private fun Parser.atCallSuffixStart(): Boolean {
+    val k = kind()
+    if (k == Tk.LPAR) return true
+    if (k == Tk.LBRACE) return !noLambda
+    return k == Tk.IDENT && la(1) == Tk.AT && adjacent(0) && la(2) == Tk.LBRACE && !noLambda
+}
+
 private fun Parser.atLambdaArg(): Boolean {
+    if (noLambda) return false
     if (kind() == Tk.LBRACE) return true
     if (kind() == Tk.IDENT && la(1) == Tk.AT && adjacent(0) && la(2) == Tk.LBRACE) return true
     return false
@@ -208,7 +228,9 @@ private fun Parser.parsePostfix(): Expr {
         val k = kind()
         if (k == Tk.LBRACKET && !interrupted()) {
             val saved = nlOn
+            val savedNoLambda = noLambda
             nlOn = false
+            noLambda = false
             advance()
             val idx = ArrayList<Expr>()
             while (kind() != Tk.RBRACKET && kind() != Tk.EOF) {
@@ -219,22 +241,17 @@ private fun Parser.parsePostfix(): Expr {
             }
             expect(Tk.RBRACKET, "']'")
             nlOn = saved
+            noLambda = savedNoLambda
             done(m, NodeKind.INDEX)
             e = fin(IndexExpr(e, idx), s)
-        } else if ((k == Tk.LPAR || k == Tk.LBRACE) && !interrupted()) {
+        } else if (atCallSuffixStart() && !interrupted()) {
             e = parseCallSuffix(m, s, e, emptyList())
-        } else if (k == Tk.LPAR || k == Tk.LBRACE) {
+        } else if (atCallSuffixStart()) {
             break
         } else if (k == Tk.LT && !interrupted()) {
             val ta = tryParseTypeArgsInExpr()
             if (ta == null) break
-            if (kind() == Tk.COLONCOLON) {
-                val args: List<Arg>? = null
-                done(m, NodeKind.CALL)
-                e = fin(CallExpr(e, ta, args, emptyList()), s)
-            } else {
-                e = parseCallSuffix(m, s, e, ta)
-            }
+            e = parseCallSuffix(m, s, e, ta)
         } else if (k == Tk.DOT || atSafeDot()) {
             val safe = k != Tk.DOT
             if (safe) advance()
@@ -256,7 +273,7 @@ private fun Parser.parsePostfix(): Expr {
                         hasTa = true
                     }
                 }
-                if (((kind() == Tk.LPAR || kind() == Tk.LBRACE) && !interrupted()) || hasTa) {
+                if ((atCallSuffixStart() && !interrupted()) || hasTa) {
                     sel = parseCallSuffix(sm, ss, sel, ta)
                 }
             } else {
@@ -271,7 +288,8 @@ private fun Parser.parsePostfix(): Expr {
             advance()
             done(m, NodeKind.POSTFIX)
             e = fin(PostfixExpr(op, e), s)
-        } else if (k == Tk.COLONCOLON && !interrupted()) {
+        } else if ((k == Tk.COLONCOLON || (k == Tk.QUEST && la(1) == Tk.COLONCOLON && adjacent(0))) && !interrupted()) {
+            if (k == Tk.QUEST) advance()
             advance()
             var name = "<missing>"
             if (kind() == Tk.IDENT || kind() == Tk.CLASS) {
@@ -292,7 +310,7 @@ private fun Parser.parsePostfix(): Expr {
 /** at `(`, `{` (or after explicit type arguments): argument list and trailing lambdas of a call whose callee is [callee] */
 private fun Parser.parseCallSuffix(m: Int, s: Int, callee: Expr, typeArgs: List<TypeArg>): Expr {
     var args: List<Arg>? = null
-    if (kind() == Tk.LPAR) args = parseArgs()
+    if (kind() == Tk.LPAR && !(typeArgs.isNotEmpty() && interrupted())) args = parseArgs()
     val lambdas = ArrayList<Expr>()
     parseLambdaArgs(lambdas)
     done(m, NodeKind.CALL)
@@ -309,7 +327,9 @@ internal fun Parser.parseArgs(): List<Arg> {
         return list
     }
     val saved = nlOn
+    val savedNoLambda = noLambda
     nlOn = false
+    noLambda = false
     advance()
     while (kind() != Tk.RPAR && kind() != Tk.EOF) {
         val before = p
@@ -348,6 +368,7 @@ internal fun Parser.parseArgs(): List<Arg> {
         if (kind() == Tk.RPAR) advance()
     }
     nlOn = saved
+    noLambda = savedNoLambda
     done(m, NodeKind.ARGS)
     return list
 }
@@ -361,7 +382,7 @@ private fun startsExpression(k: Tk): Boolean = when (k) {
 }
 
 private fun Parser.optionalLabel(): String? {
-    if (kind() == Tk.AT && adjacent(0) && la(1) == Tk.IDENT) {
+    if (kind() == Tk.AT && adjacentPrevToCurrent() && adjacent(0) && la(1) == Tk.IDENT) {
         val lm = mark()
         advance()
         val l = tokText()
@@ -421,11 +442,14 @@ private fun Parser.parseAtom(): Expr {
         }
         Tk.LPAR -> {
             val saved = nlOn
+            val savedNoLambda = noLambda
             nlOn = false
+            noLambda = false
             advance()
             val e = parseExpression()
             expect(Tk.RPAR, "')'")
             nlOn = saved
+            noLambda = savedNoLambda
             done(m, NodeKind.PAREN)
             return fin(ParenExpr(e), s)
         }
@@ -452,7 +476,7 @@ private fun Parser.parseAtom(): Expr {
         Tk.FOR -> return parseFor()
         Tk.WHILE -> return parseWhile()
         Tk.DO -> return parseDoWhile()
-        Tk.FUN -> return parseAnonFun()
+        Tk.FUN -> return parseAnonFun(m, s, null)
         Tk.OBJECT -> return parseObjectLiteral()
         Tk.THROW -> {
             advance()
@@ -573,11 +597,14 @@ internal fun Parser.parseBlock(): BlockExpr {
         return fin(BlockExpr(stmts), s)
     }
     val saved = nlOn
+    val savedNoLambda = noLambda
     nlOn = true
+    noLambda = false
     advance()
     parseStatements(stmts)
     expect(Tk.RBRACE, "'}'")
     nlOn = saved
+    noLambda = savedNoLambda
     done(m, NodeKind.BLOCK)
     return fin(BlockExpr(stmts), s)
 }
@@ -606,6 +633,25 @@ internal fun Parser.parseStatements(into: ArrayList<Stmt>) {
 internal fun Parser.parseStatement(): Stmt? {
     val d = tryParseDeclaration(CTX_LOCAL)
     if (d != null) return d
+    if (kind() == Tk.AT) {
+        // annotations on their own line apply to the whole following statement (`@Suppress("X")\n a = b`);
+        // on the same line they bind to the first operand
+        val sn = snap()
+        val m = mark()
+        val s = tokStart()
+        val anns = ArrayList<AnnotationEntry>()
+        while (kind() == Tk.AT) {
+            val before = p
+            parseAnnotationInto(anns, false)
+            if (p == before) break
+        }
+        if (nl() && anns.isNotEmpty()) {
+            val e = parseExpression()
+            done(m, NodeKind.ANNOTATED)
+            return fin(AnnotatedExpr(anns, e), s)
+        }
+        restore(sn)
+    }
     return parseExpression()
 }
 
@@ -877,7 +923,9 @@ internal fun Parser.parseLambda(): Expr {
     val m = mark()
     val s = tokStart()
     val saved = nlOn
+    val savedNoLambda = noLambda
     nlOn = true
+    noLambda = false
     advance() // {
     var params: List<LambdaParam> = emptyList()
     var hasArrow = false
@@ -903,6 +951,7 @@ internal fun Parser.parseLambda(): Expr {
     parseStatements(body)
     expect(Tk.RBRACE, "'}'")
     nlOn = saved
+    noLambda = savedNoLambda
     done(m, NodeKind.LAMBDA)
     return fin(LambdaExpr(params, hasArrow, body), s)
 }
@@ -945,9 +994,7 @@ private fun Parser.tryParseLambdaParams(): List<LambdaParam>? {
     return list
 }
 
-private fun Parser.parseAnonFun(): Expr {
-    val m = mark()
-    val s = tokStart()
+private fun Parser.parseAnonFun(m: Int, s: Int, mods: Modifiers?): Expr {
     advance() // fun
     var receiver: TypeRef? = null
     if (kind() != Tk.LPAR) {
@@ -976,7 +1023,7 @@ private fun Parser.parseAnonFun(): Expr {
         body = parseExpression()
     }
     done(m, NodeKind.ANON_FUN)
-    val fn = fin(FunDecl(null, emptyList(), receiver, null, params, ret, emptyList(), body, exprBody), s)
+    val fn = fin(FunDecl(mods, emptyList(), receiver, null, params, ret, emptyList(), body, exprBody), s)
     return fin(AnonFunExpr(fn), s)
 }
 

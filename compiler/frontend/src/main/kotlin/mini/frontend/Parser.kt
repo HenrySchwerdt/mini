@@ -48,6 +48,8 @@ class Parser(internal val lex: LexResult) {
     /** false inside `(...)`, `[...]` and `<...>`: newlines do not terminate expressions there */
     internal var nlOn = true
     internal var opText = ""
+    /** set while parsing the delegate of a class delegation: a `{` after it is the class body, not a lambda */
+    internal var noLambda = false
     private val lineStarts = ArrayList<Int>()
     private var lastSigRaw = -1
 
@@ -870,6 +872,7 @@ class Parser(internal val lex: LexResult) {
         if (kind() == Tk.LT) tps = parseTypeParams()
         if (kind() == Tk.LPAR) {
             // destructuring declaration
+            if (ctx != CTX_LOCAL) error("Destructuring declarations are only allowed for local variables/values")
             val entries = parseDestructEntries()
             var init: Expr? = null
             if (kind() == Tk.EQ) {
@@ -923,7 +926,11 @@ class Parser(internal val lex: LexResult) {
                 if (a.kind == "get") getter = a else setter = a
             }
         }
-        if (kind() == Tk.SEMI) advance()
+        if (kind() == Tk.SEMI) {
+            advance()
+        } else if (ctx != CTX_LOCAL && !nl() && kind() != Tk.RBRACE && kind() != Tk.EOF) {
+            errorPrev("Property getter or setter expected")
+        }
         done(m, NodeKind.PROPERTY)
         return fin(PropertyDecl(mods, isVar, tps, receiver, name, type, cons, init, delegate, getter, setter), s)
     }
@@ -1102,7 +1109,10 @@ class Parser(internal val lex: LexResult) {
                 list.add(fin(SuperCall(t, args), es))
             } else if (isIdent("by")) {
                 advance()
+                val savedNoLambda = noLambda
+                noLambda = true
                 val e = parseExpression()
+                noLambda = savedNoLambda
                 done(em, NodeKind.SUPER_DELEGATE)
                 list.add(fin(SuperDelegate(t, e), es))
             } else {

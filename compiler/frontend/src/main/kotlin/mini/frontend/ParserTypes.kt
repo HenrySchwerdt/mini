@@ -52,7 +52,7 @@ internal fun Parser.parseType(recv: Boolean): TypeRef {
         errorPrev("Expecting a type")
         t = fin(ErrorType(), s)
     }
-    t = parseTypeSuffixes(m, s, t, ctxTypes)
+    t = parseTypeSuffixes(m, s, t, ctxTypes, recv)
     if (kind() == Tk.AMP && la(1) != Tk.AMP) {
         advance()
         val r = parseType(false)
@@ -66,14 +66,14 @@ internal fun Parser.parseType(recv: Boolean): TypeRef {
 internal fun Parser.parseType(): TypeRef = parseType(false)
 
 /** `?` suffixes and the `A.(B) -> C` form (receiver function type) after an already parsed type */
-private fun Parser.parseTypeSuffixes(m: Int, s: Int, first: TypeRef, ctxTypes: List<TypeRef>): TypeRef {
+private fun Parser.parseTypeSuffixes(m: Int, s: Int, first: TypeRef, ctxTypes: List<TypeRef>, recv: Boolean): TypeRef {
     var t = first
     while (true) {
         if (kind() == Tk.QUEST && !atElvis() && !(nlOn && nl())) {
             advance()
             done(m, NodeKind.TYPE_NULLABLE)
             t = fin(NullableType(t), s)
-        } else if (kind() == Tk.DOT && la(1) == Tk.LPAR) {
+        } else if (!recv && kind() == Tk.DOT && la(1) == Tk.LPAR) {
             advance()
             t = parseParenOrFunctionType(ctxTypes, t)
             // parseParenOrFunctionType wrapped from its own mark; re-wrap to include the receiver
@@ -222,13 +222,8 @@ internal fun Parser.tryParseTypeArgsInExpr(): List<TypeArg>? {
     val errs = errors.size
     // quick check for tokens that can never appear in a type argument list
     val args = parseTypeArgs()
-    val ok = errors.size == errs
-    if (ok) {
-        val k = kind()
-        if (k == Tk.LPAR || k == Tk.COLONCOLON || k == Tk.LBRACE) {
-            if (!(k == Tk.LBRACE && nl() && nlOn)) return args
-        }
-    }
+    // like the reference parser: a well-formed type argument list makes this a call suffix, whatever follows
+    if (errors.size == errs) return args
     restore(sn)
     return null
 }
