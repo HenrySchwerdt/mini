@@ -21,7 +21,8 @@ class EmitError(message: String) : Exception(message)
  *  - returns are owned (+1).
  */
 object CEmitter {
-    fun emit(module: MirModule): String = State(module).run()
+    /** [rcOpt] runs the reference-count elision pass ([RcOpt]) first; the result is deterministic. */
+    fun emit(module: MirModule, rcOpt: Boolean = false): String = State(module).run()
 
     private class Scope(val locals: List<MirLocal>, val loop: MirLabel?)
 

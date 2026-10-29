@@ -72,6 +72,11 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
     if (block == NULL) return NULL;
     memset(block, 0, total);
     *(MkAllocator **)(void *)block = allocator;
+#ifdef MK_STATS
+    /* the padding of the prefix remembers the block size for mk_free_object_memory */
+    *(size_t *)(void *)(block + sizeof(void *)) = total;
+    MK_STAT_ALLOC(total);
+#endif
     MkObject *object = (MkObject *)(void *)(block + MK_PREFIX_SIZE);
     object->type = type;
     object->refcount = 1;
@@ -102,6 +107,9 @@ MkObject *mk_alloc(const MkTypeInfo *type) {
 void mk_free_object_memory(MkObject *object) {
     unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
     MkAllocator *owner = *(MkAllocator **)(void *)block;
+#ifdef MK_STATS
+    MK_STAT_FREE(*(size_t *)(void *)(block + sizeof(void *)));
+#endif
     object->refcount = 0;
     object->flags |= MK_FLAG_FREED;
     if (owner->free != NULL) owner->free(owner, block);

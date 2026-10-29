@@ -549,6 +549,38 @@ MkObject *mk_b1_args(void);
 
 /* ---- end B1 ----------------------------------------------------------------------- */
 
+/* ---- D1 ---- */
+/* Runtime statistics (docs/benchmarks.md). Compile the runtime AND the generated code with
+ * -DMK_STATS (`minic build --stats`) to count allocations, frees, retains and releases (split
+ * atomic / non-atomic / no-op on NULL and static objects) and the peak of live objects and bytes.
+ * A one-line summary per group goes to stderr at exit (lines start with "mk-stats:", key=value).
+ * Without the macro none of this exists and the runtime has no extra code or data: zero cost. */
+#ifdef MK_STATS
+typedef struct MkStats {
+    uint64_t allocs;          /* objects allocated (all allocators) */
+    uint64_t frees;           /* objects whose memory was returned (mk_free / release at zero) */
+    uint64_t live;            /* allocs - frees right now */
+    uint64_t peak_live;       /* maximum of `live` */
+    uint64_t bytes_total;     /* bytes requested from allocators (including the hidden prefix) */
+    uint64_t bytes_live;      /* bytes of objects currently live */
+    uint64_t bytes_peak;      /* maximum of `bytes_live` */
+    uint64_t retains;         /* calls of mk_retain (including no-ops) */
+    uint64_t retains_atomic;  /* ... on objects marked MK_FLAG_SHARED */
+    uint64_t retains_noop;    /* ... on NULL, static or stack objects */
+    uint64_t releases;        /* calls of mk_release (including no-ops) */
+    uint64_t releases_atomic;
+    uint64_t releases_noop;
+} MkStats;
+void mk_stats_get(MkStats *out);  /* consistent enough snapshot of all counters */
+void mk_stats_reset(void);        /* zeroes the counters; live/peak restart from the current live set */
+void mk_stats_dump(void);         /* writes the summary to stderr (also done by atexit) */
+#else
+#define mk_stats_reset() ((void)0)
+#define mk_stats_dump() ((void)0)
+#endif
+
+/* ---- end D1 ---- */
+
 #ifdef __cplusplus
 }
 #endif
