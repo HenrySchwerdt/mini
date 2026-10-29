@@ -1,0 +1,81 @@
+// Malformed inputs of NegativeTest; NegativeOracleTest compares the first error line with the PSI parser.
+fun f() {
+  val x = (1 + 2
+}
+//---
+fun f() {
+  foo(1, 2
+}
+//---
+class A {
+  fun f() {}
+//---
+fun f() {
+//---
+fun f(
+//---
+val x =
+//---
+fun f() { if (x }
+//---
+fun f() { val = 1 }
+//---
+class { }
+//---
+fun f() { 1 2 }
+//---
+fun f() {}
+}
+//---
+fun f() { when (x) { 1 -> } }
+//---
+fun f() { when (x) { 1 2 } }
+//---
+fun f(a: ) {}
+//---
+fun f(a Int) {}
+//---
+val s = "abc
+val t = 1
+//---
+val s = "abc${1 + }"
+//---
+/* never closed
+fun f() {}
+//---
+val c = 'a
+//---
+package
+fun f() {}
+//---
+import
+fun f() {}
+//---
+fun f() { a.() }
+//---
+fun f() { a[1 }
+//---
+class A(val x Int)
+//---
+fun f() { else }
+//---
+fun f() { try { } }
+//---
+fun f() { for (i 1..2) {} }
+//---
+fun f() { do { } }
+//---
+interface I { fun f( }
+//---
+enum class E { A B }
+//---
+fun f() = 
+//---
+object : A { }
+//---
+private
+//---
+class A { private }
+//---
+@
+fun f() {}

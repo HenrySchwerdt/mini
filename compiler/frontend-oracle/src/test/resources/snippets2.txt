@@ -1,0 +1,1781 @@
+// More snippets (see snippets.txt).
+fun f(x: Any) {
+    when (x) {
+        is String if x.length > 1 -> 1
+        is Int if x > 0 && x < 10 -> 2
+        1, 2 if flag -> 3
+        else -> 4
+    }
+    when {
+        a if b -> 1
+    }
+}
+//---
+data object A
+data object B : C()
+sealed interface S { data object X : S }
+enum class E { A { override fun f() = 1 }, B; open fun f() = 0 }
+//---
+fun f() {
+    a?.b = c
+    a?.b++
+    a?.b += 1
+    a!!.b = c
+    a[0]?.b = c
+    a?.b?.c = d
+}
+//---
+class A : B(), C by d, E<F>() { }
+class A2 : B<C>(1, 2) { }
+class A3<T : B<T>> : C<T>
+object O : B(), C
+//---
+fun f() {
+    val x = object : Foo by bar {}
+    val y = object : A(1), B {
+        override fun f() {}
+    }
+}
+//---
+val x = 1
+    get() = 2
+var y = 1
+    set(v) { field = v }
+//---
+fun f() {
+    val unicode = "héllo wörld ñ"
+    val ident = ünï
+    val `back tick` = 1
+    val c = 'é'
+}
+//---
+fun f() {
+    if (a) {
+        b
+    }
+    else {
+        c
+    }
+    if (a) b
+    else if (c) d
+    else e
+    if (a)
+        b
+    else
+        c
+    if (a) b else
+        c
+}
+//---
+fun f() {
+    x.also {
+        println(it)
+    }.let {
+        it
+    }
+    x.y { }
+        .z { }
+    foo(1) {
+    }
+    foo(1)
+    {
+    }
+    foo(
+        1
+    ) { }
+    foo { } ()
+    foo { }()
+    foo {}.bar()
+}
+//---
+fun f() {
+    list.forEach label@{ if (it > 1) return@label }
+    list.forEach { it -> return@forEach }
+    run lit@{ return@lit }
+    val a = foo label@{ 1 }
+}
+//---
+fun f() {
+    val x = a
+        .b
+        .c
+    val y = a?.b
+        ?.c
+    val z = a!!
+        .b
+    val w = (a
+        .b)
+    val v = a.let { it }
+        .b
+}
+//---
+class A {
+    fun f() = 1
+    fun g(): Int = 2
+    fun h(): Int { return 3 }
+    val i = 4
+    val j: Int = 5
+    val k: Int get() = 6
+    var l: Int = 7
+        get() = field
+        set(v) { field = v }
+    private val m = 8
+    protected var n = 9
+    internal fun o() = 10
+    lateinit var p: String
+    val q by lazy { 11 }
+    var r by Delegates.notNull<Int>()
+    companion object { const val X = 1 }
+    inner class Inner
+    class Nested
+    object Obj
+    interface Iface
+    enum class En { A }
+}
+//---
+fun f() {
+    val a = listOf(1, 2, 3).map { it * 2 }.filter { it > 2 }.sum()
+    val b = mapOf("a" to 1, "b" to 2)
+    val c = a.let { it + 1 } ?: 0
+    val d = if (a > 0) "pos" else if (a < 0) "neg" else "zero"
+    val e = (1..10).toList()
+    val g = a.takeIf { it > 0 }?.let { it * 2 }
+    val h = b["a"]!!
+    val i = a.toString().length
+    val j = "$a and ${b["a"]} and ${a + 1}"
+}
+//---
+fun f() {
+    fun g() = 1
+    fun h(): Int = 2
+    fun i(): Int { return 3 }
+    fun <T> j(t: T) = t
+    fun Int.k() = this
+    val l = fun() = 1
+    class M
+    object N
+    val o = g() + h()
+}
+//---
+@Retention(AnnotationRetention.RUNTIME)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_GETTER)
+annotation class A(val value: String = "", val arr: Array<String> = [])
+@A(arr = ["a", "b"]) fun f() {}
+@A(value = "x", arr = [])
+fun g() {}
+@Suppress("UNCHECKED_CAST", "UNUSED_VARIABLE")
+fun h() {}
+//---
+fun f() {
+    val x: Int = if (a) 1 else 2
+    val y: Int = when { a -> 1; else -> 2 }
+    val z: Int = try { 1 } catch (e: Exception) { 2 } finally { }
+    val w = run { 1 }
+    val v = x.let { y -> y + 1 }
+}
+//---
+fun f(): Int {
+    return when (x) {
+        1 -> {
+            val a = 1
+            a
+        }
+        else -> 0
+    }
+}
+//---
+interface A { val x: Int get() = 1 }
+interface B { fun f(): Int = 1 }
+interface C : A, B { override fun f(): Int = super<B>.f() + x }
+//---
+fun f(a: Array<Int>, b: IntArray, c: List<Array<Int>>) {
+    val x = a[0]
+    val y = b[0]
+    val z = c[0][0]
+    val w = arrayOf<Int>()
+    val v = intArrayOf(1, 2)
+    val u = Array(3) { it }
+    val t = Array<Int>(3) { it }
+}
+//---
+fun f() {
+    do {
+        a
+    } while (b)
+    do a while (b)
+    do { } while (a && b)
+    while (a) { if (b) break else continue }
+}
+//---
+fun f() {
+    val x = 1
+    val y = 2
+    val z = x
+    +y
+    val w = x
+    -y
+    val v = x +
+    y
+}
+//---
+val a = 1; val b = 2; val c = 3
+fun f() {}; fun g() {}
+class A; class B
+//---
+fun f() = a.b.c
+fun g() = a.b().c()
+fun h() = a?.b?.c
+fun i() = a!!.b!!.c
+fun j() = a.b?.c!!
+fun k() = (a.b).c
+//---
+fun f(a: Int) = a
+fun f(a: Int, b: Int) = a + b
+fun f(a: Int = 1, b: Int = 2) = a + b
+fun f(vararg a: Int) = a
+fun f(a: Int, vararg b: Int) = a
+fun f(a: (Int) -> Int = { it }) = a
+fun f(a: Int.() -> Int = { this }) = a
+//---
+fun f() {
+    "abc".length
+    "abc".length.toString()
+    'a'.code
+    1.toLong()
+    1L.toInt()
+    1.0.toInt()
+    1f.toInt()
+    true.not()
+    null.toString()
+    (1).toString()
+    (1 + 2).toString()
+    -1.toString()
+    1.0.rem(2)
+}
+//---
+fun f() {
+    val x = 0b1010
+    val y = 0B11
+    val z = 0XAB
+    val w = 0xabcdef
+    val v = 1_0
+    val u = 0_1
+    val t = 1e3
+    val s = 1E3
+    val r = 1e+3
+    val q = 1e-3
+    val p = 1.5e3
+    val o = 1.5E-3f
+    val n = 1.0F
+    val m = 123456789012345L
+    val l = 0xFFFFFFFFFFFFFFFFuL
+    val k = 9223372036854775807
+    val j = 4294967295u
+    val i = 100_000_000
+}
+//---
+fun f() {
+    val a = ' '
+    val b = '\t'
+    val c = '\\'
+    val d = '"'
+    val e = '\''
+    val g = 'é'
+    val h = '\$'
+    val i = '$'
+    val j = "éA"
+    val k = "$"
+    val l = "$$"
+    val m = "a$ b"
+    val n = "a${1}b"
+    val o = "${"a"}"
+    val p = "${'a'}"
+    val q = "\${a}"
+    val r = """\${a}"""
+    val s = """$"""
+    val t = """a${"b"}c"""
+    val u = """"a""""
+    val v = """
+        line1
+        line2
+    """.trimIndent()
+}
+//---
+fun f() {
+    val x = "a${
+        1 +
+        2
+    }b"
+    val y = "${foo(
+        1,
+        2
+    )}"
+    val z = "${if (a) {
+        "b"
+    } else "c"}"
+}
+//---
+fun f() = "${a}${b}"
+fun g() = "${a}" + "${b}"
+fun h() = "${a.b.c}"
+fun i() = "${a[0]}"
+fun j() = "${a()}"
+fun k() = "${a { }}"
+fun l() = "${ a }"
+fun m() = "${a ?: b}"
+fun n() = "$a$b$c"
+fun o() = "$a.b"
+fun p() = "$a[0]"
+fun q() = "$a()"
+//---
+fun f() {
+    a as B
+    a as? B
+    a as B.C
+    a as B<C>
+    a as (B) -> C
+    a as B?
+    a as B? ?: c
+    a as B ?: c
+    a as B + 1
+    a as B * 2
+    a is B
+    a !is B
+    a is B.C
+    a is B<*>
+    a is B && c
+    a is B?
+    a is (B) -> C
+}
+//---
+fun f() {
+    x = y
+    x.y = z
+    x[0] = z
+    (x) = y
+    x!! = y
+}
+//---
+fun f() {
+    val a = x ?: y
+    val b = x ?: y ?: z
+    val c = (x ?: y) ?: z
+    val d = x ?: (y ?: z)
+    val e = x ?: y + z
+    val g = x + y ?: z
+    val h = x?.y ?: z
+    val i = x?.y?.z ?: w
+    val j = x ?: y?.z
+    val k = x ?: y.z
+    val l = x ?: y()
+    val m = x ?: { y }
+    val n = x ?: return
+    val o = x ?: throw y
+    val p = x ?: if (y) z else w
+    val q = x ?: when { else -> y }
+}
+//---
+fun f() {
+    val a = x in y
+    val b = x !in y
+    val c = x in y..z
+    val d = x in y until z
+    val e = x in y + z
+    val g = x in y && z
+    val h = x in y || z
+    val i = x in y == z
+    val j = (x in y) == z
+    val k = x in (y == z)
+    val l = x in y in z
+    val m = x is Y in z
+}
+//---
+fun f() {
+    val a = x < y
+    val b = x > y
+    val c = x <= y
+    val d = x >= y
+    val e = x < y < z
+    val g = x < y == z
+    val h = x == y < z
+    val i = x < y && y < z
+    val j = x == y && y == z
+    val k = x < y || y > z
+    val l = x !== y
+    val m = x === y
+}
+//---
+fun f() {
+    val a = x shl y shr z ushr w
+    val b = x and y or z xor w
+    val c = x and y shl z
+    val d = x shl y + z
+    val e = x + y shl z
+    val g = x until y step z
+    val h = x downTo y step z
+    val i = x to y to z
+    val j = x to y + z
+    val k = x + y to z
+    val l = x infix y ?: z
+    val m = x ?: y infix z
+    val n = x in y infix z
+}
+//---
+fun f() {
+    val a = -x * y
+    val b = -(x * y)
+    val c = - x.y
+    val d = !x.y
+    val e = !x && y
+    val g = !(x && y)
+    val h = -x + y
+    val i = - -x
+    val j = + +x
+    val k = -+x
+    val l = !!x
+    val m = !x!!
+    val n = -x!!
+    val o = -x.y!!
+    val p = ++x
+    val q = --x
+    val r = x++
+    val s = x--
+    val t = ++x.y
+    val u = x.y++
+    val v = -x++
+    val w = -++x
+}
+//---
+fun f() {
+    val a = x * y / z % w
+    val b = x + y - z
+    val c = x * y + z * w
+    val d = x + y * z + w
+    val e = x - y - z
+    val g = x / y / z
+    val h = x - (y - z)
+    val i = (x - y) - z
+    val j = x % y * z
+    val k = x * y % z
+}
+//---
+fun f() {
+    val a = x..y
+    val b = x..y..z
+    val c = x + 1..y - 1
+    val d = x..<y
+    val e = (x..y).z
+    val g = x..y.z
+    val h = x..y step z
+    val i = x until y
+    val j = 0..n - 1
+}
+//---
+fun f() {
+    val a = x as Y as Z
+    val b = x as Y as? Z
+    val c = x as? Y as Z
+    val d = x as Y is Z
+    val e = x is Y as Z
+    val g = -x as Y
+    val h = x.y as Z
+    val i = x() as Z
+    val j = x as Y.Z
+    val k = x as Y()
+}
+//---
+fun f() {
+    foo(a)(b)
+    foo(a)(b)(c)
+    foo.bar(a)(b)
+    foo(a).bar(b)
+    foo(a) { b }
+    foo(a) { b } { c }
+    foo.bar { a } { b }
+    foo { a }(b)
+    foo { a }.bar
+    foo { a } + bar { b }
+    foo[0](1)
+    foo(0)[1]
+    foo?.bar(1)(2)
+    foo!!(1)
+    (foo)(1)
+    (foo)
+    { bar }
+}
+//---
+fun f() {
+    foo<A>(1)
+    foo<A, B>(1)
+    foo<A<B>>(1)
+    foo<A<B, C>, D>(1)
+    foo<(A) -> B>(1)
+    foo<A.B>(1)
+    foo<A?>(1)
+    foo<*>(1)
+    foo<in A>(1)
+    foo<A>()
+    foo<A> { }
+    foo<A>(1) { }
+    foo.bar<A>(1)
+    foo?.bar<A>(1)
+    foo.bar<A> { }
+    foo<A>.bar
+    foo<A>::bar
+    foo<A>::class
+    ::foo
+    ::foo.name
+    foo::bar
+    foo::bar.name
+    foo.bar::baz
+    foo()::bar
+    this::bar
+    super::bar
+    Foo::class
+    Foo::class.java
+    Foo<Int>::class
+    Foo::class.java.name
+    foo?::bar
+    List<Int>::size
+    Map<String, List<Int>>::size
+    (foo)::bar
+    String::class
+    kotlin.String::class
+    kotlin.collections.List<Int>::size
+    kotlin.String::length
+}
+//---
+fun f() {
+    a < b
+    a > b
+    a < b > c
+    a<b>(c)
+    a<b>c
+    (a < b) > c
+    a < (b > c)
+    a < b && c > d
+    a < b || c > d
+    a < b, c > d
+}
+//---
+fun f() {
+    foo(a < b, c > (d))
+    foo(a < b, c > d)
+    foo(a<b, c>(d))
+    foo(a < b || c > d)
+    foo(a < b && c > d)
+}
+//---
+fun f() {
+    val x = a
+        as B
+    val y = a
+        as? B
+    val z = a
+        is B
+    val w = a
+        in b
+    val v = a
+        !in b
+    val u = a
+        == b
+    val t = a
+        < b
+    val s = a
+        .. b
+    val r = a
+        * b
+}
+//---
+fun f() {
+    foo(a, // comment
+        b /* c */)
+    val x = /* c */ 1 /* d */ + /* e */ 2
+    val y = 1 // c
+    // c
+    + 2
+    val z = a // c
+        .b
+    val w = a /* c */
+        .b
+    val v = a
+    // c
+        .b
+    val u = a
+    /* c */
+        .b
+    foo(/* a */)
+    foo(
+        // a
+    )
+    val t = { /* a */ }
+    val s = { // a
+    }
+    if (a) /* c */ b else /* d */ c
+    if (a) b // c
+    else c
+    when (a) { // c
+        1 -> b // c
+        // c
+        else -> c
+    }
+}
+//---
+fun f(
+    a: Int,
+    b: Int, // c
+    /* d */ c: Int,
+): Int = a
+class A(
+    val a: Int,
+    val b: Int,
+) : B(
+    a,
+    b,
+) {
+    constructor(
+        a: Int,
+    ) : this(
+        a,
+        1,
+    )
+}
+//---
+fun f() {
+    val x = foo(
+        a,
+        b,
+    )
+    val y = listOf(
+        1,
+        2,
+    )
+    val z = a[
+        1,
+        2,
+    ]
+    val w = foo<
+        A,
+        B,
+    >(1)
+}
+//---
+fun <
+    T,
+    R,
+> f(
+    a: T,
+): R = TODO()
+//---
+fun f() {
+    foo(
+        a
+    )
+    foo(
+    )
+    foo(
+        a = 1,
+        b = 2
+    )
+    foo(a,
+        b)
+    foo(
+        a,
+        b)
+    foo(a
+        ,b)
+}
+//---
+fun f() {
+    val x =
+        1
+    val y: Int =
+        2
+    val z
+        = 3
+    var w: Int
+    w = 4
+    val v = 1 +
+        2 +
+        3
+}
+//---
+fun f() {
+    if (a)
+        b
+    if (a) {
+        b
+    }
+    if (a) b else c
+    if (
+        a
+    ) b
+    while (
+        a
+    ) b
+    for (
+        i in a
+    ) b
+    when (
+        a
+    ) { else -> b }
+}
+//---
+fun f() {
+    return
+    1
+    return 1
+    return@f 1
+    return@f
+    1
+}
+//---
+fun f() {
+    throw
+        E()
+    return
+        1
+}
+//---
+val x
+    get() = 1
+val y = 1
+    get() = 2
+val z: Int
+    get() { return 1 }
+    set(v) { }
+//---
+open class A
+class B : A()
+class C : A() { }
+class D : A() {
+}
+class E :
+    A()
+class F
+    : A()
+class G(
+    val a: Int
+) :
+    A()
+//---
+class A(val a: Int)
+class B constructor(val a: Int)
+class C private constructor(val a: Int)
+class D @Ann constructor(val a: Int)
+class E private constructor()
+class F @Ann private constructor()
+class G(a: Int) { constructor() : this(1) }
+//---
+interface A<T> where T : B, T : C
+class A<T> where T : B, T : C
+class A<T, U> where T : B, U : C
+class A<T>(val x: T) where T : B
+fun <T> f(x: T) where T : B = x
+val <T> T.x: Int where T : B get() = 1
+//---
+fun f() {
+    A.B.C()
+    A.B.C.d
+    A<B>.C()
+    A.B<C>.D()
+    a.b<C>.d
+    A.B<C>::d
+    A().B()
+    A()::b
+    a.b.c::d
+}
+//---
+fun f(x: Int?) {
+    x?.let { }
+    x?.toString()
+    x!!.toString()
+    x ?: return
+    x?.let { it }?.toString() ?: ""
+    (x ?: 0).toString()
+}
+//---
+fun main() {
+    val list = mutableListOf<Int>()
+    list += 1
+    list -= 1
+    list[0] += 1
+    list.add(1)
+    val map = mutableMapOf<String, Int>()
+    map["a"] = 1
+    map["a"] = map["a"]!! + 1
+    for ((k, v) in map) println("$k=$v")
+    for (i in list.indices) println(list[i])
+    for (i in 0 until list.size step 2) println(i)
+    while (list.isNotEmpty()) list.removeAt(0)
+}
+//---
+fun f() {
+    var i = 0
+    while (i < 10) {
+        i++
+        if (i == 5) continue
+        if (i == 8) break
+    }
+    i = i + 1
+    i += 1
+    i = if (i > 0) i else 0
+}
+//---
+class A {
+    var x: Int = 0
+        get() = field
+        set(value) {
+            field = value
+        }
+
+    val y: Int
+        get() = x + 1
+
+    var z = 0
+        private set
+
+    var w: String? = null
+        get() = field?.trim()
+        set(v) { field = v?.trim() }
+}
+//---
+fun f() {
+    val a = 1; val b = 2; println(a + b)
+    if (a > b) println(a); else println(b)
+    for (i in 1..3) { print(i); print(' ') }
+    while (false) { }; do { } while (false)
+}
+//---
+fun f(a: Int): Int = when {
+    a > 0 -> 1
+    a < 0 -> -1
+    else -> 0
+}
+fun g(a: Int) = when (a) { 0 -> "zero"; 1 -> "one"; else -> "many" }
+//---
+fun f() {
+    val a = try { 1 } catch (e: Exception) { 2 }
+    val b = try { 1 } finally { }
+    try { } catch (e: A) { } catch (e: B) { } finally { }
+    try {
+    } catch (e: A) {
+    }
+    try { } catch (_: A) { }
+    try { } catch (e: A.B) { }
+    try { } catch (e: A<B>) { }
+}
+//---
+fun f() {
+    synchronized(this) { }
+    with(a) { b() }
+    run { a }
+    let { a }
+    apply { a }
+    also { a }
+    repeat(3) { a }
+    check(a) { "x" }
+    require(a) { "x" }
+    assert(a)
+    lazy { a }
+    use { a }
+    runCatching { a }.getOrNull()
+}
+//---
+fun f() {
+    val x = if (a) {
+        1
+    } else {
+        2
+    }
+    val y = if (a) 1 else 2
+    val z = if (a) { 1 } else if (b) { 2 } else { 3 }
+    val w = if (a) 1 else if (b) 2 else 3
+    val v = when {
+        a -> 1
+        else -> 2
+    }
+}
+//---
+fun f() {
+    val x = {
+        1
+    }
+    val y = { a: Int ->
+        a
+    }
+    val z = { a: Int, b: Int ->
+        a + b
+    }
+    val w = { a: Int, b: Int -> a + b }
+    val v: (Int) -> Int = { it + 1 }
+    val u: (Int, Int) -> Int = { a, b -> a + b }
+    val t: () -> Unit = { }
+    val s: () -> Int = { 1 }
+}
+//---
+fun f() {
+    foo { it }
+    foo { x -> x }
+    foo { x, y -> x + y }
+    foo { (x, y) -> x + y }
+    foo { _, y -> y }
+    foo { x: Int -> x }
+    foo { x: Int, y: Int -> x }
+    foo { -> 1 }
+    foo({ it })
+    foo({ x -> x })
+    foo(1, { it })
+    foo(1) { it }
+    foo({ }) { }
+}
+//---
+fun f() {
+    foo()
+    foo(1)
+    foo(1, 2)
+    foo(a = 1)
+    foo(a = 1, b = 2)
+    foo(1, b = 2)
+    foo(*a)
+    foo(*a, *b)
+    foo(1, *a)
+    foo(a = *b)
+    foo(a, b,)
+}
+//---
+abstract class A {
+    abstract val a: Int
+    abstract var b: Int
+    abstract fun c()
+    abstract fun d(): Int
+    open val e = 1
+    open var f = 2
+    open fun g() {}
+    open fun h() = 1
+    protected abstract fun i()
+    internal open fun j() {}
+}
+//---
+class A {
+    operator fun plus(o: A) = this
+    operator fun minus(o: A) = this
+    operator fun times(o: A) = this
+    operator fun div(o: A) = this
+    operator fun rem(o: A) = this
+    operator fun unaryMinus() = this
+    operator fun unaryPlus() = this
+    operator fun not() = this
+    operator fun inc() = this
+    operator fun dec() = this
+    operator fun get(i: Int) = this
+    operator fun set(i: Int, v: A) {}
+    operator fun invoke() = this
+    operator fun contains(o: A) = true
+    operator fun compareTo(o: A) = 0
+    operator fun rangeTo(o: A) = this
+    operator fun iterator() = this
+    operator fun next() = this
+    operator fun hasNext() = true
+    operator fun component1() = 1
+    operator fun plusAssign(o: A) {}
+    operator fun equals(o: Any?) = true
+}
+//---
+fun f() {
+    val (a, b) = pair
+    val (a, _) = pair
+    val (_, b) = pair
+    val (a, b, c) = triple
+    val (a: Int, b: String) = pair
+    var (a, b) = pair
+    for ((a, b) in list) { }
+    for ((a, _) in list) { }
+    val g = { (a, b): Pair<Int, Int> -> a }
+}
+//---
+@file:Suppress("UNUSED")
+@file:JvmName("A")
+package a
+import b.C
+@Ann
+class D
+//---
+fun f() {
+    val x = 1
+    @Suppress("X")
+    val y = 2
+    @Suppress("X")
+    x + y
+    @Ann
+    foo()
+    @Ann
+    x = 1
+    @Ann a = b
+    @Ann a + b
+}
+//---
+fun f(): Int {
+    @Suppress("UNUSED")
+    val a = 1
+    @Suppress("UNUSED") val b = 2
+    @Suppress("UNUSED_VARIABLE")
+    run { }
+    return a
+}
+//---
+fun f() {
+    val x = foo(@Ann 1)
+    val y = foo(@Ann a, @Bnn b)
+    val z = @Ann a
+    val w = @Ann(1) a
+    val v = (@Ann a)
+    val u = [@Ann a]
+    val t = { @Ann a }
+    val s = @Ann { a }
+    val r = @Ann fun() {}
+    val q = @Ann object {}
+}
+//---
+class A {
+    @Ann val a = 1
+    @Ann var b = 1
+    @Ann fun c() {}
+    @Ann class D
+    @Ann object E
+    @Ann interface F
+    @Ann constructor()
+    @Ann init { }
+    @get:Ann val g = 1
+    @set:Ann var h = 1
+    @field:Ann val i = 1
+    @property:Ann val j = 1
+    @delegate:Ann val k by lazy { 1 }
+    @receiver:Ann fun Int.l() {}
+    @param:Ann val m: Int = 1
+    @setparam:Ann var n = 1
+    @file:Ann val o = 1
+}
+//---
+class A(
+    @Ann val a: Int,
+    @get:Ann val b: Int,
+    @param:Ann @field:Bnn val c: Int,
+    @Ann(1) @Bnn(2) var d: Int,
+    @[Ann Bnn] val e: Int,
+)
+//---
+fun f(
+    @Ann a: Int,
+    @Ann(1) b: Int,
+    @Ann @Bnn c: Int,
+    @[Ann Bnn] d: Int,
+    @Ann vararg e: Int,
+) {}
+//---
+val f: @Ann () -> Unit = {}
+val g: @Ann (Int) -> Unit = {}
+val h: @Ann Int = 1
+val i: @Ann List<Int> = listOf()
+val j: List<@Ann Int> = listOf()
+val k: (@Ann Int) -> Unit = {}
+val l: @Ann Int? = null
+val m: @Ann(1) Int = 1
+val n: @Ann @Bnn Int = 1
+val o: suspend () -> Unit = {}
+val p: @Ann suspend () -> Unit = {}
+val q: suspend @Ann () -> Unit = {}
+//---
+fun f(a: () -> Unit, b: (Int) -> Unit, c: (Int, Int) -> Unit, d: (a: Int) -> Unit, e: (a: Int, b: Int) -> Unit) {}
+fun g(a: () -> () -> Unit, b: (() -> Unit) -> Unit, c: ((Int) -> Int) -> Int) {}
+fun h(a: (() -> Unit)?, b: ((Int) -> Int)?) {}
+fun i(a: Int.() -> Unit, b: Int?.() -> Unit, c: List<Int>.() -> Unit, d: A.B.() -> Unit) {}
+fun j(a: suspend () -> Unit, b: suspend Int.() -> Unit, c: suspend (Int) -> Unit) {}
+fun k(a: (Int) -> List<Int>, b: (Int) -> List<Int>?, c: (Int) -> () -> Int) {}
+fun l(a: Int.(Int) -> Int, b: Int.(a: Int) -> Int) {}
+//---
+fun f(a: List<Int>, b: List<Int>?, c: List<Int?>, d: List<Int?>?, e: Map<String, Int>, f: Map<String, List<Int>>) {}
+fun g(a: List<*>, b: Map<*, *>, c: Map<String, *>, d: Array<*>, e: Array<out Int>, f: Array<in Int>) {}
+fun h(a: A.B, b: A.B.C, c: A<Int>.B, d: A.B<Int>, e: A<Int>.B<String>) {}
+fun i(a: List<List<Int>>, b: List<List<List<Int>>>, c: Map<List<Int>, List<Int>>) {}
+fun j(a: Comparable<*>, b: Comparable<in Int>, c: Enum<out E>) {}
+fun k(a: T & Any, b: List<T & Any>) {}
+//---
+class A<T> {
+    fun <R> f(): R = TODO()
+    fun <R : T> g(): R = TODO()
+    fun <R, S> h(): R where R : T, R : S = TODO()
+    inline fun <reified R> i(): R = TODO()
+    fun <T> j(): T = TODO()
+    fun <out R> k() {}
+}
+//---
+fun interface A { fun f(): Int }
+fun interface B<T> { fun f(t: T): T }
+fun f() {
+    val a = A { 1 }
+    val b = B<Int> { it }
+    val c = A { return@A 1 }
+}
+//---
+inline fun f(a: () -> Unit) {}
+inline fun g(noinline a: () -> Unit, crossinline b: () -> Unit) {}
+inline fun <reified T> h() {}
+inline val Int.i get() = 1
+class A { inline var x: Int get() = 1; set(v) {} }
+//---
+tailrec fun f(n: Int): Int = if (n == 0) 0 else f(n - 1)
+suspend fun g() {}
+suspend fun h(): Int = 1
+suspend inline fun i() {}
+operator fun A.plus(o: A) = this
+infix fun A.foo(o: A) = this
+external fun j()
+//---
+expect class A
+actual class A
+expect fun f()
+actual fun f() {}
+expect val x: Int
+actual val x: Int = 1
+expect object O
+expect interface I
+expect enum class E
+expect annotation class AN
+expect sealed class S
+expect open class OC
+expect abstract class AC
+expect class C { fun f() }
+expect class D(val x: Int)
+//---
+value class A(val x: Int)
+@JvmInline value class B(val x: Int)
+@JvmInline
+value class C(private val x: Int) { fun f() = x }
+value class D<T>(val x: T)
+//---
+fun f() {
+    val a = 1
+    val b = a
+    // comment
+    val c = b /* comment */
+    /** kdoc */
+    val d = c
+}
+//---
+/**
+ * KDoc
+ */
+class A {
+    /** member */
+    val a = 1
+    /** fun */
+    fun f() {}
+}
+//---
+class A {
+    // c1
+    val a = 1 // c2
+    /* c3 */ val b = 2
+    val c = /* c4 */ 3
+    fun f(/* c5 */) { /* c6 */ }
+    fun g(a: /* c7 */ Int) {}
+}
+//---
+fun f() = 1 // c
+fun g() = 2 /* c */
+fun h() = /* c */ 3
+//---
+fun f() {
+    val a = 1;
+    val b = 2 ;
+    val c = 3 ; val d = 4
+    ;
+    val e = 5
+}
+//---
+fun f() {
+    val a = foo()
+    val b = foo() ?: bar()
+    val c = foo()!!
+    val d = foo()?.bar()
+    val e = foo()!!.bar()
+    val g = foo()?.bar()?.baz()
+    val h = foo()?.bar() ?: baz()
+}
+//---
+object A {
+    val x = 1
+    fun f() = x
+    object B
+    class C
+    interface D
+    enum class E { F }
+    @JvmStatic fun g() {}
+    const val H = 1
+}
+//---
+class A {
+    companion object {
+        val x = 1
+        fun f() = x
+    }
+    companion object Factory {
+        fun create() = A()
+    }
+    private companion object
+}
+//---
+enum class A(val x: Int, val y: String = "") {
+    B(1),
+    C(2, "c"),
+    D(3) { override fun f() = 1 },
+    E(4, "e") {
+        override fun f() = 2
+        val g = 1
+    };
+
+    open fun f() = 0
+    companion object { val h = 1 }
+}
+//---
+enum class A {
+    B, C, D;
+    fun f() {}
+}
+enum class E { A, B, C }
+enum class F { A, B, C, }
+enum class G {
+    A,
+    B,
+    C
+}
+enum class H {
+    A,
+    B,
+    ;
+}
+//---
+enum class A {
+    @Ann B,
+    @Ann(1) C,
+    @Ann @Bnn D;
+}
+//---
+interface A {
+    fun f()
+    fun g() {}
+    fun h(): Int
+    fun i(): Int = 1
+    val j: Int
+    val k: Int get() = 1
+    var l: Int
+    companion object {}
+    class M
+    interface N
+}
+//---
+sealed class A
+class B : A()
+object C : A()
+data class D(val x: Int) : A()
+sealed class E { class F : E(); object G : E() }
+sealed interface H
+sealed class I(val x: Int) { class J : I(1) }
+//---
+data class A(val x: Int, val y: Int = 0, var z: String = "")
+data class B<T>(val x: T)
+data class C(val x: Int) { fun f() = x }
+data class D(vararg val x: Int)
+//---
+abstract class A(val x: Int) {
+    abstract fun f()
+}
+class B(x: Int) : A(x) {
+    override fun f() {}
+}
+open class C(val x: Int = 0)
+class D : C()
+class E : C(1)
+class F(x: Int) : C(x + 1)
+//---
+class A {
+    constructor(x: Int)
+    constructor(x: Int, y: Int) : this(x)
+    constructor(x: String) : this(1, 2) { }
+    private constructor(x: Long) : this(1)
+    init { }
+}
+class B : C {
+    constructor() : super()
+    constructor(x: Int) : super(x)
+    constructor(x: String) : this()
+}
+//---
+class A {
+    init {
+        println("a")
+    }
+    val x = 1
+    init { println("b") }
+}
+//---
+class A {
+    val a: Int
+    var b: Int
+    init {
+        a = 1
+        b = 2
+    }
+}
+//---
+class A {
+    lateinit var a: String
+    var b: Int by Delegates.notNull()
+    val c: Int by lazy { 1 }
+    val d by lazy { 1 }
+    var e by mutableStateOf(1)
+    val f: Int by this::a
+    val g by ::h
+}
+//---
+class A<T> : Comparable<A<T>>, Iterable<T> {
+    override fun compareTo(other: A<T>) = 0
+    override fun iterator(): Iterator<T> = TODO()
+}
+//---
+fun A.f() {}
+fun A?.g() {}
+fun A<Int>.h() {}
+fun List<A>.i() {}
+fun <T> T.j() {}
+fun <T> List<T>.k() {}
+fun <T : A> T.l() {}
+val A.m get() = 1
+val A?.n get() = 1
+val <T> T.o get() = 1
+var A.p: Int get() = 1; set(v) {}
+fun A.Companion.q() {}
+fun a.b.C.d() {}
+fun (() -> Unit).r() {}
+fun (A.() -> Unit).s() {}
+//---
+fun main() {
+    class Local(val x: Int) {
+        fun f() = x
+    }
+    val l = Local(1)
+    println(l.f())
+    object : Runnable { override fun run() {} }.run()
+    fun nested() {
+        fun deeper() {}
+        deeper()
+    }
+    nested()
+}
+//---
+fun f() {
+    val x = 1
+    fun g() = x
+    val y = g()
+    class C { fun h() = x }
+    val z = C().h()
+}
+//---
+fun f(a: Int, b: Int) {
+    val max = if (a > b) a else b
+    val min = if (a < b) { a } else { b }
+    val abs = if (a >= 0) a else -a
+    val sign = when {
+        a > 0 -> 1
+        a < 0 -> -1
+        else -> 0
+    }
+}
+//---
+fun f(s: String) {
+    val a = s.length
+    val b = s[0]
+    val c = s.substring(1)
+    val d = s + "a"
+    val e = s == "a"
+    val g = s != "a"
+    val h = s.isEmpty()
+    val i = s in listOf("a")
+    val j = s.uppercase()
+    val k = "$s$s"
+    val l = "${s}s"
+    val m = "${s.length}"
+}
+//---
+@Deprecated("x") @Suppress("y") fun f() {}
+@Deprecated("x")
+@Suppress("y")
+fun g() {}
+@Deprecated(message = "x", level = DeprecationLevel.ERROR) fun h() {}
+@Deprecated("x", ReplaceWith("g()")) fun i() {}
+//---
+fun f() {
+    val x = ""
+    val y = " "
+    val z = "a"
+    val w = "\n"
+    val v = "\t"
+    val u = "\\"
+    val t = "\""
+    val s = "'"
+    val r = '"'
+    val q = "$"
+    val p = "\$"
+    val o = "a\$b"
+    val n = "A"
+}
+//---
+fun f() {
+    val x = """"""
+    val y = """ """
+    val z = """a"""
+    val w = """
+    """
+    val v = """"a""""
+    val u = """a""b"""
+    val t = """a"b"""
+    val s = """\n"""
+    val r = """$"""
+    val q = """${1}"""
+    val p = """$a"""
+}
+//---
+fun f() = 1
+fun g() = 2
+fun h() = f() + g()
+//---
+typealias A = Int
+typealias B<T> = List<T>
+typealias C = (Int) -> Int
+typealias D = Int.() -> Int
+typealias E<T, R> = (T) -> R
+typealias F = Map<String, List<Int>>
+typealias G = A.B.C
+typealias H<T : Any> = List<T>
+private typealias I = Int
+@Ann typealias J = Int
+//---
+fun f() {
+    val a: Int? = null
+    val b: Int?= null
+    val c: List<Int>? = null
+    val d: List<Int?>? = null
+    val e: (Int) -> Int? = { null }
+    val g: ((Int) -> Int)? = null
+    val h: (Int?) -> Int = { 0 }
+}
+//---
+fun f() {
+    a.b(c).d(e).f
+    a.b[c].d[e].f
+    a?.b(c)?.d(e)?.f
+    a!!.b(c)!!.d(e)!!.f
+    a.b!!.c!!.d
+}
+//---
+fun f() {
+    val a = a.b.c
+    val b = a.b().c
+    val c = a().b.c()
+    val d = (a).b
+    val e = (a.b).c
+    val g = (a().b)()
+    val h = a()()
+    val i = a()()()
+    val j = (a)()
+}
+//---
+fun f() {
+    foo(bar(baz(1)))
+    foo(bar(baz(1)), 2)
+    foo(bar { baz { 1 } })
+    foo(bar(1) { baz(2) { 3 } })
+}
+//---
+fun f() {
+    val a = 1.0.toInt()
+    val b = 1.toDouble()
+    val c = 1.0f
+    val d = 1e3
+    val e = 1_000.0
+    val g = 1.0_0
+    val h = 0.5
+    val i = 5.
+}
+//---
+fun f() {
+    val a = listOf(1, 2, 3)
+    a.forEach { println(it) }
+    a.forEachIndexed { i, x -> println("$i $x") }
+    a.map { it * 2 }
+    a.filter { it > 1 }
+    a.fold(0) { acc, x -> acc + x }
+    a.reduce { acc, x -> acc + x }
+    a.sortedBy { -it }
+    a.groupBy { it % 2 }
+    a.associate { it to it }
+    a.joinToString(", ") { it.toString() }
+}
+//---
+fun f(vararg a: Int) {
+    f()
+    f(1)
+    f(1, 2)
+    f(*intArrayOf(1))
+    f(1, *intArrayOf(2), 3)
+}
+//---
+fun f(a: Int, b: String = "", c: Boolean = false) {}
+fun g() {
+    f(1)
+    f(1, "a")
+    f(1, "a", true)
+    f(1, c = true)
+    f(a = 1, c = true)
+    f(c = true, a = 1)
+}
+//---
+fun f() {
+    outer@ for (i in 1..3) {
+        inner@ for (j in 1..3) {
+            if (j == 2) continue@outer
+            if (i == 2) break@outer
+            if (j == 3) continue@inner
+        }
+    }
+    val x = run outer@{
+        run inner@{
+            return@outer 1
+        }
+    }
+}
+//---
+fun f() {
+    var x = 0
+    x++
+    x--
+    ++x
+    --x
+    x += 1
+    x -= 1
+    x *= 2
+    x /= 2
+    x %= 2
+    x = x + 1
+    x = -x
+    x = +x
+}
+//---
+fun f(a: Boolean, b: Boolean) {
+    val x = a && b
+    val y = a || b
+    val z = !a
+    val w = a && !b
+    val v = !a || b
+    val u = a && b || a
+    val t = a || b && a
+    val s = (a || b) && a
+    val r = !(a && b)
+    val q = a == b
+    val p = a != b
+    val o = a xor b
+}
+//---
+fun f() {
+    val a = 1 shl 2
+    val b = 1 shr 2
+    val c = 1 ushr 2
+    val d = 1 and 2
+    val e = 1 or 2
+    val g = 1 xor 2
+    val h = 1.inv()
+    val i = 1 shl 2 or 3
+    val j = 1 or 2 shl 3
+}
+//---
+fun f() {
+    val a = 1 until 10
+    val b = 10 downTo 1
+    val c = 1..10 step 2
+    val d = 1 until 10 step 2
+    val e = (1..10).reversed()
+    val g = 1..10 + 1
+    val h = 1 + 1..10
+    val i = 'a'..'z'
+    val j = 1.0..2.0
+    val k = "a".."z"
+    val l = 1..<10
+}
+//---
+fun f(x: Any) {
+    if (x is String) { }
+    if (x !is String) { }
+    if (x is String && x.length > 0) { }
+    if (x !is String || x.length > 0) { }
+    val a = x is String
+    val b = x as String
+    val c = x as? String
+    val d = (x as String).length
+    val e = x is List<*>
+    val g = x is Map<*, *>
+    val h = x is Array<*>
+    val i = x is Int?
+    val j = x as Int?
+}
+//---
+fun f() {
+    val a = object { }
+    val b = object : A { }
+    val c = object : A() { }
+    val d = object : A(), B { }
+    val e = object : A by b { }
+    val g = object { val x = 1; fun f() = x }
+    val h = object : Runnable {
+        override fun run() {}
+    }
+}
+//---
+fun f() {
+    val a = fun() {}
+    val b = fun(x: Int) {}
+    val c = fun(x: Int): Int { return x }
+    val d = fun(x: Int) = x
+    val e = fun Int.() {}
+    val g = fun Int.(x: Int): Int = this + x
+    val h = fun(x: Int, y: Int): Int = x + y
+    foo(fun() {})
+    foo(fun(x: Int) = x)
+}
+//---
+fun f() {
+    val a = ::f
+    val b = ::A
+    val c = A::f
+    val d = A::x
+    val e = A::class
+    val g = a::f
+    val h = this::f
+    val i = A::f.name
+    val j = A::class.java
+    val k = A::class.simpleName
+    val l = String::length
+    val m = List<Int>::size
+    val n = A.B::f
+}
+//---
+fun f() {
+    val a = this
+    val b = this.x
+    val c = this@A
+    val d = this@A.x
+    val e = super.x
+    val g = super<A>.x
+    val h = super@B.x
+    val i = this.f()
+    val j = this@A.f()
+    val k = super.f()
+    val l = super<A>.f()
+}
+//---
+fun f() {
+    val a = [1]
+    val b = [1, 2]
+    val c = []
+}
+//---
+fun f() {
+    a?.b
+    a?.b()
+    a?.b?.c
+    a?.b?.c()
+    a?.b.c
+    a?.b().c
+    a?.let { }
+    a?.also { }?.let { }
+}
+//---
+fun f() {
+    foo(
+        object : A {
+            override fun f() {}
+        }
+    )
+    foo(
+        fun() {}
+    )
+    foo(
+        { }
+    )
+    foo(
+        if (a) b else c
+    )
+    foo(
+        when { else -> a }
+    )
+}
+//---
+fun f() {
+    val x = if (a) b else c
+    val y = if (a) b
+    else c
+    val z = if (a)
+        b
+    else
+        c
+    val w = if (a) {
+        b
+    } else {
+        c
+    }
+    val v = if (a) b else if (c) d else e
+    val u = if (a) { b } else if (c) { d } else { e }
+}
+//---
+fun f() {
+    when (a) {
+        1 -> b
+        2 -> { c }
+        3 -> d()
+        4 -> if (e) f else g
+        5 -> when (h) { else -> i }
+        else -> j
+    }
+}
+//---
+fun f() {
+    when (a) {
+        1 -> return
+        2 -> throw E()
+        3 -> break
+        4 -> continue
+        5 -> return 1
+        6 -> return@f
+    }
+}
+//---
+fun f() {
+    val x = when (a) {
+        1 -> "a"
+        2 -> "b"
+        else -> "c"
+    }.length
+    val y = when { a -> 1; else -> 2 } + 1
+    val z = if (a) 1 else 2 + 3
+    val w = (if (a) 1 else 2) + 3
+    val v = try { 1 } catch (e: E) { 2 } + 3
+}
+//---
+fun f() {
+    val x = 1 +
+        when (a) { else -> 2 }
+    val y = foo(
+        when (a) { else -> 2 }
+    )
+    val z = [when (a) { else -> 2 }]
+}
