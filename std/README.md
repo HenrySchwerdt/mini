@@ -211,3 +211,6 @@ loop). This is a selected synchronous subset: no DNS resolution, UDP, TLS, non-
 blocking/async I/O, timeouts or back-pressure yet. The compiler does not enforce
 socket ownership, lifetimes or data-race freedom. Like the concurrency adapter,
 `requires_libuv` adds libuv link flags only to programs that use the net intrinsics.
+
+> Kotlin-source standard library (v1-S): see [kotlin-mini/](kotlin-mini/) and [docs/stdlib.md](../docs/stdlib.md).
+

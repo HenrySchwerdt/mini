@@ -1,0 +1,33 @@
+true
+false
+true
+false
+true
+true
+true
+Pt(1, 2)
+true
+false
+false
+false
+33
+63
+true
+value: Pt(1, 2)
+sum Pt(1, 2) and Pt(2, 1)
+<Pt(1, 2)>
+<null>
+<str>
+<42>
+<true>
+<2.5>
+<c>
+Pt(1, 2)
+true
+Pt(1, 2)
+33
+true
+false
+5
+true
+true

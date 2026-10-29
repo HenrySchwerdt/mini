@@ -1,0 +1,51 @@
+substring = [World]
+substring2 = [Hello]
+take = [Hel]
+takeLast = [World]
+drop = [World]
+dropLast = [Hello]
+true
+false
+true
+true
+true
+4
+8
+7
+-1
+8
+8
+true
+false
+lowercase = [hello, world]
+uppercase = [HELLO, WORLD]
+trim = [padded]
+trimStart = [x ]
+trimEnd = [  x]
+padStart = [007]
+padEnd = [ab...]
+padStart-noop = [abcdef]
+repeat = [ababab]
+repeat0 = []
+reversed = [dlroW ,olleH]
+replace-char = [HeLLo, WorLd]
+replace-str = [Hello, Mini]
+replace-none = [Hello, World]
+replace-empty = [-a-b-]
+substringBefore = [key]
+substringAfter = [value=x]
+substringBeforeLast = [key=value]
+substringAfterLast = [x]
+substringBefore-missing = [abc]
+removePrefix = [body]
+removeSuffix = [body]
+true
+true
+true
+false
+H
+d
+12
+3
+true
+1

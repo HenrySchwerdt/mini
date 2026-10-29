@@ -1,0 +1,21 @@
+Kotlin/Mini standard library sources (std/kotlin-mini)
+
+This directory contains source code ported or derived from the Kotlin standard library
+(https://github.com/JetBrains/kotlin, libraries/stdlib, core/builtins), which is
+
+    Copyright 2010-2025 JetBrains s.r.o. and Kotlin Programming Language contributors.
+    Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+
+Derived files carry the original copyright notice in their header and name the original file they
+were ported from. Changes against the originals: expect/actual and JVM/JS/Native specifics removed,
+contracts and Serializable removed, collections reimplemented on a native reference array
+(mini.internal.refArray*), `throw` sites routed through mini.internal.throw*, String functions
+reimplemented on top of String.get/length (no regex, ASCII/Latin-1 character classification).
+
+Files without such a header (std/kotlin-mini/mini/**, java/lang/Thread.kt, mini/internal/*) are part of
+Kotlin/Mini itself.
+
+Licensed under the Apache License, Version 2.0; you may not use these files except in compliance with
+the License. Unless required by applicable law or agreed to in writing, software distributed under the
+License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+or implied. See the License for the specific language governing permissions and limitations.

@@ -1,0 +1,20 @@
+Point(x=1, y=2)
+Point(x=1, y=5)
+true
+false
+false
+true
+33
+6
+1
+User(name=ann, age=30, active=true)
+User(name=ann, age=31, active=false)
+93907429
+Line(from=Point(x=0, y=0), to=Point(x=3, y=4))
+25
+true
+100
+Mixed(d=1.5, l=99999999999, c=z, b=true)
+593797501
+true
+false
