@@ -10,7 +10,31 @@ package kotlin.reflect
  */
 public interface KAnnotatedElement
 
-public interface KClass<T : Any> : KAnnotatedElement
+public interface KClass<T : Any> : KAnnotatedElement {
+    /** The simple name of the class (without package and enclosing classes), `null` for anonymous classes. */
+    public val simpleName: String?
+
+    /** The fully qualified name of the class, `null` for anonymous and local classes. */
+    public val qualifiedName: String?
+}
+
+/**
+ * What `Foo::class` and `x::class` evaluate to: the Mini backend creates it from the type info name
+ * (`MkTypeInfo.name`, the Kotlin qualified name). Only the names are available (no members, no reflection).
+ */
+internal class KClassImpl<T : Any>(private val name: String) : KClass<T> {
+    override val simpleName: String?
+        get() = if (name.indexOf('$') >= 0) null else name.substringAfterLast('.')
+
+    override val qualifiedName: String?
+        get() = if (name.indexOf('$') >= 0) null else name
+
+    override fun equals(other: Any?): Boolean = other is KClassImpl<*> && other.name == name
+
+    override fun hashCode(): Int = name.hashCode()
+
+    override fun toString(): String = "class $name"
+}
 
 public interface KCallable<out R> : KAnnotatedElement {
     public val name: String

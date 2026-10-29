@@ -68,8 +68,8 @@ internal fun mirQuote(s: String, sb: StringBuilder) {
 
 internal fun mirDouble(d: Double): String {
     if (d != d) return "nan"
-    if (d == 1.0 / 0.0) return "inf"
-    if (d == -1.0 / 0.0) return "-inf"
+    if (d == Double.POSITIVE_INFINITY) return "inf"
+    if (d == Double.NEGATIVE_INFINITY) return "-inf"
     return d.toString()
 }
 
@@ -828,9 +828,9 @@ private class MirReaderImpl {
     }
 
     fun parseDouble(t: String): Double {
-        if (t == "nan") return 0.0 / 0.0
-        if (t == "inf") return 1.0 / 0.0
-        if (t == "-inf") return -1.0 / 0.0
+        if (t == "nan") return Double.NaN
+        if (t == "inf") return Double.POSITIVE_INFINITY
+        if (t == "-inf") return Double.NEGATIVE_INFINITY
         return t.toDoubleOrNull() ?: fail("bad double '$t'")
     }
 

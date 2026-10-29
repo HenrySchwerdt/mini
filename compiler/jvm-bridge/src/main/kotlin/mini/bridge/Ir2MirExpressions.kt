@@ -197,6 +197,8 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     }
     is IrStringConcatenation -> stringConcat(e, out)
     is IrFunctionExpression -> lambdaValue(e, out)
+    is org.jetbrains.kotlin.ir.expressions.IrClassReference -> classReference(e, out)
+    is org.jetbrains.kotlin.ir.expressions.IrGetClass -> getClassValue(e, out)
     is IrTry -> tryValue(e, out)
     is IrVararg -> varargValue(e, out)
     is IrFunctionReference -> functionReference(e, out)
@@ -335,4 +337,40 @@ internal fun Ir2Mir.stringConcat(e: IrStringConcatenation, out: MutableList<MirS
         acc = if (acc == null) s else concat(acc, s, out)
     }
     return acc ?: MirExpr.StringConst("")
+}
+
+/** The Kotlin qualified name of a MIR type, as `MkTypeInfo.name` spells it. */
+internal fun typeQualifiedName(t: MirType): String? = when (t) {
+    TInt -> "kotlin.Int"
+    TLong -> "kotlin.Long"
+    TBoolean -> "kotlin.Boolean"
+    TDouble -> "kotlin.Double"
+    TChar -> "kotlin.Char"
+    TString, TNString -> "kotlin.String"
+    is TBoxed -> typeQualifiedName(t.prim)
+    is TObject -> t.qualifiedName
+    else -> null
+}
+
+private fun Ir2Mir.newKClass(name: MirExpr, at: IrElement, type: MirType, out: MutableList<MirStmt>): MirExpr {
+    val impl = kclassImpl ?: unsupported(at, "`::class` (the stdlib class kotlin.reflect.KClassImpl is not available)")
+    val ctor = impl.declarations.filterIsInstance<org.jetbrains.kotlin.ir.declarations.IrConstructor>().firstOrNull()
+    val cName = ctor?.let { functionNames[it] } ?: unsupported(at, "`::class` (KClassImpl was pruned)")
+    val made = tmpOf(MirExpr.New(cName, listOf(name), typeOf(impl)), out)
+    return MirExpr.Cast(made, type, MirExpr.CastMode.Unchecked)
+}
+
+/** `Foo::class`: a `KClass` carrying the qualified name of the (statically known) class. */
+internal fun Ir2Mir.classReference(e: org.jetbrains.kotlin.ir.expressions.IrClassReference, out: MutableList<MirStmt>): MirExpr {
+    val t = mirType(e.classType, e)
+    val name = typeQualifiedName(t) ?: unsupported(e, "class reference to '${e.classType}'")
+    return newKClass(MirExpr.StringConst(name), e, mirType(e.type, e), out)
+}
+
+/** `x::class`: the dynamic class of [x], from its type info name. */
+internal fun Ir2Mir.getClassValue(e: org.jetbrains.kotlin.ir.expressions.IrGetClass, out: MutableList<MirStmt>): MirExpr {
+    var v = value(e.argument, out)
+    if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
+    val name = tmpOf(MirExpr.RuntimeCall("mk_type_name", listOf(asAny(v)), TString), out)
+    return newKClass(name, e, mirType(e.type, e), out)
 }

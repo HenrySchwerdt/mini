@@ -74,6 +74,7 @@ object Reachability {
      */
     fun prune(module: IrModuleFragment, isStdlibFile: (IrFile) -> Boolean) {
         val marker = Marker(isStdlibFile)
+        marker.kclassImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName.asString() == "kotlin.reflect.KClassImpl" }
         module.files.removeAll { isBuiltinFile(it) }
         for (f in module.files) {
             f.declarations.removeAll { it is IrFunction && (it.isExternal || cSymbol(it) != null) }
@@ -92,6 +93,8 @@ object Reachability {
 
     private class Marker(private val isStdlibFile: (IrFile) -> Boolean) {
         val kept = HashSet<IrDeclaration>()
+        /** `Foo::class` / `x::class` create a KClassImpl (Ir2MirExpressions.classReference). */
+        var kclassImpl: IrClass? = null
         private val classes = HashSet<IrClass>()
 
         private fun isStdlibClass(c: IrClass): Boolean = (c.getPackageFragment() as? IrFile)?.let(isStdlibFile) == true
@@ -124,7 +127,8 @@ object Reachability {
                         if (!(element.dispatchReceiver?.type.isBuiltinClassType())) markSymbolOwner(element.symbol.owner as? IrDeclaration)
                     is IrGetObjectValue -> markClass(element.symbol.owner)
                     is IrGetEnumValue -> markClass(element.symbol.owner.parentAsClass())
-                    is IrClassReference -> markType(element.classType)
+                    is IrClassReference -> { markType(element.classType); kclassImpl?.let { markClass(it) } }
+                    is org.jetbrains.kotlin.ir.expressions.IrGetClass -> kclassImpl?.let { markClass(it) }
                     is IrTypeOperatorCall -> markType(element.typeOperand)
                     is IrFunctionReference -> markSymbolOwner(element.symbol.owner)
                     is IrClass -> { markClass(element); return }

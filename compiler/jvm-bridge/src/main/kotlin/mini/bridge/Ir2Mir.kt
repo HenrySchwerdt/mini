@@ -140,7 +140,11 @@ class Ir2Mir {
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val typeSubst = HashMap<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>()
 
+    /** `kotlin.reflect.KClassImpl` of the stdlib sources (what `Foo::class` creates), if present in the module. */
+    internal var kclassImpl: IrClass? = null
+
     fun convert(module: IrModuleFragment, sourceName: String): MirModule {
+        kclassImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName.asString() == "kotlin.reflect.KClassImpl" }
         if (System.getenv("MINIC_DUMP_IR") != null) System.err.println(module.dump())
         closure.analyze(module)
         // pass 1: classes and top-level declarations

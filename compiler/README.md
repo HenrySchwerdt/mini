@@ -424,7 +424,7 @@ constructors. `Comparable` and `CharSequence` are erased (`Any` / `String`); `co
   Gaps of the stdlib itself (ranges as iterables, `entries`-style APIs, JDK message wording) are not backend issues.
   The stdlib's hash maps keep before/after links (reference cycles) and therefore leak under RC
   (`stdlib_maps.noleakcheck` excludes that test from the leak check).
-* No property references (`::prop`), `KClass` (`::class`), `suspend`/coroutines, type aliases are ignored (no code),
+* No property references (`::prop`), `suspend`/coroutines, type aliases are ignored (no code),
   `Byte`/`Short`/`Float`, `value class`, annotations with arguments, `fun main(args)`, enum entries with bodies,
   `Unit?`, local `object` declarations, nested classes inside local classes. SAM conversion works for `fun interface`s
   (lambda literals and function values), not for Java interfaces.
@@ -449,3 +449,23 @@ stdlib API `mini.io.readTextFile/writeTextFile` (`stdlib/mini/io/Files.kt`, intr
 `minirt.h`, `runtime/src/b1.c`); on the JVM the Gradle build compiles `Files.kt` together with
 `stdlib-test/jvm/mini/internal/B1Intrinsics.kt`. `fun main(args: Array<String>)` is supported by the compiler (the C
 entry wrapper takes the array from `mk_b1_args()`).
+
+## v1-A: the backend compiles and runs natively
+
+`minic` compiles its own backend: `./minic build compiler/selfhost/SelfMain.kt $(find compiler/backend/src/main/kotlin -name '*.kt') -o build/selfhost`
+(about 10 s plus clang) gives a native program that prints exactly what the same driver prints on the JVM.
+
+* `compiler/selfhost/SelfMain.kt` (package `selfhost`) drives the pure-Kotlin backend: handcrafted MIR modules (every operator,
+  conversion, loop form, class/itable/object, cast, box, exception construct), a few hundred pseudo-random well-formed MIR
+  functions (deterministic LCG), and handcrafted plus pseudo-random MemIr programs for `MemoryChecker`. The output is ~25k
+  lines (C code and diagnostics).
+* `SelfHostTest` (jvm-bridge, part of `gradle test`, the v1 gate) has three parts: (1) the driver on the JVM (compiled by the real
+  Kotlin compiler as part of the test source set) versus the natively compiled one, byte-identical, clang `-Werror`; (2) the same
+  native build with ASan/UBSan: no memory error, no UB, no direct leak (reference cycles, e.g. `LinkedHashMap` nodes, show up as
+  *indirect* leaks only and are tolerated); (3) the B1 acceptance test: `native-driver` + backend are compiled into a native
+  `minic-backend`; for every `compiler/testdata` program `emit-mir` -> native `minic-backend` -> `.c` is byte-identical to what
+  the JVM `CEmitter` makes of the same MIR.
+* What it took in the compiler: `for (i in range)` over a range *value* and `a..b` as a value go through real `IntRange`/`LongRange`/
+  `CharRange` classes (literal `for`/`in` shapes are still pattern-matched, no object); `Foo::class` and `x::class` give a `KClass`
+  with `simpleName`/`qualifiedName` (from the type info name; no other reflection); expanding an inline function inside
+  itself (`xs.any { ys.any { } }`) keeps the outer `return` target. Everything else was stdlib API (see `docs/stdlib.md`, section 9).

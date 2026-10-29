@@ -1,44 +1,49 @@
 /*
  * Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license (see stdlib/NOTICE).
- * Reimplemented after kotlin-stdlib collections/ArrayDeque.kt (circular buffer); the bulk operations
+ * Reimplemented after kotlin-stdlib collections/ArrayDeque.kt (circular buffer on a native ref array, like ArrayList); the bulk operations
  * (insert/remove in the middle) shift element by element instead of using `copyInto`.
  */
 package kotlin.collections
 
+import mini.internal.refArrayGet
+import mini.internal.refArrayLength
+import mini.internal.refArrayNew
+import mini.internal.refArraySet
+
 public class ArrayDeque<E> : AbstractMutableList<E> {
     private var head: Int = 0
-    private var elementData: Array<Any?>
+    private var elementData: Any
 
     override var size: Int = 0
         private set
 
     public constructor(initialCapacity: Int) {
         if (initialCapacity < 0) throw IllegalArgumentException("Illegal Capacity: $initialCapacity")
-        elementData = arrayOfNulls<Any?>(initialCapacity)
+        elementData = refArrayNew(initialCapacity)
     }
 
     public constructor() {
-        elementData = arrayOfNulls<Any?>(0)
+        elementData = refArrayNew(0)
     }
 
     public constructor(elements: Collection<E>) {
-        elementData = arrayOfNulls<Any?>(elements.size)
+        elementData = refArrayNew(elements.size)
         for (e in elements) {
-            elementData[size] = e
+            refArraySet(elementData, size, e)
             size += 1
         }
     }
 
     private fun ensureCapacity(minCapacity: Int) {
         if (minCapacity < 0) throw IllegalStateException("Deque is too big.")
-        if (minCapacity <= elementData.size) return
-        var newCapacity = if (elementData.size == 0) 10 else elementData.size + (elementData.size shr 1) + 1
+        if (minCapacity <= refArrayLength(elementData)) return
+        var newCapacity = if (refArrayLength(elementData) == 0) 10 else refArrayLength(elementData) + (refArrayLength(elementData) shr 1) + 1
         if (newCapacity < minCapacity) newCapacity = minCapacity
-        val newElements = arrayOfNulls<Any?>(newCapacity)
+        val newElements = refArrayNew(newCapacity)
         var i = 0
         while (i < size) {
-            newElements[i] = elementData[positiveMod(head + i)]
+            refArraySet(newElements, i, refArrayGet(elementData, positiveMod(head + i)))
             i++
         }
         head = 0
@@ -46,15 +51,15 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun internalGet(internalIndex: Int): E = elementData[internalIndex] as E
+    private fun internalGet(internalIndex: Int): E = refArrayGet(elementData, internalIndex) as E
 
-    private fun positiveMod(index: Int): Int = if (index >= elementData.size) index - elementData.size else index
+    private fun positiveMod(index: Int): Int = if (index >= refArrayLength(elementData)) index - refArrayLength(elementData) else index
 
     private fun internalIndex(index: Int): Int = positiveMod(head + index)
 
-    private fun incremented(index: Int): Int = if (index == elementData.size - 1) 0 else index + 1
+    private fun incremented(index: Int): Int = if (index == refArrayLength(elementData) - 1) 0 else index + 1
 
-    private fun decremented(index: Int): Int = if (index == 0) elementData.size - 1 else index - 1
+    private fun decremented(index: Int): Int = if (index == 0) refArrayLength(elementData) - 1 else index - 1
 
     override fun isEmpty(): Boolean = size == 0
 
@@ -69,20 +74,20 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
     public fun addFirst(element: E) {
         ensureCapacity(size + 1)
         head = decremented(head)
-        elementData[head] = element
+        refArraySet(elementData, head, element)
         size += 1
     }
 
     public fun addLast(element: E) {
         ensureCapacity(size + 1)
-        elementData[internalIndex(size)] = element
+        refArraySet(elementData, internalIndex(size), element)
         size += 1
     }
 
     public fun removeFirst(): E {
         if (isEmpty()) throw NoSuchElementException("ArrayDeque is empty.")
         val element = internalGet(head)
-        elementData[head] = null
+        refArraySet(elementData, head, null)
         head = incremented(head)
         size -= 1
         return element
@@ -94,7 +99,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         if (isEmpty()) throw NoSuchElementException("ArrayDeque is empty.")
         val internalLastIndex = internalIndex(size - 1)
         val element = internalGet(internalLastIndex)
-        elementData[internalLastIndex] = null
+        refArraySet(elementData, internalLastIndex, null)
         size -= 1
         return element
     }
@@ -119,10 +124,10 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         // open a gap at `index` by shifting the elements after it one step towards the tail
         var i = size
         while (i > index) {
-            elementData[internalIndex(i)] = elementData[internalIndex(i - 1)]
+            refArraySet(elementData, internalIndex(i), refArrayGet(elementData, internalIndex(i - 1)))
             i--
         }
-        elementData[internalIndex(index)] = element
+        refArraySet(elementData, internalIndex(index), element)
         size += 1
     }
 
@@ -142,7 +147,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         if (index < 0 || index >= size) throw IndexOutOfBoundsException("index: $index, size: $size")
         val internalIndex = internalIndex(index)
         val oldElement = internalGet(internalIndex)
-        elementData[internalIndex] = element
+        refArraySet(elementData, internalIndex, element)
         return oldElement
     }
 
@@ -151,7 +156,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
     public override fun indexOf(element: E): Int {
         var i = 0
         while (i < size) {
-            if (element == elementData[internalIndex(i)]) return i
+            if (element == refArrayGet(elementData, internalIndex(i))) return i
             i++
         }
         return -1
@@ -160,7 +165,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
     public override fun lastIndexOf(element: E): Int {
         var i = size - 1
         while (i >= 0) {
-            if (element == elementData[internalIndex(i)]) return i
+            if (element == refArrayGet(elementData, internalIndex(i))) return i
             i--
         }
         return -1
@@ -180,10 +185,10 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         val element = internalGet(internalIndex(index))
         var i = index
         while (i < size - 1) {
-            elementData[internalIndex(i)] = elementData[internalIndex(i + 1)]
+            refArraySet(elementData, internalIndex(i), refArrayGet(elementData, internalIndex(i + 1)))
             i++
         }
-        elementData[internalIndex(size - 1)] = null
+        refArraySet(elementData, internalIndex(size - 1), null)
         size -= 1
         return element
     }
@@ -191,7 +196,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
     public override fun clear() {
         var i = 0
         while (i < size) {
-            elementData[internalIndex(i)] = null
+            refArraySet(elementData, internalIndex(i), null)
             i++
         }
         head = 0

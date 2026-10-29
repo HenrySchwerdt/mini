@@ -1,4 +1,10 @@
+import mini.backend.CEmitter
+import mini.backend.MirReader
+import mini.backend.MirWriter
 import mini.bridge.Cli
+import mini.bridge.Stdlib
+import org.junit.jupiter.api.DynamicTest
+import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -30,6 +36,11 @@ class SelfHostTest {
     private val selfhostSrc = File(System.getProperty("mini.selfhostSrc") ?: error("mini.selfhostSrc not set"))
     private val work = Files.createTempDirectory("minic-selfhost-").toFile().also { it.deleteOnExit() }
 
+    private val testdata = File(System.getProperty("mini.testdata") ?: error("mini.testdata not set"))
+
+    private fun backendSources(): List<String> =
+        backendSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.map { it.path }.toList()
+
     private fun sources(): List<String> {
         val driver = selfhostSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.map { it.path }.toList()
         val backend = backendSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.map { it.path }.toList()
@@ -48,11 +59,11 @@ class SelfHostTest {
         return buf.toString("UTF-8")
     }
 
-    private fun build(exe: File, extra: List<String>, cc: String? = null): String {
+    private fun build(exe: File, extra: List<String>, cc: String? = null, srcs: List<String> = sources()): String {
         val errBuf = ByteArrayOutputStream()
         val oldErr = System.err
         val args = ArrayList<String>()
-        args += listOf("build") + sources() + listOf(
+        args += listOf("build") + srcs + listOf(
             "-o", exe.path,
             "--runtime-src", File(runtime, "src").path,
             "--runtime-include", File(runtime, "include").path,
@@ -133,5 +144,40 @@ class SelfHostTest {
         assertTrue("Direct leak" !in r.err, "the native backend leaks (not a reference cycle):\n${r.err}")
         // only reference cycles (indirect leaks) are tolerated
         assertTrue(r.code == 0 || ("Indirect leak" in r.err && r.code == 99), "unexpected exit ${r.code}:\n${r.err}")
+    }
+
+    /**
+     * The B1 acceptance test (docs/plan-kotlin.md 10b): the backend plus `compiler/native-driver` are compiled by minic
+     * into a native `minic-backend`. For every program of compiler/testdata, `minic emit-mir` writes the MIR text, the
+     * native `minic-backend` turns it into C, and that C must be byte-identical to what the JVM `CEmitter` makes of the
+     * same MIR.
+     */
+    @TestFactory
+    fun nativeMinicBackendOnAllTestPrograms(): List<DynamicTest> {
+        val driverSrc = File(repoRoot, "compiler/native-driver/src/main/kotlin").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.map { it.path }.toList()
+        val exe = File(work, "minic-backend")
+        val built by lazy { build(exe, listOf("--cflag", "-Werror"), null, driverSrc + backendSources()); true }
+        val stdlib = Stdlib.sources(Stdlib.findDir(null, repoRoot)!!)
+        val programs = testdata.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+        return programs.map { src ->
+            DynamicTest.dynamicTest(src.nameWithoutExtension) {
+                if (File(src.parentFile, src.nameWithoutExtension + ".cerr").isFile) return@dynamicTest
+                assertTrue(built)
+                val module = Cli.frontendToMir(listOf(src), stdlib, emptyList(), false)
+                val text = MirWriter.write(module)
+                val mir = File(work, src.nameWithoutExtension + ".mir").also { it.writeText(text) }
+                val cFile = File(work, src.nameWithoutExtension + ".c")
+                val pb = ProcessBuilder(exe.path, mir.path, "-o", cFile.path)
+                val errFile = File(work, src.nameWithoutExtension + ".stderr")
+                pb.redirectErrorStream(true).redirectOutput(errFile)
+                val proc = pb.start()
+                assertTrue(proc.waitFor(120, TimeUnit.SECONDS), "minic-backend timed out on ${src.name}")
+                assertEquals(0, proc.exitValue(), "native minic-backend failed on ${src.name}:\n${errFile.readText()}")
+                assertEquals(CEmitter.emit(MirReader.read(text)), cFile.readText(), "C from the native backend differs for ${src.name}")
+                mir.delete()
+                cFile.delete()
+            }
+        }
     }
 }
