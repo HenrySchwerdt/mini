@@ -179,11 +179,15 @@ fun BodyChecker.stringExpr(e: StringExpr): Type {
                     n.start = p.start + 1
                     n.end = p.end
                     expr(n, null)
+                    val tr = rec.get(n)
+                    if (tr != null) rec.map[p] = tr
                 } else {
                     val n = NameExpr(p.name)
                     n.start = p.start + 1
                     n.end = p.end
                     expr(n, null)
+                    val nr = rec.get(n)
+                    if (nr != null) rec.map[p] = nr
                 }
             }
             is StrLongExpr -> {
@@ -225,7 +229,7 @@ fun BodyChecker.labeled(e: LabeledExpr, expected: Type?): Type {
 
 // ---- this / super -----------------------------------------------------------------------------------------------------
 
-class ImplRecv(val type: Type, val label: String?, val cls: ClassSym?, val isCompanion: Boolean, val fn: FunSym?)
+class ImplRecv(val type: Type, val label: String?, val cls: ClassSym?, val isCompanion: Boolean, val fn: FunSym?, val ref: RecvRef)
 
 /** the type of an implicit receiver with the smart casts known for `this` (innermost receiver) / `this@label` */
 fun BodyChecker.narrowRecv(t: Type, label: String?, innermost: Boolean): Type {
@@ -253,18 +257,18 @@ fun BodyChecker.implicitReceivers(narrow: Boolean = true): List<ImplRecv> {
         when (s) {
             is ClassScope -> {
                 if (s.instance) {
-                    out.add(ImplRecv(if (narrow) narrowRecv(s.cls.thisType(), s.cls.name, first) else s.cls.thisType(), s.cls.name, s.cls, false, null))
+                    out.add(ImplRecv(if (narrow) narrowRecv(s.cls.thisType(), s.cls.name, first) else s.cls.thisType(), s.cls.name, s.cls, false, null, RecvRef(s.cls, null, false)))
                     first = false
                 }
                 val comp = s.cls.companion
-                if (comp != null) out.add(ImplRecv(comp.thisType(), comp.name, comp, true, null))
+                if (comp != null) out.add(ImplRecv(comp.thisType(), comp.name, comp, true, null, RecvRef(comp, null, true)))
                 if (s.cls.isObject && !s.instance) {
                     // an object enclosing a nested class: its members are reachable through the object
-                    out.add(ImplRecv(s.cls.thisType(), s.cls.name, s.cls, false, null))
+                    out.add(ImplRecv(s.cls.thisType(), s.cls.name, s.cls, false, null, RecvRef(s.cls, null, true)))
                 }
             }
             is ReceiverScope -> {
-                out.add(ImplRecv(if (narrow) narrowRecv(s.type, s.label, first) else s.type, s.label, null, false, s.fn))
+                out.add(ImplRecv(if (narrow) narrowRecv(s.type, s.label, first) else s.type, s.label, null, false, s.fn, RecvRef(null, s, false)))
                 first = false
             }
             else -> {}
@@ -341,8 +345,9 @@ fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
         "<", ">", "<=", ">=" -> {
             val l = fin(expr(e.left, null))
             val r = expr(e.right, null)
-            resolveOperator("compareTo", l, listOf(r), e.start, null)
-            record(e, sema.booleanType, null)
+            val cres = resolveOperator("compareTo", l, listOf(r), e.start, null)
+            val crr = record(e, sema.booleanType, null)
+            crr.call = cres?.info
             return sema.booleanType
         }
         "in", "!in" -> {
@@ -351,6 +356,7 @@ fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
             val res = resolveOperator("contains", r, listOf(l), e.start, null)
             val rr = record(e, sema.booleanType, res?.callee)
             if (res != null) rr.calleeText = res.calleeText
+            rr.call = res?.info
             return sema.booleanType
         }
         ".." , "..<" -> {
@@ -360,6 +366,7 @@ fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
             if (res == null) return ErrType("rangeTo")
             val rr = record(e, res.ret, res.callee)
             rr.calleeText = res.calleeText
+            rr.call = res.info
             return res.ret
         }
         "?:" -> return elvis(e, expected)
@@ -376,6 +383,7 @@ fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
         completeLiteralArg(e.right, res.paramTypes, 0)
         val rr = record(e, res.ret, res.callee)
         rr.calleeText = res.calleeText
+        rr.call = res.info
         return res.ret
     }
     // infix function call: a name f b  == a.f(b)
@@ -465,6 +473,7 @@ fun BodyChecker.infixCall(e: BinaryExpr, expected: Type?): Type {
     }
     val rr = record(e, res.ret, res.callee)
     rr.calleeText = res.calleeText
+    rr.call = res.info
     return res.ret
 }
 
@@ -475,6 +484,7 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
             val res = resolveOperator("not", t, emptyList(), e.start, null)
             val rr = record(e, sema.booleanType, res?.callee)
             if (res != null) rr.calleeText = res.calleeText
+            rr.call = res?.info
             return sema.booleanType
         }
         "-", "+" -> {
@@ -507,6 +517,7 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
                 val lt = IntLiteralType(v, v >= -2147483648L && v <= 2147483647L)
                 val rr = record(e, ops.literalDefault(lt), res.callee)
                 rr.calleeText = res.calleeText
+                rr.call = res.info
                 if (expected != null && expected is ClassType && (expected.cls.fqName() == "kotlin.Long")) {
                     rr.type = expected.withNullable(false)
                     return expected.withNullable(false)
@@ -515,6 +526,7 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
             }
             val rr = record(e, rt, res.callee)
             rr.calleeText = res.calleeText
+            rr.call = res.info
             return rt
         }
         "++", "--" -> {
@@ -523,6 +535,8 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
             val res = resolveOperator(name, t, emptyList(), e.start, null)
             if (res != null) recordAt(e.start, e.start + 2, res.ret, res.callee, res.calleeText)
             invalidate(e.expr)
+            val pr = record(e, t, null)
+            pr.call = res?.info
             return t
         }
     }
@@ -547,7 +561,8 @@ fun BodyChecker.postfix(e: PostfixExpr, expected: Type?): Type {
     val res = resolveOperator(name, t, emptyList(), e.start, null)
     if (res != null) recordAt(e.end - 2, e.end, res.ret, res.callee, res.calleeText)
     invalidate(e.expr)
-    record(e, t, null)
+    val por = record(e, t, null)
+    por.call = res?.info
     return t
 }
 
@@ -576,6 +591,7 @@ fun BodyChecker.assign(e: BinaryExpr): Type {
         val res = resolveOperator("set", recvT, all, e.start, null)
         val rr = record(e, res?.ret ?: sema.unitType, res?.callee)
         if (res != null) rr.calleeText = res.calleeText
+        rr.call = res?.info
         return sema.unitType
     }
     val lt = fin(expr(l, null))
@@ -606,10 +622,23 @@ fun BodyChecker.compoundAssign(e: BinaryExpr): Type {
     val base = operatorName(e.op.substring(0, 1)) ?: "plus"
     val assignName = base + "Assign"
     var res = resolveOperator(assignName, lt, listOf(rt), e.start, null)
+    var isAssignOp = res != null
     if (res == null) res = resolveOperator(base, lt, listOf(rt), e.start, null)
     if (res != null) {
         val rr = record(e, sema.unitType, res.callee)
         rr.calleeText = res.calleeText
+        rr.call = res.info
+        var setInfo: CallInfo? = null
+        if (l is IndexExpr && !isAssignOp) {
+            val rt0 = rec.get(l.receiver)?.type
+            if (rt0 != null) {
+                val idxTypes = ArrayList<Type>()
+                for (ix in l.indices) idxTypes.add(rec.get(ix)?.type ?: sema.nullableAny)
+                idxTypes.add(res.ret)
+                setInfo = resolveOperator("set", fin(rt0), idxTypes, e.start, null)?.info
+            }
+        }
+        rr.extra = CompoundInfo(isAssignOp, setInfo)
     }
     invalidate(l)
     return sema.unitType
@@ -626,6 +655,7 @@ fun BodyChecker.indexExpr(e: IndexExpr): Type {
     }
     val rr = record(e, res.ret, res.callee)
     rr.calleeText = res.calleeText
+    rr.call = res.info
     return res.ret
 }
 
@@ -1004,11 +1034,16 @@ fun BodyChecker.forExpr(e: ForExpr): Type {
     val it = fin(expr(e.iterable, null))
     val iterRes = resolveOperator("iterator", it, emptyList(), e.iterable.start, null)
     var elem: Type = ErrType("iterator")
+    var hasNextInfo: CallInfo? = null
+    var nextInfo: CallInfo? = null
     if (iterRes != null) {
         val iterT = iterRes.ret
-        resolveOperator("hasNext", iterT, emptyList(), e.iterable.start, null)
+        hasNextInfo = resolveOperator("hasNext", iterT, emptyList(), e.iterable.start, null)?.info
         val nx = resolveOperator("next", iterT, emptyList(), e.iterable.start, null)
-        if (nx != null) elem = nx.ret
+        if (nx != null) {
+            elem = nx.ret
+            nextInfo = nx.info
+        }
     } else {
         err(e.iterable.start, "for-loop range must have an iterator() method")
     }
@@ -1042,6 +1077,8 @@ fun BodyChecker.forExpr(e: ForExpr): Type {
     if (body != null) loopBody(body)
     flow = savedFlow
     scope = saved
+    val fr = record(e, sema.unitType, null)
+    fr.extra = ForInfo(iterRes?.info, hasNextInfo, nextInfo, elem)
     return sema.unitType
 }
 
@@ -1195,7 +1232,12 @@ private fun BodyChecker.whenBody(e: WhenExpr, expected: Type?, top: Boolean): Ty
     scope = saved
     if (!exhaustive) return sema.unitType
     if (types.isEmpty()) return sema.unitType
-    return preferExpected(joinBranches(types), expected, e, top)
+    val wres = preferExpected(joinBranches(types), expected, e, top)
+    if (!hasElse) {
+        val wr = record(e, wres, null)
+        wr.extra = "exhaustive"
+    }
+    return wres
 }
 
 fun BodyChecker.isExhaustive(subj: Type, covered: List<Any>, t: Boolean, f: Boolean, hasNull: Boolean): Boolean {

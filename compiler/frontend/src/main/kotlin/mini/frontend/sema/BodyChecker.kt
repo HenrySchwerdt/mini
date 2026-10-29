@@ -351,6 +351,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             record(e, t, v)
             declareVar(l, v)
             if (r != null && r.callee != null) rec.get(e)?.calleeText = null
+            rec.get(e)?.call = r?.info
             i++
         }
     }

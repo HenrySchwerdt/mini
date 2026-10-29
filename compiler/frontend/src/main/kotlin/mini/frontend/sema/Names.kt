@@ -9,6 +9,10 @@ import mini.frontend.*
  */
 
 class NameRes(val sym: Sym?, val type: Type, val classifier: ClassSym?, val kind: Int) {
+    /** B2-3: the implicit receivers of a property access */
+    var dispatch: RecvRef? = null
+    var ext: RecvRef? = null
+
     companion object {
         const val VALUE = 0
         const val CLASS = 1
@@ -51,7 +55,11 @@ fun BodyChecker.memberExtensionProp(name: String, recv: Type): NameRes? {
         if (r.cls == null) continue
         for (mp in members.propsNamed(r.type, name)) {
             val er = mp.prop.receiver ?: continue
-            if (ops.isSubtype(recv, ops.substitute(er, mp.subst))) return NameRes(mp.prop, propBaseType(mp.prop, mp.subst), null, NameRes.VALUE)
+            if (ops.isSubtype(recv, ops.substitute(er, mp.subst))) {
+                val nr = NameRes(mp.prop, propBaseType(mp.prop, mp.subst), null, NameRes.VALUE)
+                nr.dispatch = r.ref
+                return nr
+            }
         }
     }
     return null
@@ -88,16 +96,25 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
                 if (s.instance) {
                     val r = memberPropRes(narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv), name)
                     seenRecv = true
-                    if (r != null) return r
+                    if (r != null) {
+                        r.dispatch = RecvRef(s.cls, null, false)
+                        return r
+                    }
                 }
                 val comp = s.cls.companion
                 if (comp != null) {
                     val r = memberPropRes(comp.thisType(), name)
-                    if (r != null) return r
+                    if (r != null) {
+                        r.dispatch = RecvRef(comp, null, true)
+                        return r
+                    }
                 }
                 if (s.cls.isObject && !s.instance) {
                     val r = memberPropRes(s.cls.thisType(), name)
-                    if (r != null) return r
+                    if (r != null) {
+                        r.dispatch = RecvRef(s.cls, null, true)
+                        return r
+                    }
                 }
                 sema.members.ensureSynth(s.cls)
                 for (en in s.cls.entries) if (en.name == name) return NameRes(en, s.cls.thisType(), null, NameRes.VALUE)
@@ -105,7 +122,10 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
             is ReceiverScope -> {
                 val r = memberPropRes(narrowRecv(s.type, s.label, !seenRecv), name)
                 seenRecv = true
-                if (r != null) return r
+                if (r != null) {
+                    r.dispatch = RecvRef(null, s, false)
+                    return r
+                }
             }
             else -> {}
         }
@@ -113,7 +133,10 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
     }
     for (r in implicitReceivers()) {
         val x = extensionProp(name, r.type)
-        if (x != null) return x
+        if (x != null) {
+            x.ext = r.ref
+            return x
+        }
     }
     for (g in sema.topLevel(file, name)) {
         for (x in g) {
@@ -160,6 +183,11 @@ fun BodyChecker.nameResult(node: Expr, r: NameRes): Type {
     val sym = r.sym
     val base = r.type
     val rr = record(node, base, sym)
+    if (r.dispatch != null || r.ext != null) {
+        val dp = r.dispatch
+        val ep = r.ext
+        rr.access = Access(if (dp != null) RecvUse(null, false, dp, null) else null, if (ep != null) RecvUse(null, false, ep, null) else null)
+    }
     var res = base
     if (sym is VarSym) {
         res = typeWithFlowVar(sym, base)
@@ -281,6 +309,7 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
             val saf = safe || recv.safe
             if (saf) rt = ops.makeNotNull(rt)
             var res = memberPropRes(rt, name)
+            var viaMember = res != null
             if (res == null) res = memberExtensionProp(name, rt)
             if (res == null) res = extensionProp(name, rt)
             if (res == null) {
@@ -291,6 +320,10 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
             var t = res.type
             if (saf) t = t.withNullable(true)
             val rr = record(node, t, res.sym)
+            if (saf) rr.baseType = res.type
+            val ru = RecvUse(recv.expr, saf, null, rt)
+            val rdisp = res.dispatch
+            rr.access = if (viaMember) Access(ru, null) else Access(if (rdisp != null) RecvUse(null, false, rdisp, null) else null, ru)
             // smart casts on stable member chains
             val k = stableKey(node)
             if (k != null && !saf) {
@@ -329,7 +362,9 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
                 err(sel.start, "unresolved reference '" + name + "'")
                 return ErrType("unresolved " + name)
             }
-            record(node, res.type, res.sym)
+            val cr = record(node, res.type, res.sym)
+            val cown = (res.sym as? PropSym)?.owner
+            if (cown != null) cr.access = Access(RecvUse(null, false, RecvRef(cown, null, true), null), null)
             return res.type
         }
         is PkgRecv -> {
@@ -430,6 +465,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
                     val mp = memberPropRes(rt, callee.name)
                     if (mp != null) {
                         val ic = invokeCandidates(mp.type)
+                        for (c in ic) c.invokeProp = mp.sym as? PropSym
                         if (ic.isNotEmpty()) g.add(ic)
                     }
                     groups = g
@@ -456,6 +492,14 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
             a2.add(ra)
             a2.addAll(args)
             res = resolveCallGroups(node, listOf(invokeCandidates(ft)), a2, typeArgs, expected, true)
+            val inf = res?.info
+            if (inf != null) {
+                inf.isInvoke = true
+                inf.recvAsFirstArg = true
+                val s0 = vr?.sym
+                if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) inf.invokeProp = s0
+                inf.dispatch = RecvUse(recv.expr, recv.safe, null, recv.type)
+            }
         }
     }
     if (res == null && recv == null && name != null) {
@@ -472,6 +516,14 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
                 a2.add(ra)
                 a2.addAll(args)
                 res = resolveCallGroups(node, listOf(invokeCandidates(ft)), a2, typeArgs, expected, true)
+                val inf = res?.info
+                if (inf != null) {
+                    inf.isInvoke = true
+                    inf.recvAsFirstArg = true
+                    val s0 = vr?.sym
+                    if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) inf.invokeProp = s0
+                    inf.dispatch = RecvUse(null, false, r.ref, null)
+                }
                 if (res != null) break
             }
         }
@@ -484,8 +536,16 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
     if (safe) t = t.withNullable(true)
     val rr = record(node, t, res.callee)
     rr.calleeText = res.calleeText
+    val cinfo = res.info
+    if (cinfo != null) {
+        if (!cinfo.isInvoke) fillReceivers(cinfo, recv, callee)
+        rr.call = cinfo
+    }
     for (i in args.indices) completeLiteralArg2(args[i], res.paramTypes, i)
-    if (node !== e) record(e, t, res.callee)
+    if (node !== e) {
+        val er = record(e, t, res.callee)
+        er.call = cinfo
+    }
     return t
 }
 

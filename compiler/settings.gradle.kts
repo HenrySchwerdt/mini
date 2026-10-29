@@ -15,4 +15,4 @@ dependencyResolutionManagement {
     }
 }
 
-include(":backend", ":jvm-bridge", ":memory-spec", ":native-driver", ":frontend", ":frontend-oracle", ":lower")
+include(":backend", ":jvm-bridge", ":memory-spec", ":native-driver", ":frontend", ":frontend-oracle", ":lower", ":minic-native")
