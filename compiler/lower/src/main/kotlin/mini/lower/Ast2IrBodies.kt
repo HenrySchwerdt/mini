@@ -51,6 +51,7 @@ fun Ast2Ir.newTemp(nameHint: String, type: Type, init: IrExpression, origin: Str
     val v = IrVariable("tmp" + n + "_" + nameHint, type, false)
     v.origin = origin
     v.initializer = init
+    v.startOffset = init.startOffset
     v.parent = ctx?.fn
     return v
 }
@@ -181,13 +182,15 @@ fun Ast2Ir.blockStatements(stmts: List<Stmt>, out: ArrayList<IrStatement>, value
 }
 
 fun Ast2Ir.declStatement(d: Decl, out: ArrayList<IrStatement>) {
-    when (d) {
-        is PropertyDecl -> out.add(localProperty(d))
-        is DestructuringDecl -> out.add(localDestructuring(d))
-        is FunDecl -> out.add(localFunction(d))
-        is ClassDecl -> out.add(localClass(d))
+    val st = when (d) {
+        is PropertyDecl -> localProperty(d)
+        is DestructuringDecl -> localDestructuring(d)
+        is FunDecl -> localFunction(d)
+        is ClassDecl -> localClass(d)
         else -> fail(d, "declaration in block")
     }
+    if (st.startOffset < 0) st.startOffset = d.start
+    out.add(st)
 }
 
 fun Ast2Ir.localProperty(d: PropertyDecl): IrStatement {
@@ -197,6 +200,10 @@ fun Ast2Ir.localProperty(d: PropertyDecl): IrStatement {
     iv.parent = ctx?.fn
     iv.sym = v
     val dm = d.mods
+    val vfile = bodyFile()
+    iv.annotations = annotationsOf(dm, vfile)
+    iv.typeAnnotations = typeAnnotationsOf(d.type, vfile)
+    iv.startOffset = d.start
     iv.isLateinit = dm != null && dm.has("lateinit")
     val init = d.initializer
     val deleg = d.delegate

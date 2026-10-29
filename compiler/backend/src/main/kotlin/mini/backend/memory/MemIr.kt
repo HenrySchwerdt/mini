@@ -284,9 +284,10 @@ sealed class MStmt {
     ) : MStmt()
 }
 
-class MFunction(val fn: MFun, val body: List<MStmt>, val declared: Boolean = true)
+class MFunction(val fn: MFun, val body: List<MStmt>, val declared: Boolean = true, val file: String = "")
 
 class MModule(
+    /** The first user file (the default file of diagnostics). */
     val fileName: String,
     val functions: List<MFunction>,
     val classes: List<MClass>,

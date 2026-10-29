@@ -18,18 +18,23 @@ abstract class IrElement {
 }
 
 /**
- * An annotation as far as Ir2Mir needs it (the memory model of D2): the simple name of its class and the simple name
- * of its argument (the enum entry of `MemoryMode(Mode.Strict)`, the class of `AllocatedBy(Heap::class)`), if any.
+ * An annotation as far as Ir2Mir and the memory checker need it (the memory model of D2): the qualified name of its
+ * class ([fq], resolved in the scope of the file; the name as written when it does not resolve), its start offset, the
+ * simple name of its first argument ([arg]: the enum entry of `MemoryMode(Mode.Strict)`, the class of
+ * `AllocatedBy(Heap::class)`) and, for a class reference, the qualified name of that class ([argFq]).
  */
-class IrAnnotation(val name: String, val arg: String?)
+class IrAnnotation(val fq: String, val arg: String?, val argFq: String? = null, val offset: Int = -1) {
+    val name: String get() = fq.substring(fq.lastIndexOf('.') + 1)
+}
 
-fun hasAnnotation(list: List<IrAnnotation>, name: String): Boolean {
-    for (a in list) if (a.name == name) return true
+/** Is there an annotation of the class with the qualified name [fq] in [list]? */
+fun hasAnnotation(list: List<IrAnnotation>, fq: String): Boolean {
+    for (a in list) if (a.fq == fq) return true
     return false
 }
 
-fun findAnnotation(list: List<IrAnnotation>, name: String): IrAnnotation? {
-    for (a in list) if (a.name == name) return a
+fun findAnnotation(list: List<IrAnnotation>, fq: String): IrAnnotation? {
+    for (a in list) if (a.fq == fq) return a
     return null
 }
 
@@ -61,7 +66,17 @@ class IrFile(val path: String, val text: String, val packageFqName: String, val 
             return if (i < 0) path else path.substring(i + 1)
         }
 
-    fun lineCol(offset: Int): String {
+    fun lineCol(offset: Int): String = line(offset).toString() + ":" + col(offset)
+
+    /** the 1-based line of [offset] */
+    fun line(offset: Int): Int = lineIndex(offset) + 1
+
+    /** the 1-based column of [offset] */
+    fun col(offset: Int): Int = offset - lineStartOf(lineIndex(offset)) + 1
+
+    private fun lineStartOf(i: Int): Int = lineStarts!![i]
+
+    private fun lineIndex(offset: Int): Int {
         var ls = lineStarts
         if (ls == null) {
             val l = ArrayList<Int>()
@@ -86,7 +101,7 @@ class IrFile(val path: String, val text: String, val packageFqName: String, val 
             val mid = (lo + hi + 1) / 2
             if (ls[mid] <= offset) lo = mid else hi = mid - 1
         }
-        return (lo + 1).toString() + ":" + (offset - ls[lo] + 1)
+        return lo
     }
 }
 
@@ -137,6 +152,8 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
     var sym: FunSym? = null
     /** the value of `@CSymbol("...")`, if the function is natively implemented */
     var cSymbolName: String? = null
+    /** annotations written on the return type (`fun f(): @Owned Box`) */
+    var returnTypeAnnotations: List<IrAnnotation> = emptyList()
 
     var body: IrBody?
         get() {
@@ -177,6 +194,8 @@ class IrValueParameter(
     var isNoinline = false
     var isCrossinline = false
     var isHidden = false
+    /** annotations written on the type (`x: @Owned Box`) */
+    var typeAnnotations: List<IrAnnotation> = emptyList()
 
     var defaultValue: IrExpressionBody?
         get() {
@@ -205,6 +224,8 @@ class IrVariable(override var name: String, override var type: Type, val isVar: 
     var initializer: IrExpression? = null
     var isLateinit = false
     var sym: VarSym? = null
+    /** annotations written on the type (`val b: @Owned Box = a`) */
+    var typeAnnotations: List<IrAnnotation> = emptyList()
 }
 
 class IrProperty(val name: String, val sym: PropSym?) : IrDeclaration() {

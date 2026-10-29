@@ -12,10 +12,16 @@ import mini.frontend.sema.*
  * the lowering of the memory API calls (`free`, `move`). What the emitter does with it (no reference counting for
  * tracked values, `mk_alloc_with`, `mk_free`) is in backend/Tracking.kt and CEmitter.
  *
- * Annotations are matched by their simple name (the own frontend does not resolve annotation classes).
+ * Annotations are matched by the qualified name of their class (resolved in the scope of the file by Ast2Ir).
  */
 
 private const val MEMORY_PKG = "mini.memory"
+private const val MEMORY_MODE = "mini.memory.MemoryMode"
+private const val ALLOCATED_BY = "mini.memory.AllocatedBy"
+private const val BORROWED = "mini.memory.Borrowed"
+private const val RETURNS_BORROWED = "kotlin.internal.ReturnsBorrowed"
+private const val TAKES_OWNERSHIP = "kotlin.internal.TakesOwnership"
+private const val NO_HEAP_EFFECTS = "kotlin.internal.NoHeapEffects"
 
 /** An allocator object visible as a context argument: its class and the local that holds it. */
 internal class AllocRef(val classFq: String, val local: MirLocal, val ownerCName: String)
@@ -27,7 +33,7 @@ private fun modeStrict(a: IrAnnotation): Boolean {
 
 internal fun Ir2Mir.fileStrict(f: IrFile?): Boolean {
     if (f == null) return false
-    val a = findAnnotation(f.annotations, "MemoryMode") ?: return false
+    val a = findAnnotation(f.annotations, MEMORY_MODE) ?: return false
     return modeStrict(a)
 }
 
@@ -38,7 +44,7 @@ internal fun Ir2Mir.isStrictClass(c: IrClass): Boolean {
     val file = Reachability.fileOf(c)
     if (file != null) {
         strict = fileStrict(file)
-        val a = findAnnotation(c.annotations, "MemoryMode")
+        val a = findAnnotation(c.annotations, MEMORY_MODE)
         if (a != null) strict = modeStrict(a)
     }
     strictClassCache[c] = strict
@@ -56,7 +62,7 @@ internal fun Ir2Mir.isStrictFunction(f: IrFunction): Boolean {
 }
 
 /** `@Borrowed` field of a Strict class (a non-owning back reference); the annotations of the property, the field, the constructor parameter and the type were collected on the field. */
-internal fun Ir2Mir.isBorrowedField(f: IrField): Boolean = hasAnnotation(f.annotations, "Borrowed")
+internal fun Ir2Mir.isBorrowedField(f: IrField): Boolean = hasAnnotation(f.annotations, BORROWED)
 
 // ---- allocator contexts ---------------------------------------------------------------------------------------------
 
@@ -100,9 +106,9 @@ private fun Ir2Mir.handleOf(a: AllocRef): MirExpr = MirExpr.FieldGet(MirExpr.Loc
  */
 internal fun Ir2Mir.resolveAllocation(cls: IrClass): Pair<MirExpr?, Boolean> {
     if (!currentStrict || !isStrictClass(cls)) return Pair(null, false)
-    val ab = findAnnotation(cls.annotations, "AllocatedBy")?.arg
+    val ab = findAnnotation(cls.annotations, ALLOCATED_BY)?.argFq
     for (level in allocLevels.asReversed()) {
-        val cands = level.filter { ab == null || it.classFq == MEMORY_PKG + "." + ab }
+        val cands = level.filter { ab == null || it.classFq == ab }
         if (cands.isEmpty()) continue
         val a = cands[0]
         return when (a.classFq.removePrefix(MEMORY_PKG + ".")) {
@@ -110,8 +116,8 @@ internal fun Ir2Mir.resolveAllocation(cls: IrClass): Pair<MirExpr?, Boolean> {
             else -> Pair(handleOf(a), false)
         }
     }
-    if (ab == "Heap") return Pair(MirExpr.RuntimeCall("mk_heap_allocator_h", emptyList(), TLong), false)
-    if (ab == "Rc") return Pair(null, false)
+    if (ab == MEMORY_PKG + ".Heap") return Pair(MirExpr.RuntimeCall("mk_heap_allocator_h", emptyList(), TLong), false)
+    if (ab == MEMORY_PKG + ".Rc") return Pair(null, false)
     return Pair(null, true)
 }
 
@@ -177,22 +183,22 @@ private fun Ir2Mir.closeStmtFor(t: Type, v: MirExpr): MirStmt? {
 
 /** `@kotlin.internal.ReturnsBorrowed` on the function (or the property of a getter): the result is a borrowed reference. */
 internal fun Ir2Mir.returnsBorrowedAnnotation(f: IrFunction): Boolean {
-    if (hasAnnotation(f.annotations, "ReturnsBorrowed")) return true
+    if (hasAnnotation(f.annotations, RETURNS_BORROWED)) return true
     val prop = (f as? IrSimpleFunction)?.correspondingProperty
-    return prop != null && hasAnnotation(prop.annotations, "ReturnsBorrowed")
+    return prop != null && hasAnnotation(prop.annotations, RETURNS_BORROWED)
 }
 
 /** Indices (into the MIR parameter list [params], which may have a constructor's `this` in front) of `@TakesOwnership` parameters. */
 internal fun Ir2Mir.ownedParamIndexes(f: IrFunction, params: List<MirLocal>): List<Int> {
     val offset = params.size - f.parameters.size
     val out = ArrayList<Int>()
-    for ((i, p) in f.parameters.withIndex()) if (hasAnnotation(p.annotations, "TakesOwnership")) out += offset + i
+    for ((i, p) in f.parameters.withIndex()) if (hasAnnotation(p.annotations, TAKES_OWNERSHIP)) out += offset + i
     return out
 }
 
 /** `@kotlin.internal.NoHeapEffects` (stdlib functions that only change objects they create): calls do not end the lifetime of borrowed aliases. */
 internal fun Ir2Mir.noHeapEffectsAnnotation(f: IrFunction): Boolean {
-    if (hasAnnotation(f.annotations, "NoHeapEffects")) return true
+    if (hasAnnotation(f.annotations, NO_HEAP_EFFECTS)) return true
     val prop = (f as? IrSimpleFunction)?.correspondingProperty
-    return prop != null && hasAnnotation(prop.annotations, "NoHeapEffects")
+    return prop != null && hasAnnotation(prop.annotations, NO_HEAP_EFFECTS)
 }

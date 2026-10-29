@@ -47,6 +47,7 @@ fun Ast2Ir.smartCast(raw: IrExpression, e: Ast, eqOperand: Boolean): IrExpressio
             val c = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, ir, st)
             // a smart cast of `this` is only kept where the callee needs it; a variable's is always kept
             c.isSmart = true
+            c.startOffset = raw.startOffset
             ir = c
         }
     }
@@ -94,6 +95,12 @@ fun Ast2Ir.receiverFits(t: Type, pt: Type): Boolean {
 }
 
 private fun Ast2Ir.convertRaw(e: Expr): IrExpression {
+    val r = convertRaw0(e)
+    if (r.startOffset < 0) r.startOffset = e.start
+    return r
+}
+
+private fun Ast2Ir.convertRaw0(e: Expr): IrExpression {
     when (e) {
         is LiteralExpr -> return literal(e)
         is StringExpr -> return stringExpr(e)

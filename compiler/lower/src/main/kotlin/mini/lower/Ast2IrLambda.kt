@@ -46,6 +46,7 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
         val p = IrValueParameter(if (isCtx) contextParamName(pt) else name, irType(pt), if (isCtx) IrParameterKind.Context else IrParameterKind.Regular, idx++)
         if (isCtx) ctxParams.add(p)
         p.parent = fn
+        if (i < lam.params.size) p.startOffset = lam.params[i].start
         if (vs != null) varMap[vs] = p
         fn.parameters.add(p)
         i++
@@ -87,7 +88,10 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
         }
         fn.body = IrBlockBody(stmts)
     }
-    return IrFunctionExpression(fn, irType(ft), "LAMBDA")
+    fn.startOffset = lam.start
+    val fe = IrFunctionExpression(fn, irType(ft), "LAMBDA")
+    fe.startOffset = lam.start
+    return fe
 }
 
 private fun Ast2Ir.destructureParam(names: List<DestructEntry>, p: IrValueParameter, out: ArrayList<IrStatement>) {
@@ -120,7 +124,9 @@ fun Ast2Ir.anonFunExpr(e: AnonFunExpr): IrExpression {
     fn.origin = "LOCAL_FUNCTION_FOR_LAMBDA"
     fn.parent = enclosingParent()
     val b = fn.body
-    return IrFunctionExpression(fn, irType(r.type), "ANONYMOUS_FUNCTION")
+    val afe = IrFunctionExpression(fn, irType(r.type), "ANONYMOUS_FUNCTION")
+    afe.startOffset = e.start
+    return afe
 }
 
 fun Ast2Ir.objectLiteral(e: ObjectLiteral): IrExpression {
