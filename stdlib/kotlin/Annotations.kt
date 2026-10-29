@@ -18,7 +18,7 @@ public annotation class Deprecated(val message: String)
 @Target(CLASS, PROPERTY, LOCAL_VARIABLE, VALUE_PARAMETER, CONSTRUCTOR, FUNCTION, PROPERTY_GETTER, PROPERTY_SETTER, FIELD, TYPE)
 public annotation class UnsafeVariance
 
-@Target(FUNCTION, PROPERTY, PROPERTY_GETTER, PROPERTY_SETTER)
+@Target(CLASS, FUNCTION, PROPERTY, CONSTRUCTOR, PROPERTY_GETTER, PROPERTY_SETTER)
 public annotation class PublishedApi
 
 public enum class DeprecationLevel { WARNING, ERROR, HIDDEN }

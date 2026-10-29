@@ -9,7 +9,7 @@ package kotlin.text
 import mini.internal.stringSubstring
 
 public val String.indices: IntRange
-    get() = 0..length - 1
+    get() = IntRange(0, length - 1)
 
 public val String.lastIndex: Int
     get() = length - 1

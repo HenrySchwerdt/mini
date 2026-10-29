@@ -36,7 +36,7 @@ public fun <T> Collection<T>?.orEmpty(): Collection<T> = this ?: emptyList()
 public fun <T> List<T>?.orEmpty(): List<T> = this ?: emptyList()
 
 public val Collection<*>.indices: IntRange
-    get() = 0..size - 1
+    get() = IntRange(0, size - 1)
 
 public val <T> List<T>.lastIndex: Int
     get() = size - 1
