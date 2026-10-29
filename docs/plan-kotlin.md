@@ -305,6 +305,12 @@ bestehenden KMP-Projekten einfach ein Target hinzufügen kann (spätere Phase).
 
 ## 10. Phasen und Abnahmekriterien
 
+**Priorität (Stand jetzt):** Linux und macOS zuerst. Windows läuft in der CI mit, blockiert
+aber nicht. Manuelles Speichermanagement ist das Kernfeature. Deshalb kommen die
+Grundlagen von `mini.memory` (`Heap`, `Arena`, `free`/`use`, `@file:MemoryMode(Strict)` und
+die ersten Leak- und Double-Free-Diagnosen) schon in P1, parallel zu den Klassen. P3 baut
+die Analyse dann aus (Escape-Analyse, Lints, Thread-Regeln).
+
 | Phase | Inhalt | Fertig, wenn … |
 |---|---|---|
 | **P0 Spike** (Weichenstellung) | Gradle-Projekt mit gepinnter Kotlin-Version, K2 → IR → minimaler C-Emitter | `fun main() { println(1 + 2) }` aus `.kt` läuft nativ. Entscheidung C oder B ist getroffen. |
