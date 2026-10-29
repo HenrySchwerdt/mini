@@ -208,22 +208,22 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val nullable = t.isMarkedNullable()
         val fq = t.classFqName
         val cls = t.classOrNull
-        if (fq == null || cls == null) return MType(TK.Other, nullable, display = "Any")
+        if (fq == null || cls == null) return MType(TK.Other, nullable, null, null, null, "Any")
         val prim = PRIMS[fq]
-        if (prim != null) return MType(TK.Prim, nullable, display = prim)
-        if (fq == "kotlin.String") return MType(TK.Str, nullable, display = "String")
+        if (prim != null) return MType(TK.Prim, nullable, null, null, null, prim)
+        if (fq == "kotlin.String") return MType(TK.Str, nullable, null, null, null, "String")
         if (fq == "kotlin.Any" || fq.startsWith("kotlin.Function") || fq.startsWith(REFLECT_PREFIX)) {
-            return MType(TK.Other, nullable, display = fq.substring(fq.lastIndexOf('.') + 1))
+            return MType(TK.Other, nullable, null, null, null, fq.substring(fq.lastIndexOf('.') + 1))
         }
         val ak = ALLOCS[fq]
-        if (ak != null) return MType(TK.Alloc, nullable, className = fq, alloc = ak, display = fq.substring(fq.lastIndexOf('.') + 1))
+        if (ak != null) return MType(TK.Alloc, nullable, null, ak, fq, fq.substring(fq.lastIndexOf('.') + 1))
         if (fq.startsWith("mini.memory.") && cls.kind == IrClassKind.INTERFACE) {
-            return MType(TK.Alloc, nullable, className = fq, alloc = AllocKind.Other, display = fq.substring(fq.lastIndexOf('.') + 1))
+            return MType(TK.Alloc, nullable, null, AllocKind.Other, fq, fq.substring(fq.lastIndexOf('.') + 1))
         }
         val mc = classOf(cls)
         val display = fq.substring(fq.lastIndexOf('.') + 1)
-        return if (mc.mode == MemMode.Strict && fileOf(cls) != null) MType(TK.Strict, nullable, mc, className = fq, display = display)
-        else MType(TK.Managed, nullable, mc, className = fq, display = display)
+        return if (mc.mode == MemMode.Strict && fileOf(cls) != null) MType(TK.Strict, nullable, mc, null, fq, display)
+        else MType(TK.Managed, nullable, mc, null, fq, display)
     }
 
     // ---- functions -------------------------------------------------------------------------------

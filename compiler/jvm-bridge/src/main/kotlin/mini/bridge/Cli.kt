@@ -12,12 +12,12 @@ import java.io.File
  */
 object Cli {
     /** The frontend used when neither `--frontend=k2` nor `--frontend=mini` is given. */
-    const val defaultMini = false
+    const val defaultMini = true
 
     private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=k2|mini]
+             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=mini|k2]
              [--backend=c|llvm] [--emit-ll <path>] [--link-cc <compiler>]
        minic mem-report <file.kt>... [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [--top <n>] [--user-only]
              [--no-rc-opt] [--no-strict] [--no-conv]"""
@@ -174,7 +174,8 @@ object Cli {
         var werror = false
         var stats = false
         var noRcOpt = false
-        var mini = false
+        var mini = defaultMini
+        var explicitFrontend = false
         var noStrict = false
         var noConv = false
         var convReport = false
@@ -211,8 +212,8 @@ object Cli {
                 "-Werror" -> werror = true
                 "--stats" -> stats = true
                 "--no-rc-opt" -> noRcOpt = true
-                "--frontend=mini" -> mini = true
-                "--frontend=k2" -> mini = false
+                "--frontend=mini" -> { mini = true; explicitFrontend = true }
+                "--frontend=k2" -> { mini = false; explicitFrontend = true }
                 "--no-strict" -> noStrict = true
                 "--no-conv" -> noConv = true
                 "--conv-report" -> convReport = true
@@ -230,6 +231,8 @@ object Cli {
             }
             i++
         }
+        // the own frontend needs the Mini stdlib sources: `--no-stdlib` (the JVM kotlin-stdlib) stays on K2 unless asked otherwise
+        if (noStdlib && !explicitFrontend) mini = false
         if (sources.isEmpty() || (needOutput && out == null)) { System.err.println(USAGE); return null }
         return Options(sources, out ?: File("mem-report"), emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport, wrc = wrc, top = top, userOnly = userOnly, llvm = llvm, emitLl = emitLl, linkCc = linkCc)
     }
@@ -294,7 +297,7 @@ object Cli {
                 ?: throw BuildFailure("Mini stdlib sources not found (${Stdlib.RELATIVE_DIR}); pass --stdlib <dir> or --no-stdlib")
             Stdlib.sources(dir).also { if (it.isEmpty()) throw BuildFailure("no .kt files in $dir") }
         }
-        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror)
+        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror, o.miniFrontend)
         val r = CEmitter.emitDetailed(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv)
         val report = mini.backend.MemReport.build(module, r)
         print(mini.backend.MemReport.text(report, o.top) { f -> !o.userOnly || !isStdlibName(f.name) })
