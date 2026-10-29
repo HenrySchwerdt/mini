@@ -89,3 +89,7 @@ coverage.info
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Gradle (compiler/)
+.gradle/
+.kotlin/
