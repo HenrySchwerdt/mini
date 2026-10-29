@@ -86,6 +86,8 @@ target("test_uv_runtime")
     add_deps("mini0")
     add_packages("libuv")
     add_files("../tests/uv_runtime.c")
+    -- The emitted adapter includes <stdatomic.h>; MSVC's C mode gates it behind this flag.
+    add_cflags("/experimental:c11atomics", {tools = "cl"})
     add_tests("default", {group = "integration"})
     on_load(function (target)
         target:add("includedirs", path.join(target:autogendir(), "uv-fixture"))
