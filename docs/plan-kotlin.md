@@ -536,6 +536,19 @@ compiler underneath (like `rustc`).
 - v0 as commands of the current `minic`. After B3 it is rewritten in Mini, as a native
   binary with instant startup (dogfooding: file IO and process spawning on libuv).
 - Release: prebuilt `mini`/`minic` binaries for Linux and macOS on GitHub Releases.
+- **Precompiled libraries (later):** a library can be published as a `.mlib` package instead of (or
+  next to) its sources, so users do not wait for it to compile (unlike Rust crates):
+  - **API metadata:** public declarations with types, ownership annotations (`@Owned`, borrowed, allocator
+    traits) and `@Throws`/`@NoAlloc` facts, so our frontend and the memory checker work without the sources.
+  - **MIR** of all functions (the format exists: B1), including bodies of `inline` functions and generic
+    functions that need specialization for primitives.
+  - **Optional object code per target** (`.o`, later LLVM bitcode for LTO), keyed by compiler version,
+    target and flags. On a mismatch `mini` falls back to the MIR, then to the sources.
+  - Generics are erased (shared code for references), so most of a library compiles once; only
+    primitive specializations and inlined bodies are generated in the using program.
+  - The stdlib ships precompiled with every release (also needed by the JIT, §10g).
+  - Plus a build cache: local per user (`~/.mini/cache`, content-addressed) and optionally shared
+    (CI or team cache), like sccache. A package registry comes after that.
 
 **The repository itself drops Gradle after B3.** The compiler is then just another Mini
 project built by `mini`:
