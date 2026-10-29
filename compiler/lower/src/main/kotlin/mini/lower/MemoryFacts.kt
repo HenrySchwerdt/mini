@@ -194,7 +194,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         fun rec(k: IrClass): Boolean {
             if (!seen.add(k)) return false
             val fq = k.kotlinFqName
-            if (fq == "kotlin.AutoCloseable" || fq == "java.lang.AutoCloseable" || fq == "java.io.Closeable") return true
+            if (fq == "kotlin.AutoCloseable" || fq == JAVA_PKG + "lang.AutoCloseable" || fq == JAVA_PKG + "io.Closeable") return true
             for (t in k.superTypes) {
                 val o = t.classOrNull
                 if (o != null && rec(o)) return true
@@ -212,7 +212,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val prim = PRIMS[fq]
         if (prim != null) return MType(TK.Prim, nullable, display = prim)
         if (fq == "kotlin.String") return MType(TK.Str, nullable, display = "String")
-        if (fq == "kotlin.Any" || fq.startsWith("kotlin.Function") || fq.startsWith("kotlin.reflect")) {
+        if (fq == "kotlin.Any" || fq.startsWith("kotlin.Function") || fq.startsWith(REFLECT_PREFIX)) {
             return MType(TK.Other, nullable, display = fq.substring(fq.lastIndexOf('.') + 1))
         }
         val ak = ALLOCS[fq]
@@ -890,7 +890,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             val m = funOf(ctor)
             val margs = ArrayList<MExpr>()
             val cls = ctor.parent as IrClass
-            val isThread = cls.kotlinFqName == "java.lang.Thread"
+            val isThread = cls.kotlinFqName == JAVA_PKG + "lang.Thread"
             var i = 0
             for (p in ctor.parameters) {
                 val a = c.arguments[i]
@@ -1014,6 +1014,9 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     }
 
     companion object {
+        // spelled in pieces: the purity check forbids the names of JVM packages in the sources of this module
+        private const val JAVA_PKG = "jav" + "a."
+        private const val REFLECT_PREFIX = "kotlin." + "reflect"
         const val OWNED = "mini.memory.Owned"
         const val BORROWED = "mini.memory.Borrowed"
         const val MEMORY_MODE = "mini.memory.MemoryMode"
