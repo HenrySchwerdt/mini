@@ -1,11 +1,47 @@
 name: Build and test
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+# A new push to a pull request cancels the run of its previous head.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
-  test:
-    # libminirt (runtime/, C) and the K2-based compiler minic (compiler/).
-    # Linux and macOS first; Windows comes later (docs/plan-kotlin.md).
+  # Which parts changed: docs-only changes skip the builds.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      runtime: ${{ steps.filter.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            runtime:
+              - 'runtime/**'
+              - '.github/workflows/build.yml'
+            code:
+              - 'compiler/**'
+              - 'stdlib/**'
+              - 'stdlib-test/**'
+              - 'runtime/**'
+              - 'examples/**'
+              - 'minic'
+              - '.github/workflows/build.yml'
+
+  # libminirt under ASan/UBSan and TSan.
+  runtime:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -13,24 +49,64 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: ./.github/actions/setup
         with:
-          distribution: temurin
-          java-version: '21'
-      - name: Install libuv (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libuv1-dev
-          # ThreadSanitizer cannot map its shadow memory with the runner's default ASLR entropy.
-          sudo sysctl vm.mmap_rnd_bits=28
-      - name: Install libuv (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install libuv
-          echo "LIBUV_ROOT=$(brew --prefix libuv)" >> "$GITHUB_ENV"
+          libuv: 'true'
       - name: Runtime tests (ASan, UBSan, TSan)
         run: runtime/run_tests.sh
-      - name: Compiler tests
+
+  # Compiler tests, split into shards that run in parallel. The shards are defined by exclusion
+  # (`-PtestExclude`), so a new test class always runs in one of them.
+  compiler:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        shard: [modules, e2e, selfhost, bridge, oracle, frontend-selfhost, sema-selfhost]
+        include:
+          # macOS: the platform-sensitive shards on pull requests, everything on main.
+          - { os: macos-latest, shard: e2e }
+          - { os: macos-latest, shard: selfhost }
+          - { os: macos-latest, shard: modules }
+          - { os: macos-latest, shard: bridge, main-only: true }
+          - { os: macos-latest, shard: oracle, main-only: true }
+          - { os: macos-latest, shard: frontend-selfhost, main-only: true }
+          - { os: macos-latest, shard: sema-selfhost, main-only: true }
+    name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Skip on pull requests
+        id: gate
+        run: echo "run=${{ !matrix.main-only || github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: ./.github/actions/setup
+        if: steps.gate.outputs.run == 'true'
+      - name: Tests (${{ matrix.shard }})
+        if: steps.gate.outputs.run == 'true'
         working-directory: compiler
-        run: ./gradlew test --console=plain
+        run: |
+          case "${{ matrix.shard }}" in
+            modules)           args=(test -x :jvm-bridge:test -x :frontend-oracle:test) ;;
+            e2e)               args=(:jvm-bridge:test --tests EndToEndTest) ;;
+            selfhost)          args=(:jvm-bridge:test --tests SelfHostTest) ;;
+            bridge)            args=(:jvm-bridge:test -PtestExclude=EndToEndTest,SelfHostTest) ;;
+            oracle)            args=(:frontend-oracle:test -PtestExclude=FrontendSelfHostTest,SemaSelfHostTest) ;;
+            frontend-selfhost) args=(:frontend-oracle:test --tests FrontendSelfHostTest) ;;
+            sema-selfhost)     args=(:frontend-oracle:test --tests SemaSelfHostTest) ;;
+          esac
+          ./gradlew "${args[@]}" --console=plain
+
+  # Single status for branch protection: green when every job that ran passed.
+  ci-ok:
+    if: always()
+    needs: [changes, runtime, compiler]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          for r in "${{ needs.changes.result }}" "${{ needs.runtime.result }}" "${{ needs.compiler.result }}"; do
+            case "$r" in success|skipped) ;; *) echo "a job ended with: $r"; exit 1 ;; esac
+          done
