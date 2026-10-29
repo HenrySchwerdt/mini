@@ -117,3 +117,41 @@ untouched). The experience for `docs/memory-model.md`: the borrowed / owned-para
 (constructor parameters that are stored are owned, everything else borrowed, field reads are borrows while nothing
 overwrites a heap reference) are exactly what `@Owned` / `@Borrowed` would state in Strict code, so the inference rules
 can serve as the default for unannotated parameters there.
+
+## D2: Strict code generation, calling conventions, arenas
+
+Configurations: `base` = `--no-rc-opt --no-strict --no-conv`, `opt` = RcOpt (`--no-strict --no-conv`), `conv` = RcOpt plus
+calling conventions (`--no-strict`), `strict` = default. Median of 7 runs; allocs, frees and peak are identical in every
+configuration (the outputs are byte-identical to the Managed ones).
+
+| benchmark | time ms base / opt / conv / strict | retains base -> strict | releases base -> strict |
+|---|---|---|---|
+| arena_managed | 139 / 78 / 78 / 76 | 13.76M -> 0 | 35.39M -> 5.90M |
+| arena_heap | 138 / 81 / 78 / 82 | 13.76M -> 0 | 35.39M -> 1 |
+| arena_arena | 142 / 80 / 82 / 72 | 13.76M -> 0 | 35.39M -> 60 |
+| arraylist | 357 / 217 / 204 / 208 | 59.4M -> 11.2M | 73.0M -> 22.6M |
+| hashmap | 108 / 75 / 74 / 75 | 11.9M -> 3.98M | 20.4M -> 11.6M |
+| mapfilter | 228 / 139 / 143 / 139 | 32.9M -> 4.66M | 39.9M -> 9.72M |
+| stringbuilder | 96 / 58 / 60 / 58 | 12.4M -> 4.2M | 14.4M -> 5.2M |
+| templates | 116 / 109 / 110 / 113 | 0.6M -> 0 | 5.1M -> 4.2M |
+| tree | 104 / 66 / 64 / 68 | 8.28M -> 0 | 18.1M -> 3.75M |
+| selfhost-large | 1026 / 718 / 714 / 720 | 66.9M -> 11.2M | 101.3M -> 25.9M |
+
+Reading: the three arena benchmarks run the same tree workload as Managed code, in a `Heap` and in an `Arena`. Strict
+code with an allocator has no counting at all (0 retains, 1 release for `Heap`, 60 for `Arena` chunks). Wall time barely
+moves between `opt` and `strict` on these workloads because RcOpt already removed the retains and the remaining releases
+are cheap non-atomic decrements; the saving is in counted operations, not in allocator speed (the allocator calls
+`malloc` in all cases). Conventions cut `arraylist` retains by half (borrowed `get`, owned `add`/`set`) and `mapfilter`
+by a third; time differences of `conv` against `opt` are inside the 5 % noise. Self-host: instruction count (callgrind)
+of RcOpt itself went from 1.70G to 1.25G with dense arrays (whole compile 5.64G to 5.22G).
+
+Open: the Iterator.next group cannot be borrowed when boxing primitive iterators are reachable, the Map.get group is
+dropped while `AbstractMutableMap.get` is reachable, and RcOpt precision depends on `@NoHeapEffects` assertions on the
+collection `equals`/`hashCode`/`toString`.
+
+## D2: annotation and diagnostic experience
+
+Stdlib annotations needed: 10 `@ReturnsBorrowed`, 10 `@TakesOwnership` (collections), 27 `@NoHeapEffects`,
+5 `@NativeSymbol` (allocator handles); user programs need none. Step 3 (Strict internals for the collections) was not
+done: buffers are runtime `Any` objects (little counting to gain) and iterators/views hold counted references to the
+map, so only `HashNode`/`HashMap` as `@AllocatedBy(Rc)` Strict classes would be a candidate.

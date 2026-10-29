@@ -983,3 +983,17 @@ test runs with `minic check`, compares the emitted `line:col: code` lines with `
 and builds/runs the accepted programs (`.out`).
 
 A program with `.diag` and `.out` (`arena_loop_warn`) is accepted, but has a warning.
+
+## Experience from D2 (Strict code generation)
+
+- Annotations: the new test programs `strict_{heap_list,arena_tree,pool,boundary,auto,close}.kt` need one allocator
+  choice per object graph and a `free()` for each owner; no `@Owned` beyond the fields that own children. The stdlib
+  needed 10 `@ReturnsBorrowed`, 10 `@TakesOwnership` and 27 `@NoHeapEffects`.
+- Diagnostics that got in the way: M0102 (leak on the throw edge) on every call of a function that may throw while an
+  owned value is live; M0204 / M0115 constraints when an owned value is handed to an owned parameter and used again
+  (fixed by `x.move()` at the last use).
+- Spec nuances found: `use { }` must free its resource (not only close it); the free glue does not call `close()` of
+  nested objects (this matches the JVM oracle); borrowed fields (`@Borrowed`) must not be counted, or an
+  arena-allocated graph leaks the field value.
+- `minic mem-report` / `-Wrc` (M0207) show where counting remains: in the stdlib mostly "returned reference is not owned
+  here", "reference stored into a field" and string temporaries; the report has function names but no source positions.
