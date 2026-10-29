@@ -36,6 +36,7 @@ jobs:
               - 'runtime/**'
               - 'examples/**'
               - 'minic'
+              - 'scripts/**'
               - '.github/workflows/build.yml'
 
   # libminirt under ASan/UBSan and TSan.
@@ -66,7 +67,9 @@ jobs:
         # All shards on Linux; macOS runs every shard on main and only the platform-sensitive
         # ones (e2e, selfhost, modules) on pull requests, since macOS runners are scarce.
         os: ${{ fromJSON(github.ref == 'refs/heads/main' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
-        shard: [modules, e2e, selfhost, bridge, oracle, frontend-selfhost, sema-selfhost, bootstrap]
+        # `stage0` (bootstrap from the latest release's native compiler, ~1 min) runs everywhere; `bootstrap` (from the
+        # JVM stage1, ~4 min, guards the K2 path) only on main.
+        shard: ${{ fromJSON(github.ref == 'refs/heads/main' && '["modules","e2e","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","stage0","bootstrap"]' || '["modules","e2e","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","stage0"]') }}
         include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"selfhost"},{"os":"macos-latest","shard":"modules"}]') }}
     name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -75,6 +78,8 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Tests (${{ matrix.shard }})
         working-directory: compiler
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           case "${{ matrix.shard }}" in
             modules)           args=(test -x :jvm-bridge:test -x :frontend-oracle:test) ;;
@@ -84,6 +89,9 @@ jobs:
             oracle)            args=(:frontend-oracle:test -PtestExclude=FrontendSelfHostTest,SemaSelfHostTest) ;;
             frontend-selfhost) args=(:frontend-oracle:test --tests FrontendSelfHostTest) ;;
             sema-selfhost)     args=(:frontend-oracle:test --tests SemaSelfHostTest) ;;
+            # B3 from the latest release: native stage0 -> stage1 -> stage2 -> stage3 without JVM and K2.
+            # Falls back to the JVM stage1 when there is no release (yet) or the download fails.
+            stage0)            ../scripts/ci-stage0.sh "$RUNNER_TEMP/stage0"; exit ;;
             # B3: stage1 -> stage2 -> stage3 without K2, stage2 == stage3 byte for byte.
             bootstrap)         ./gradlew :jvm-bridge:installDist --console=plain && ./bootstrap.sh "$RUNNER_TEMP/b3"; exit ;;
           esac

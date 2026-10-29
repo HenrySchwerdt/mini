@@ -627,6 +627,29 @@ Candidates:
 - **Code:** whole-program devirtualization, and with LLVM (§10g) LTO, PGO and zero-cost unwinding.
 - **IO:** the Kotlin io_uring/kqueue backends (§10c) against libuv.
 
+### 10i. Playground and notebooks in the browser (WebAssembly)
+
+Goal: on the documentation site, every code sample can be edited and run in the browser, plus a
+notebook page (Markdown and code cells sharing state). No server: GitHub Pages is static.
+
+- **Decision: one backend everywhere, no interpreter and no extra wasm backend.** The compiler binds LLVM
+  through its C API with Mini's own C interop (`external`, §7; the same binding as §10g phase 2). LLVM's
+  code generator (wasm32 target only) and `wasm-ld` are built once for wasm with wasi-sdk/Emscripten, and
+  the compiler itself is compiled to wasm and linked against them.
+- **In the browser:** source → own frontend, memory checker, MIR → LLVM → `.wasm` → `wasm-ld` with the
+  precompiled runtime (`libminirt` for wasm32-wasi, without threads/libuv) → run with a small WASI shim.
+  The toolchain (an estimated 5-10 MB compressed) loads lazily on the first "Run" and is cached by a
+  service worker; reading and "Check" work without it.
+- **Playground features:** run and check (Strict diagnostics inline with M-codes and links to the
+  reference), tabs with the MIR and LLVM IR for the "How it works" pages, share via URL, an examples
+  gallery; every sample on the site becomes editable and runnable.
+- **Notebook:** Markdown and code cells; code cells are compiled incrementally (each cell sees the
+  declarations of the cells before it) and run in one WASI instance per session.
+- **Order:** C interop (§7) → native LLVM C API binding (§10g phase 2) → LLVM + lld built for wasm →
+  the compiler built for wasm → website integration and notebook.
+- **Fast startup:** the stdlib is shipped precompiled (API metadata + MIR, `.mlib`, §10f) so the browser
+  does not re-check it on every run.
+
 ## 11. Working method: manager and Sonnet agents
 
 - **Manager** (this agent): architecture, interfaces between packages,
