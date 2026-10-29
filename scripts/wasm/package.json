@@ -1,0 +1,9 @@
+{
+  "name": "mini-wasm-toolchain",
+  "private": true,
+  "description": "Pinned prebuilt clang + wasm-ld (as WASI modules) used to build and to run the Mini browser toolchain",
+  "type": "module",
+  "dependencies": {
+    "@yowasp/clang": "21.1.4-3"
+  }
+}
