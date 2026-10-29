@@ -223,7 +223,8 @@ internal fun Parser.tryParseTypeArgsInExpr(): List<TypeArg>? {
     // quick check for tokens that can never appear in a type argument list
     val args = parseTypeArgs()
     // like the reference parser: a well-formed type argument list makes this a call suffix, whatever follows
-    if (errors.size == errs) return args
+    // (`>=` is one token for the reference lexer, so a closing `>` directly followed by `=` is no type argument list)
+    if (errors.size == errs && !(kind() == Tk.EQ && adjacentPrevToCurrent())) return args
     restore(sn)
     return null
 }

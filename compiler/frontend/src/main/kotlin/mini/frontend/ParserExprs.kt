@@ -658,8 +658,23 @@ internal fun Parser.parseStatement(): Stmt? {
 /** body of if/while/for/when branches: a block or a single statement-expression, or null for `;` */
 private fun Parser.parseBody(): Expr? {
     if (kind() == Tk.SEMI) return null
-    if (kind() == Tk.LBRACE) return parseBlock()
+    if (kind() == Tk.LBRACE) return if (lambdaHasArrow()) parseLambda() else parseBlock()
     return parseExpression()
+}
+
+/** at `{`: does a lambda parameter list followed by `->` come next? ({ x -> ... } is a lambda even in a branch) */
+private fun Parser.lambdaHasArrow(): Boolean {
+    val sn = snap()
+    advance()
+    var ok = false
+    if (kind() == Tk.ARROW) {
+        ok = true
+    } else if (kind() == Tk.IDENT || kind() == Tk.COLON || kind() == Tk.LPAR) {
+        val ps = tryParseLambdaParams()
+        ok = ps != null && kind() == Tk.ARROW
+    }
+    restore(sn)
+    return ok
 }
 
 // ---- control flow -----------------------------------------------------------------------------------------------
@@ -867,6 +882,8 @@ private fun Parser.parseWhenEntry(): WhenEntry {
         isElse = true
         advance()
     } else {
+        val savedNl = nlOn
+        nlOn = false // conditions may span lines
         while (true) {
             val before = p
             conds.add(parseWhenCond())
@@ -882,6 +899,7 @@ private fun Parser.parseWhenEntry(): WhenEntry {
             advance()
             guard = parseExpression()
         }
+        nlOn = savedNl
     }
     var body: Expr = fin(ErrorExpr(), tokStart())
     if (kind() == Tk.ARROW) {
