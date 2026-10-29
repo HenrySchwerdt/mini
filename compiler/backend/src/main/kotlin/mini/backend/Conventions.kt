@@ -226,7 +226,8 @@ class DispatchGroups(module: MirModule) {
             if (e is MirExpr.VCall && e.slot < 3) return anySlot[e.slot]
             return emptySet()
         }
-        return (if (e is MirExpr.VCall) vMembers[k] else iMembers[k]) ?: emptySet()
+        val m: Set<String>? = if (e is MirExpr.VCall) vMembers[k] else iMembers[k]
+        return m ?: emptySet()
     }
 
     fun groupKeys(): List<Pair<String, Set<String>>> = vMembers.entries.map { it.key to it.value as Set<String> } + iMembers.entries.map { it.key to it.value as Set<String> }
