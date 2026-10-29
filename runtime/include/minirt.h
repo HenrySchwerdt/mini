@@ -420,6 +420,11 @@ _Noreturn void mk_throw_not_implemented(const MkString *message);
 
 extern MK_THREAD_LOCAL MkObject *mk_pending_exception;
 
+/* The address of this thread's `mk_pending_exception`. For generated code that cannot name the thread-local variable: the in-process
+ * JIT (the ORC loader resolves no TLS relocations of generated code, `LlvmTarget.pendingAccessor`); optimizers may treat the call as
+ * pure, so it costs one call per function that tests for exceptions. Ordinary builds reference the variable directly. */
+MkObject **mk_pending_slot(void);
+
 /* `throw e`: retains `e`, makes it the pending exception (a previously pending one is released).
  * `e == NULL` throws NullPointerException. The caller then runs its exceptional exit path. */
 void mk_throw(MkObject *exception);

@@ -21,8 +21,13 @@ import mini.backend.isRef
  * struct, whose size includes its tail padding) and every field access is a byte-offset `getelementptr`.
  *
  * [triple] / [dataLayout] are written into the module when non-null; with null clang substitutes its own target.
+ *
+ * [pendingAccessor]: generated code reaches the thread-local `mk_pending_exception` through the runtime function
+ * `mk_pending_slot()` (returns its address) instead of a direct `thread_local` global reference. For targets whose
+ * loader cannot resolve TLS relocations of generated code (the in-process ORC JIT); the optimizer treats the call as
+ * pure, so it costs one call per function that tests for exceptions.
  */
-class LlvmTarget(val ptrBytes: Int, val triple: String?, val dataLayout: String?) {
+class LlvmTarget(val ptrBytes: Int, val triple: String?, val dataLayout: String?, val pendingAccessor: Boolean = false) {
     /** The LLVM integer type of `size_t`. */
     val sizeT: String get() = if (ptrBytes == 8) "i64" else "i32"
 

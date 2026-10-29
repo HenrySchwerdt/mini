@@ -85,8 +85,15 @@ jobs:
             modules)           args=(test -x :jvm-bridge:test -x :frontend-oracle:test) ;;
             e2e)               args=(:jvm-bridge:test --tests EndToEndTest) ;;
             selfhost)          args=(:jvm-bridge:test --tests SelfHostTest) ;;
-            llvm)              args=(:jvm-bridge:test --tests LlvmEndToEndTest) ;;
-            bridge)            args=(:jvm-bridge:test -PtestExclude=EndToEndTest,SelfHostTest,LlvmEndToEndTest) ;;
+            llvm)
+              # LLVM C API headers and libLLVM for the in-memory backend and the ORC JIT (LlvmApiEndToEndTest).
+              if [ "$RUNNER_OS" = Linux ]; then
+                sudo apt-get install -y -qq llvm-18-dev >/dev/null
+                echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"; export PATH="/usr/lib/llvm-18/bin:$PATH"
+                llvm-config --version
+              fi
+              args=(:jvm-bridge:test --tests LlvmEndToEndTest --tests LlvmApiEndToEndTest) ;;
+            bridge)            args=(:jvm-bridge:test -PtestExclude=EndToEndTest,SelfHostTest,LlvmEndToEndTest,LlvmApiEndToEndTest) ;;
             oracle)            args=(:frontend-oracle:test -PtestExclude=FrontendSelfHostTest,SemaSelfHostTest) ;;
             frontend-selfhost) args=(:frontend-oracle:test --tests FrontendSelfHostTest) ;;
             sema-selfhost)     args=(:frontend-oracle:test --tests SemaSelfHostTest) ;;

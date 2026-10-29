@@ -37,6 +37,8 @@ tasks.test {
     // The end-to-end tests build real executables from compiler/testdata.
     systemProperty("mini.testdata", rootProject.file("testdata").absolutePath)
     systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
+    systemProperty("mini.compilerDir", rootProject.projectDir.absolutePath)
+    inputs.dir(rootProject.file("llvm-c"))
     // Memory-model corpus (docs/memory-model.md) and the mini.memory API sources for MemoryCheckTest.
     systemProperty("mini.memoryCorpus", rootProject.file("testdata/memory").absolutePath)
     systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("stdlib/mini/memory").absolutePath)

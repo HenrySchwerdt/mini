@@ -10,6 +10,10 @@
 
 MK_THREAD_LOCAL MkObject *mk_pending_exception = NULL;
 
+MkObject **mk_pending_slot(void) {
+    return &mk_pending_exception;
+}
+
 void mk_rethrow(MkObject *exception) {
     if (exception == NULL) {
         mk_raise_npe();
