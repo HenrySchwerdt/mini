@@ -381,6 +381,10 @@ Sobald der Compiler nativ läuft, ist er unser größtes Testprogramm. Ablauf:
    Annotationen und `free()`s waren nötig, und welche Diagnosen haben gestört? Diese Erfahrungen
    fließen zurück in `docs/memory-model.md` (Ergonomie, Inferenz von `@Owned`).
 
+**Stand D1 (Schritte 1 und 2):** Zähler (`minic build --stats`, `-DMK_STATS`), Benchmarks (`compiler/bench`) und die
+RC-Elision `RcOpt` (Borrow-Inferenz, Move der letzten Nutzung, Konstruktor-Parameter mit Ownership) sind umgesetzt;
+Zahlen vorher/nachher in `docs/benchmarks.md`, Regeln in `compiler/README.md` (Abschnitt "RC elision").
+
 ### 10c. Runtime in Kotlin (nach v1)
 
 Ziel: **keine handgeschriebene C-Runtime mehr.** libminirt wird Stück für Stück in Mini-Kotlin
