@@ -159,6 +159,16 @@ fun BodyChecker.callableRefWith(e: CallableRefExpr, ef: FunType?, unused: Type?)
         if (r == null) return ErrType("class literal")
         val t: Type
         var variance = Variance.INV
+        val ru = AstWalk.unparen(r)
+        val tpSym = if (ru is NameExpr && resolveSimpleName(ru.name) == null) sema.lookupClassifier(scope, ru.name) as? TypeParamSym else null
+        if (tpSym != null) {
+            // `T::class` of a (reified) type parameter
+            val tt = TypeParamType(tpSym, false, false)
+            record(ru, tt, null)
+            val ktp = ClassType(kc, listOf(TArg(tt, Variance.INV)), false)
+            record(e, ktp, null)
+            return ktp
+        }
         val rr = resolveReceiver(r, null)
         if (rr is ClassRecv) {
             t = rr.cls.thisType().let { ClassType(it.cls, it.args.map { TArg(null, Variance.INV) }, false) }
