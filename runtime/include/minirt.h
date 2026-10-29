@@ -581,6 +581,31 @@ void mk_stats_dump(void);         /* writes the summary to stderr (also done by 
 
 /* ---- end D1 ---- */
 
+/* ---- D2: Strict code generation (docs/memory-model.md, compiler/README.md "Strict code generation") ---- */
+
+/* Allocator handles for the mini.memory classes: the address of the MkAllocator as a 64-bit integer (0 = the default
+ * Rc allocator). The Kotlin classes Heap/Arena/Pool/DebugAllocator keep one in a field; the compiler passes it to
+ * mk_alloc_with for allocation sites it routes there. */
+int64_t mk_heap_allocator_h(void);
+int64_t mk_arena_new_h(void);                       /* mk_arena_create(0) */
+void mk_arena_close_h(int64_t arena);               /* mk_arena_destroy */
+int64_t mk_pool_new_h(const MkTypeInfo *type, MkInt capacity); /* blocks for instances of `type`, `capacity` per slab */
+void mk_pool_close_h(int64_t pool);                 /* mk_pool_destroy */
+int64_t mk_debug_new_h(int64_t inner);              /* DebugAllocator over the allocator `inner` (0 = heap) */
+
+/* `x.free()` in generated code: like mk_free for objects of a Deallocating allocator (Heap, Pool, DebugAllocator).
+ * NULL is ignored; objects of the reference-counting allocator (Rc) are left to their count; objects of a Scoped
+ * allocator panic like mk_free (arena objects cannot be freed individually). */
+void mk_free_dealloc(MkObject *object);
+/* The free glue of an object that owns `object` in a field (dispose of Strict classes): mk_free for objects of a
+ * Deallocating allocator, one mk_release (the owner's count) for reference counted ones, nothing for static/stack. */
+void mk_free_owned(MkObject *object);
+/* Throws away an object whose constructor failed: released when reference counted, freed when it comes from a
+ * Deallocating allocator, left to the arena when Scoped. */
+void mk_discard(MkObject *object);
+
+/* ---- end D2 ---- */
+
 #ifdef __cplusplus
 }
 #endif

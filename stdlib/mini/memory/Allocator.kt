@@ -10,8 +10,7 @@ package mini.memory
  */
 
 /** Opaque native address. On the JVM it is only a number. */
-@JvmInline
-value class NativePtr(val raw: Long)
+class NativePtr(val raw: Long)
 
 /** Anything that can hand out memory. The capability traits below tell the compiler what to check. */
 interface Allocator {

@@ -7,6 +7,8 @@
  */
 package kotlin
 
+import mini.memory.free
+
 public interface AutoCloseable {
     public fun close()
 }
@@ -15,6 +17,8 @@ public inline fun <T : AutoCloseable?, R> T.use(block: (T) -> R): R {
     try {
         return block(this)
     } finally {
-        this?.close()
+        // Mini: `use` ends the ownership of the receiver, so it closes and frees (docs/memory-model.md 3.2); free() is close()
+        // on the JVM and a no-op for reference counted objects
+        this.free()
     }
 }

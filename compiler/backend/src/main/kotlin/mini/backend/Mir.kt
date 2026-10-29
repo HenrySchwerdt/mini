@@ -23,7 +23,15 @@ class MirModule(
     val classes: List<MirClass> = emptyList(),
 )
 
-class MirField(val name: String, val type: MirType)
+class MirField(
+    val name: String,
+    val type: MirType,
+    /**
+     * `@Borrowed` field (Strict mode): a non-owning back reference. A tracked-class-typed field that is not
+     * borrowed is owned: the glue of `free()` releases it (docs/memory-model.md 5.3).
+     */
+    val borrowed: Boolean = false,
+)
 
 /** The function table a class provides for one interface (see compiler/README.md, itables). */
 class MirItable(
@@ -64,6 +72,11 @@ class MirClass(
      * `<cName>_ti` are declared in minirt.h.
      */
     val external: Boolean = false,
+    /**
+     * Declared in a Strict file / Strict class (docs/memory-model.md 6.1). Values of Strict classes are *tracked*:
+     * in Strict functions they carry no reference counts (the ownership checker proved who frees them), see [Tracking].
+     */
+    val strict: Boolean = false,
 )
 
 class MirFunction(
@@ -79,6 +92,8 @@ class MirFunction(
      * the value is the [MirClass.cName]. The emitter adds an allocating wrapper `<cName>_new`.
      */
     val constructorOf: String? = null,
+    /** Declared in Strict code: tracked values (instances of Strict classes) are not reference counted here. */
+    val strict: Boolean = false,
 )
 
 class MirLocal(
@@ -333,8 +348,21 @@ sealed class MirExpr {
         override val type: MirType,
     ) : MirExpr()
 
-    /** Allocates an instance and runs the constructor [ctorCName]. Owned result. */
-    class New(val ctorCName: String, val args: List<MirExpr>, override val type: MirType) : MirExpr()
+    /**
+     * Allocates an instance and runs the constructor [ctorCName]. Owned result (reference counted) unless the
+     * allocation happens in a Strict function and the class is Strict (a tracked value, see [Tracking]).
+     * [allocator]: an expression of type Long (the address of the `MkAllocator`) the object is allocated from
+     * (`mk_alloc_with`); null = the default (reference counting) allocator. [auto]: Strict code, no allocator is
+     * visible and the value does not escape (docs/memory-model.md 2.1, "stack"): the local that receives the value
+     * frees it at the end of its scope.
+     */
+    class New(
+        val ctorCName: String,
+        val args: List<MirExpr>,
+        override val type: MirType,
+        val allocator: MirExpr? = null,
+        val auto: Boolean = false,
+    ) : MirExpr()
 
     /** The singleton of an `object`, created on first access. Borrowed (the singleton is immortal). */
     class ObjectGet(val classCName: String, override val type: MirType) : MirExpr()

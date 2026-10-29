@@ -14,7 +14,7 @@ object Cli {
     private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--frontend=k2|mini]"""
+             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--frontend=k2|mini]"""
 
     class Options(
         val sources: List<File>,
@@ -36,6 +36,8 @@ object Cli {
         val noRcOpt: Boolean = false,
         /** `--frontend=mini`: the own frontend (parser + sema + Ast2Ir in `:lower`) instead of K2. */
         val miniFrontend: Boolean = false,
+        /** `--no-strict`: no Strict code generation (reference counting everywhere, allocators and `free` ignored). */
+        val noStrict: Boolean = false,
     )
 
     /** Returns the process exit code. */
@@ -126,6 +128,7 @@ object Cli {
         var stats = false
         var noRcOpt = false
         var mini = false
+        var noStrict = false
         var stdlib: File? = null
         var noStdlib = false
         var out: File? = null
@@ -155,6 +158,7 @@ object Cli {
                 "--no-rc-opt" -> noRcOpt = true
                 "--frontend=mini" -> mini = true
                 "--frontend=k2" -> mini = false
+                "--no-strict" -> noStrict = true
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     sources += File(x)
@@ -163,7 +167,7 @@ object Cli {
             i++
         }
         if (sources.isEmpty() || out == null) { System.err.println(USAGE); return null }
-        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, mini)
+        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -238,7 +242,7 @@ object Cli {
         if (mainCount != 1) throw BuildFailure("${module.sourceName}: expected exactly one `fun main()`, found $mainCount")
 
         // 3. MIR -> C
-        val c = CEmitter.emit(module, rcOpt = !o.noRcOpt)
+        val c = CEmitter.emit(module, rcOpt = !o.noRcOpt, strict = !o.noStrict)
         val cFile = o.emitC ?: File.createTempFile("minic-", ".c")
         cFile.absoluteFile.parentFile?.mkdirs()
         cFile.writeText(c)

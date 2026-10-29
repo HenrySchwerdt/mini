@@ -95,9 +95,11 @@ internal class FnState(
     val currentReturn: MirType,
     val unitAsNull: Boolean,
     val finallyStack: ArrayList<IrExpression>,
+    val strict: Boolean = false,
+    val allocLevels: ArrayList<List<AllocRef>> = ArrayList(),
 )
 
-internal fun Ir2Mir.saveFn() = FnState(locals, localCounter, currentFunction, currentReturn, unitAsNull, finallyStack)
+internal fun Ir2Mir.saveFn() = FnState(locals, localCounter, currentFunction, currentReturn, unitAsNull, finallyStack, currentStrict, allocLevels)
 
 internal fun Ir2Mir.restoreFn(s: FnState) {
     locals = s.locals
@@ -106,6 +108,8 @@ internal fun Ir2Mir.restoreFn(s: FnState) {
     currentReturn = s.currentReturn
     unitAsNull = s.unitAsNull
     finallyStack = s.finallyStack
+    currentStrict = s.strict
+    allocLevels = s.allocLevels
 }
 
 internal inline fun <T> Ir2Mir.inFreshFunction(body: () -> T): T {
@@ -113,6 +117,8 @@ internal inline fun <T> Ir2Mir.inFreshFunction(body: () -> T): T {
     locals = HashMap()
     localCounter = 0
     finallyStack = ArrayList()
+    currentStrict = false
+    allocLevels = ArrayList()
     try {
         return body()
     } finally {

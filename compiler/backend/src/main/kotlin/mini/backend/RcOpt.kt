@@ -74,8 +74,8 @@ class RcPlan internal constructor(
 }
 
 object RcOpt {
-    fun analyze(module: MirModule): RcPlan {
-        val fx = RcEffects(module).run()
+    fun analyze(module: MirModule, tr: Tracking = Tracking(module, false)): RcPlan {
+        val fx = RcEffects(module, tr).run()
         val owned = HashMap<String, BooleanArray>()
         // Which constructor parameters does the initialiser always hand over (store into a field, pass on to
         // another constructor)? Probing assumes every reference parameter is owned; more known callee conventions
@@ -87,7 +87,7 @@ object RcOpt {
             round++
             for (f in module.functions) {
                 if (f.constructorOf == null) continue
-                val probe = RcAnalyzer(f, fx, RcStats(), owned, true)
+                val probe = RcAnalyzer(f, fx, RcStats(), owned, true, tr)
                 probe.run()
                 val mask = probe.consumedParams()
                 if (!sameMask(owned[f.cName], mask)) {
@@ -100,7 +100,7 @@ object RcOpt {
         val stats = RcStats()
         for (f in module.functions) {
             stats.functions++
-            val plan = RcAnalyzer(f, fx, stats, owned, false).run()
+            val plan = RcAnalyzer(f, fx, stats, owned, false, tr).run()
             if (plan != null) plans[f.cName] = plan
         }
         return RcPlan(plans, owned, stats)
@@ -151,7 +151,7 @@ internal fun mirChildren(e: MirExpr): List<MirExpr> = when (e) {
  * the summary of that constructor: the object is invisible to everybody else, and releasing one of
  * its own fields can never remove the last count of an object a caller's alias depends on.
  */
-internal class RcEffects(private val module: MirModule) {
+internal class RcEffects(private val module: MirModule, private val tr: Tracking) {
     val mutating = HashSet<String>()
     private val slotImpls = HashMap<Int, HashSet<String>>()
     private val ifaceImpls = HashMap<String, HashSet<String>>()
@@ -217,7 +217,7 @@ internal class RcEffects(private val module: MirModule) {
     private fun stmtMutates(f: MirFunction, s: MirStmt): Boolean = when (s) {
         is MirStmt.Declare -> s.init?.let { exprMutates(it) } ?: false
         is MirStmt.Assign -> exprMutates(s.value)
-        is MirStmt.SetField -> exprMutates(s.obj) || exprMutates(s.value) || (s.fieldType.isRef && !isFreshThisStore(f, s))
+        is MirStmt.SetField -> exprMutates(s.obj) || exprMutates(s.value) || (tr.rcStore(f, s) && !isFreshThisStore(f, s))
         is MirStmt.Eval -> exprMutates(s.expr)
         is MirStmt.If -> exprMutates(s.cond) || s.thenBody.any { stmtMutates(f, it) } || s.elseBody.any { stmtMutates(f, it) }
         is MirStmt.Block -> s.body.any { stmtMutates(f, it) }
@@ -327,6 +327,7 @@ private class RcAnalyzer(
     val stats: RcStats,
     val calleeOwned: HashMap<String, BooleanArray>,
     val probe: Boolean,
+    val tr: Tracking,
 ) {
     private val infos = ArrayList<LocalInfo>()
     private val byId = HashMap<Int, LocalInfo>()
@@ -354,7 +355,7 @@ private class RcAnalyzer(
         scopeParent += -1
         val mask = if (probe) null else calleeOwned[f.cName]
         for ((k, p) in f.params.withIndex()) {
-            if (!p.type.isRef) continue
+            if (!tr.rcLocal(f, p)) continue
             val i = info(p, true)
             i.declList = f.body
             i.ownedParam = if (probe) f.constructorOf != null && k >= 1 else mask != null && k < mask.size && mask[k]
@@ -411,7 +412,7 @@ private class RcAnalyzer(
                 val o = s.obj
                 if (o is MirExpr.Local && o.local.id == self.id) {
                     if (thisLeaks(s.value, self)) return
-                    if (s.fieldType.isRef) {
+                    if (tr.rcStore(f, s)) {
                         val key = s.owner + "#" + s.field
                         if (stored.none { it == key }) fresh += s
                         stored += key
@@ -474,7 +475,7 @@ private class RcAnalyzer(
         is MirExpr.NotNull -> chainOf(e.operand, acc)
         is MirExpr.FieldGet -> {
             acc.hasField = true
-            e.type.isRef && chainOf(e.obj, acc)
+            tr.rc(f, e.type) && chainOf(e.obj, acc)
         }
         is MirExpr.ObjectGet, is MirExpr.StringConst, is MirExpr.NullConst -> {
             acc.rootless = true
@@ -486,7 +487,7 @@ private class RcAnalyzer(
     private fun addDef(i: LocalInfo, e: MirExpr, p: Int) {
         if (i.firstDef < 0) i.firstDef = p
         val c = Chain(ArrayList(), false)
-        if (e.isOwned() || !chainOf(e, c)) i.ownedDef = true else i.chains += c
+        if (tr.owned(f, e) || !chainOf(e, c)) i.ownedDef = true else i.chains += c
     }
 
     private fun expr(e: MirExpr) {
@@ -542,7 +543,7 @@ private class RcAnalyzer(
             is MirStmt.Declare -> {
                 val init = s.init
                 if (init != null) expr(init)
-                if (s.local.type.isRef) {
+                if (tr.rcLocal(f, s.local)) {
                     val i = info(s.local, false)
                     i.declList = curList
                     if (init != null) addDef(i, init, pos++) else i.declaredEmpty = true
@@ -550,7 +551,7 @@ private class RcAnalyzer(
             }
             is MirStmt.Assign -> {
                 expr(s.value)
-                if (s.local.type.isRef) {
+                if (tr.rcLocal(f, s.local)) {
                     val p = pos++
                     val i = byId[s.local.id]
                     if (i == null) return
@@ -564,7 +565,7 @@ private class RcAnalyzer(
                 expr(s.obj)
                 expr(s.value)
                 val p = pos++
-                if (s.fieldType.isRef) events += p
+                if (tr.rcStore(f, s)) events += p
                 val a = directLocal(s.obj)
                 if (a != null) use(a, p)
                 val b = directLocal(s.value)
@@ -931,7 +932,7 @@ private class RcAnalyzer(
                 return inn
             }
             is MirStmt.SetField -> {
-                if (s.fieldType.isRef) consume(s, s.value, out, null, record)
+                if (tr.rcStore(f, s)) consume(s, s.value, out, null, record)
                 takesIn(s, listOf(s.obj, s.value), out, record)
                 val inn = out.copy()
                 addUses(s.obj, inn)
@@ -1035,7 +1036,7 @@ private class RcAnalyzer(
             is MirStmt.Continue -> return contLive[s.label.id] ?: empty()
             is MirStmt.Panic -> return empty()
             is MirStmt.Return -> {
-                consume(s, s.value, empty(), null, record && f.returnType.isRef)
+                consume(s, s.value, empty(), null, record && tr.rc(f, f.returnType))
                 s.value?.let { takesIn(s, listOf(it), empty(), record) }
                 val inn = empty()
                 s.value?.let { addUses(it, inn) }

@@ -37,3 +37,11 @@ annotation class NoAlloc
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.BINARY)
 annotation class ThreadBoundary
+
+/**
+ * Mini only: the function is implemented by the C function [name] of libminirt (the call is compiled to a plain C call,
+ * the Kotlin body is the fallback for the JVM, where allocators are naive). Used for the allocator handles below.
+ */
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+annotation class NativeSymbol(val name: String)

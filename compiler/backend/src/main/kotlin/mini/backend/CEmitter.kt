@@ -21,12 +21,25 @@ class EmitError(message: String) : Exception(message)
  *  - returns are owned (+1).
  */
 object CEmitter {
-    /** [rcOpt] runs the reference-count elision pass ([RcOpt]) first; the result is deterministic. */
-    fun emit(module: MirModule, rcOpt: Boolean = true): String = State(module, if (rcOpt) RcOpt.analyze(module) else null).run()
+    /**
+     * [rcOpt] runs the reference-count elision pass ([RcOpt]) first; the result is deterministic. [strict] turns on the
+     * Strict code generation ([Tracking]: no reference counts for tracked values, allocators, `free`); without it
+     * Strict programs run on reference counting alone (the Managed baseline).
+     */
+    fun emit(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true): String {
+        val tr = Tracking(module, strict)
+        return State(module, if (rcOpt) RcOpt.analyze(module, tr) else null, tr).run()
+    }
 
     private class Scope(val locals: List<MirLocal>, val loop: MirLabel?)
 
-    private class State(val module: MirModule, val rcPlan: RcPlan?) {
+    private class State(val module: MirModule, val rcPlan: RcPlan?, val tr: Tracking) {
+        var curFn: MirFunction? = null
+        val newaUsed = LinkedHashSet<String>()
+
+        fun rcT(t: MirType) = tr.rc(curFn, t)
+        fun rcL(l: MirLocal) = tr.rcLocal(curFn, l)
+        fun ownedE(e: MirExpr) = tr.owned(curFn, e)
         val literals = LinkedHashMap<String, String>() // kotlin value -> C name
         val sig = HashMap<String, MirFunction>()
         val classes = HashMap<String, MirClass>()
@@ -152,11 +165,14 @@ object CEmitter {
                 for (f in c.fields) out.append("    ${cType(f.type)} ${Mangling.field(f.name)};\n")
                 out.append("};\n")
                 // dispose
-                val refFields = c.fields.filter { it.type.isRef }
+                val refFields = c.fields.filter { tr.rcField(c, it) }
+                // owned fields of tracked type (Strict classes): freeing the object frees them (docs/memory-model.md 5.3)
+                val ownedFields = c.fields.filter { tr.ownedTrackedField(c, it) }
                 var dispose = "NULL"
-                if (refFields.isNotEmpty()) {
+                if (refFields.isNotEmpty() || ownedFields.isNotEmpty()) {
                     dispose = "${c.cName}_dispose"
                     out.append("static void ${c.cName}_dispose(MkObject *self) {\n    struct ${c.cName} *o = (struct ${c.cName} *)self;\n")
+                    for (f in ownedFields) out.append("    mk_free_owned((MkObject *)o->${Mangling.field(f.name)});\n")
                     for (f in refFields) out.append("    ${rel("o->${Mangling.field(f.name)}")};\n")
                     out.append("}\n")
                 }
@@ -194,6 +210,15 @@ object CEmitter {
                 val call = (listOf("o") + ps.indices.map { "a$it" }).joinToString(", ")
                 val check = if (f.cName in throwing.mayThrow) "    if (mk_pending_exception != NULL) {\n        mk_release(o);\n        return NULL;\n    }\n" else ""
                 out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = mk_alloc(&${cls}_ti);\n    ${f.cName}($call);\n$check    return o;\n}\n")
+                if (f.cName in newaUsed) {
+                    // allocation through a chosen allocator (Strict code): the same, from `al` (0 = the default allocator)
+                    val decla = if (ps.isEmpty()) "MkLong al" else "MkLong al, " + ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }
+                    val checka = if (f.cName in throwing.mayThrow) "    if (mk_pending_exception != NULL) {\n        mk_discard(o);\n        return NULL;\n    }\n" else ""
+                    out.append(
+                        "MKH_FN MkObject *${f.cName}_newa($decla) {\n    MkObject *o = mk_alloc_with((MkAllocator *)(intptr_t)al, &${cls}_ti);\n" +
+                            "    if (o == NULL) mk_panic(\"out of memory\");\n    ${f.cName}($call);\n$checka    return o;\n}\n",
+                    )
+                }
             }
         }
 
@@ -206,6 +231,7 @@ object CEmitter {
             handlers.clear()
             currentReturn = f.returnType
             fplan = rcPlan?.of(f)
+            curFn = f
             dead.clear()
             pending.clear()
             curStmt = null
@@ -225,7 +251,7 @@ object CEmitter {
         fun isTerminator(s: MirStmt?) = s is MirStmt.Return || s is MirStmt.Break || s is MirStmt.Continue || s is MirStmt.Panic || s is MirStmt.Throw
 
         fun refDecls(list: List<MirStmt>): List<MirLocal> =
-            list.filterIsInstance<MirStmt.Declare>().map { it.local }.filter { it.type.isRef }
+            list.filterIsInstance<MirStmt.Declare>().map { it.local }.filter { rcL(it) }
 
         fun lname(l: MirLocal) = Mangling.local(l.name, l.id)
 
@@ -294,47 +320,47 @@ object CEmitter {
                 is MirStmt.Declare -> {
                     val t = s.local.type
                     if (t == TUnit || t == TNothing) throw EmitError("local of type $t")
-                    if (t.isRef) {
+                    if (rcL(s.local)) {
                         // declared (NULL) at the top of the scope
                         val init = s.init ?: return
                         out.append("$i${lname(s.local)} = ${coerceTo(init, t, top = true)};\n")
                         val moved = fplan?.moves?.get(s)
-                        if (!init.isOwned() && !isStaticValue(init) && moved == null && !isBorrowed(s.local)) out.append("$i${ret(lname(s.local))};\n")
+                        if (!ownedE(init) && !isStaticValue(init) && moved == null && !isBorrowed(s.local)) out.append("$i${ret(lname(s.local))};\n")
                         if (moved != null && !closedFor(s, moved)) out.append("$i${lname(moved)} = NULL;\n")
                     } else {
-                        val init = s.init?.let { " = " + expr(it) } ?: " = 0"
+                        val init = s.init?.let { " = " + expr(it, top = true) } ?: " = 0"
                         out.append("$i${cType(t)} ${lname(s.local)}$init;\n")
                     }
                 }
                 is MirStmt.Assign -> {
                     val l = s.local
-                    if (l.type.isRef && isBorrowed(l)) {
+                    if (rcL(l) && isBorrowed(l)) {
                         out.append("$i${lname(l)} = ${coerceTo(s.value, l.type, top = true)};\n")
-                    } else if (l.type.isRef && fplan?.selfTakes?.contains(s) == true) {
+                    } else if (rcL(l) && fplan?.selfTakes?.contains(s) == true) {
                         // the value expression gave the old reference to the callee (the local is NULL now)
                         out.append("$i${lname(l)} = ${coerceTo(s.value, l.type, top = true)};\n")
-                        if (!s.value.isOwned() && !isStaticValue(s.value)) out.append("$i${ret(lname(l))};\n")
-                    } else if (l.type.isRef) {
+                        if (!ownedE(s.value) && !isStaticValue(s.value)) out.append("$i${ret(lname(l))};\n")
+                    } else if (rcL(l)) {
                         val moved = fplan?.moves?.get(s)
                         out.append("$i{\n")
                         out.append("${ind(d + 1)}${cType(l.type)} n = ${coerceTo(s.value, l.type, top = true)};\n")
-                        if (!s.value.isOwned() && !isStaticValue(s.value) && moved == null) out.append("${ind(d + 1)}${ret("n")};\n")
+                        if (!ownedE(s.value) && !isStaticValue(s.value) && moved == null) out.append("${ind(d + 1)}${ret("n")};\n")
                         out.append("${ind(d + 1)}${cType(l.type)} old = ${lname(l)};\n")
                         out.append("${ind(d + 1)}${lname(l)} = n;\n")
                         out.append("${ind(d + 1)}${rel("old")};\n")
                         if (moved != null && !closedFor(s, moved)) out.append("${ind(d + 1)}${lname(moved)} = NULL;\n")
                         out.append("$i}\n")
                     } else {
-                        out.append("$i${lname(l)} = ${expr(s.value)};\n")
+                        out.append("$i${lname(l)} = ${expr(s.value, top = true)};\n")
                     }
                 }
                 is MirStmt.SetField -> {
                     val target = "((struct ${s.owner} *)(${expr(s.obj)}))->${Mangling.field(s.field)}"
-                    if (s.fieldType.isRef) {
+                    if (tr.rcStore(curFn, s)) {
                         out.append("$i{\n")
                         val moved = fplan?.moves?.get(s)
                         out.append("${ind(d + 1)}${cType(s.fieldType)} n = ${coerceTo(s.value, s.fieldType, top = true)};\n")
-                        if (!s.value.isOwned() && !isStaticValue(s.value) && moved == null) out.append("${ind(d + 1)}${ret("n")};\n")
+                        if (!ownedE(s.value) && !isStaticValue(s.value) && moved == null) out.append("${ind(d + 1)}${ret("n")};\n")
                         if (fplan?.fresh?.contains(s) == true) {
                             // first store into a field of the object under construction: the old value is NULL
                             out.append("${ind(d + 1)}$target = n;\n")
@@ -347,14 +373,14 @@ object CEmitter {
                         if (moved != null && !closedFor(s, moved)) out.append("${ind(d + 1)}${lname(moved)} = NULL;\n")
                         out.append("$i}\n")
                     } else {
-                        out.append("$i$target = ${expr(s.value)};\n")
+                        out.append("$i$target = ${expr(s.value, top = true)};\n")
                     }
                 }
                 is MirStmt.Eval -> {
                     val e = s.expr
                     if (e === MirExpr.UnitValue) return
                     if (e.type == TUnit || e.type == TNothing) out.append("$i${expr(e, top = true)};\n")
-                    else if (e.isOwned()) out.append("$i${rel(expr(e, top = true))};\n")
+                    else if (ownedE(e)) out.append("$i${rel(expr(e, top = true))};\n")
                     else out.append("${i}(void)${expr(e)};\n")
                 }
                 is MirStmt.If -> {
@@ -470,12 +496,14 @@ object CEmitter {
                 out.append("$i${expr(v, top = true)};\n").append(releases(scopes.size - 1, 0, d, null)).append("${i}return;\n")
                 return
             }
-            if (!currentReturn.isRef) {
+            if (!rcT(currentReturn)) {
+                // the value first: a call in it may hand a local over to the callee (RcOpt takes), which then must not be released
+                val value = expr(v, top = true)
                 val rels = releases(scopes.size - 1, 0, d + 1, null)
                 if (rels.isEmpty()) {
-                    out.append("${i}return ${expr(v)};\n")
+                    out.append("${i}return $value;\n")
                 } else {
-                    out.append("$i{\n${ind(d + 1)}${cType(currentReturn)} r = ${expr(v)};\n").append(rels).append("${ind(d + 1)}return r;\n$i}\n")
+                    out.append("$i{\n${ind(d + 1)}${cType(currentReturn)} r = $value;\n").append(rels).append("${ind(d + 1)}return r;\n$i}\n")
                 }
                 return
             }
@@ -484,7 +512,7 @@ object CEmitter {
                 ?: (v as? MirExpr.Local)?.local?.takeIf { l -> scopes.any { sc -> sc.locals.any { it === l } } }
             out.append("$i{\n")
             out.append("${ind(d + 1)}${cType(currentReturn)} r = ${coerceTo(v, currentReturn, top = true)};\n")
-            if (moved == null && !v.isOwned() && !isStaticValue(v)) out.append("${ind(d + 1)}${ret("r")};\n")
+            if (moved == null && !ownedE(v) && !isStaticValue(v)) out.append("${ind(d + 1)}${ret("r")};\n")
             out.append(releases(scopes.size - 1, 0, d + 1, moved))
             out.append("${ind(d + 1)}return r;\n$i}\n")
         }
@@ -607,7 +635,7 @@ object CEmitter {
         }
 
         fun expr(e: MirExpr, top: Boolean = false): String {
-            if (!top && e.isOwned()) throw EmitError("owned temporary in operand position: ${e.type}")
+            if (!top && ownedE(e)) throw EmitError("owned temporary in operand position: ${e.type}")
             val s = exprInner(e)
             return if (needsCheck(e)) checked(s, e.type) else s
         }
@@ -637,7 +665,8 @@ object CEmitter {
                     if (mask == null) "${e.cName}(${e.args.indices.joinToString(", ") { coerceTo(e.args[it], f.params[it].type) }})"
                     else ownedCall(e.cName, f.params.map { it.type }, e.args, mask, 0)
                 }
-                is MirExpr.RuntimeCall -> "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                is MirExpr.RuntimeCall ->
+                    if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)" else "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
                 is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
                 is MirExpr.Conditional -> "(${expr(e.cond)} ? ${coerceTo(e.thenValue, e.type)} : ${coerceTo(e.elseValue, e.type)})"
                 is MirExpr.Unreachable -> when (e.type) {
@@ -666,7 +695,13 @@ object CEmitter {
                     val f = sig[e.ctorCName] ?: throw EmitError("unknown constructor ${e.ctorCName}")
                     val ps = f.params.drop(1)
                     val mask = rcPlan?.ownedMask(e.ctorCName)
-                    if (mask == null) "${e.ctorCName}_new(${e.args.indices.joinToString(", ") { coerceTo(e.args[it], ps[it].type) }})"
+                    val al = e.allocator
+                    if (al != null && tr.enabled && curFn?.strict == true) {
+                        newaUsed += e.ctorCName
+                        val lead = expr(al)
+                        if (mask == null) "${e.ctorCName}_newa($lead${e.args.indices.joinToString("") { ", " + coerceTo(e.args[it], ps[it].type) }})"
+                        else ownedCall("${e.ctorCName}_newa", ps.map { it.type }, e.args, mask, 1, lead)
+                    } else if (mask == null) "${e.ctorCName}_new(${e.args.indices.joinToString(", ") { coerceTo(e.args[it], ps[it].type) }})"
                     else ownedCall("${e.ctorCName}_new", ps.map { it.type }, e.args, mask, 1)
                 }
                 is MirExpr.ObjectGet -> "${e.classCName}_get()"
@@ -680,9 +715,11 @@ object CEmitter {
          * while doing so still finds every local intact), then the callee's references are handed over: a moved
          * local gives its own away, anything else is retained.
          */
-        fun ownedCall(callee: String, ptypes: List<MirType>, args: List<MirExpr>, mask: BooleanArray, shift: Int): String {
+        fun ownedCall(callee: String, ptypes: List<MirType>, args: List<MirExpr>, mask: BooleanArray, shift: Int, lead: String? = null): String {
             val temps = args.indices.map { "mkp${tmpCounter++}" }
             val sb = StringBuilder("({ ")
+            val leadTemp = if (lead != null) "mkp${tmpCounter++}" else null
+            if (lead != null) sb.append("MkLong $leadTemp = $lead; ")
             for (k in args.indices) sb.append("${cType(ptypes[k])} ${temps[k]} = ${coerceTo(args[k], ptypes[k])}; ")
             for (k in args.indices) {
                 if (k + shift >= mask.size || !mask[k + shift] || !ptypes[k].isRef || isStaticValue(args[k])) continue
@@ -691,7 +728,7 @@ object CEmitter {
                 else if (closedFor(curStmt, x)) dead += x.id
                 else sb.append("${lname(x)} = NULL; ")
             }
-            sb.append("$callee(${temps.joinToString(", ")}); })")
+            sb.append("$callee(${(listOfNotNull(leadTemp) + temps).joinToString(", ")}); })")
             return sb.toString()
         }
 

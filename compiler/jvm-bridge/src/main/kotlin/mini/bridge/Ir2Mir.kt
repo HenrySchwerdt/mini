@@ -140,6 +140,11 @@ class Ir2Mir {
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val typeSubst = HashMap<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>()
 
+    /** Strict mode (Ir2MirStrict.kt): the function being converted is Strict; the allocator context levels in scope. */
+    internal var currentStrict = false
+    internal var allocLevels = ArrayList<List<AllocRef>>()
+    internal val strictClassCache = HashMap<IrClass, Boolean>()
+
     /** `kotlin.reflect.KClassImpl` of the stdlib sources (what `Foo::class` creates), if present in the module. */
     internal var kclassImpl: IrClass? = null
 
