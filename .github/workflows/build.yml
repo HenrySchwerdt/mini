@@ -25,3 +25,34 @@ jobs:
         run: xmake -y
       - name: Unit and native integration tests
         run: xmake test -y
+
+  kotlin:
+    # Kotlin/Mini: libminirt (C runtime) and the K2-based compiler (compiler/).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install libuv (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libuv1-dev
+          # ThreadSanitizer cannot map its shadow memory with the runner's default ASLR entropy.
+          sudo sysctl vm.mmap_rnd_bits=28
+      - name: Install libuv (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install libuv
+          echo "LIBUV_ROOT=$(brew --prefix libuv)" >> "$GITHUB_ENV"
+      - name: Runtime tests (ASan, UBSan, TSan)
+        run: runtime/minirt/run_tests.sh
+      - name: Compiler tests
+        working-directory: compiler
+        run: ./gradlew test --console=plain

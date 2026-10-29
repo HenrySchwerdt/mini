@@ -38,8 +38,7 @@ Tests: `gradle -p compiler test`.
 
 * `backend` tests: purity rule (below), mangling, emitter details.
 * `jvm-bridge` `EndToEndTest`: builds every `compiler/testdata/*.kt` with the CLI against the
-  **stub runtime** `compiler/testdata/runtime-stub/minirt_stub.c` (implements only the
-  minirt.h functions the emitter uses, plus C `main`), compiles with `-Werror`, runs the
+  real runtime `runtime/minirt` (sources compiled in), compiles with `-Werror`, runs the
   binary and compares stdout with `<name>.out`.
   * `<name>.err` (optional): substrings expected on stderr; the program must then exit non-zero (panic).
   * `<name>.cerr`: the build must fail with exit 1 and stderr must contain each line.

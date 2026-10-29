@@ -10,7 +10,8 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /**
- * Builds each .kt file in compiler/testdata with the CLI against the stub runtime and checks it:
+ * Builds each .kt file in compiler/testdata with the CLI against the real runtime (runtime/minirt)
+ * and checks it:
  *  - `<name>.cerr` present: the build must fail (exit 1) and stderr must contain every line of the file.
  *  - otherwise `<name>.out` is the expected stdout; `<name>.err` (optional) lists substrings
  *    expected on stderr, in which case the program must also exit non-zero (a panic).
@@ -18,7 +19,7 @@ import java.util.concurrent.TimeUnit
 class EndToEndTest {
     private val testdata = File(System.getProperty("mini.testdata") ?: error("mini.testdata not set"))
     private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
-    private val stub = File(testdata, "runtime-stub")
+    private val runtime = File(repoRoot, "runtime/minirt")
     private val work = Files.createTempDirectory("minic-e2e-").toFile().also { it.deleteOnExit() }
 
     @TestFactory
@@ -42,7 +43,8 @@ class EndToEndTest {
             Cli.run(
                 listOf(
                     "build", src.path, "-o", exe.path, "--emit-c", cOut.path,
-                    "--runtime-src", stub.path, "--cflag", "-Werror",
+                    "--runtime-src", File(runtime, "src").path,
+                    "--runtime-include", File(runtime, "include").path, "--cflag", "-Werror",
                 ),
                 repoRoot,
             )
