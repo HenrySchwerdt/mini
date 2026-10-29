@@ -34,6 +34,18 @@ fun Ast2Ir.convertConst(v: Any, t: Type): Any? {
     return v
 }
 
+/** whether [e0] is built from literals and at least one `const val` */
+fun Ast2Ir.mentionsConst(e0: Expr): Boolean {
+    val e = unparen(e0)
+    if (e is BinaryExpr) return mentionsConst(e.left) || mentionsConst(e.right)
+    if (e is PrefixExpr) return mentionsConst(e.expr)
+    if (e is NameExpr || e is DotExpr) {
+        val c = rec(e)?.callee
+        return c is PropSym && c.has("const")
+    }
+    return false
+}
+
 fun Ast2Ir.evalConst(e0: Expr): Any? {
     val e = unparen(e0)
     when (e) {
@@ -83,6 +95,10 @@ fun Ast2Ir.evalConst(e0: Expr): Any? {
         is BinaryExpr -> {
             val a = evalConst(e.left) ?: return null
             val b = evalConst(e.right) ?: return null
+            if (a is String && e.op == "+") {
+                if (b is String || b is Int || b is Long || b is Char || b is Boolean) return a + b.toString()
+                return null
+            }
             if (a is Int && b is Int) {
                 return when (e.op) {
                     "+" -> a + b

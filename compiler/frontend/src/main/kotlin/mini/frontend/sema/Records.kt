@@ -68,6 +68,8 @@ class CallInfo(val fn: FunSym, val typeArgs: List<Type>, val args: List<Arg>, va
 class Records {
     val map = HashMap<Ast, ExprRec>()
     val order = ArrayList<Ast>()
+    /** B2-3: the variable a `when (val x = e)` subject declares */
+    val subjectVars = HashMap<Ast, VarSym>()
 
     fun put(node: Ast, type: Type, callee: Sym?): ExprRec {
         var r = map[node]

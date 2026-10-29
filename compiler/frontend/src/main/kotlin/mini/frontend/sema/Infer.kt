@@ -239,13 +239,19 @@ class ConstraintSystem(private val sema: Sema) {
     // ---- solving ---------------------------------------------------------------------------------------------------
 
     fun fixAll() {
-        for (v in vars) fix(v)
+        fixInOrder(vars)
     }
 
     fun fixVarsOf(t: Type) {
         val l = ArrayList<TypeVariable>()
         unfixedVars(resolveFixed(t), l)
-        for (v in l) fix(v)
+        fixInOrder(l)
+    }
+
+    /** variables with a lower or equal constraint go first: the others may get their bounds from them (`C : MutableCollection<in R>`) */
+    private fun fixInOrder(l: List<TypeVariable>) {
+        for (v in ArrayList(l)) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) fix(v)
+        for (v in ArrayList(l)) fix(v)
     }
 
     fun fix(v: TypeVariable): Type {
@@ -291,14 +297,17 @@ class ConstraintSystem(private val sema: Sema) {
             val p = proper(l)
             if (p != null) lows.add(p)
         }
+        var onlyLit = lows.isNotEmpty()
+        for (l in lows) if (l !is IntLiteralType) onlyLit = false
+        // the upper bounds are only needed without lower bounds or for literals; looking at them early would fix the
+        // variables they mention before the constraints that determine those arrived (`C : MutableCollection<in R>`)
         val ups = ArrayList<Type>()
         for (u in ArrayList(v.upper)) {
+            if (lows.isNotEmpty() && !onlyLit) break
             val p = proper(u)
             if (p != null) ups.add(p)
         }
         if (lows.isNotEmpty()) {
-            var onlyLit = true
-            for (l in lows) if (l !is IntLiteralType) onlyLit = false
             if (onlyLit) {
                 // `val x: Long = id(1)`: an integral upper bound decides, otherwise the literal's default type
                 for (u in ups) {

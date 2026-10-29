@@ -16,7 +16,10 @@ class LowerDiagnostics(val messages: List<String>) : Exception(messages.joinToSt
 fun lowerToMir(inputs: List<LowerInput>, sourceName: String): MirModule {
     val srcs = ArrayList<SourceInput>()
     val user = HashSet<String>()
-    for (i in inputs) {
+    // K2 lists all files (program and stdlib) in path order whatever order they were given in
+    val sorted = ArrayList<LowerInput>(inputs)
+    sorted.sortBy { it.path }
+    for (i in sorted) {
         srcs.add(SourceInput(i.path, i.text))
         if (!i.isStdlib) user.add(i.path)
     }

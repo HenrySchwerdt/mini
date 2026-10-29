@@ -11,7 +11,14 @@ import mini.frontend.sema.*
 class LowerError(message: String) : Exception(message)
 
 fun Ast2Ir.fail(at: Ast?, what: String): Nothing {
-    throw LowerError((if (at != null) "offset " + at.start + ": " else "") + what)
+    var where = ""
+    var c = ctx
+    while (c != null && where.isEmpty()) {
+        val fn = c.fn
+        if (fn != null) where = " (in function " + fn.name + ")"
+        c = c.parent
+    }
+    throw LowerError((if (at != null) "offset " + at.start + ": " else "") + what + where)
 }
 
 // ---- contexts -------------------------------------------------------------------------------------------------------
@@ -28,8 +35,12 @@ inline fun <T> Ast2Ir.withCtx(c: BodyCtx, body: () -> T): T {
 
 /** counter of temporaries (`tmp0_subject`): per outermost body */
 fun Ast2Ir.nextTmp(): Int {
-    var c = ctx
-    while (c!!.parent != null) c = c.parent
+    var c: BodyCtx = ctx!!
+    while (true) {
+        val p = c.parent
+        if (p == null || !c.shareTmp) break
+        c = p
+    }
     val n = c.tmpCounter
     c.tmpCounter = n + 1
     return n
@@ -198,6 +209,11 @@ fun Ast2Ir.localDestructuring(d: DestructuringDecl): IrStatement {
 fun Ast2Ir.destructureInto(entries: List<DestructEntry>, tmp: IrVariable, out: ArrayList<IrStatement>) {
     var i = 1
     for (e in entries) {
+        if (e.name == "_") {
+            // an unused entry: no componentN call and no variable
+            i++
+            continue
+        }
         val r = rec(e) ?: fail(e, "destructuring entry without record")
         val vs = r.callee as? VarSym ?: fail(e, "destructuring entry without variable")
         val info = r.call ?: fail(e, "no component" + i + " function")
@@ -497,7 +513,9 @@ fun Ast2Ir.delegatedAccessor(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c
     val di = rec(d)?.extra as? DelegateInfo ?: fail(d, "delegated property without operator information")
     val fld = p.backingField ?: fail(d, "delegated property without delegate field")
     val recv = f.parameters.firstOrNull { it.kind == IrParameterKind.DispatchReceiver }
-    val delegateValue = IrGetField(fld, if (recv != null) getValue(recv) else null, fld.type)
+    var recvValue: IrExpression? = null
+    if (recv != null) recvValue = getValue(recv)
+    val delegateValue = IrGetField(fld, recvValue, fld.type)
     val thisRef: IrExpression = if (recv != null) getValue(recv) else nullConst()
     val t = irType(sema.typeOfProp(sym))
     val propRef = delegateReference(sym.name, t, if (recv != null) 1 else 0)

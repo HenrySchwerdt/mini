@@ -117,7 +117,18 @@ fun Ast2Ir.callWithInfo(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrE
     val d = info.dispatch
     val x = info.ext
     val safeRecv: RecvUse? = if (d != null && d.expr != null && d.safe) d else if (x != null && x.expr != null && x.safe) x else null
-    val staticRecv: Type? = if (d != null) recvStaticType(d) else null
+    var staticRecv: Type? = if (d != null) recvStaticType(d) else null
+    if (d != null && fn.kind != FunKind.FUNCTION_INVOKE) {
+        // a smart-cast receiver whose unsmart class already has the member needs no cast
+        val dex = d.expr
+        if (dex != null) {
+            val rr = rec(unparen(dex))
+            if (rr != null && rr.smart != null) {
+                val oc = classOf(rr.type)
+                if (oc != null && memberFound(irClass(oc), irFunctionOf(fn))) staticRecv = rr.type
+            }
+        }
+    }
     val callee = functionFor(fn, staticRecv)
     val inner = if (safeRecv != null) irType(info.ret ?: sema.nullableAny) else type
     if (safeRecv != null) {
@@ -223,7 +234,9 @@ fun Ast2Ir.fillCallArgs(
             IrParameterKind.DispatchReceiver -> call.arguments.add(adaptReceiver(dispatch, p))
             IrParameterKind.ExtensionReceiver -> call.arguments.add(adaptReceiver(ext, p))
             IrParameterKind.Regular -> {
+                inlineArgument = callee is IrSimpleFunction && callee.isInline && !p.isNoinline
                 call.arguments.add(if (info == null) null else argFor(info, regular, p, subst, label))
+                inlineArgument = false
                 regular++
             }
             else -> call.arguments.add(null)
@@ -268,6 +281,9 @@ private fun Ast2Ir.argFor(info: CallInfo, j: Int, p: IrValueParameter, subst: Ma
 private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpression {
     val ex = a.expr!!
     val u = unwrapPostponed(ex)
+    val inl = inlineArgument
+    inlineArgument = false
+    if (u is LambdaExpr) lambdaInline = inl
     val v = if (u is LambdaExpr) lambdaExpr(u, label) else convert(ex)
     if (expected is ClassType && expected.cls.isFunInterface && rec(u)?.type is FunType) return samConversion(v, irType(expected))
     return v
@@ -383,6 +399,11 @@ fun Ast2Ir.binaryExpr(e: BinaryExpr): IrExpression {
     val r = rec(e) ?: fail(e, "binary expression without record")
     val info = r.call ?: fail(e, "operator " + op + " is not resolved")
     val t = irType(r.type)
+    if ((op == "+" || op == "-" || op == "*" || op == "/" || op == "%") && mentionsConst(e)) {
+        // K2 evaluates constant expressions that involve a `const val`
+        val v = evalConst(e)
+        if (v != null) return IrConst(t, convertConst(v, t))
+    }
     val origin = when (op) {
         "+" -> "PLUS"
         "-" -> "MINUS"
@@ -418,9 +439,9 @@ fun Ast2Ir.isFloating(t: Type): Boolean {
 }
 
 fun Ast2Ir.equality(e: BinaryExpr): IrExpression {
-    val l = convert(e.left)
-    val r = convert(e.right)
     val ident = e.op == "===" || e.op == "!=="
+    val l = if (ident) convert(e.left) else convertEqOperand(e.left)
+    val r = if (ident) convert(e.right) else convertEqOperand(e.right)
     val neg = e.op == "!=" || e.op == "!=="
     val name = if (ident) "EQEQEQ" else if (isFloating(l.type) && isFloating(r.type)) "ieee754equals" else "EQEQ"
     val eq = IrCall(builtinFun(name), sema.booleanType)
@@ -544,12 +565,13 @@ fun Ast2Ir.prefixExpr(e: PrefixExpr): IrExpression {
         "-", "+" -> {
             val operand = e.expr
             if (e.op == "-" && operand is LiteralExpr && operand.kind == LitKind.INT) {
-                // `-<integer literal>` is a literal
+                // `-<integer literal>` is a literal (unless an unsuffixed literal is too big for Int: that stays a negation)
                 val t = irType(r.type)
                 var text = operand.text
-                if (text.endsWith("L")) text = text.substring(0, text.length - 1)
+                val suffixed = text.endsWith("L")
+                if (suffixed) text = text.substring(0, text.length - 1)
                 val v = parseIntLiteral(text) ?: fail(e, "integer literal")
-                return intConst(t, -v)
+                if (v <= 2147483647L) return intConst(t, -v)
             }
             val info = r.call ?: fail(e, "unary operator is not resolved")
             val v = convert(e.expr)

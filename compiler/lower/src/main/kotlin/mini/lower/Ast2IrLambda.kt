@@ -40,7 +40,7 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
     val destructs = ArrayList<IrValueParameter>()
     for (pt in ft.params) {
         val vs = if (i < vars.size) vars[i] else null
-        val name = if (vs != null) vs.name else "p" + i
+        val name = if (vs != null) (if (vs.name == "_") "<unused var>" else vs.name) else "p" + i
         val p = IrValueParameter(name, irType(pt), IrParameterKind.Regular, idx++)
         p.parent = fn
         if (vs != null) varMap[vs] = p
@@ -49,6 +49,8 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
     }
     fn.returnType = irType(ft.ret)
     val bc = BodyCtx(ctx, fn, label, true)
+    bc.shareTmp = lambdaInline
+    lambdaInline = false
     if (recvParam != null) bc.recvs.add(RecvEntry(null, null, lam, null, recvParam))
     withCtx(bc) {
         val stmts = ArrayList<IrStatement>()
@@ -87,6 +89,10 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
 private fun Ast2Ir.destructureParam(names: List<DestructEntry>, p: IrValueParameter, out: ArrayList<IrStatement>) {
     var i = 1
     for (e in names) {
+        if (e.name == "_") {
+            i++
+            continue
+        }
         val r = rec(e) ?: fail(e, "destructured parameter without record")
         val vs = r.callee as? VarSym ?: fail(e, "destructured parameter without symbol")
         val info = r.call ?: fail(e, "no component" + i)

@@ -1112,6 +1112,7 @@ private fun BodyChecker.whenBody(e: WhenExpr, expected: Type?, top: Boolean): Ty
             declareVar(l, v)
             recordDeclAt(vs, subj.expr.end, vt)
             subjVar = v
+            rec.subjectVars[subj] = v
             subjType = vt
             subjKey = StableRef("v" + v.id, v.name)
         }

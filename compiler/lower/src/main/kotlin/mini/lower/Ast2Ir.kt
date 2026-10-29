@@ -15,6 +15,8 @@ class BodyCtx(val parent: BodyCtx?, val fn: IrFunction?, val label: String?, val
     var initOf: IrClass? = null
     /** counter of the temporaries (`tmp0_subject`) of this outermost body */
     var tmpCounter = 0
+    /** a lambda passed to an inline function numbers its temporaries on in the counter of the enclosing body */
+    var shareTmp = false
 }
 
 /**
@@ -23,6 +25,9 @@ class BodyCtx(val parent: BodyCtx?, val fn: IrFunction?, val label: String?, val
  */
 class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
     val ops: TypeOps = sema.ops
+    /** set while the argument of an inline function's parameter is built (see BodyCtx.shareTmp) */
+    var inlineArgument = false
+    var lambdaInline = false
     val module = IrModule(ArrayList())
 
     val fileMap = HashMap<FileInfo, IrFile>()
@@ -106,7 +111,24 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             is CapType -> irType(ops.approximate(t))
             is IsectType -> if (t.parts.isNotEmpty()) irType(t.parts[t.parts.size - 1]) else sema.anyType
             is ErrType -> sema.nullableAny
-            is VarType -> sema.nullableAny
+            is VarType -> {
+                val fx = t.v.fixed
+                if (fx == null) sema.nullableAny else irType(if (t.nullable) fx.withNullable(true) else fx)
+            }
+            is ClassType -> {
+                if (t.args.isEmpty()) t else {
+                    var changed = false
+                    val args = ArrayList<TArg>()
+                    for (a in t.args) {
+                        val x = a.type
+                        if (x is VarType) {
+                            changed = true
+                            args.add(TArg(irType(x), a.variance))
+                        } else args.add(a)
+                    }
+                    if (changed) ClassType(t.cls, args, t.nullable) else t
+                }
+            }
             else -> t
         }
     }

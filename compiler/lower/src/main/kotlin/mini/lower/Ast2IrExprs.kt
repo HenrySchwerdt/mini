@@ -24,18 +24,29 @@ fun Ast2Ir.unparen(e: Expr): Expr {
 
 // ---- entry ----------------------------------------------------------------------------------------------------------
 
-fun Ast2Ir.convert(e: Expr): IrExpression {
-    if (e is ParenExpr) return convert(e.inner)
-    if (e is AnnotatedExpr) return convert(e.expr)
-    var ir = convertRaw(e)
+fun Ast2Ir.convert(e: Expr): IrExpression = convertImpl(e, false)
+
+/** an operand of `==`: a smart cast to a reference type is not materialised (the comparison takes `Any?`) */
+fun Ast2Ir.convertEqOperand(e: Expr): IrExpression = convertImpl(e, true)
+
+private fun Ast2Ir.convertImpl(e: Expr, eqOperand: Boolean): IrExpression {
+    if (e is ParenExpr) return convertImpl(e.inner, eqOperand)
+    if (e is AnnotatedExpr) return convertImpl(e.expr, eqOperand)
+    return smartCast(convertRaw(e), e, eqOperand)
+}
+
+/** the smart cast recorded for [e], wrapped around its raw value [raw] */
+fun Ast2Ir.smartCast(raw: IrExpression, e: Ast, eqOperand: Boolean): IrExpression {
+    var ir = raw
     val r = rec(e)
     val sm = r?.smart
+    if (eqOperand && sm != null) return ir
     if (sm != null && !(sm is TypeParamType && sm.definitelyNotNull)) {
         val st = irType(sm)
         if (!typeEquals(st, ir.type)) {
             val c = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, ir, st)
             // a smart cast of `this` is only kept where the callee needs it; a variable's is always kept
-            c.isSmart = e is ThisExpr
+            c.isSmart = true
             ir = c
         }
     }
@@ -214,7 +225,7 @@ fun Ast2Ir.stringExpr(e: StringExpr): IrExpression {
                     run.setLength(0)
                     hasRun = false
                 }
-                if (p.name == "this") args.add(thisExprAt(p, null)) else args.add(nameExpr(NameExpr(p.name), p))
+                if (p.name == "this") args.add(thisExprAt(p, null)) else args.add(smartCast(nameExpr(NameExpr(p.name), p), p, false))
             }
             is StrLongExpr -> {
                 if (hasRun) {
@@ -261,11 +272,17 @@ private fun Ast2Ir.implicitReceiver0(ref: RecvRef, at: Ast?): IrExpression {
         val c = irClass(rcs)
         return IrGetObjectValue(c, irType(rcs.thisType()))
     }
+    val rcls = ref.cls
     var c = ctx
+    var crossedLambda = false
     while (c != null) {
         for (i in c.recvs.indices.reversed()) {
             val r = c.recvs[i]
             val sc = ref.scope
+            // inside a lambda the implicit receiver of an enclosing named object is the object itself
+            if (crossedLambda && rcls != null && r.cls === rcls && rcls.isObject && !rcls.isAnonymous) {
+                return IrGetObjectValue(irClass(rcls), irType(rcls.thisType()))
+            }
             if (ref.cls != null && r.cls === ref.cls) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
             if (sc != null) {
                 if (sc.lambda != null && r.lambda === sc.lambda) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
@@ -273,6 +290,7 @@ private fun Ast2Ir.implicitReceiver0(ref: RecvRef, at: Ast?): IrExpression {
                 if (sc.prop != null && r.prop === sc.prop) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
             }
         }
+        if (c.isLambda) crossedLambda = true
         c = c.parent
     }
     fail(at, "implicit receiver not found")
@@ -433,8 +451,22 @@ fun Ast2Ir.propertyGet(sym: PropSym, access: Access?, type: Type, node: Ast): Ir
     }
 }
 
+/** the unsmart class of a smart-cast receiver when it has the member itself (K2 then needs no cast), else the smart one */
+fun Ast2Ir.recvClassFor(recv: RecvUse?, f: IrSimpleFunction): IrClass? {
+    if (recv == null) return null
+    val ex = recv.expr
+    if (ex != null) {
+        val r = rec(unparen(ex))
+        if (r != null && r.smart != null) {
+            val oc = classOf(r.type)
+            if (oc != null && memberFound(irClass(oc), f)) return irClass(oc)
+        }
+    }
+    return recvClassOf(recv)
+}
+
 fun Ast2Ir.findMember(f: IrSimpleFunction, recv: RecvUse?): IrSimpleFunction {
-    val rc = recvClassOf(recv) ?: return f
+    val rc = recvClassFor(recv, f) ?: return f
     return findMemberIn(rc, f)
 }
 

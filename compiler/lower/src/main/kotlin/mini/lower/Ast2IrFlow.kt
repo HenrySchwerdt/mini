@@ -279,8 +279,9 @@ fun Ast2Ir.ifExpr(e: IfExpr): IrExpression {
         branches.add(IrBranch(cond, if (isUnit(t)) coerceToUnit(tb) else tb))
         val elseE = cur.otherwise
         if (elseE == null) break
-        if (elseE is IfExpr) {
-            cur = elseE
+        val elseU = unparen(elseE)
+        if (elseU is IfExpr) {
+            cur = elseU
             continue
         }
         val eb = convert(elseE)
@@ -323,13 +324,8 @@ fun Ast2Ir.whenExpr(e: WhenExpr): IrExpression {
         }
         val ones = ArrayList<IrExpression>()
         for (c in en.conds) ones.add(whenCondition(c, subjVar))
-        // `a, b, c` is `a || (b || c)`
-        var cond: IrExpression? = null
-        var oi = ones.size - 1
-        while (oi >= 0) {
-            cond = if (cond == null) ones[oi] else orElse(ones[oi], cond)
-            oi--
-        }
+        // `a, b, c`: a balanced tree of `||` (FIR's buildBalancedOrExpressionTree)
+        var cond: IrExpression? = balancedOr(ones, 0, ones.size)
         val g = en.guard
         if (g != null) {
             val ge = convert(g)
@@ -348,7 +344,13 @@ fun Ast2Ir.whenExpr(e: WhenExpr): IrExpression {
     return IrBlock(stmts, t, "WHEN")
 }
 
-private fun Ast2Ir.findSubjectVar(subj: WhenSubject): VarSym? = null
+private fun Ast2Ir.findSubjectVar(subj: WhenSubject): VarSym? = sema.records.subjectVars[subj]
+
+private fun Ast2Ir.balancedOr(l: List<IrExpression>, lo: Int, hi: Int): IrExpression {
+    if (hi - lo == 1) return l[lo]
+    val mid = lo + (hi - lo) / 2
+    return orElse(balancedOr(l, lo, mid), balancedOr(l, mid, hi))
+}
 
 private fun Ast2Ir.orElse(a: IrExpression, b: IrExpression): IrExpression {
     val br = ArrayList<IrBranch>()

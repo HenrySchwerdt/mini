@@ -259,6 +259,32 @@ private fun Ast2Ir.makeFakeProperty(c: IrClass, group: List<InhProp>, minimal: L
  * The member of [c] (declared or fake override) that stands for [f], a function declared in [c] or in one of its
  * supertypes: what a call through a receiver of static class [c] refers to in K2's IR.
  */
+/** whether [f] is declared in [c] or one of its (fake) members stands for it */
+fun memberFound(c: IrClass, f: IrSimpleFunction): Boolean {
+    if (f.parent === c) return true
+    for (d in c.declarations) {
+        if (d is IrSimpleFunction) {
+            val s = HashSet<IrSimpleFunction>()
+            allOverriddenOf(d, s)
+            if (s.contains(f)) return true
+        } else if (d is IrProperty) {
+            val g = d.getter
+            if (g != null) {
+                val s = HashSet<IrSimpleFunction>()
+                allOverriddenOf(g, s)
+                if (s.contains(f)) return true
+            }
+            val st = d.setter
+            if (st != null) {
+                val s = HashSet<IrSimpleFunction>()
+                allOverriddenOf(st, s)
+                if (s.contains(f)) return true
+            }
+        }
+    }
+    return false
+}
+
 fun findMemberIn(c: IrClass, f: IrSimpleFunction): IrSimpleFunction {
     val own = f.parent
     if (own === c) return f
