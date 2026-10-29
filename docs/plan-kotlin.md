@@ -123,6 +123,7 @@ Mitgelieferte Implementierungen: `Heap : Deallocating, ThreadSafe` (malloc/free)
 | `Deallocating` | Jede Allokation wird auf **jedem** Pfad genau einmal freigegeben oder an einen `@Owned`-Slot übergeben. Kein Use-after-free, kein Double-free. |
 | `Scoped` | Kein Objekt aus der Arena entkommt dem Scope (Rückgabe, Feld eines langlebigeren Objekts, Capture in einem entkommenden Lambda). |
 | `Managed` | nichts, nur Optimierung |
+| `Scoped` (zusätzlich) | Eine Arena ruft beim Freigeben **kein** `dispose` auf, damit sie pro Objekt nichts kostet. Deshalb darf ein Arena-Objekt keine Referenzen auf Objekte anderer Allocatoren besitzen (z. B. refcounted Strings). Der Compiler meldet das als Fehler. *(entschieden)* |
 | ohne `ThreadSafe` | Objekte daraus dürfen nicht an einen anderen Thread übergeben werden. |
 
 ### 4.2 Wo wird alloziert? Platzierung pro Konstruktoraufruf
