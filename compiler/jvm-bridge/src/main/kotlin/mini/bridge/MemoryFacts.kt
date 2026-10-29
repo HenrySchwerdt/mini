@@ -105,7 +105,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         for (file in module.files) {
             if (!isUserFile(file)) continue
             setFile(file)
-            mainFile = fileName
+            if (mainFile.isEmpty()) mainFile = fileName
             runCatching { sources[fileName] = java.io.File(fileName).readLines() }
             for (d in file.declarations) lowerDeclaration(d, functions)
         }
@@ -306,7 +306,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         if (m.mode == MemMode.Strict || true) {
             return try {
                 val lw = Lowerer(f)
-                MFunction(m, lw.lowerFunctionBody(body)).also { m.body = it.body }
+                MFunction(m, lw.lowerFunctionBody(body), true, fileName).also { m.body = it.body }
             } catch (e: Exception) {
                 failures += "${m.qname}: ${e.message ?: e.toString()}"
                 if (m.mode == MemMode.Strict) strictFailures += "${m.qname}: ${e.message ?: e.toString()}"

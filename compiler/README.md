@@ -25,7 +25,7 @@ minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
             [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
             [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [-Werror]
             [--stats] [--no-rc-opt]
-minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]
+minic check <file.kt>... [--extra-src <file.kt>]... [--brief] [-Werror] [--frontend=mini|k2]
 ```
 
 * Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.
@@ -305,7 +305,23 @@ K2 -> Kotlin IR --+--> Ir2Mir -> MIR -> C                      (code generation,
                   |
                   +--> MemoryFacts -> MemIr -> CFG -> dataflow -> diagnostics   (the checker)
                        (jvm-bridge)   \_______ compiler/backend/.../memory _______/
+
+own frontend: sema -> Ast2Ir -> IR --+--> Ir2Mir (lower) -> MIR -> C
+                                     +--> MemoryFacts (lower) -> the same MemIr and checker
 ```
+
+**Both frontends run the checker** (`--frontend=mini`, the default, uses `mini.lower.MemoryFacts`, a port of the K2 one
+to the K2-shaped IR of `Ast2Ir`; `--frontend=k2` uses `jvm-bridge/MemoryFacts.kt`). `minic build` and `minic check`
+analyse **every user file** (not `--extra-src`, not the stdlib); a diagnostic knows its file (`Diag.file`) and is printed
+with the file name as given on the command line. The native compiler has the same: `minic-native --check [--brief]
+[-Werror] <user.kt>... --stdlib <std.kt>...` prints the same text (to stdout, the stdlib has no stderr) and ends with
+status 1 on an error (0 otherwise; warnings only with `-Werror`); a normal `minic-native -o out.c` run checks first and
+fails the same way. `MiniMemoryCheckTest` runs the whole corpus (`testdata/memory`, `memory-extra`, 117 programs) on
+both frontends and requires identical rendered diagnostics (code, line:col, message, secondary positions, help) and the
+`.diag` expectations: 117/117. The Ir of the own frontend carries what the checker needs: start offsets (set in
+`Ast2Ir`, K2's convention: an expression starts at its leftmost receiver), type annotations (`x: @Owned T`) and annotation
+classes resolved to qualified names (`mini.memory.Owned`, also `@mini.memory.Owned`; a user class named `Owned` is not
+the annotation).
 
 * **`MemoryFacts.kt` (jvm-bridge)** lowers the Kotlin IR of the user file to **MemIr** (`backend/.../memory/MemIr.kt`),
   the MIR-level program the checker consumes. It is a second view of the same IR module as `Ir2Mir` and lives in its
@@ -616,7 +632,7 @@ independently of the callee except for single candidates); K2's flexible loop an
 
 ## Bootstrap B2-3: MIR from our own frontend (no K2)
 
-`minic build|emit-mir --frontend=mini` (K2 stays the default) runs parser + sema (B2-1/B2-2), `Ast2Ir` (builds the IR shapes K2's fir2ir
+`minic build|emit-mir|check --frontend=mini` (the default since the memory checker runs on it too; `--frontend=k2` selects K2, `--no-stdlib` implies K2) runs parser + sema (B2-1/B2-2), `Ast2Ir` (builds the IR shapes K2's fir2ir
 produces: declaration order, fake overrides with substituted signatures, `tmpN_*` temporaries, origins, smart-cast and SAM wrappers, constant
 folding), `Reachability` and the ported `Ir2Mir` (all in `compiler/lower`, pure Kotlin) and then the unchanged backend. `compiler/minic-native` wraps
 this in a `main(args)` (`minic-native [-o out.c] [--emit-mir out.mir] <user.kt>... --stdlib <files>...`).

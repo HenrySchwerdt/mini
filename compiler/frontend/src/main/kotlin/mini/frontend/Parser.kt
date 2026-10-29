@@ -12,6 +12,13 @@ class ParseResult(
 /** Parses [text] as a Kotlin file. Never throws; syntax errors are collected in [ParseResult.errors]. */
 fun parseKotlin(text: String): ParseResult = Parser(lexKotlin(text)).parseFile()
 
+/** Like [parseKotlin] for the semantic analysis: backtick-quoted identifiers are their names without the quotes (as in K2). */
+fun parseKotlinUnquoted(text: String): ParseResult {
+    val p = Parser(lexKotlin(text))
+    p.unquoteNames = true
+    return p.parseFile()
+}
+
 internal const val CTX_TOP = 0
 internal const val CTX_CLASS = 1
 internal const val CTX_LOCAL = 2
@@ -150,7 +157,14 @@ class Parser(internal val lex: LexResult) {
         return text.substring(t.start, t.end)
     }
 
-    internal fun tokText(): String = textAt(0)
+    /** Names of backtick-quoted identifiers without the quotes (the semantic analysis); the outline keeps the source text. */
+    internal var unquoteNames = false
+
+    internal fun tokText(): String {
+        val t = textAt(0)
+        if (unquoteNames && kind() == Tk.IDENT && t.length >= 2 && t[0] == '`' && t[t.length - 1] == '`') return t.substring(1, t.length - 1)
+        return t
+    }
 
     /** is the token `k` positions ahead an identifier with exactly this text? */
     internal fun identAt(k: Int, s: String): Boolean {

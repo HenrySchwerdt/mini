@@ -55,7 +55,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         for (f in sema.files) {
             val irf = IrFile(f.path, f.text, f.pkg, !userPaths.contains(f.path))
             irf.isBuiltin = isBuiltinFile(f)
-            irf.annotations = annotationsOfEntries(f.ast.fileAnnotations)
+            irf.annotations = annotationsOfEntries(f.ast.fileAnnotations, f)
             fileMap[f] = irf
             module.files.add(irf)
         }
@@ -224,7 +224,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             else -> IrModality.FINAL
         }
         c.visibility = if (sym.isLocal || sym.isAnonymous) "local" else visibilityOf(sym.mods())
-        c.annotations = annotationsOf(sym.mods())
+        c.annotations = annotationsOf(sym.mods(), sym.file)
         c.isInner = sym.isInner
         c.isValue = sym.isValue
         c.isCompanion = sym.isCompanion
@@ -389,29 +389,119 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         return null
     }
 
-    fun annotationsOfEntries(list: List<AnnotationEntry>): List<IrAnnotation> {
+    /**
+     * The annotations of [list] as IR annotations. The class of an annotation is resolved in the scope of [file]
+     * (imports, the package, default imports), so `@Owned` and `@mini.memory.Owned` both give `mini.memory.Owned`.
+     */
+    fun annotationsOfEntries(list: List<AnnotationEntry>, file: FileInfo?): List<IrAnnotation> {
         if (list.isEmpty()) return emptyList()
         val out = ArrayList<IrAnnotation>()
         for (a in list) {
             val t = a.type
             if (t !is UserType || t.segments.isEmpty()) continue
             val args = a.args
-            out.add(IrAnnotation(t.segments[t.segments.size - 1].name, if (args != null && args.isNotEmpty()) annotationArgOf(args[0].value) else null))
+            val first = if (args != null && args.isNotEmpty()) args[0].value else null
+            out.add(IrAnnotation(resolveClassName(t, file), annotationArgOf(first), annotationClassArg(first, file), a.start))
         }
         return out
     }
 
-    fun annotationsOf(m: Modifiers?): List<IrAnnotation> = if (m == null) emptyList() else annotationsOfEntries(m.annotations())
+    /** the qualified name of the class [t] denotes in [file], or its name as written when it cannot be resolved */
+    fun resolveClassName(t: UserType, file: FileInfo?): String {
+        val segs = t.segments
+        val written = StringBuilder()
+        for (i in segs.indices) {
+            if (i > 0) written.append('.')
+            written.append(segs[i].name)
+        }
+        if (file == null) return written.toString()
+        return resolveDotted(segs.map { it.name }, file) ?: written.toString()
+    }
+
+    private fun resolveDotted(names: List<String>, file: FileInfo): String? {
+        var cur: Sym? = sema.lookupClassifier(file.scope, names[0])
+        var idx = 0
+        if (cur == null) {
+            var k = 1
+            while (k < names.size && cur == null) {
+                val sb = StringBuilder()
+                var j = 0
+                while (j < k) {
+                    if (j > 0) sb.append('.')
+                    sb.append(names[j])
+                    j++
+                }
+                val p = sema.packages[sb.toString()]
+                val c: Sym? = p?.classes?.get(names[k])
+                if (c != null) {
+                    cur = c
+                    idx = k
+                }
+                k++
+            }
+        }
+        var i = idx + 1
+        while (cur is ClassSym && i < names.size) {
+            cur = sema.nestedClassifier(cur, names[i], 0)
+            i++
+        }
+        return if (cur is ClassSym && i == names.size) cur.fqName() else null
+    }
+
+    /** `Heap::class` as an annotation argument: the qualified name of the class */
+    private fun annotationClassArg(e: Expr?, file: FileInfo?): String? {
+        if (e == null || file == null) return null
+        if (e is ParenExpr) return annotationClassArg(e.inner, file)
+        if (e is CallableRefExpr && e.name == "class") {
+            val names = ArrayList<String>()
+            if (!dottedNames(e.receiver, names)) return null
+            return resolveDotted(names, file)
+        }
+        return null
+    }
+
+    private fun dottedNames(e: Expr?, out: ArrayList<String>): Boolean {
+        if (e is NameExpr) {
+            out.add(e.name)
+            return true
+        }
+        if (e is DotExpr) {
+            if (!dottedNames(e.receiver, out)) return false
+            return dottedNames(e.selector, out)
+        }
+        return false
+    }
+
+    fun annotationsOf(m: Modifiers?, file: FileInfo?): List<IrAnnotation> = if (m == null) emptyList() else annotationsOfEntries(m.annotations(), file)
 
     /** Annotations written on a type (`@Borrowed Node?`), looking through nullable and parenthesized types. */
-    fun typeAnnotationsOf(t: TypeRef?): List<IrAnnotation> {
+    fun typeAnnotationsOf(t: TypeRef?, file: FileInfo?): List<IrAnnotation> {
         var x = t
         val out = ArrayList<IrAnnotation>()
         while (x != null) {
-            out.addAll(annotationsOf(x.mods))
+            out.addAll(annotationsOf(x.mods, file))
             x = if (x is NullableType) x.inner else if (x is ParenType) x.inner else null
         }
         return out
+    }
+
+    /** the file whose source the body being built comes from (for resolving annotation names) */
+    fun bodyFile(): FileInfo? {
+        var c = ctx
+        while (c != null) {
+            var f: IrFunction? = c.fn
+            while (f != null) {
+                val s = f.sym
+                if (s != null && s.file != null) return s.file
+                val p = f.parent
+                f = if (p is IrFunction) p else null
+                if (p is IrClass && p.sym?.file != null) return p.sym.file
+            }
+            val io = c.initOf
+            if (io != null && io.sym?.file != null) return io.sym.file
+            c = c.parent
+        }
+        return null
     }
 
     fun cSymbolOf(m: Modifiers?): String? {
@@ -449,7 +539,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         fn.isOperator = m != null && m.has("operator")
         fn.isSuspend = m != null && m.has("suspend")
         fn.cSymbolName = cSymbolOf(m)
-        fn.annotations = annotationsOf(m)
+        fn.annotations = annotationsOf(m, sym.file ?: bodyFile())
         fn.typeParameters = sym.typeParams
         for (tp in sym.typeParams) sema.ensureBounds(tp)
         fn.modality = functionModality(sym, owner)
@@ -472,7 +562,8 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
                 val ct = if (cpt != null) sema.resolveType(cpt, sema.funScope(sym)) else sema.nullableAny
                 val cip = IrValueParameter(cp.name, irType(ct), IrParameterKind.Context, idx++)
                 cip.parent = fn
-                cip.annotations = annotationsOf(cp.mods)
+                cip.annotations = annotationsOf(cp.mods, sym.file)
+                cip.typeAnnotations = typeAnnotationsOf(cp.type, sym.file)
                 fn.parameters.add(cip)
             }
         }
@@ -484,6 +575,9 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         }
         addValueParameters(fn, sym.params, idx)
         fn.returnType = irType(sema.returnTypeOf(sym))
+        fn.returnTypeAnnotations = typeAnnotationsOf(sym.decl?.returnType, sym.file ?: bodyFile())
+        val fdecl = sym.decl
+        if (fdecl != null) fn.startOffset = fdecl.start
         val d = sym.decl
         if (d != null && d.body != null) {
             fn.bodyBuilder = { buildFunctionBody(fn, sym) }
@@ -497,7 +591,11 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             val pt = irType(p.type ?: sema.nullableAny)
             val ip = IrValueParameter(p.name, pt, IrParameterKind.Regular, idx++)
             ip.parent = fn
-            ip.annotations = annotationsOf(p.decl?.mods)
+            val pfile = fn.sym?.file ?: bodyFile()
+            ip.annotations = annotationsOf(p.decl?.mods, pfile)
+            ip.typeAnnotations = typeAnnotationsOf(p.decl?.type, pfile)
+            val pdecl = p.decl
+            if (pdecl != null) ip.startOffset = pdecl.start
             ip.isNoinline = p.isNoinline
             ip.isCrossinline = p.isCrossinline
             val ve = p.varargElement
@@ -576,7 +674,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         p.isVar = sym.isVar
         p.isLateinit = m != null && m.has("lateinit")
         p.cSymbolName = cSymbolOf(m)
-        p.annotations = annotationsOf(m)
+        p.annotations = annotationsOf(m, sym.file)
         val owner = sym.owner
         val type = irType(sema.typeOfProp(sym))
         val abstract = (m != null && m.has("abstract")) || (owner != null && owner.isInterface && (d == null || (d.getter?.body == null && d.initializer == null && d.delegate == null)))
@@ -622,7 +720,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             p.backingField = f
             val fa = ArrayList<IrAnnotation>()
             fa.addAll(p.annotations)
-            fa.addAll(typeAnnotationsOf(if (d != null) d.type else sym.ctorParam?.type))
+            fa.addAll(typeAnnotationsOf(if (d != null) d.type else sym.ctorParam?.type, sym.file))
             f.annotations = fa
             if (sym.decl == null) {
                 val cp = sym.ctorParam

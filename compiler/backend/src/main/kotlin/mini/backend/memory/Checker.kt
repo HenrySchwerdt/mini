@@ -10,18 +10,21 @@ package mini.backend.memory
 object MemoryChecker {
     fun check(module: MModule): List<Diag> {
         val all = LinkedHashMap<String, Diag>()
-        val sink: (Diag) -> Unit = { d -> all.putIfAbsent(d.key, d) }
         computeThrowSummaries(module)
         // pass 1 only collects summaries (storesParams); pass 2 reports
         for (f in module.functions) if (f.fn.mode == MemMode.Strict) checkFunction(f) { }
         for (f in module.functions) {
+            val sink: (Diag) -> Unit = { d ->
+                d.file = f.file
+                all.putIfAbsent(d.key, d)
+            }
             if (f.fn.mode == MemMode.Strict) checkFunction(f, sink) else checkManaged(f, sink)
         }
         // one cause, one message: a leak report for a slot that already has a use/free/move error is a follow-up
         val dirty = all.values.filter { it.code != "M0102" && it.slot >= 0 }.map { it.slot }.toSet()
         return all.values
             .filter { !(it.code == "M0102" && it.slot in dirty) && it.pos.line > 0 }
-            .sortedWith(compareBy({ it.pos.line }, { it.pos.col }, { it.code }))
+            .sortedWith(compareBy({ it.file }, { it.pos.line }, { it.pos.col }, { it.code }))
     }
 
     // ---- exception summaries (5.6) -------------------------------------------------------------

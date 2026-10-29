@@ -6,12 +6,15 @@ import mini.backend.llvm.LlvmEmitter
 import mini.io.readTextFile
 import mini.io.writeTextFile
 import mini.lower.LowerDiagnostics
+import mini.backend.memory.MemoryReport
 import mini.lower.LowerInput
+import mini.lower.checkMemory
 import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
 
 /*
- *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--no-rc-opt] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
  *
  * The compiler without K2: our own parser and semantic analysis (mini.frontend), the lowering to MIR (mini.lower) and the C
  * backend (mini.backend) behind one driver. Files before `--stdlib` are the program (the first one names the module),
@@ -20,13 +23,16 @@ import mini.lower.lowerToMir
  * the other pure modules and mini.io; the same source runs on the JVM and, compiled by minic, as a native binary.
  */
 
-const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--no-rc-opt] <user.kt>... [--stdlib <stdlib.kt>...]"
+const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]\n       minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]"
 
 fun main(args: Array<String>) {
     var output: String? = null
     var mirOut: String? = null
     var llOut: String? = null
     var rcOpt = true
+    var check = false
+    var brief = false
+    var werror = false
     val inputs = ArrayList<LowerInput>()
     var stdlib = false
     var firstName: String? = null
@@ -48,6 +54,15 @@ fun main(args: Array<String>) {
         } else if (a == "--no-rc-opt") {
             rcOpt = false
             i += 1
+        } else if (a == "--check") {
+            check = true
+            i += 1
+        } else if (a == "--brief") {
+            brief = true
+            i += 1
+        } else if (a == "-Werror") {
+            werror = true
+            i += 1
         } else if (a == "--stdlib") {
             stdlib = true
             i += 1
@@ -61,9 +76,19 @@ fun main(args: Array<String>) {
             i += 1
         }
     }
-    if (firstName == null || (output == null && mirOut == null && llOut == null)) throw IllegalArgumentException(USAGE)
+    if (firstName == null || (!check && output == null && mirOut == null && llOut == null)) throw IllegalArgumentException(USAGE)
+    val name: String = firstName
+    if (check) {
+        val report = try {
+            checkMemory(inputs)
+        } catch (e: LowerDiagnostics) {
+            throw IllegalStateException(e.message)
+        }
+        reportMemory(report, name, werror, brief)
+        return
+    }
     val module = try {
-        lowerToMir(inputs, firstName)
+        lowerToMir(inputs, name) { report -> reportMemory(report, name, werror, false) }
     } catch (e: LowerDiagnostics) {
         throw IllegalStateException(e.message)
     } catch (e: UnsupportedConstruct) {
@@ -77,4 +102,20 @@ fun main(args: Array<String>) {
 private fun fileNameOf(path: String): String {
     val i = path.lastIndexOf('/')
     return if (i < 0) path else path.substring(i + 1)
+}
+
+/** Prints the diagnostics and fails (an uncaught exception ends the program with status 1) when the report fails the build. */
+private fun reportMemory(report: MemoryReport, program: String, werror: Boolean, brief: Boolean) {
+    if (brief) {
+        for (l in report.brief()) println(l)
+    } else if (report.diags.isNotEmpty()) {
+        println(report.render())
+    }
+    if (report.strictFailures.isNotEmpty()) {
+        throw IllegalStateException("the memory checker could not analyse Strict code: " + report.strictFailures.joinToString("; "))
+    }
+    if (report.failed(werror)) {
+        val n = report.errorCount(werror)
+        throw IllegalStateException("could not compile " + program + " due to " + n + " memory error" + (if (n == 1) "" else "s"))
+    }
 }

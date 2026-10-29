@@ -11,10 +11,13 @@ import java.io.File
  * Pipeline: K2 frontend -> Kotlin IR -> MIR (Ir2Mir) -> C (CEmitter) -> clang + libminirt.
  */
 object Cli {
+    /** The frontend used when neither `--frontend=k2` nor `--frontend=mini` is given. */
+    const val defaultMini = true
+
     private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=k2|mini]
+             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=mini|k2]
              [--backend=c|llvm] [--emit-ll <path>] [--link-cc <compiler>]
        minic mem-report <file.kt>... [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [--top <n>] [--user-only]
              [--no-rc-opt] [--no-strict] [--no-conv]"""
@@ -109,7 +112,8 @@ object Cli {
      * exit 1 when there is an error, 0 otherwise (warnings do not fail).
      */
     private fun check(a: List<String>, repoRoot: File?): Int {
-        var source: File? = null
+        val sources = mutableListOf<File>()
+        var mini = defaultMini
         val extra = mutableListOf<File>()
         var brief = false
         var werror = false
@@ -119,26 +123,49 @@ object Cli {
                 "--extra-src" -> { if (i + 1 >= a.size) { System.err.println("minic: missing value for $x"); return 2 }; extra += File(a[++i]) }
                 "--brief" -> brief = true
                 "-Werror" -> werror = true
+                "--frontend=mini" -> mini = true
+                "--frontend=k2" -> mini = false
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x"); return 2 }
-                    source = File(x)
+                    sources += File(x)
                 }
             }
             i++
         }
-        if (source == null) { System.err.println("usage: minic check <file.kt> [--extra-src <file.kt>]... [--brief]"); return 2 }
-        if (!source.isFile) { System.err.println("minic: no such file: $source"); return 1 }
+        if (sources.isEmpty()) { System.err.println("usage: minic check <file.kt>... [--extra-src <file.kt>]... [--brief] [-Werror] [--frontend=k2|mini]"); return 2 }
+        for (source in sources) if (!source.isFile) { System.err.println("minic: no such file: $source"); return 1 }
         val stdlib = defaultStdlib(null, repoRoot)
             ?: run { System.err.println("minic: Mini stdlib sources not found (${Stdlib.RELATIVE_DIR})"); return 1 }
         return try {
-            val r = MemoryCheck.check(source, withoutStdlib(extra, stdlib), stdlib)
+            val r = if (mini) checkWithMini(sources, withoutStdlib(extra, stdlib), stdlib)
+            else MemoryCheck.check(sources, withoutStdlib(extra, stdlib), stdlib)
             if (brief) r.brief().forEach { println(it) } else if (r.diags.isNotEmpty()) System.err.println(r.render())
             for (f in r.failures) System.err.println("minic: warning: memory checker skipped $f")
             if (r.failed(werror) || r.strictFailures.isNotEmpty()) 1 else 0
         } catch (e: FrontendDriver.FrontendFailure) {
             System.err.println(e.message)
             1
+        } catch (e: BuildFailure) {
+            System.err.println("minic: ${e.message}")
+            1
         }
+    }
+
+    /** The memory checker on the own frontend's IR (`--frontend=mini`): all [sources] are analysed, [extra] and [stdlib] only declare. */
+    private fun checkWithMini(sources: List<File>, extra: List<File>, stdlib: List<File>): MemoryCheck.Result {
+        val inputs = miniInputs(sources, stdlib, extra)
+        return try {
+            MemoryCheck.resultOf(mini.lower.checkMemory(inputs))
+        } catch (e: mini.lower.LowerDiagnostics) {
+            throw FrontendDriver.FrontendFailure(e.message ?: "compilation failed")
+        }
+    }
+
+    private fun miniInputs(sources: List<File>, stdlibFiles: List<File>, extra: List<File>): List<mini.lower.LowerInput> {
+        val inputs = ArrayList<mini.lower.LowerInput>()
+        for (f in sources) inputs.add(mini.lower.LowerInput(f.path, f.readText(), false))
+        for (f in stdlibFiles + extra) inputs.add(mini.lower.LowerInput(f.path, f.readText(), true))
+        return inputs
     }
 
     private fun parse(a: List<String>, needOutput: Boolean = true): Options? {
@@ -147,7 +174,8 @@ object Cli {
         var werror = false
         var stats = false
         var noRcOpt = false
-        var mini = false
+        var mini = defaultMini
+        var explicitFrontend = false
         var noStrict = false
         var noConv = false
         var convReport = false
@@ -184,8 +212,8 @@ object Cli {
                 "-Werror" -> werror = true
                 "--stats" -> stats = true
                 "--no-rc-opt" -> noRcOpt = true
-                "--frontend=mini" -> mini = true
-                "--frontend=k2" -> mini = false
+                "--frontend=mini" -> { mini = true; explicitFrontend = true }
+                "--frontend=k2" -> { mini = false; explicitFrontend = true }
                 "--no-strict" -> noStrict = true
                 "--no-conv" -> noConv = true
                 "--conv-report" -> convReport = true
@@ -203,6 +231,8 @@ object Cli {
             }
             i++
         }
+        // the own frontend needs the Mini stdlib sources: `--no-stdlib` (the JVM kotlin-stdlib) stays on K2 unless asked otherwise
+        if (noStdlib && !explicitFrontend) mini = false
         if (sources.isEmpty() || (needOutput && out == null)) { System.err.println(USAGE); return null }
         return Options(sources, out ?: File("mem-report"), emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport, wrc = wrc, top = top, userOnly = userOnly, llvm = llvm, emitLl = emitLl, linkCc = linkCc)
     }
@@ -220,19 +250,19 @@ object Cli {
     fun frontendToMir(sources: List<File>, stdlibFiles: List<File>, extra: List<File>, werror: Boolean, miniFrontend: Boolean = false): mini.backend.MirModule {
         val sourceName = sources.first().name
         if (miniFrontend) {
-            val inputs = ArrayList<mini.lower.LowerInput>()
-            for (f in sources) inputs.add(mini.lower.LowerInput(f.path, f.readText(), false))
-            for (f in stdlibFiles + extra) inputs.add(mini.lower.LowerInput(f.path, f.readText(), true))
+            val inputs = miniInputs(sources, stdlibFiles, extra)
             try {
-                return mini.lower.lowerToMir(inputs, sourceName)
+                // the memory checker (all user files) runs between the analysis and the code generation, like on the K2 path
+                return mini.lower.lowerToMir(inputs, sourceName) { rep -> MemoryCheck.gate(MemoryCheck.resultOf(rep), sourceName, werror) }
             } catch (e: mini.lower.LowerDiagnostics) {
-                throw BuildFailure(e.message ?: "compilation failed")
+                // like K2's frontend errors: `file.kt:l:c: error: message` lines as they are
+                throw FrontendDriver.FrontendFailure(e.message ?: "compilation failed")
             }
         }
         var mir: mini.backend.MirModule? = null
         FrontendDriver.runFrontend(sources, stdlibFiles + extra) { module, _ ->
             // Strict-mode ownership checker (user files only): errors stop the build, warnings are printed
-            MemoryCheck.gate(module, sources.first(), werror)
+            MemoryCheck.gate(module, sources, werror)
             MemoryCheck.dropFiles(module, extra) // extra sources only provide declarations
             mir = Ir2Mir().convert(module, sourceName)
         }
@@ -268,7 +298,7 @@ object Cli {
                 ?: throw BuildFailure("Mini stdlib sources not found (${Stdlib.RELATIVE_DIR}); pass --stdlib <dir> or --no-stdlib")
             Stdlib.sources(dir).also { if (it.isEmpty()) throw BuildFailure("no .kt files in $dir") }
         }
-        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror)
+        val module = frontendToMir(o.sources, stdlibFiles, withoutStdlib(o.extraSrc, stdlibFiles), o.werror, o.miniFrontend)
         val r = CEmitter.emitDetailed(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv)
         val report = mini.backend.MemReport.build(module, r)
         print(mini.backend.MemReport.text(report, o.top) { f -> !o.userOnly || !isStdlibName(f.name) })

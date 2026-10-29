@@ -45,7 +45,7 @@ class Sema {
     // ---- loading -----------------------------------------------------------------------------------------------
 
     fun addFile(path: String, text: String): FileInfo {
-        val r = parseKotlin(text)
+        val r = parseKotlinUnquoted(text)
         val f = FileInfo(path, text, r.file, r.file.packageName ?: "")
         f.index = files.size
         files.add(f)

@@ -116,3 +116,12 @@ echo "stage3 (stage2 compiles the sources: $(elapsed $t3 $t4); clang: $(elapsed 
 cmp "$WORK/stage2.c" "$WORK/stage3.c"
 cmp "$WORK/stage2.mir" "$WORK/stage3.mir"
 echo "bootstrap OK: stage2 == stage3 (C and MIR byte-identical), work dir $WORK"
+
+# the native compiler runs the memory checker too: `--check` rejects a leak / use-after-free and accepts a clean program
+MEMDIR="$HERE/testdata/memory"
+if "$WORK/stage3" --check "$MEMDIR/uaf_simple.kt" --stdlib $STD > "$WORK/check-bad.txt" 2>/dev/null; then
+    echo "native --check accepted memory/uaf_simple.kt" >&2; exit 1
+fi
+grep -q "M0101" "$WORK/check-bad.txt"
+"$WORK/stage3" --check "$MEMDIR/ok_heap_basic.kt" --stdlib $STD
+echo "native memory check OK"

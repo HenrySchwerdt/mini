@@ -276,7 +276,9 @@ fun Ast2Ir.ifExpr(e: IfExpr): IrExpression {
         val cond = convert(cur.cond)
         val thenE = cur.then
         val tb = if (thenE != null) convert(thenE) else unitValue()
-        branches.add(IrBranch(cond, if (isUnit(t)) coerceToUnit(tb) else tb))
+        val br = IrBranch(cond, if (isUnit(t)) coerceToUnit(tb) else tb)
+        br.startOffset = cur.start
+        branches.add(br)
         val elseE = cur.otherwise
         if (elseE == null) break
         val elseU = unparen(elseE)
@@ -285,7 +287,9 @@ fun Ast2Ir.ifExpr(e: IfExpr): IrExpression {
             continue
         }
         val eb = convert(elseE)
-        branches.add(IrBranch(constBool(true), if (isUnit(t)) coerceToUnit(eb) else eb))
+        val ebr = IrBranch(constBool(true), if (isUnit(t)) coerceToUnit(eb) else eb)
+        ebr.startOffset = elseE.start
+        branches.add(ebr)
         break
     }
     return IrWhen(branches, t, "IF")
@@ -319,7 +323,9 @@ fun Ast2Ir.whenExpr(e: WhenExpr): IrExpression {
         if (en.isElse) {
             hasElse = true
             val body = convert(en.body)
-            branches.add(IrBranch(constBool(true), if (isUnit(t)) coerceToUnit(body) else body))
+            val ebr = IrBranch(constBool(true), if (isUnit(t)) coerceToUnit(body) else body)
+            ebr.startOffset = en.start
+            branches.add(ebr)
             continue
         }
         val ones = ArrayList<IrExpression>()
@@ -332,7 +338,9 @@ fun Ast2Ir.whenExpr(e: WhenExpr): IrExpression {
             cond = andThen(cond!!, ge)
         }
         val body = convert(en.body)
-        branches.add(IrBranch(cond!!, if (isUnit(t)) coerceToUnit(body) else body))
+        val wbr = IrBranch(cond!!, if (isUnit(t)) coerceToUnit(body) else body)
+        wbr.startOffset = en.start
+        branches.add(wbr)
     }
     if (!hasElse && r.extra == "exhaustive") {
         val c = IrCall(builtinFun("noWhenBranchMatchedException"), sema.nothingType)
@@ -559,6 +567,7 @@ fun Ast2Ir.tryExpr(e: TryExpr): IrExpression {
         val vs = pr.callee as? VarSym ?: fail(c, "catch parameter without symbol")
         val v = IrVariable(c.param.name, irType(vs.type ?: sema.nullableAny), false)
         v.origin = "CATCH_PARAMETER"
+        v.startOffset = c.param.start
         v.parent = ctx?.fn
         v.sym = vs
         varMap[vs] = v
