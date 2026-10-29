@@ -10,6 +10,7 @@ import mini.frontend.*
 fun BodyChecker.expr(e: Expr, expected: Type?): Type {
     val t = expr0(e, expected)
     if (rec.get(e) == null) record(e, if (t is IntLiteralType) ops.literalDefault(t) else t, null)
+    if (ops.isNothing(t)) flow.dead = true
     return t
 }
 
@@ -48,7 +49,10 @@ private fun BodyChecker.expr0(e: Expr, expected: Type?): Type {
         }
         is PrefixExpr -> return prefix(e, expected)
         is PostfixExpr -> return postfix(e)
-        is AnnotatedExpr -> return expr(e.expr, expected)
+        is AnnotatedExpr -> {
+            for (a in e.annotations) annotationArgs(a)
+            return expr(e.expr, expected)
+        }
         is LabeledExpr -> return labeled(e, expected)
         is CallExpr -> return callExpr(e, null, expected)
         is IndexExpr -> return indexExpr(e)
@@ -161,8 +165,7 @@ fun BodyChecker.stringExpr(e: StringExpr): Type {
     for (p in e.parts) {
         when (p) {
             is StrText, is StrEscape -> {
-                if (runStart < 0) runStart = p.start
-                runEnd = p.end
+                flushRun(e, p.start, p.end)
             }
             is StrShortRef -> {
                 flushRun(e, runStart, runEnd)
@@ -242,15 +245,19 @@ fun BodyChecker.thisExpr(e: ThisExpr): Type {
     val lbl = e.label
     for (r in rs) {
         if (r.isCompanion) continue
-        if (lbl == null) {
+        if (lbl == null || r.label == lbl) {
             // a lambda receiver / extension receiver / class
+            val key = if (lbl == null) "this" else "this@$lbl"
             val rr = record(e, r.type, null)
-            rr.thisKey = "this"
-            return r.type
-        }
-        if (r.label == lbl) {
-            val rr = record(e, r.type, null)
-            rr.thisKey = "this@$lbl"
+            rr.thisKey = key
+            val f = flow.facts[key]
+            if (f != null) {
+                val n = ops.narrow(r.type, f.types)
+                if (n !== r.type) {
+                    rr.smart = n
+                    return n
+                }
+            }
             return r.type
         }
     }
@@ -419,6 +426,25 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
             return sema.booleanType
         }
         "-", "+" -> {
+            val operand = e.expr
+            if (e.op == "-" && operand is LiteralExpr && operand.kind == LitKind.INT && !operand.text.endsWith("L") && !operand.text.endsWith("u") && !operand.text.endsWith("U")) {
+                val lt = literal(operand, null)
+                if (lt is IntLiteralType) {
+                    val v = -lt.value
+                    val nl = IntLiteralType(v, v >= -2147483648L && v <= 2147483647L)
+                    if (expected != null && expected is ClassType) {
+                        val n = expected.cls.fqName()
+                        if ((n == "kotlin.Long" || n == "kotlin.Short" || n == "kotlin.Byte") && ops.isSubtype(nl, expected.withNullable(false))) {
+                            record(e, expected.withNullable(false), null)
+                            return expected.withNullable(false)
+                        }
+                    }
+                    record(e, ops.literalDefault(nl), null)
+                    return nl
+                }
+                record(e, lt, null)
+                return lt
+            }
             val t = expr(e.expr, expected)
             val name = if (e.op == "-") "unaryMinus" else "unaryPlus"
             val res = resolveOperator(name, fin(t), emptyList(), e.start, null)
@@ -488,7 +514,7 @@ fun BodyChecker.assign(e: BinaryExpr): Type {
         all.addAll(idx)
         all.add(vt)
         val res = resolveOperator("set", recvT, all, e.start, null)
-        val rr = record(e, sema.unitType, res?.callee)
+        val rr = record(e, res?.ret ?: sema.unitType, res?.callee)
         if (res != null) rr.calleeText = res.calleeText
         return sema.unitType
     }
@@ -725,7 +751,7 @@ fun BodyChecker.tryExpr(e: TryExpr, expected: Type?): Type {
         val saved = scope
         val l = newLocal()
         val pt = if (c.param.type != null) sema.resolveType(c.param.type, scope) else ErrType("catch")
-        val v = VarSym(c.param.name, pt, false, true, c.param.start)
+        val v = VarSym(c.param.name, pt, false, false, c.param.start)
         declareVar(l, v)
         record(c.param, pt, v)
         types.add(block(c.body.stmts, expected, true))
@@ -823,6 +849,14 @@ fun BodyChecker.forExpr(e: ForExpr): Type {
     val l = newLocal()
     if (e.destructuring) {
         destructure(e.entries, elem, l, e.start)
+        // K2 reports the whole `(a, b)` pattern with the element type
+        if (e.entries.isNotEmpty()) {
+            var s = e.entries[0].start
+            while (s > 0 && file.text[s] != '(' && file.text[s] != '[') s--
+            var en = e.entries[e.entries.size - 1].end
+            while (en < file.text.length && file.text[en] != ')' && file.text[en] != ']') en++
+            recordAt(s, en + 1, elem, null, null)
+        }
     } else {
         for (en in e.entries) {
             var t = elem
@@ -908,7 +942,13 @@ fun BodyChecker.whenExpr(e: WhenExpr, expected: Type?): Type {
                 }
                 is WhenInCond -> {
                     val ct = fin(expr(c.expr, null))
-                    if (subjType != null) resolveOperator("contains", ct, listOf(subjType), c.start, null)
+                    if (subjType != null) {
+                        val res = resolveOperator("contains", ct, listOf(subjType), c.start, null)
+                        if (res != null) {
+                            val rr = record(c, sema.booleanType, res.callee)
+                            rr.calleeText = res.calleeText
+                        }
+                    }
                     one = noFacts()
                 }
                 is WhenIsCond -> {

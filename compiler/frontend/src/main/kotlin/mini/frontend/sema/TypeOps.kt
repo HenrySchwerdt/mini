@@ -77,7 +77,8 @@ class TypeOps(private val sema: Sema) {
             if (i < t.args.size) {
                 val a = t.args[i]
                 val at = a.type
-                if (at == null || a.variance != Variance.INV) m[tp] = CapType(a) else m[tp] = at
+                if (at != null && (a.variance == Variance.INV || a.variance == tp.variance)) m[tp] = at
+                else m[tp] = CapType(a)
             }
             i++
         }
@@ -157,12 +158,17 @@ class TypeOps(private val sema: Sema) {
                 if (t.args.isEmpty()) return t
                 var changed = false
                 val args = ArrayList<TArg>()
+                var i2 = -1
                 for (a in t.args) {
+                    i2++
                     val x = a.type
                     if (x is CapType) {
                         changed = true
                         val ax = x.arg.type
                         if (ax == null) args.add(TArg(null, Variance.INV)) else args.add(TArg(approximate(ax), x.arg.variance))
+                        if (i2 < t.cls.typeParams.size && ax != null && x.arg.variance == t.cls.typeParams[i2].variance) {
+                            args[args.size - 1] = TArg(approximate(ax), Variance.INV)
+                        }
                     } else if (x != null) {
                         val n = approximate(x)
                         if (n !== x) changed = true
@@ -243,7 +249,8 @@ class TypeOps(private val sema: Sema) {
             is FunType -> {
                 if (a is FunType) return funSub(a, b, depth)
                 if (a is ClassType) {
-                    // SAM-like class implementing a function type: not modelled
+                    val af = asFunType(a)
+                    if (af != null) return funSub(af, b, depth)
                     return false
                 }
                 if (a is TypeParamType) return boundsSub(a, b, depth)
@@ -290,6 +297,20 @@ class TypeOps(private val sema: Sema) {
             i++
         }
         return sub(a.ret, b.ret, depth + 1)
+    }
+
+    /** the function type a KFunctionN / KPropertyN class type stands for */
+    fun asFunType(t: Type): FunType? {
+        if (t is ClassType && t.cls.fnArity >= 0) {
+            val ps = ArrayList<Type>()
+            var i = 0
+            while (i < t.cls.fnArity) {
+                ps.add(t.args[i].type ?: sema.nullableAny)
+                i++
+            }
+            return FunType(null, ps, t.args[t.args.size - 1].type ?: sema.nullableAny, t.nullable, false)
+        }
+        return null
     }
 
     fun allParams(f: FunType): List<Type> {

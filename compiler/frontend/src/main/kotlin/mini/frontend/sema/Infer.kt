@@ -170,6 +170,8 @@ class ConstraintSystem(private val sema: Sema) {
                 return false
             }
             is FunType -> {
+                val ak = if (a is ClassType) ops.asFunType(a) else null
+                if (ak != null) return addSub(ak, b, depth + 1)
                 if (a is FunType) {
                     if (a.arity != b.arity) return false
                     val pa = ops.allParams(a)

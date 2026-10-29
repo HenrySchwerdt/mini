@@ -243,6 +243,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     }
 
     fun localProperty(d: PropertyDecl) {
+        checkAnnotations(d.mods)
         val l = localScopeOf()
         val declared: Type? = if (d.type != null) sema.resolveType(d.type, scope) else null
         var t: Type? = declared
@@ -282,6 +283,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val init = d.initializer
         val it = if (init != null) fin(expr(init, null)) else ErrType("destructuring without initializer")
         destructure(d.entries, it, l, d.start)
+        record(d, it, null)
     }
 
     fun destructure(entries: List<DestructEntry>, source: Type, l: LocalScope, pos: Int) {
@@ -299,6 +301,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     }
 
     fun localFun(d: FunDecl) {
+        checkAnnotations(d.mods)
         val l = localScopeOf()
         val f = sema.collector.collectFun(d, null, file, scope)
         f.kind = FunKind.LOCAL

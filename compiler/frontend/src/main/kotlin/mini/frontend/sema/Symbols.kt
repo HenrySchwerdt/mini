@@ -47,6 +47,9 @@ class ClassSym(
     var isAnonymous = false
     var isEnumEntryBody = false
     var checked = false
+    /** >= 0 for the synthetic KFunctionN / KPropertyN classes of callable references (their function arity) */
+    var fnArity = -1
+    var samCtor: FunSym? = null
 
     /** scope the declaration appears in (type resolution of the header starts here) */
     lateinit var scope: Scope

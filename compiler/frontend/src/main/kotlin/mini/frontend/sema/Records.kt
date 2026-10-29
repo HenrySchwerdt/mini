@@ -80,8 +80,9 @@ class Rendering(private val sema: Sema) {
                 if (sym.kind == FunKind.CONSTRUCTOR && o != null) {
                     sb.append(o.renderName()).append(".<init>")
                 } else if (o != null) {
-                    sb.append(o.renderName()).append('.').append(sym.name)
-                    if (o.isLocal) sb.append('@').append(sym.start)
+                    if (o.isAnonymous) sb.append("<anonymous>.") else if (o.isLocal) sb.append("<local>.") else sb.append(o.renderName()).append('.')
+                    sb.append(sym.name)
+                    if (o.isLocal || o.isAnonymous) sb.append('@').append(sym.start)
                 } else if (sym.kind == FunKind.LOCAL) {
                     sb.append("<local>.").append(sym.name).append('@').append(sym.start)
                 } else {
@@ -96,7 +97,7 @@ class Rendering(private val sema: Sema) {
                 sema.ensurePropSig(sym)
                 if (sym.isLocal) return "local " + sym.name + "@" + sym.start
                 val o = sym.owner
-                val base = if (o != null) o.renderName() + "." + sym.name else {
+                val base = if (o != null) (if (o.isAnonymous) "<anonymous>." else if (o.isLocal) "<local>." else o.renderName() + ".") + sym.name else {
                     val pk = sym.file?.pkg ?: ""
                     if (pk.isNotEmpty()) pk + "." + sym.name else sym.name
                 }

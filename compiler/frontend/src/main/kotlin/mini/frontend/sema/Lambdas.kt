@@ -86,6 +86,12 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
         if (lastIsExpr) types.add(fin(last)) else if (target.returned.isEmpty()) types.add(sema.unitType)
         types.addAll(target.returned)
         ret = ops.commonSuperType(types)
+        // a lambda checked against a proper expected return type has exactly that return type
+        if (retExpected != null && !ops.isNothing(retExpected) && ret !is ErrType) {
+            var allOk = true
+            for (t in types) if (!ops.isSubtype(t, retExpected)) allOk = false
+            if (allOk) ret = retExpected
+        }
     }
     val ft = FunType(recvT, paramTypes, ret, false, false)
     record(lam, ft, null)
@@ -137,7 +143,149 @@ fun BodyChecker.callableRefWith(e: CallableRefExpr, ef: FunType?, unused: Type?)
         record(e, kt, null)
         return kt
     }
-    return unsupported(e.start, "callable reference")
+    return callableRefMember(e, ef)
+}
+
+class RefCand(val sym: Sym, val params: List<Type>, val ret: Type, val tps: List<TypeParamSym>, val subst: Map<TypeParamSym, Type>) {
+    var isProp = false
+    var mutable = false
+    var propReceiver = false
+}
+
+private fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<RefCand>) {
+    val fn = c.fn
+    sema.ensureSig(fn)
+    if (fn.kind == FunKind.FUNCTION_INVOKE) return
+    val ps = ArrayList<Type>()
+    val tps = typeParamsOf(fn)
+    val er = fn.receiver
+    if (er != null && !bound) ps.add(ops.substitute(er, c.subst))
+    for (p in fn.params) ps.add(ops.substitute(p.type ?: ErrType("param"), c.subst))
+    val ret: Type = if (fn.kind == FunKind.CONSTRUCTOR) fn.owner!!.thisType() else ops.substitute(sema.returnTypeOf(fn), c.subst)
+    out.add(RefCand(fn, ps, ret, tps, c.subst))
+}
+
+fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
+    val name = e.name
+    val cands = ArrayList<RefCand>()
+    val rcv = e.receiver
+    if (rcv == null) {
+        for (g in unqualifiedGroups(name)) for (c in g) funRefCand(c, false, cands)
+        val r = resolveSimpleName(name)
+        if (r != null && r.sym is PropSym && r.kind == NameRes.VALUE) {
+            val p = r.sym
+            val rc = RefCand(p, emptyList(), r.type, emptyList(), HashMap())
+            rc.isProp = true
+            rc.mutable = p.isVar
+            cands.add(rc)
+        }
+    } else {
+        val ri = resolveReceiver(rcv, null)
+        if (ri is ClassRecv) {
+            val ct = ri.cls.thisType()
+            for (m in members.funsNamed(ct, name)) {
+                val fn = m.fn
+                if (fn.decl?.receiver != null) continue
+                sema.ensureSig(fn)
+                val ps = ArrayList<Type>()
+                ps.add(ct)
+                for (p in fn.params) ps.add(ops.substitute(p.type ?: ErrType("param"), m.subst))
+                cands.add(RefCand(fn, ps, ops.substitute(sema.returnTypeOf(fn), m.subst), fn.typeParams, m.subst))
+            }
+            val nc = ri.cls.nested[name]
+            if (nc != null) for (c in ctorCandidates(nc)) funRefCand(c, false, cands)
+            for (mp in members.propsNamed(ct, name)) {
+                if (mp.prop.receiver != null) continue
+                val rc = RefCand(mp.prop, listOf(ct), ops.substitute(sema.typeOfProp(mp.prop), mp.subst), emptyList(), mp.subst)
+                rc.isProp = true
+                rc.mutable = mp.prop.isVar
+                rc.propReceiver = true
+                cands.add(rc)
+            }
+            val ext = ArrayList<List<Candidate>>()
+            extensionGroups(name, ct, ext)
+            for (g in ext) for (c in g) funRefCand(c, false, cands)
+        } else if (ri is ValueRecv) {
+            val vt = ri.type
+            for (m in members.funsNamed(vt, name)) {
+                if (m.fn.decl?.receiver != null) continue
+                funRefCand(Candidate(m.fn, m.subst, null), true, cands)
+            }
+            for (mp in members.propsNamed(vt, name)) {
+                if (mp.prop.receiver != null) continue
+                val rc = RefCand(mp.prop, emptyList(), ops.substitute(sema.typeOfProp(mp.prop), mp.subst), emptyList(), mp.subst)
+                rc.isProp = true
+                rc.mutable = mp.prop.isVar
+                cands.add(rc)
+            }
+            val ext = ArrayList<List<Candidate>>()
+            extensionGroups(name, vt, ext)
+            for (g in ext) for (c in g) {
+                funRefCand(Candidate(c.fn, c.subst, null), true, cands)
+            }
+        }
+    }
+    if (cands.isEmpty()) {
+        err(e.start, "unresolved callable reference '" + name + "'")
+        return ErrType("callable reference")
+    }
+    var chosen: RefCand? = null
+    var cs: ConstraintSystem? = null
+    var m: HashMap<TypeParamSym, Type>? = null
+    for (c in cands) {
+        val sys = ConstraintSystem(sema)
+        val mm = HashMap<TypeParamSym, Type>()
+        sys.addVariables(c.tps, mm)
+        if (ef != null) {
+            val ps = ArrayList<Type>()
+            for (p in c.params) ps.add(ops.substitute(p, mm))
+            val ret = ops.substitute(c.ret, mm)
+            var ok = ps.size == ef.params.size + (if (ef.receiver != null) 1 else 0)
+            if (ok) {
+                val eps = ops.allParams(ef)
+                var i = 0
+                while (i < ps.size && ok) {
+                    if (!sys.addSub(eps[i], ps[i])) ok = false
+                    i++
+                }
+                if (ok && !ops.isUnit(sys.resolveFixed(ef.ret))) {
+                    if (!sys.addSub(ret, ef.ret)) ok = false
+                }
+            }
+            if (!ok) continue
+        } else if (cands.size > 1) {
+            continue
+        }
+        chosen = c
+        cs = sys
+        m = mm
+        break
+    }
+    if (chosen == null || cs == null || m == null) {
+        err(e.start, "no matching callable for reference '" + name + "'")
+        return ErrType("callable reference")
+    }
+    cs.fixAll()
+    val ps = ArrayList<Type>()
+    for (p in chosen.params) ps.add(cs.resolveFixed(ops.substitute(p, m)))
+    val ret = cs.resolveFixed(ops.substitute(chosen.ret, m))
+    val t: Type
+    if (chosen.isProp) {
+        val k = if (chosen.propReceiver) 1 else 0
+        val cls = sema.kRefClass(if (chosen.mutable) "KMutableProperty" else "KProperty", k)
+        val args = ArrayList<TArg>()
+        for (p in ps) args.add(TArg(p, Variance.INV))
+        args.add(TArg(ret, Variance.INV))
+        t = ClassType(cls, args, false)
+    } else {
+        val cls = sema.kRefClass("KFunction", ps.size)
+        val args = ArrayList<TArg>()
+        for (p in ps) args.add(TArg(p, Variance.INV))
+        args.add(TArg(ret, Variance.INV))
+        t = ClassType(cls, args, false)
+    }
+    record(e, t, chosen.sym)
+    return t
 }
 
 fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {

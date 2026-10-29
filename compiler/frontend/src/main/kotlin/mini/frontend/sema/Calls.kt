@@ -90,6 +90,24 @@ fun BodyChecker.fileTopFuns(name: String): List<List<FunSym>> {
 fun BodyChecker.ctorCandidates(c: ClassSym): List<Candidate> {
     val out = ArrayList<Candidate>()
     for (k in c.ctors) out.add(Candidate(k, HashMap(), null))
+    if (c.isFunInterface && c.ctors.isEmpty()) {
+        var s = c.samCtor
+        if (s == null) {
+            val ft = samFunType(c.thisType())
+            if (ft != null) {
+                s = FunSym(c.name, null, null, c.file)
+                s.kind = FunKind.SYNTH
+                s.typeParams.addAll(c.typeParams)
+                s.params = listOf(VarSym("function", ft, false, true, -1))
+                s.returnType = c.thisType()
+                s.sigState = 2
+                s.retState = 2
+                s.start = c.start
+                c.samCtor = s
+            }
+        }
+        if (s != null) out.add(Candidate(s, HashMap(), null))
+    }
     return out
 }
 
@@ -114,6 +132,15 @@ fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boole
         }
     }
     if (mem.isNotEmpty()) groups.add(mem)
+    // inner class constructors: `outer.Inner(...)`
+    if (!ops.mayBeNull(t)) {
+        val inner = ArrayList<Candidate>()
+        for (site in ops.closure(t)) {
+            val nc = site.cls.nested[name]
+            if (nc != null && nc.isInner) inner.addAll(ctorCandidates(nc))
+        }
+        if (inner.isNotEmpty()) groups.add(inner)
+    }
     // property of function type / with invoke is handled by the caller (callExpr)
     // extension members of implicit class receivers
     val ext = ArrayList<Candidate>()
@@ -144,8 +171,9 @@ fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boole
     return groups
 }
 
-fun BodyChecker.invokeCandidates(t: Type): List<Candidate> {
+fun BodyChecker.invokeCandidates(t0: Type): List<Candidate> {
     val out = ArrayList<Candidate>()
+    val t = ops.asFunType(t0) ?: t0
     if (t is FunType) {
         val c = Candidate(members.invokeFor(t), HashMap(), null)
         c.invokeType = t
@@ -711,10 +739,6 @@ class OpResult(val ret: Type, val callee: Sym?, val calleeText: String?, val par
 fun BodyChecker.resolveOperator(name: String, recv0: Type, argTypes: List<Type>, pos: Int, expected: Type?): OpResult? {
     var recv = recv0
     if (recv is ErrType) return null
-    if (recv.nullable && recv !is TypeParamType) {
-        // operators on a nullable receiver are not applicable (K2 reports an error); look at the non-null type
-        recv = recv.withNullable(false)
-    }
     val args = ArrayList<Arg>()
     for (t in argTypes) {
         val a = Arg(null, null, false)

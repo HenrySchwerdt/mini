@@ -176,6 +176,32 @@ class Sema {
         return ClassType(builtin(fq), a, false)
     }
 
+    // ---- callable reference classes ------------------------------------------------------------------------------
+
+    private val kClasses = HashMap<String, ClassSym>()
+
+    /** kotlin.reflect.KFunctionN / KPropertyN / KMutablePropertyN: n parameters (for properties: 0 or 1 receivers) */
+    fun kRefClass(base: String, n: Int): ClassSym {
+        val key = base + n
+        var c = kClasses[key]
+        if (c != null) return c
+        c = ClassSym(key, ClassKind.INTERFACE, "kotlin.reflect", null, null, null)
+        var i = 0
+        while (i < n) {
+            c.typeParams.add(TypeParamSym("P" + (i + 1), Variance.IN, false, null, i))
+            i++
+        }
+        c.typeParams.add(TypeParamSym(if (base == "KFunction") "R" else "V", Variance.OUT, false, null, n))
+        for (tp in c.typeParams) {
+            tp.boundsState = 2
+        }
+        c.fnArity = n
+        c.supertypeState = 2
+        c.membersDone = true
+        kClasses[key] = c
+        return c
+    }
+
     // ---- file level name lookup -----------------------------------------------------------------------------------
 
     private val defaultImports = listOf(
