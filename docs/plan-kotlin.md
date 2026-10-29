@@ -525,6 +525,25 @@ compiler underneath (like `rustc`).
   binary with instant startup (dogfooding: file IO and process spawning on libuv).
 - Release: prebuilt `mini`/`minic` binaries for Linux and macOS on GitHub Releases.
 
+**The repository itself drops Gradle after B3.** The compiler is then just another Mini
+project built by `mini`:
+- A workspace `mini.toml` at the root with members `compiler/frontend`, `compiler/lower`,
+  `compiler/backend`, `compiler/driver`, `stdlib`, `runtime` (until §10c removes the C runtime)
+  and `website` samples. Each member has its own `mini.toml`.
+- **Bootstrap seed** instead of a JVM: building from scratch needs only a C compiler. Every
+  release also publishes the generated C of `minic` (`bootstrap/minic.c`, like Zig's C seed).
+  `clang bootstrap/minic.c runtime/*.c` gives stage 0, which builds stage 1 from source. CI
+  then checks stage 2 == stage 3 on every push.
+- Tests run with `mini test` (own test runner: `@Test` functions found by our frontend,
+  expected-output files as today).
+- The K2 oracles (`jvm-bridge`, `frontend-oracle`, `memory-spec`) are the only JVM parts left.
+  They become an optional `tools/k2-oracle` check that compares our frontend with K2 on
+  demand (Kotlin version upgrades), not part of the normal build. Gradle then lives only
+  there, and can go entirely once the oracles are no longer needed.
+- Migration order: (1) `mini` v0 can build multi-module workspaces, (2) build the compiler
+  with `mini` in CI next to Gradle and compare the outputs, (3) switch CI and the README,
+  (4) delete `compiler/gradle*`, `settings.gradle.kts`, `build.gradle.kts`.
+
 ## 11. Working method: manager and Sonnet agents
 
 - **Manager** (this agent): architecture, interfaces between packages,
