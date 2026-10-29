@@ -62,6 +62,10 @@ jobs:
         working-directory: website
         run: npm ci
 
+      - name: Playground unit tests and typecheck
+        working-directory: website
+        run: npm test && npm run typecheck
+
       # VitePress fails the build on dead links.
       - name: Build the site
         working-directory: website
