@@ -29,6 +29,16 @@ sourceSets {
 
 tasks.test {
     useJUnitPlatform()
+    // developer probes (SemaProbeTest) depend on environment variables
+    systemProperty("mini.semaBaseline", file("src/test/resources/sema-oracle-baseline.txt").absolutePath)
+    systemProperty("mini.reports", layout.buildDirectory.dir("reports").get().asFile.absolutePath)
+    systemProperty("mini.oracleCache", layout.buildDirectory.dir("sema-oracle-cache").get().asFile.absolutePath)
+    inputs.property("semaAreas", System.getenv("MINI_SEMA_AREAS") ?: "")
+    inputs.property("semaUpdate", System.getenv("MINI_SEMA_UPDATE") ?: "")
+    inputs.property("probe", System.getenv("MINI_FIR_PROBE") ?: "")
+    inputs.property("probeCompare", System.getenv("MINI_SEMA_COMPARE") ?: "")
+    val probeFile = System.getenv("MINI_FIR_PROBE")
+    if (probeFile != null && File(probeFile).isFile) inputs.file(probeFile)
     systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
     systemProperty("mini.testdata", rootProject.file("testdata").absolutePath)
     systemProperty("mini.frontendSrc", rootProject.file("frontend/src/main/kotlin").absolutePath)
