@@ -13,36 +13,28 @@ private fun isDigit(c: Char): Boolean = c >= '0' && c <= '9'
 
 private fun isHexDigit(c: Char): Boolean = isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 
-fun keywordKind(s: String): Tk? = when (s) {
-    "as" -> Tk.AS
-    "break" -> Tk.BREAK
-    "class" -> Tk.CLASS
-    "continue" -> Tk.CONTINUE
-    "do" -> Tk.DO
-    "else" -> Tk.ELSE
-    "false" -> Tk.FALSE
-    "for" -> Tk.FOR
-    "fun" -> Tk.FUN
-    "if" -> Tk.IF
-    "in" -> Tk.IN
-    "interface" -> Tk.INTERFACE
-    "is" -> Tk.IS
-    "null" -> Tk.NULL
-    "object" -> Tk.OBJECT
-    "package" -> Tk.PACKAGE
-    "return" -> Tk.RETURN
-    "super" -> Tk.SUPER
-    "this" -> Tk.THIS
-    "throw" -> Tk.THROW
-    "true" -> Tk.TRUE
-    "try" -> Tk.TRY
-    "typealias" -> Tk.TYPEALIAS
-    "typeof" -> Tk.TYPEOF
-    "val" -> Tk.VAL
-    "var" -> Tk.VAR
-    "when" -> Tk.WHEN
-    "while" -> Tk.WHILE
-    else -> null
+fun keywordKind(s: String): Tk? {
+    val n = s.length
+    if (n < 2 || n > 9) return null
+    // switch on the first letter, then compare: far fewer string comparisons than one big `when`
+    return when (s[0]) {
+        'a' -> if (s == "as") Tk.AS else null
+        'b' -> if (s == "break") Tk.BREAK else null
+        'c' -> if (s == "class") Tk.CLASS else if (s == "continue") Tk.CONTINUE else null
+        'd' -> if (s == "do") Tk.DO else null
+        'e' -> if (s == "else") Tk.ELSE else null
+        'f' -> if (s == "false") Tk.FALSE else if (s == "for") Tk.FOR else if (s == "fun") Tk.FUN else null
+        'i' -> if (s == "if") Tk.IF else if (s == "in") Tk.IN else if (s == "interface") Tk.INTERFACE else if (s == "is") Tk.IS else null
+        'n' -> if (s == "null") Tk.NULL else null
+        'o' -> if (s == "object") Tk.OBJECT else null
+        'p' -> if (s == "package") Tk.PACKAGE else null
+        'r' -> if (s == "return") Tk.RETURN else null
+        's' -> if (s == "super") Tk.SUPER else null
+        't' -> if (s == "this") Tk.THIS else if (s == "throw") Tk.THROW else if (s == "true") Tk.TRUE else if (s == "try") Tk.TRY else if (s == "typealias") Tk.TYPEALIAS else if (s == "typeof") Tk.TYPEOF else null
+        'v' -> if (s == "val") Tk.VAL else if (s == "var") Tk.VAR else null
+        'w' -> if (s == "when") Tk.WHEN else if (s == "while") Tk.WHILE else null
+        else -> null
+    }
 }
 
 /**
@@ -63,6 +55,9 @@ class Lexer(private val src: String) {
     private var mode = 0
     private var brace = 0
     private var identNext = false
+    /** number of dollars that start a template in the current string (1, or more for `$$"..."`) */
+    private var dollars = 1
+    private val dollarStack = ArrayList<Int>()
 
     fun lex(): LexResult {
         if (n >= 2 && src[0] == '#' && src[1] == '!') {
@@ -82,6 +77,7 @@ class Lexer(private val src: String) {
     private fun push(m: Int) {
         modeStack.add(mode)
         braceStack.add(brace)
+        dollarStack.add(dollars)
         mode = m
         brace = 0
     }
@@ -89,6 +85,7 @@ class Lexer(private val src: String) {
     private fun pop() {
         mode = modeStack.removeAt(modeStack.size - 1)
         brace = braceStack.removeAt(braceStack.size - 1)
+        dollars = dollarStack.removeAt(dollarStack.size - 1)
     }
 
     private fun error(offset: Int, msg: String) {
@@ -165,10 +162,12 @@ class Lexer(private val src: String) {
                     pos += 3
                     emit(Tk.OPEN_QUOTE, s, pos)
                     push(2)
+                    dollars = 1
                 } else {
                     pos += 1
                     emit(Tk.OPEN_QUOTE, s, pos)
                     push(1)
+                    dollars = 1
                 }
             }
             '\'' -> lexChar()
@@ -270,6 +269,20 @@ class Lexer(private val src: String) {
             '|' -> if (at(pos + 1) == '|') op(Tk.OROR, 2) else bad()
             '@' -> op(Tk.AT, 1)
             '#' -> op(Tk.HASH, 1)
+            '$' -> {
+                // multi-dollar interpolation: `$$"..."` / `$$$"""..."""`
+                var k = 0
+                while (at(pos + k) == '$') k++
+                if (k >= 2 && at(pos + k) == '"') {
+                    val rawStr = at(pos + k + 1) == '"' && at(pos + k + 2) == '"'
+                    pos += k + (if (rawStr) 3 else 1)
+                    emit(Tk.OPEN_QUOTE, s, pos)
+                    push(if (rawStr) 2 else 1)
+                    dollars = k
+                } else {
+                    bad()
+                }
+            }
             else -> bad()
         }
     }
@@ -303,9 +316,11 @@ class Lexer(private val src: String) {
                 while (e < n && (isDigit(src[e]) || src[e] == '_')) e++
             }
             val x = at(e)
-            if ((x == 'e' || x == 'E') && (isDigit(at(e + 1)) || ((at(e + 1) == '+' || at(e + 1) == '-') && isDigit(at(e + 2))))) {
+            if (x == 'e' || x == 'E') {
+                // like the reference lexer, `3e` is already a (malformed) real literal: the exponent digits are optional
                 real = true
-                e += 2
+                e++
+                if ((at(e) == '+' || at(e) == '-') && isDigit(at(e + 1))) e++
                 while (e < n && (isDigit(src[e]) || src[e] == '_')) e++
             }
             if (at(e) == 'f' || at(e) == 'F') {
@@ -314,14 +329,9 @@ class Lexer(private val src: String) {
             }
         }
         if (!real) {
-            // integer suffixes: L, u, U, uL, UL
-            if (at(e) == 'L') {
-                e++
-            } else if ((at(e) == 'u' || at(e) == 'U') && !isIdentPart(at(e + 1)) ) {
-                e++
-            } else if ((at(e) == 'u' || at(e) == 'U') && at(e + 1) == 'L') {
-                e += 2
-            }
+            // integer suffixes, greedy like the reference lexer: u, U, L, uL, UL
+            if (at(e) == 'u' || at(e) == 'U') e++
+            if (at(e) == 'L' || at(e) == 'l') e++ // a lowercase `l` is lexed as a suffix and rejected by analysis
         }
         pos = e
         emit(if (real) Tk.REAL_LIT else Tk.INT_LIT, s, e)
@@ -330,29 +340,18 @@ class Lexer(private val src: String) {
     private fun lexChar() {
         val s = pos
         var e = pos + 1
-        if (at(e) == '\\') {
-            if (at(e + 1) == 'u') {
-                e += 2
-                var k = 0
-                while (k < 4 && isHexDigit(at(e))) {
-                    e++
-                    k++
-                }
-            } else {
-                e += 2
-            }
-        } else if (e < n && src[e] != '\n' && src[e] != '\'') {
+        // like the reference lexer: an unterminated literal extends to the end of the line (and is an error)
+        while (e < n && src[e] != '\n' && src[e] != '\'') {
+            if (src[e] == '\\' && e + 1 < n && src[e + 1] != '\n') e++
             e++
         }
-        if (at(e) == '\'') {
+        if (e < n && src[e] == '\'') {
             e++
-            pos = e
-            emit(Tk.CHAR_LIT, s, e)
         } else {
             error(s, "unterminated character literal")
-            pos = s + 1
-            emit(Tk.BAD, s, s + 1)
         }
+        pos = e
+        emit(Tk.CHAR_LIT, s, e)
     }
 
     private fun lexString() {
@@ -390,19 +389,30 @@ class Lexer(private val src: String) {
             }
             return
         }
+        var litEnd = pos + 1
         if (c == '$') {
-            if (isIdentStart(at(pos + 1))) {
-                pos++
-                emit(Tk.TEMPLATE_SHORT, s, pos)
-                identNext = true
+            var k = 0
+            while (at(pos + k) == '$') k++
+            val after = at(pos + k)
+            if (k >= dollars && (isIdentStart(after) || after == '{')) {
+                if (k > dollars) {
+                    // surplus dollars are literal text
+                    pos += k - dollars
+                    emit(Tk.STR_PART, s, pos)
+                    return
+                }
+                if (after == '{') {
+                    pos += k + 1
+                    emit(Tk.TEMPLATE_LONG_START, s, pos)
+                    push(3)
+                } else {
+                    pos += k
+                    emit(Tk.TEMPLATE_SHORT, s, pos)
+                    identNext = true
+                }
                 return
             }
-            if (at(pos + 1) == '{') {
-                pos += 2
-                emit(Tk.TEMPLATE_LONG_START, s, pos)
-                push(3)
-                return
-            }
+            litEnd = pos + k
         }
         if (c == '\\' && !raw) {
             var e = pos + 2
@@ -425,11 +435,17 @@ class Lexer(private val src: String) {
             pop()
             return
         }
-        var e = pos + 1
+        var e = litEnd
         while (e < n) {
             val d = src[e]
             if (d == '"' || (d == '\\' && !raw) || (d == '\n' && !raw)) break
-            if (d == '$' && (isIdentStart(at(e + 1)) || at(e + 1) == '{')) break
+            if (d == '$') {
+                var k = 0
+                while (at(e + k) == '$') k++
+                if (k >= dollars && (isIdentStart(at(e + k)) || at(e + k) == '{')) break
+                e += k
+                continue
+            }
             e++
         }
         pos = e

@@ -1,0 +1,39 @@
+// Newer syntax (Kotlin 2.2 - 2.4): multi-dollar interpolation, explicit backing fields, name-based destructuring.
+fun f() {
+    val a = $$"price: $x $${y} $$$z"
+    val b = $$$"""raw $x $$${y} $$$${w}"""
+    val c = $$"$$x $x $"
+    val d = $$"""$$x"""
+    val e = $$"a${1}b$$c"
+    val g = $$"\n\t$$x\$"
+}
+//---
+class A {
+    val x: List<Int>
+        field = mutableListOf()
+    val y: Int
+        field: Long = 1
+        get() = field.toInt()
+    private val z: List<Int>
+        field = mutableListOf()
+        get() = field.toList()
+    var w: Int
+        field = 0
+        set(v) { field = v }
+}
+//---
+fun f(p: Pair<Int, Int>) {
+    val (a, b) = p
+    (val first, val second) = p
+    [val q, val r] = p
+    (val a1 = x, val b1 = y) = p
+    (var m, val n) = p
+    val [s, t] = p
+    (val u: Int, val v: String) = p
+}
+//---
+fun f(p: Pair<Int, Int>) {
+    val g = { (a, b): Pair<Int, Int> -> a }
+    for ((k, v) in map) { }
+    for ((k: Int, v) in map) { }
+}

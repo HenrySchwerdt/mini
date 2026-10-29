@@ -19,12 +19,26 @@ internal const val CTX_LOCAL = 2
 /** maximal nesting depth of expressions, types and declarations (deeper input is reported as an error) */
 internal const val MAX_DEPTH = 250
 
-fun isModifierWord(s: String): Boolean = when (s) {
-    "abstract", "actual", "annotation", "companion", "const", "crossinline", "data", "enum", "expect", "external",
-    "final", "infix", "inline", "inner", "internal", "lateinit", "noinline", "open", "operator", "out", "override",
-    "private", "protected", "public", "reified", "sealed", "suspend", "tailrec", "vararg", "value",
-    -> true
-    else -> false
+fun isModifierWord(s: String): Boolean {
+    val n = s.length
+    if (n < 3 || n > 11) return false
+    return when (s[0]) {
+        'a' -> s == "abstract" || s == "actual" || s == "annotation"
+        'c' -> s == "companion" || s == "const" || s == "crossinline"
+        'd' -> s == "data"
+        'e' -> s == "enum" || s == "expect" || s == "external"
+        'f' -> s == "final"
+        'i' -> s == "infix" || s == "inline" || s == "inner" || s == "internal"
+        'l' -> s == "lateinit"
+        'n' -> s == "noinline"
+        'o' -> s == "open" || s == "operator" || s == "out" || s == "override"
+        'p' -> s == "private" || s == "protected" || s == "public"
+        'r' -> s == "reified"
+        's' -> s == "sealed" || s == "suspend"
+        't' -> s == "tailrec"
+        'v' -> s == "vararg" || s == "value"
+        else -> false
+    }
 }
 
 internal class Snap(val p: Int, val rawPos: Int, val outSize: Int, val errSize: Int, val lastEnd: Int, val nlOn: Boolean)
@@ -41,8 +55,15 @@ internal class Snap(val p: Int, val rawPos: Int, val outSize: Int, val errSize: 
 class Parser(internal val lex: LexResult) {
     internal val text: String = lex.text
     internal val toks: ArrayList<Token> = lex.tokens
-    internal val sig = ArrayList<Int>()
-    internal val nlBefore = ArrayList<Boolean>()
+    /** the significant tokens (everything but whitespace and comments), the last one is the EOF token */
+    internal val stoks = ArrayList<Token>()
+    /** raw token index of each significant token */
+    internal var sig = IntArray(0)
+    /** is there a line break between the previous significant token and this one? */
+    internal var nlBefore = BooleanArray(0)
+    /** kind and start offset of the current token, cached for speed */
+    internal var cur: Tk = Tk.EOF
+    internal var curStart = 0
     internal var p = 0
     internal var rawPos = 0
     internal val out = ArrayList<Cst>()
@@ -62,8 +83,17 @@ class Parser(internal val lex: LexResult) {
     private var lastSigRaw = -1
 
     init {
-        var nl = false
+        var count = 0
         var i = 0
+        while (i < toks.size) {
+            if (!toks[i].kind.isTrivia()) count++
+            i++
+        }
+        sig = IntArray(count)
+        nlBefore = BooleanArray(count)
+        var nl = false
+        var n = 0
+        i = 0
         while (i < toks.size) {
             val t = toks[i]
             if (t.kind == Tk.WS) {
@@ -73,12 +103,16 @@ class Parser(internal val lex: LexResult) {
                     k++
                 }
             } else if (!t.kind.isTrivia()) {
-                sig.add(i)
-                nlBefore.add(nl)
+                sig[n] = i
+                nlBefore[n] = nl
+                stoks.add(t)
+                n++
                 nl = false
             }
             i++
         }
+        cur = stoks[0].kind
+        curStart = stoks[0].start
         lineStarts.add(0)
         var k = 0
         while (k < text.length) {
@@ -90,29 +124,29 @@ class Parser(internal val lex: LexResult) {
 
     // ---- token access ---------------------------------------------------------------------------------------------
 
-    internal fun kind(): Tk = toks[sig[p]].kind
+    internal fun kind(): Tk = cur
 
     internal fun la(k: Int): Tk {
         val i = p + k
-        return if (i < sig.size) toks[sig[i]].kind else Tk.EOF
+        return if (i < stoks.size) stoks[i].kind else Tk.EOF
     }
 
-    internal fun tokStart(): Int = toks[sig[p]].start
+    internal fun tokStart(): Int = curStart
 
     internal fun tokStartAt(k: Int): Int {
         val i = p + k
-        return if (i < sig.size) toks[sig[i]].start else text.length
+        return if (i < stoks.size) stoks[i].start else text.length
     }
 
     internal fun tokEndAt(k: Int): Int {
         val i = p + k
-        return if (i < sig.size) toks[sig[i]].end else text.length
+        return if (i < stoks.size) stoks[i].end else text.length
     }
 
     internal fun textAt(k: Int): String {
         val i = p + k
-        if (i >= sig.size) return ""
-        val t = toks[sig[i]]
+        if (i >= stoks.size) return ""
+        val t = stoks[i]
         return text.substring(t.start, t.end)
     }
 
@@ -121,8 +155,8 @@ class Parser(internal val lex: LexResult) {
     /** is the token `k` positions ahead an identifier with exactly this text? */
     internal fun identAt(k: Int, s: String): Boolean {
         val i = p + k
-        if (i >= sig.size) return false
-        val t = toks[sig[i]]
+        if (i >= stoks.size) return false
+        val t = stoks[i]
         if (t.kind != Tk.IDENT || t.end - t.start != s.length) return false
         var j = 0
         while (j < s.length) {
@@ -139,12 +173,18 @@ class Parser(internal val lex: LexResult) {
 
     internal fun nl(): Boolean = nlBefore[p]
 
+    private fun setCurrent() {
+        val t = stoks[p]
+        cur = t.kind
+        curStart = t.start
+    }
+
     internal fun at(k: Tk): Boolean = kind() == k
 
     // ---- CST building ---------------------------------------------------------------------------------------------
 
     internal fun advance() {
-        if (kind() == Tk.EOF) return
+        if (cur == Tk.EOF) return
         val ri = sig[p]
         while (rawPos < ri) {
             out.add(CstLeaf(rawPos))
@@ -152,9 +192,10 @@ class Parser(internal val lex: LexResult) {
         }
         out.add(CstLeaf(ri))
         rawPos = ri + 1
-        lastEnd = toks[ri].end
+        lastEnd = stoks[p].end
         lastSigRaw = ri
         p++
+        setCurrent()
     }
 
     internal fun mark(): Int = out.size
@@ -174,6 +215,7 @@ class Parser(internal val lex: LexResult) {
 
     internal fun restore(s: Snap) {
         p = s.p
+        setCurrent()
         rawPos = s.rawPos
         lastEnd = s.lastEnd
         nlOn = s.nlOn
@@ -423,7 +465,7 @@ class Parser(internal val lex: LexResult) {
         if (!isIdent("context") || la(1) != Tk.LPAR) return false
         var depth = 0
         var i = 1
-        while (p + i < sig.size) {
+        while (p + i < stoks.size) {
             val k = la(i)
             if (k == Tk.LPAR) depth++
             else if (k == Tk.RPAR) {
@@ -488,6 +530,13 @@ class Parser(internal val lex: LexResult) {
                 val t = parseType()
                 done(pm, NodeKind.PARAM)
                 list.add(fin(Param(null, null, name, t, null), ps))
+            } else if (kind() == Tk.IDENT && la(1) == Tk.AT && adjacent(0)) {
+                // `context(label@ Type)`
+                advance()
+                advance()
+                val t = parseType()
+                done(pm, NodeKind.PARAM)
+                list.add(fin(Param(null, null, "_", t, null), ps))
             } else {
                 val t = parseType()
                 done(pm, NodeKind.PARAM)
@@ -596,6 +645,9 @@ class Parser(internal val lex: LexResult) {
 
     private fun tryParseDeclarationInner(ctx: Int): Decl? {
         val k0 = kind()
+        if (ctx == CTX_LOCAL && (k0 == Tk.LPAR || k0 == Tk.LBRACKET) && (la(1) == Tk.VAL || la(1) == Tk.VAR)) {
+            return parseShortDestructuring()
+        }
         if (k0 != Tk.VAL && k0 != Tk.VAR && k0 != Tk.FUN && k0 != Tk.CLASS && k0 != Tk.INTERFACE && k0 != Tk.OBJECT &&
             k0 != Tk.TYPEALIAS && k0 != Tk.AT && k0 != Tk.IDENT
         ) return null
@@ -634,6 +686,24 @@ class Parser(internal val lex: LexResult) {
         errorPrev(if (ctx == CTX_TOP) "Expecting a top level declaration" else "Expecting member declaration")
         done(m, NodeKind.ERROR)
         return null
+    }
+
+    /** `(val a, val b) = x` and `[val a, val b] = x` (statement level) */
+    private fun parseShortDestructuring(): Decl {
+        val m = mark()
+        val s = tokStart()
+        val bracketed = kind() == Tk.LBRACKET
+        val entries = parseDestructEntries()
+        var init: Expr? = null
+        if (kind() == Tk.EQ) {
+            advance()
+            init = parseExpression()
+        } else {
+            errorPrev("Expecting '='")
+        }
+        if (kind() == Tk.SEMI) advance()
+        done(m, NodeKind.DESTRUCTURING)
+        return fin(DestructuringDecl(null, false, entries, init, bracketed), s)
     }
 
     private fun parseTypeAlias(m: Int, s: Int, mods: Modifiers?): Decl {
@@ -892,9 +962,10 @@ class Parser(internal val lex: LexResult) {
         advance()
         var tps: List<TypeParam> = emptyList()
         if (kind() == Tk.LT) tps = parseTypeParams()
-        if (kind() == Tk.LPAR) {
+        if (kind() == Tk.LPAR || kind() == Tk.LBRACKET) {
             // destructuring declaration
             if (ctx != CTX_LOCAL) error("Destructuring declarations are only allowed for local variables/values")
+            val bracketed = kind() == Tk.LBRACKET
             val entries = parseDestructEntries()
             var init: Expr? = null
             if (kind() == Tk.EQ) {
@@ -903,7 +974,7 @@ class Parser(internal val lex: LexResult) {
             }
             if (kind() == Tk.SEMI) advance()
             done(m, NodeKind.DESTRUCTURING)
-            return fin(DestructuringDecl(mods, isVar, entries, init), s)
+            return fin(DestructuringDecl(mods, isVar, entries, init, bracketed), s)
         }
         var receiver: TypeRef? = null
         val quick = kind() == Tk.IDENT && la(1) != Tk.DOT && la(1) != Tk.LT && la(1) != Tk.QUEST
@@ -935,11 +1006,17 @@ class Parser(internal val lex: LexResult) {
         }
         var getter: AccessorDecl? = null
         var setter: AccessorDecl? = null
+        var backing: BackingFieldDecl? = null
         if (ctx != CTX_LOCAL) {
-            // accessors, possibly after a `;` and on following lines, in any order
+            // accessors and the explicit backing field, possibly after a `;` and on following lines, in any order
             while (true) {
                 val sn = snap()
                 if (kind() == Tk.SEMI && accessorAheadAfterSemi()) advance()
+                val bf = tryParseBackingField()
+                if (bf != null) {
+                    backing = bf
+                    continue
+                }
                 val a = tryParseAccessor()
                 if (a == null) {
                     restore(sn)
@@ -954,7 +1031,7 @@ class Parser(internal val lex: LexResult) {
             errorPrev("Property getter or setter expected")
         }
         done(m, NodeKind.PROPERTY)
-        return fin(PropertyDecl(mods, isVar, tps, receiver, name, type, cons, init, delegate, getter, setter), s)
+        return fin(PropertyDecl(mods, isVar, tps, receiver, name, type, cons, init, delegate, getter, setter, backing), s)
     }
 
     private fun accessorAheadAfterSemi(): Boolean {
@@ -974,6 +1051,30 @@ class Parser(internal val lex: LexResult) {
             if (k == Tk.AT) return true
             return false
         }
+    }
+
+    /** explicit backing field: `field [: Type] [= init]` on its own (modifiers allowed) */
+    private fun tryParseBackingField(): BackingFieldDecl? {
+        var i = 0
+        while (la(i) == Tk.IDENT && isModifierWord(textAt(i))) i++
+        if (!(la(i) == Tk.IDENT && textAt(i) == "field" && (la(i + 1) == Tk.EQ || la(i + 1) == Tk.COLON))) return null
+        val m = mark()
+        val s = tokStart()
+        val mods = parseModifierList()
+        if (!isIdent("field")) return null
+        advance()
+        var t: TypeRef? = null
+        if (kind() == Tk.COLON) {
+            advance()
+            t = parseType()
+        }
+        var init: Expr? = null
+        if (kind() == Tk.EQ) {
+            advance()
+            init = parseExpression()
+        }
+        done(m, NodeKind.BACKING_FIELD)
+        return fin(BackingFieldDecl(mods, t, init), s)
     }
 
     private fun tryParseAccessor(): AccessorDecl? {
@@ -1019,13 +1120,15 @@ class Parser(internal val lex: LexResult) {
         return fin(AccessorDecl(mods, kindText, param, ret, body, exprBody), s)
     }
 
+    /** `( entries )` or `[ entries ]` of a destructuring declaration, lambda parameter or loop variable */
     internal fun parseDestructEntries(): List<DestructEntry> {
         val m = mark()
         val saved = nlOn
         nlOn = false
-        advance() // (
+        val close = if (kind() == Tk.LBRACKET) Tk.RBRACKET else Tk.RPAR
+        advance() // ( or [
         val list = ArrayList<DestructEntry>()
-        while (kind() != Tk.RPAR && kind() != Tk.EOF) {
+        while (kind() != close && kind() != Tk.EOF) {
             val before = p
             val em = mark()
             val es = tokStart()
@@ -1041,12 +1144,18 @@ class Parser(internal val lex: LexResult) {
                 advance()
                 t = parseType()
             }
+            var source: String? = null
+            if (kind() == Tk.EQ && la(1) == Tk.IDENT) {
+                advance()
+                source = tokText()
+                advance()
+            }
             done(em, NodeKind.DESTRUCT_ENTRY)
-            list.add(fin(DestructEntry(mods, isVar, name, t), es))
+            list.add(fin(DestructEntry(mods, isVar, name, t, source), es))
             if (kind() == Tk.COMMA) advance() else break
             if (p == before) break
         }
-        expect(Tk.RPAR, "')'")
+        expect(close, if (close == Tk.RBRACKET) "']'" else "')'")
         nlOn = saved
         done(m, NodeKind.DESTRUCTURING)
         return list
@@ -1168,7 +1277,7 @@ class Parser(internal val lex: LexResult) {
             }
             if (kind() == Tk.RBRACE || kind() == Tk.EOF) break
             // an entry starts with annotations and an identifier that is not a declaration modifier
-            val isEntry = if (kind() == Tk.AT) true else (kind() == Tk.IDENT && !atModifierKeyword() && !isIdent("init") && !isIdent("constructor") && !isIdent("context"))
+            val isEntry = if (kind() == Tk.AT) true else atEnumEntryStart()
             if (!isEntry) break
             val before = p
             val m = mark()
@@ -1198,6 +1307,16 @@ class Parser(internal val lex: LexResult) {
             if (p == before) break
         }
         return list
+    }
+
+    /** `[modifiers] Name` followed by something that ends or continues an entry (not a member declaration) */
+    private fun atEnumEntryStart(): Boolean {
+        var j = 0
+        while (la(j) == Tk.IDENT && isModifierWord(textAt(j)) && la(j + 1) == Tk.IDENT) j++
+        if (la(j) != Tk.IDENT) return false
+        if (j == 0) return !isIdent("init") && !isIdent("constructor") && !isIdent("context") && !atModifierKeyword()
+        val n = la(j + 1)
+        return n == Tk.COMMA || n == Tk.SEMI || n == Tk.LPAR || n == Tk.LBRACE || n == Tk.RBRACE || n == Tk.EOF
     }
 
     /** members of a class body up to (excluding) the closing brace */

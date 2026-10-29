@@ -195,9 +195,12 @@ class PsiOutline {
         val parts = ArrayList<String>()
         for (e in d.entries) {
             val mm = mods(e.modifierList)
-            parts.add((if (mm.isEmpty()) "" else mm.substring(1) + " ") + (if (e.isVar) "var " else "") + (e.nameIdentifier?.text ?: "?") + (if (e.typeReference != null) ":" + type(e.typeReference) else ""))
+            parts.add(
+                (if (mm.isEmpty()) "" else mm.substring(1) + " ") + (if (e.isVar) "var " else "") + (e.nameIdentifier?.text ?: "?") +
+                    (if (e.typeReference != null) ":" + type(e.typeReference) else "") + (if (e.initializer != null) "=" + e.initializer!!.text else ""),
+            )
         }
-        return "(" + join(parts, ", ") + ")"
+        return (if (d.hasSquareBrackets()) "[" else "(") + join(parts, ", ") + (if (d.hasSquareBrackets()) "]" else ")")
     }
 
     private fun superEntries(owner: KtClassOrObject): String {
@@ -250,6 +253,12 @@ class PsiOutline {
             sb.append(constraints(d))
             if (d.initializer != null) sb.append(" = ").append(expr(d.initializer))
             if (d.delegateExpression != null) sb.append(" by ").append(expr(d.delegateExpression))
+            val bf = d.fieldDeclaration
+            if (bf != null) {
+                sb.append(" field").append(mods(bf.modifierList))
+                if (bf.typeReference != null) sb.append(':').append(type(bf.typeReference))
+                if (bf.initializer != null) sb.append(" = ").append(expr(bf.initializer))
+            }
             if (d.getter != null) sb.append(' ').append(accessor(d.getter!!))
             if (d.setter != null) sb.append(' ').append(accessor(d.setter!!))
             sb.toString()
@@ -308,7 +317,7 @@ class PsiOutline {
         return when (e) {
             is KtConstantExpression -> e.text
             is KtStringTemplateExpression -> {
-                val raw = e.text.startsWith("\"\"\"")
+                val raw = e.text.trimStart('$').startsWith("\"\"\"")
                 val sb = StringBuilder(if (raw) "\"\"\"" else "\"")
                 for (p in e.entries) {
                     when (p) {

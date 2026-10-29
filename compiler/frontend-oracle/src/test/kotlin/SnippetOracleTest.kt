@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class SnippetOracleTest {
     private fun snippets(): List<String> {
         val out = ArrayList<String>()
-        for (name in listOf("/snippets.txt", "/snippets2.txt")) {
+        for (name in listOf("/snippets.txt", "/snippets2.txt", "/snippets3.txt")) {
             val text = SnippetOracleTest::class.java.getResourceAsStream(name)!!.readBytes().toString(Charsets.UTF_8)
             val cur = StringBuilder()
             for (line in text.split("\n")) {

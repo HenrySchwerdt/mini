@@ -248,12 +248,38 @@ private fun Parser.atLambdaArg(): Boolean {
     return false
 }
 
+/** at `@`: annotations followed by a lambda (`foo() @Ann { }`)? Consumes nothing. */
+private fun Parser.atAnnotatedLambda(): Boolean {
+    if (kind() != Tk.AT || noLambda) return false
+    val sn = snap()
+    val anns = ArrayList<AnnotationEntry>()
+    while (kind() == Tk.AT) {
+        val before = p
+        parseAnnotationInto(anns, false)
+        if (p == before) break
+    }
+    val ok = kind() == Tk.LBRACE && errors.size == sn.errSize
+    restore(sn)
+    return ok
+}
+
 /** trailing lambda arguments (after the argument list or directly after a callee); newlines before them are allowed */
 private fun Parser.parseLambdaArgs(into: ArrayList<Expr>) {
-    while (atLambdaArg()) {
+    while (atLambdaArg() || atAnnotatedLambda()) {
         val m = mark()
         val s = tokStart()
-        if (kind() == Tk.IDENT) {
+        if (kind() == Tk.AT) {
+            val am = mark()
+            val anns = ArrayList<AnnotationEntry>()
+            while (kind() == Tk.AT) {
+                val before = p
+                parseAnnotationInto(anns, false)
+                if (p == before) break
+            }
+            val l = parseLambda()
+            done(am, NodeKind.ANNOTATED)
+            into.add(fin(AnnotatedExpr(anns, l), s))
+        } else if (kind() == Tk.IDENT) {
             val label = tokText()
             val lm = mark()
             advance()
@@ -577,7 +603,7 @@ private fun Parser.parseAtom(): Expr {
 private fun Parser.parseString(): Expr {
     val m = mark()
     val s = tokStart()
-    val raw = tokEndAt(0) - tokStartAt(0) == 3
+    val raw = tokEndAt(0) - tokStartAt(0) >= 3 && text[tokEndAt(0) - 1] == '"' && text[tokEndAt(0) - 2] == '"' && text[tokEndAt(0) - 3] == '"'
     advance() // opening quote
     val parts = ArrayList<StrPart>()
     while (true) {
@@ -747,7 +773,7 @@ private fun Parser.parseIf(): Expr {
     val s = tokStart()
     advance() // if
     val cond = parseParenCondition()
-    val then = parseBody()
+    val then = if (kind() == Tk.ELSE) null else parseBody()
     var els: Expr? = null
     val sn = snap()
     if (kind() == Tk.SEMI && la(1) == Tk.ELSE && la(2) != Tk.ARROW) advance()
@@ -805,6 +831,7 @@ private fun Parser.parseFor(): Expr {
             entries = parseDestructEntries()
         } else {
             val mods = parseModifierList()
+            if (kind() == Tk.VAL || kind() == Tk.VAR) advance() // accepted by the reference parser, rejected later
             val name = parseName("loop variable")
             var t: TypeRef? = null
             if (kind() == Tk.COLON) {

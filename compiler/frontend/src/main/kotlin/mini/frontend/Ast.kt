@@ -156,15 +156,22 @@ class PropertyDecl(
     val delegate: Expr?,
     val getter: AccessorDecl?,
     val setter: AccessorDecl?,
+    /** explicit backing field (`field = ...` below the property) */
+    val backingField: BackingFieldDecl? = null,
 ) : Decl()
 
-class DestructEntry(val mods: Modifiers?, val isVar: Boolean, val name: String, val type: TypeRef?) : Ast()
+class BackingFieldDecl(val mods: Modifiers?, val type: TypeRef?, val initializer: Expr?) : Ast()
 
+/** [source]: the property the entry reads in a name-based destructuring (`(val a = prop) = x`) */
+class DestructEntry(val mods: Modifiers?, val isVar: Boolean, val name: String, val type: TypeRef?, val source: String? = null) : Ast()
+
+/** `val (a, b) = x`, `val [a, b] = x` and the short forms `(val a, val b) = x` / `[val a, val b] = x` */
 class DestructuringDecl(
     val mods: Modifiers?,
     val isVar: Boolean,
     val entries: List<DestructEntry>,
     val initializer: Expr?,
+    val bracketed: Boolean = false,
 ) : Decl()
 
 class TypeAliasDecl(

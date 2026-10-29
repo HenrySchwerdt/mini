@@ -205,13 +205,17 @@ internal fun Parser.parseTypeArgs(): List<TypeArg> {
             list.add(fin(TypeArg(true, null, null), s))
         } else {
             var variance: String? = null
-            // annotations may precede the variance
-            if (kind() == Tk.IN) {
-                variance = "in"
-                advance()
-            } else if (isIdent("out") && la(1) != Tk.COMMA && la(1) != Tk.GT && la(1) != Tk.DOT && la(1) != Tk.LT) {
-                variance = "out"
-                advance()
+            // (the reference parser accepts repeated variance modifiers, `out out T`)
+            while (true) {
+                if (kind() == Tk.IN) {
+                    if (variance == null) variance = "in"
+                    advance()
+                } else if (isIdent("out") && la(1) != Tk.COMMA && la(1) != Tk.GT && la(1) != Tk.DOT && la(1) != Tk.LT) {
+                    if (variance == null) variance = "out"
+                    advance()
+                } else {
+                    break
+                }
             }
             val t = parseType()
             done(am, NodeKind.TYPE_ARG)

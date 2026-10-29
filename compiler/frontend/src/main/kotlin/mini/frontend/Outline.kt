@@ -173,13 +173,16 @@ class Outline {
         return "(" + join(parts, ", ") + ")"
     }
 
-    private fun destruct(list: List<DestructEntry>, inheritVar: Boolean): String {
+    private fun destruct(list: List<DestructEntry>, inheritVar: Boolean, bracketed: Boolean): String {
         val parts = ArrayList<String>()
         for (e in list) {
             val mm = mods(e.mods)
-            parts.add((if (mm.isEmpty()) "" else mm.substring(1) + " ") + (if (e.isVar || inheritVar) "var " else "") + e.name + (if (e.type != null) ":" + type(e.type) else ""))
+            parts.add(
+                (if (mm.isEmpty()) "" else mm.substring(1) + " ") + (if (e.isVar || inheritVar) "var " else "") + e.name +
+                    (if (e.type != null) ":" + type(e.type) else "") + (if (e.source != null) "=" + e.source else ""),
+            )
         }
-        return "(" + join(parts, ", ") + ")"
+        return (if (bracketed) "[" else "(") + join(parts, ", ") + (if (bracketed) "]" else ")")
     }
 
     private fun superEntries(list: List<SuperEntry>): String {
@@ -236,13 +239,19 @@ class Outline {
                 sb.append(constraints(d.constraints))
                 if (d.initializer != null) sb.append(" = ").append(expr(d.initializer))
                 if (d.delegate != null) sb.append(" by ").append(expr(d.delegate))
+                val bf = d.backingField
+                if (bf != null) {
+                    sb.append(" field").append(mods(bf.mods))
+                    if (bf.type != null) sb.append(':').append(type(bf.type))
+                    if (bf.initializer != null) sb.append(" = ").append(expr(bf.initializer))
+                }
                 if (d.getter != null) sb.append(' ').append(accessor(d.getter))
                 if (d.setter != null) sb.append(' ').append(accessor(d.setter))
                 sb.toString()
             }
             is DestructuringDecl -> {
                 val sb = StringBuilder(if (d.isVar) "var" else "val")
-                sb.append(mods(d.mods)).append(' ').append(destruct(d.entries, d.isVar))
+                sb.append(mods(d.mods)).append(' ').append(destruct(d.entries, d.isVar, d.bracketed))
                 if (d.initializer != null) sb.append(" = ").append(expr(d.initializer))
                 sb.toString()
             }
@@ -352,7 +361,7 @@ class Outline {
                     val mm = mods(p.mods)
                     val sb = StringBuilder()
                     if (mm.isNotEmpty()) sb.append(mm.substring(1)).append(' ')
-                    if (p.names != null) sb.append(destruct(p.names, false)) else sb.append(p.name)
+                    if (p.names != null) sb.append(destruct(p.names, false, false)) else sb.append(p.name)
                     if (p.type != null) sb.append(':').append(type(p.type))
                     ps.add(sb.toString())
                 }
@@ -407,7 +416,7 @@ class Outline {
             is BreakExpr -> "(break" + (if (e.label != null) "@" + e.label else "") + ")"
             is ContinueExpr -> "(continue" + (if (e.label != null) "@" + e.label else "") + ")"
             is ForExpr -> {
-                val v = if (e.destructuring) destruct(e.entries, false) else (e.entries[0].name + (if (e.entries[0].type != null) ":" + type(e.entries[0].type) else ""))
+                val v = if (e.destructuring) destruct(e.entries, false, false) else (e.entries[0].name + (if (e.entries[0].type != null) ":" + type(e.entries[0].type) else ""))
                 "(for " + v + " in " + expr(e.iterable) + " " + expr(e.body) + ")"
             }
             is WhileExpr -> "(while " + expr(e.cond) + " " + expr(e.body) + ")"
