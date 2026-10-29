@@ -5,10 +5,14 @@
  */
 package kotlin.collections
 
+import kotlin.internal.ReturnsBorrowed
+import kotlin.internal.TakesOwnership
 import mini.internal.refArrayGet
+import mini.internal.refArrayGetBorrowed
 import mini.internal.refArrayLength
 import mini.internal.refArrayNew
 import mini.internal.refArraySet
+import mini.internal.refArraySetOwned
 
 public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     private var array: Any
@@ -34,27 +38,28 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     override fun isEmpty(): Boolean = length == 0
 
     @Suppress("UNCHECKED_CAST")
+    @ReturnsBorrowed
     override fun get(index: Int): E {
         checkElementIndex(index)
-        return refArrayGet(array, index) as E
+        return refArrayGetBorrowed(array, index) as E
     }
 
     @Suppress("UNCHECKED_CAST")
-    override fun set(index: Int, element: E): E {
+    override fun set(index: Int, @TakesOwnership element: E): E {
         checkElementIndex(index)
         val old = refArrayGet(array, index) as E
-        refArraySet(array, index, element)
+        refArraySetOwned(array, index, element)
         return old
     }
 
-    override fun add(element: E): Boolean {
+    override fun add(@TakesOwnership element: E): Boolean {
         ensureCapacity(length + 1)
-        refArraySet(array, length, element)
+        refArraySetOwned(array, length, element)
         length++
         return true
     }
 
-    override fun add(index: Int, element: E) {
+    override fun add(index: Int, @TakesOwnership element: E) {
         if (index < 0 || index > length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
         ensureCapacity(length + 1)
         var i = length
@@ -62,7 +67,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
             refArraySet(array, i, refArrayGet(array, i - 1))
             i--
         }
-        refArraySet(array, index, element)
+        refArraySetOwned(array, index, element)
         length++
     }
 
@@ -138,5 +143,6 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
     }
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String = super.toString()
 }

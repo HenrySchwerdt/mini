@@ -63,6 +63,12 @@ void mk_stats_on_free(size_t bytes) {
     STAT_SUB(&stats.bytes_live, bytes);
 }
 
+void mk_stats_on_free_n(size_t objects, size_t bytes) {
+    STAT_ADD(&stats.frees, objects);
+    STAT_SUB(&stats.live, objects);
+    STAT_SUB(&stats.bytes_live, bytes);
+}
+
 void mk_stats_on_retain(int kind) {
     if (!STAT_LOAD(&registered)) register_dump();
     STAT_ADD(&stats.retains, 1);

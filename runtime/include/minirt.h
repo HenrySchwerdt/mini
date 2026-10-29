@@ -386,6 +386,8 @@ MkObject *mk_ref_array_new(MkInt size); /* all slots null */
 MkObject *mk_ref_array_get(MkObject *array, MkInt index); /* returns +1 (or NULL) */
 void mk_ref_array_set(MkObject *array, MkInt index, MkObject *value); /* retains value, releases the old one */
 MkInt mk_ref_array_length(MkObject *array);
+MkObject *mk_ref_array_get_b(MkObject *array, MkInt index); /* D2: borrowed, no retain (valid while the array keeps the slot) */
+void mk_ref_array_set_o(MkObject *array, MkInt index, MkObject *value); /* D2: takes over the caller's reference to value */
 
 /* Failures of the stdlib (until exceptions exist): print "fatal: <Kind>: <message>" to stderr and abort. */
 _Noreturn void mk_throw_illegal_argument(const MkString *message);

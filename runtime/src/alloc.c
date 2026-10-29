@@ -76,6 +76,7 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
     /* the padding of the prefix remembers the block size for mk_free_object_memory */
     *(size_t *)(void *)(block + sizeof(void *)) = total;
     MK_STAT_ALLOC(total);
+    if (mk_arena_is(allocator)) mk_arena_stat_alloc(allocator, total);
 #endif
     MkObject *object = (MkObject *)(void *)(block + MK_PREFIX_SIZE);
     object->type = type;
@@ -108,7 +109,7 @@ void mk_free_object_memory(MkObject *object) {
     unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
     MkAllocator *owner = *(MkAllocator **)(void *)block;
 #ifdef MK_STATS
-    MK_STAT_FREE(*(size_t *)(void *)(block + sizeof(void *)));
+    if (!mk_arena_is(owner)) MK_STAT_FREE(*(size_t *)(void *)(block + sizeof(void *))); /* an arena counts its objects when it dies */
 #endif
     object->refcount = 0;
     object->flags |= MK_FLAG_FREED;

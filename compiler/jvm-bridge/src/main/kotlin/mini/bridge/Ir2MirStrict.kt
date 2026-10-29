@@ -211,3 +211,30 @@ private fun Ir2Mir.closeStmtFor(t: IrType, v: MirExpr): MirStmt? {
     val call = MirExpr.ICall(info(ac).cName, idx, recv, emptyList(), emptyList(), TUnit)
     return MirStmt.If(MirExpr.IsInstance(v, acType), listOf(MirStmt.Eval(call)), emptyList())
 }
+
+// ---- calling conventions of the stdlib hot paths (backend/Conventions.kt) ---------------------------------------------
+
+private const val RETURNS_BORROWED = "kotlin.internal.ReturnsBorrowed"
+private const val TAKES_OWNERSHIP = "kotlin.internal.TakesOwnership"
+
+/** `@kotlin.internal.ReturnsBorrowed` on the function (or the property of a getter): the result is a borrowed reference. */
+internal fun Ir2Mir.returnsBorrowedAnnotation(f: IrFunction): Boolean {
+    if (f.annotations.anno(RETURNS_BORROWED) != null) return true
+    val prop = (f as? IrSimpleFunction)?.correspondingPropertySymbol?.owner
+    return prop != null && prop.annotations.anno(RETURNS_BORROWED) != null
+}
+
+/** Indices (into the MIR parameter list [params], which may have a constructor's `this` in front) of `@TakesOwnership` parameters. */
+internal fun Ir2Mir.ownedParamIndexes(f: IrFunction, params: List<MirLocal>): List<Int> {
+    val offset = params.size - f.parameters.size
+    val out = ArrayList<Int>()
+    for ((i, p) in f.parameters.withIndex()) if (p.annotations.anno(TAKES_OWNERSHIP) != null) out += offset + i
+    return out
+}
+
+/** `@kotlin.internal.NoHeapEffects` (stdlib functions that only change objects they create): calls do not end the lifetime of borrowed aliases. */
+internal fun Ir2Mir.noHeapEffectsAnnotation(f: IrFunction): Boolean {
+    if (f.annotations.anno("kotlin.internal.NoHeapEffects") != null) return true
+    val prop = (f as? IrSimpleFunction)?.correspondingPropertySymbol?.owner
+    return prop != null && prop.annotations.anno("kotlin.internal.NoHeapEffects") != null
+}

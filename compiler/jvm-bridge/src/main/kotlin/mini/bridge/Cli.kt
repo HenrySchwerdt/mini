@@ -14,7 +14,7 @@ object Cli {
     private const val USAGE = """usage: minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
        minic build <file.kt>... -o <output> [--emit-c <path>] [--cc <compiler>]
              [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--frontend=k2|mini]"""
+             [--stdlib <dir> | --no-stdlib] [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [--frontend=k2|mini]"""
 
     class Options(
         val sources: List<File>,
@@ -38,6 +38,10 @@ object Cli {
         val miniFrontend: Boolean = false,
         /** `--no-strict`: no Strict code generation (reference counting everywhere, allocators and `free` ignored). */
         val noStrict: Boolean = false,
+        /** `--no-conv`: no borrowed results / owned parameters for the stdlib hot paths (Conventions). */
+        val noConv: Boolean = false,
+        /** `--conv-report`: print the calling conventions that were kept / dropped (stderr). */
+        val convReport: Boolean = false,
     )
 
     /** Returns the process exit code. */
@@ -129,6 +133,8 @@ object Cli {
         var noRcOpt = false
         var mini = false
         var noStrict = false
+        var noConv = false
+        var convReport = false
         var stdlib: File? = null
         var noStdlib = false
         var out: File? = null
@@ -159,6 +165,8 @@ object Cli {
                 "--frontend=mini" -> mini = true
                 "--frontend=k2" -> mini = false
                 "--no-strict" -> noStrict = true
+                "--no-conv" -> noConv = true
+                "--conv-report" -> convReport = true
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     sources += File(x)
@@ -167,7 +175,7 @@ object Cli {
             i++
         }
         if (sources.isEmpty() || out == null) { System.err.println(USAGE); return null }
-        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict)
+        return Options(sources, out, emitC, cc, rtSrc, rtInc, cflags, stdlib, noStdlib, extra, werror, stats, noRcOpt, miniFrontend = mini, noStrict = noStrict, noConv = noConv, convReport = convReport)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -242,7 +250,15 @@ object Cli {
         if (mainCount != 1) throw BuildFailure("${module.sourceName}: expected exactly one `fun main()`, found $mainCount")
 
         // 3. MIR -> C
-        val c = CEmitter.emit(module, rcOpt = !o.noRcOpt, strict = !o.noStrict)
+        val c = CEmitter.emitDetailed(module, rcOpt = !o.noRcOpt, strict = !o.noStrict, conventions = !o.noConv).also { r ->
+            if (o.convReport) r.plan?.conv?.summary()?.forEach { System.err.println("conv: $it") }
+            val dbg = System.getenv("MINIC_RC_EXPLAIN")
+            if (dbg != null) for (f in module.functions) if (f.qualifiedName.contains(dbg)) {
+                System.err.println("rc: ${f.qualifiedName} effects: ${r.plan?.effectsOf(f.cName)}")
+                val fk = System.getenv("MINIC_RC_PATH")
+                if (fk != null) System.err.println("rc:   path to $fk: ${r.plan?.tracePath(f.cName, fk)}")
+            }
+        }.c
         val cFile = o.emitC ?: File.createTempFile("minic-", ".c")
         cFile.absoluteFile.parentFile?.mkdirs()
         cFile.writeText(c)

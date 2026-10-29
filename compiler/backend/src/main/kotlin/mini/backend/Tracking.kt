@@ -28,6 +28,9 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
 
     val any: Boolean get() = strictClasses.isNotEmpty()
 
+    /** Calling conventions of the stdlib hot paths (borrowed results, owned parameters); set by [RcOpt.analyze]. */
+    var conv: Conventions? = null
+
     fun classOf(cName: String): MirClass? = classes[cName]
 
     fun functionOf(cName: String): MirFunction? = functions[cName]
@@ -46,6 +49,7 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
      */
     fun owned(f: MirFunction?, e: MirExpr): Boolean {
         if (!e.isOwned()) return false
+        if (conv?.borrowedResult(e) == true) return false
         if (e is MirExpr.New && e.auto && f != null && f.strict && enabled) return true
         if (!rc(f, e.type)) return false
         if (!isTrackedType(e.type)) return true

@@ -16,16 +16,18 @@ import mini.io.writeTextFile
  * program with status 1 in both worlds).
  */
 
-const val USAGE = "usage: native-driver <in.mir> -o <out.c> [--no-rc-opt] [--no-strict]"
+const val USAGE = "usage: native-driver <in.mir> -o <out.c> [--no-rc-opt] [--no-strict] [--no-conv]"
 
 /** MIR text to C text; [rcOpt] runs the reference-count elision pass (default). */
-fun mirToC(mirText: String, rcOpt: Boolean = true, strict: Boolean = true): String = CEmitter.emit(MirReader.read(mirText), rcOpt, strict)
+fun mirToC(mirText: String, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true): String =
+    CEmitter.emit(MirReader.read(mirText), rcOpt, strict, conventions)
 
 fun main(args: Array<String>) {
     var input: String? = null
     var output: String? = null
     var rcOpt = true
     var strict = true
+    var conventions = true
     var i = 0
     while (i < args.size) {
         val a = args[i]
@@ -39,6 +41,9 @@ fun main(args: Array<String>) {
         } else if (a == "--no-strict") {
             strict = false
             i += 1
+        } else if (a == "--no-conv") {
+            conventions = false
+            i += 1
         } else {
             if (input != null) throw IllegalArgumentException("more than one input file\n" + USAGE)
             input = a
@@ -46,5 +51,5 @@ fun main(args: Array<String>) {
         }
     }
     if (input == null || output == null) throw IllegalArgumentException(USAGE)
-    writeTextFile(output, mirToC(readTextFile(input), rcOpt, strict))
+    writeTextFile(output, mirToC(readTextFile(input), rcOpt, strict, conventions))
 }

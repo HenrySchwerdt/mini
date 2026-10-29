@@ -143,7 +143,9 @@ private class MirWriterImpl {
         sb.append(") ")
         type(f.returnType); sb.append(' ')
         optStr(f.constructorOf)
-        sb.append(' ').append(f.strict)
+        sb.append(' ').append(f.strict).append(' ').append(f.returnsBorrowed).append(' ').append(f.noHeapEffects).append(" (owns")
+        for (i in f.ownsParams) sb.append(' ').append(i)
+        sb.append(')')
         for (s in f.body) {
             nl(2)
             stmt(s, 2)
@@ -622,7 +624,7 @@ private class MirReaderImpl {
 
     fun fn(x: Sx): MirFunction {
         val it = lst(x, "fun")
-        need(it, 7, "fun")
+        need(it, 10, "fun")
         locals = HashMap()
         labels = HashMap()
         val params = ArrayList<MirLocal>()
@@ -630,9 +632,13 @@ private class MirReaderImpl {
         val ret = type(it[4])
         val ctor = optStr(it[5])
         val strict = bool(it[6])
+        val borrowed = bool(it[7])
+        val noEffects = bool(it[8])
+        val owns = ArrayList<Int>()
+        for (k in lst(it[9], "owns").drop(1)) owns.add(int(k))
         val body = ArrayList<MirStmt>()
-        for (k in 7 until it.size) body.add(stmt(it[k]))
-        return MirFunction(str(it[1]), str(it[2]), params, ret, body, ctor, strict)
+        for (k in 10 until it.size) body.add(stmt(it[k]))
+        return MirFunction(str(it[1]), str(it[2]), params, ret, body, ctor, strict, borrowed, owns, noEffects)
     }
 
     fun local(x: Sx): MirLocal {

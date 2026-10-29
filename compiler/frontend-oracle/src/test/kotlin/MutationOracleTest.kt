@@ -98,7 +98,7 @@ class MutationOracleTest {
     private val modifierInfix = Regex("""\((public|private|protected|internal|override|open|abstract|final|inline|operator|infix|data|enum|sealed|const|lateinit|vararg|suspend|tailrec|external|expect|actual|annotation|companion|inner|value|noinline|crossinline|reified|out) """)
 
     /** PSI accepts `- val x = 1`: a local declaration as an operand. We do not model that; it is not Kotlin anyone writes. */
-    private val declAfterOperator = Regex("""[-+!.]\s*(/\*.*?\*/\s*)*(val|var|fun|class|object|interface)\s|\bin\s+(val|var|fun)\s|\bcompanion\s*\{|\bin\s+@file|\bfun\s+\w+\s*<""", RegexOption.DOT_MATCHES_ALL)
+    private val declAfterOperator = Regex("""[-+!.]\s*(/\*.*?\*/\s*)*(val|var|fun|class|object|interface)\s|\bin\s+((public|private|protected|internal|inline|operator|infix|override|open|abstract|final|const|lateinit|external|tailrec|suspend|data|enum|sealed|annotation|value|expect|actual)\s+)*(val|var|fun)\s|\bcompanion\s*\{|\bin\s+@file|\bfun\s+\w+\s*<""", RegexOption.DOT_MATCHES_ALL)
 
     private fun declarationAsOperand(src: String, e: SyntaxError): Boolean {
         if (declAfterOperator.containsMatchIn(src)) return true

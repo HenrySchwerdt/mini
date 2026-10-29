@@ -77,15 +77,20 @@ void mk_free_object_memory(MkObject *object);
 #ifdef MK_STATS
 void mk_stats_on_alloc(size_t bytes);
 void mk_stats_on_free(size_t bytes);
+void mk_stats_on_free_n(size_t objects, size_t bytes); /* an arena dies: all its objects at once */
+int mk_arena_is(const MkAllocator *a);                  /* alloc_arena.c: is `a` an arena? */
+void mk_arena_stat_alloc(MkAllocator *a, size_t bytes); /* an object of `bytes` (prefix included) was allocated in the arena */
 void mk_stats_on_retain(int kind);  /* 0 = no-op (NULL / static / stack), 1 = plain, 2 = atomic */
 void mk_stats_on_release(int kind);
 #define MK_STAT_ALLOC(bytes) mk_stats_on_alloc(bytes)
 #define MK_STAT_FREE(bytes) mk_stats_on_free(bytes)
+#define MK_STAT_FREE_N(n, bytes) mk_stats_on_free_n((n), (bytes))
 #define MK_STAT_RETAIN(kind) mk_stats_on_retain(kind)
 #define MK_STAT_RELEASE(kind) mk_stats_on_release(kind)
 #else
 #define MK_STAT_ALLOC(bytes) ((void)0)
 #define MK_STAT_FREE(bytes) ((void)0)
+#define MK_STAT_FREE_N(n, bytes) ((void)0)
 #define MK_STAT_RETAIN(kind) ((void)0)
 #define MK_STAT_RELEASE(kind) ((void)0)
 #endif

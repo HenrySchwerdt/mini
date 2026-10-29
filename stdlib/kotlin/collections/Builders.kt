@@ -16,10 +16,13 @@ private object EmptyList : AbstractList<Nothing>(), RandomAccess {
 
     override fun get(index: Int): Nothing = mini.internal.throwIndexOutOfBounds("Empty list doesn't contain element at index $index.")
 
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean = other is List<*> && other.isEmpty()
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int = 1
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String = "[]"
 }
 
@@ -113,10 +116,13 @@ private object EmptySet : AbstractSet<Nothing>() {
 
     override fun iterator(): Iterator<Nothing> = EmptyList.iterator()
 
+    @kotlin.internal.NoHeapEffects
     override fun equals(other: Any?): Boolean = other is Set<*> && other.isEmpty()
 
+    @kotlin.internal.NoHeapEffects
     override fun hashCode(): Int = 0
 
+    @kotlin.internal.NoHeapEffects
     override fun toString(): String = "[]"
 }
 
@@ -293,7 +299,7 @@ public inline fun <K, V> MutableMap<K, V>.getOrPut(key: K, defaultValue: () -> V
     }
 }
 
-public operator fun <K, V> MutableMap<K, V>.set(key: K, value: V) {
+public operator fun <K, V> MutableMap<K, V>.set(@kotlin.internal.TakesOwnership key: K, @kotlin.internal.TakesOwnership value: V) {
     put(key, value)
 }
 

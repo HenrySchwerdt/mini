@@ -94,6 +94,20 @@ class MirFunction(
     val constructorOf: String? = null,
     /** Declared in Strict code: tracked values (instances of Strict classes) are not reference counted here. */
     val strict: Boolean = false,
+    /**
+     * Requested by the stdlib annotation `kotlin.internal.ReturnsBorrowed`: the result is a borrowed reference (no count
+     * for the caller). A request: [Conventions] checks every function of the dispatch group and drops it when one of
+     * them cannot honour it.
+     */
+    val returnsBorrowed: Boolean = false,
+    /** Indices into [params] marked `kotlin.internal.TakesOwnership`: the callee owns those references (see [Conventions]). */
+    val ownsParams: List<Int> = emptyList(),
+    /**
+     * `kotlin.internal.NoHeapEffects`: the function does not overwrite a heap reference that a caller's borrowed alias
+     * can depend on (it may build and fill objects of its own); calls of it do not end the lifetime of aliases (RcEffects).
+     * An assertion of the stdlib author, not checked.
+     */
+    val noHeapEffects: Boolean = false,
 )
 
 class MirLocal(
@@ -389,7 +403,21 @@ sealed class MirExpr {
  * or the operand of [MirStmt.Eval]; every other position sees a [MirExpr.Local] holding it.
  */
 fun MirExpr.isOwned(): Boolean = type.isRef && when (this) {
-    is MirExpr.Call, is MirExpr.RuntimeCall, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.New, is MirExpr.Box,
+    is MirExpr.RuntimeCall -> !NativeConventions.resultBorrowed(cName)
+    is MirExpr.Call, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.New, is MirExpr.Box,
     is MirExpr.CaughtException -> true
     else -> false
+}
+
+/**
+ * Ownership conventions of runtime functions that differ from the default (borrowed arguments, owned result):
+ * `mk_ref_array_get_b` returns a borrowed reference, `mk_ref_array_set_o` takes ownership of the stored value.
+ */
+object NativeConventions {
+    fun resultBorrowed(name: String): Boolean = name == "mk_ref_array_get_b"
+
+    /** Indices of the arguments the runtime function takes ownership of (a +1 reference the caller hands over), or null. */
+    fun ownedArgs(name: String): IntArray? = if (name == "mk_ref_array_set_o") OWNED_SET else null
+
+    private val OWNED_SET = intArrayOf(2)
 }

@@ -17,7 +17,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 reps=3
-configs="base opt"
+configs="base opt conv"
 only=""
 out="$root/compiler/build/bench"
 cflags="-O1"
@@ -63,8 +63,17 @@ now_ns() { date +%s%N; }
 # build_bin <key> <config> <mir>: C from the backend, timing + statistics binaries (cached per key/config)
 build_bin() {
     local key="$1" cfg="$2" mir="$3"
+    # configurations: base = reference counting everywhere (the state before D1); opt = RcOpt (D1); conv = + borrowed
+    # results / owned parameters of the stdlib hot paths (D2 step 2); strict = + Strict code generation (D2 step 1,
+    # also what the compiler does by default). Managed programs are identical in conv and strict.
     local flag=""
-    [ "$cfg" = base ] && flag="--no-rc-opt"
+    case "$cfg" in
+    base) flag="--no-rc-opt --no-strict --no-conv" ;;
+    opt) flag="--no-strict --no-conv" ;;
+    conv) flag="--no-strict" ;;
+    strict) flag="" ;;
+    *) echo "unknown configuration $cfg" >&2; exit 2 ;;
+    esac
     local cfile="$out/$key.$cfg.c"
     [ -f "$out/$key.$cfg.stats.bin" ] && return 0
     "$driver" "$mir" -o "$cfile" $flag

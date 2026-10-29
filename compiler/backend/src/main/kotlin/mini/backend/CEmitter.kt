@@ -24,11 +24,19 @@ object CEmitter {
     /**
      * [rcOpt] runs the reference-count elision pass ([RcOpt]) first; the result is deterministic. [strict] turns on the
      * Strict code generation ([Tracking]: no reference counts for tracked values, allocators, `free`); without it
-     * Strict programs run on reference counting alone (the Managed baseline).
+     * Strict programs run on reference counting alone (the Managed baseline). [conventions] enables the borrowed results
+     * and owned parameters of the stdlib hot paths ([Conventions]; needs [rcOpt]).
      */
-    fun emit(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true): String {
+    fun emit(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true): String =
+        emitDetailed(module, rcOpt, strict, conventions).c
+
+    /** The C text plus the decisions behind it (for `minic mem-report`, tests). */
+    class Result(val c: String, val plan: RcPlan?, val tracking: Tracking)
+
+    fun emitDetailed(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true): Result {
         val tr = Tracking(module, strict)
-        return State(module, if (rcOpt) RcOpt.analyze(module, tr) else null, tr).run()
+        val plan = if (rcOpt) RcOpt.analyze(module, tr, conventions) else null
+        return Result(State(module, plan, tr).run(), plan, tr)
     }
 
     private class Scope(val locals: List<MirLocal>, val loop: MirLabel?)
@@ -507,6 +515,15 @@ object CEmitter {
                 }
                 return
             }
+            if (rcPlan?.returnsBorrowed(curFn?.cName ?: "") == true) {
+                // borrowed result (Conventions): a reference some parameter keeps alive, no count for the caller; the
+                // conformance check guarantees the value does not depend on anything released below
+                out.append("$i{\n")
+                out.append("${ind(d + 1)}${cType(currentReturn)} r = ${coerceTo(v, currentReturn, top = true)};\n")
+                out.append(releases(scopes.size - 1, 0, d + 1, null))
+                out.append("${ind(d + 1)}return r;\n$i}\n")
+                return
+            }
             // reference result: +1 for the caller. An owned local is moved out instead of retained.
             val moved = fplan?.moves?.get(s)
                 ?: (v as? MirExpr.Local)?.local?.takeIf { l -> scopes.any { sc -> sc.locals.any { it === l } } }
@@ -665,8 +682,12 @@ object CEmitter {
                     if (mask == null) "${e.cName}(${e.args.indices.joinToString(", ") { coerceTo(e.args[it], f.params[it].type) }})"
                     else ownedCall(e.cName, f.params.map { it.type }, e.args, mask, 0)
                 }
-                is MirExpr.RuntimeCall ->
-                    if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)" else "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                is MirExpr.RuntimeCall -> {
+                    val owns = NativeConventions.ownedArgs(e.cName)
+                    if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)"
+                    else if (owns != null) ownedCall(e.cName, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { it in owns }, 0)
+                    else "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                }
                 is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
                 is MirExpr.Conditional -> "(${expr(e.cond)} ? ${coerceTo(e.thenValue, e.type)} : ${coerceTo(e.elseValue, e.type)})"
                 is MirExpr.Unreachable -> when (e.type) {
@@ -683,13 +704,27 @@ object CEmitter {
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
                     val fp = fnPtrType(e.type, e.paramTypes)
-                    val r = obj(e.receiver)
-                    "((($fp)$r->type->vtable[${e.slot}]))(${listOf(r).plus(argList(e.args, e.paramTypes)).joinToString(", ")})"
+                    val mask = rcPlan?.ownedMaskOf(e)
+                    if (mask != null) {
+                        ownedDynamic(e.receiver, e.args, e.paramTypes, mask) { r, args ->
+                            "((($fp)$r->type->vtable[${e.slot}]))(${listOf(r).plus(args).joinToString(", ")})"
+                        }
+                    } else {
+                        val r = obj(e.receiver)
+                        "((($fp)$r->type->vtable[${e.slot}]))(${listOf(r).plus(argList(e.args, e.paramTypes)).joinToString(", ")})"
+                    }
                 }
                 is MirExpr.ICall -> {
                     val fp = fnPtrType(e.type, e.paramTypes)
-                    val r = obj(e.receiver)
-                    "((($fp)mk_itable($r, &${e.interfaceCName}_ti)[${e.index}]))(${listOf(r).plus(argList(e.args, e.paramTypes)).joinToString(", ")})"
+                    val mask = rcPlan?.ownedMaskOf(e)
+                    if (mask != null) {
+                        ownedDynamic(e.receiver, e.args, e.paramTypes, mask) { r, args ->
+                            "((($fp)mk_itable($r, &${e.interfaceCName}_ti)[${e.index}]))(${listOf(r).plus(args).joinToString(", ")})"
+                        }
+                    } else {
+                        val r = obj(e.receiver)
+                        "((($fp)mk_itable($r, &${e.interfaceCName}_ti)[${e.index}]))(${listOf(r).plus(argList(e.args, e.paramTypes)).joinToString(", ")})"
+                    }
                 }
                 is MirExpr.New -> {
                     val f = sig[e.ctorCName] ?: throw EmitError("unknown constructor ${e.ctorCName}")
@@ -729,6 +764,27 @@ object CEmitter {
                 else sb.append("${lname(x)} = NULL; ")
             }
             sb.append("$callee(${(listOfNotNull(leadTemp) + temps).joinToString(", ")}); })")
+            return sb.toString()
+        }
+
+        /**
+         * A virtual / interface call whose callee group owns some parameters ([Conventions]): receiver and arguments are
+         * evaluated first, then the references the callee owns are handed over (a moved local gives its own, anything
+         * else is retained), then [call] builds the dispatch with the temporaries. [mask] is over `this` + parameters.
+         */
+        fun ownedDynamic(receiver: MirExpr, args: List<MirExpr>, ptypes: List<MirType>, mask: BooleanArray, call: (String, List<String>) -> String): String {
+            val r = "mkr${tmpCounter++}"
+            val temps = args.indices.map { "mkp${tmpCounter++}" }
+            val sb = StringBuilder("({ MkObject *$r = ${obj(receiver)}; ")
+            for (k in args.indices) sb.append("${cType(ptypes[k])} ${temps[k]} = ${coerceTo(args[k], ptypes[k])}; ")
+            for (k in args.indices) {
+                if (k + 1 >= mask.size || !mask[k + 1] || !ptypes[k].isRef || isStaticValue(args[k])) continue
+                val x = fplan?.takes?.get(args[k])
+                if (x == null) sb.append("${ret(temps[k])}; ")
+                else if (closedFor(curStmt, x)) dead += x.id
+                else sb.append("${lname(x)} = NULL; ")
+            }
+            sb.append(call(r, temps)).append("; })")
             return sb.toString()
         }
 

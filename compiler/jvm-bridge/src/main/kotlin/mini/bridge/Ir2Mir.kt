@@ -203,7 +203,7 @@ class Ir2Mir {
             if (mf.cName == Mangling.MAIN && facades.isNotEmpty()) {
                 // top-level property initialisers run before main
                 val force = facades.values.map { MirStmt.Eval(MirExpr.ObjectGet(it.cName, it.type)) }
-                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf)
+                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects)
             }
             functions += mf
         }

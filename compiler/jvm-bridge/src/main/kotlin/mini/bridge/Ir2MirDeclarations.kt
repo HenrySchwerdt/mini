@@ -148,7 +148,7 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
         }
         else -> unsupported(f, "function body")
     }
-    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f))
+    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
 }
 
 internal fun Ir2Mir.newTemp(type: MirType, name: String = "tmp"): MirLocal = MirLocal(localCounter++, name, type)

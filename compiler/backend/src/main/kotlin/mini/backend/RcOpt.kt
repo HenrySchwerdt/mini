@@ -62,7 +62,18 @@ class RcPlan internal constructor(
     private val byFunction: HashMap<String, RcFunctionPlan>,
     private val owned: HashMap<String, BooleanArray>,
     val stats: RcStats,
+    val conv: Conventions,
+    private val fx: RcEffects,
 ) {
+    /** True when [cName] may overwrite a reference stored in the heap (see [RcEffects]); `mem-report` explains it with [whyMutating]. */
+    fun mutates(cName: String): Boolean = cName in fx.mutating
+
+    fun whyMutating(f: MirFunction): String? = fx.explain(f)
+
+    fun effectsOf(cName: String): String = fx.describe(cName)
+
+    fun tracePath(cName: String, fieldKey: String): String? = fx.tracePath(cName, fieldKey)
+
     fun of(f: MirFunction): RcFunctionPlan? = byFunction[f.cName]
 
     /**
@@ -71,12 +82,22 @@ class RcPlan internal constructor(
      * retain), everywhere else parameters are borrowed. Null when there is no owned parameter.
      */
     fun ownedMask(cName: String): BooleanArray? = owned[cName]
+
+    /** Owned-parameter mask of a virtual / interface call (see [Conventions]), or null. */
+    fun ownedMaskOf(e: MirExpr): BooleanArray? = conv.maskOfDynamic(e)
+
+    /** The function returns a borrowed reference: no count for the caller, nothing to release for the callee. */
+    fun returnsBorrowed(cName: String): Boolean = conv.borrowedFunction(cName)
 }
 
 object RcOpt {
-    fun analyze(module: MirModule, tr: Tracking = Tracking(module, false)): RcPlan {
+    fun analyze(module: MirModule, tr: Tracking = Tracking(module, false), conventions: Boolean = true): RcPlan {
+        val conv = Conventions.build(module, conventions)
+        tr.conv = conv
         val fx = RcEffects(module, tr).run()
         val owned = HashMap<String, BooleanArray>()
+        // owned parameters of non-constructor functions (annotations, merged over the dispatch groups)
+        if (conv.any) for (f in module.functions) if (f.constructorOf == null) conv.maskOfFunction(f.cName)?.let { owned[f.cName] = it }
         // Which constructor parameters does the initialiser always hand over (store into a field, pass on to
         // another constructor)? Probing assumes every reference parameter is owned; more known callee conventions
         // can only add parameters, so a few rounds reach the fixpoint (delegating constructors).
@@ -96,6 +117,21 @@ object RcOpt {
                 }
             }
         }
+        // borrowed results are requests: drop every group in which a function cannot honour it (until nothing changes)
+        var rounds = 0
+        var again = true
+        while (again && rounds < 8) {
+            again = false
+            rounds++
+            for ((root, fns) in conv.requestedGroups()) {
+                for (f in fns) {
+                    val why = RcAnalyzer(f, fx, RcStats(), owned, false, tr).borrowedReturnViolation() ?: continue
+                    conv.drop(root, f.qualifiedName + ": " + why)
+                    again = true
+                    break
+                }
+            }
+        }
         val plans = HashMap<String, RcFunctionPlan>()
         val stats = RcStats()
         for (f in module.functions) {
@@ -103,7 +139,7 @@ object RcOpt {
             val plan = RcAnalyzer(f, fx, stats, owned, false, tr).run()
             if (plan != null) plans[f.cName] = plan
         }
-        return RcPlan(plans, owned, stats)
+        return RcPlan(plans, owned, stats, conv, fx)
     }
 
     private fun anyTrue(a: BooleanArray): Boolean {
@@ -142,119 +178,6 @@ internal fun mirChildren(e: MirExpr): List<MirExpr> = when (e) {
     is MirExpr.Unreachable, is MirExpr.CaughtException, is MirExpr.TypeInfoOf -> emptyList()
 }
 
-/**
- * Which functions may overwrite a reference that lives in the heap (a reference field or array slot)?
- * Such an operation can free an object a borrowed alias still points to, so it ends the lifetime of
- * every field-derived alias. Computed as a fixpoint like [ThrowAnalysis].
- *
- * A reference field store into the object a constructor is initialising (`this`) does not count for
- * the summary of that constructor: the object is invisible to everybody else, and releasing one of
- * its own fields can never remove the last count of an object a caller's alias depends on.
- */
-internal class RcEffects(private val module: MirModule, private val tr: Tracking) {
-    val mutating = HashSet<String>()
-    private val slotImpls = HashMap<Int, HashSet<String>>()
-    private val ifaceImpls = HashMap<String, HashSet<String>>()
-    private val objectCtors = HashMap<String, String>()
-
-    fun run(): RcEffects {
-        for (c in module.classes) {
-            val oc = c.objectCtor
-            if (oc != null) objectCtors[c.cName] = oc
-            for ((slot, name) in c.vtable.withIndex()) {
-                if (name == null) continue
-                slotImpls.getOrPut(slot) { HashSet() }.add(name)
-            }
-            for (t in c.itables) {
-                for ((index, name) in t.entries.withIndex()) {
-                    if (name == null) continue
-                    ifaceImpls.getOrPut(ifaceKey(t.interfaceCName, index)) { HashSet() }.add(name)
-                }
-            }
-        }
-        var changed = true
-        while (changed) {
-            changed = false
-            for (f in module.functions) {
-                if (f.cName in mutating) continue
-                if (f.body.any { stmtMutates(f, it) }) {
-                    mutating += f.cName
-                    changed = true
-                }
-            }
-        }
-        return this
-    }
-
-    private fun ifaceKey(iface: String, index: Int) = "$iface#$index"
-
-    private fun slotMutates(slot: Int): Boolean = slotImpls[slot]?.any { it in mutating } ?: false
-
-    private fun anyDynamicMutates(): Boolean =
-        slotImpls.values.any { s -> s.any { it in mutating } } || ifaceImpls.values.any { s -> s.any { it in mutating } }
-
-    /** True when evaluating the call-like expression [e] itself (not its operands) may overwrite a heap reference. */
-    fun callMutates(e: MirExpr): Boolean = when (e) {
-        is MirExpr.Call -> e.cName in mutating
-        is MirExpr.New -> e.ctorCName in mutating
-        is MirExpr.VCall -> slotMutates(e.slot)
-        is MirExpr.ICall -> ifaceImpls[ifaceKey(e.interfaceCName, e.index)]?.any { it in mutating } ?: false
-        is MirExpr.RuntimeCall -> runtimeMutates(e.cName)
-        // the first access of an object runs its constructor
-        is MirExpr.ObjectGet -> objectCtors[e.classCName]?.let { it in mutating } ?: false
-        else -> false
-    }
-
-    private fun runtimeMutates(name: String): Boolean {
-        if (name == "mk_to_string" || name == "mk_equals" || name == "mk_hash_code") {
-            // dispatch through slots 0..2 of the class vtables (user overrides, data classes)
-            return slotMutates(0) || slotMutates(1) || slotMutates(2)
-        }
-        if (name == "mk_compare_to" || name == "mk_array_content_to_string") return anyDynamicMutates()
-        return !isPureRuntime(name)
-    }
-
-    private fun stmtMutates(f: MirFunction, s: MirStmt): Boolean = when (s) {
-        is MirStmt.Declare -> s.init?.let { exprMutates(it) } ?: false
-        is MirStmt.Assign -> exprMutates(s.value)
-        is MirStmt.SetField -> exprMutates(s.obj) || exprMutates(s.value) || (tr.rcStore(f, s) && !isFreshThisStore(f, s))
-        is MirStmt.Eval -> exprMutates(s.expr)
-        is MirStmt.If -> exprMutates(s.cond) || s.thenBody.any { stmtMutates(f, it) } || s.elseBody.any { stmtMutates(f, it) }
-        is MirStmt.Block -> s.body.any { stmtMutates(f, it) }
-        is MirStmt.While -> exprMutates(s.cond) || s.body.any { stmtMutates(f, it) }
-        is MirStmt.Loop -> s.body.any { stmtMutates(f, it) }
-        is MirStmt.DoWhile -> s.body.any { stmtMutates(f, it) } || s.condStmts.any { stmtMutates(f, it) } || exprMutates(s.cond)
-        is MirStmt.ForRange ->
-            exprMutates(s.start) || exprMutates(s.end) || (s.step?.let { exprMutates(it) } ?: false) || s.body.any { stmtMutates(f, it) }
-        is MirStmt.Break, is MirStmt.Continue, is MirStmt.Panic -> false
-        is MirStmt.Return -> s.value?.let { exprMutates(it) } ?: false
-        is MirStmt.Throw -> exprMutates(s.value)
-        is MirStmt.Try -> s.body.any { stmtMutates(f, it) } || s.catches.any { c -> c.body.any { stmtMutates(f, it) } }
-    }
-
-    private fun exprMutates(e: MirExpr): Boolean = callMutates(e) || mirChildren(e).any { exprMutates(it) }
-
-    private fun isFreshThisStore(f: MirFunction, s: MirStmt.SetField): Boolean {
-        if (f.constructorOf == null || f.params.isEmpty()) return false
-        val o = s.obj
-        return o is MirExpr.Local && o.local.id == f.params[0].id
-    }
-
-    companion object {
-        /** Runtime functions that never overwrite a reference stored in a field or an array slot of an existing object. */
-        fun isPureRuntime(name: String): Boolean =
-            name.startsWith("mk_string_") || name.startsWith("mk_print") || name.startsWith("mk_box_") ||
-                name.startsWith("mk_checked_") || name == "mk_is_instance" || name == "mk_ref_array_get" ||
-                name == "mk_ref_array_length" || name == "mk_ref_array_new" || name.startsWith("mk_array_new") ||
-                name == "mk_array_length" || name.startsWith("mk_array_get_") ||
-                name == "mk_array_set_int" || name == "mk_array_set_long" || name == "mk_array_set_double" ||
-                name == "mk_array_set_boolean" || name == "mk_array_set_char" || name.startsWith("mk_sb_") ||
-                name == "mk_type_name" || name == "mk_identity_hash" || name == "mk_any_new" || name.startsWith("mk_any_") ||
-                name.startsWith("mk_b1_") || name.startsWith("mk_raise") || name == "mk_throwable_init" ||
-                (name.startsWith("Mk") && name.endsWith("_new"))
-    }
-}
-
 /** A small bit set over dense local indices. */
 internal class RcBits(val size: Int) {
     private val words = LongArray(size / 64 + 1)
@@ -285,6 +208,9 @@ private class LoopRange(val start: Int) {
 
 /** The chain of reads a definition of a candidate borrower consists of (`x = a.b.c` has root `a`, one field read). */
 private class Chain(val roots: ArrayList<MirLocal>, var hasField: Boolean) {
+    /** What the value depends on: the fields it was read through, array slots, or (borrowed Kotlin calls) everything. */
+    val sens = Eff()
+
     /** The value may not come from a root (constant, singleton, a `as?` that can give NULL): moving the root would lose a reference. */
     var rootless = false
 }
@@ -309,8 +235,15 @@ private class LocalInfo(val local: MirLocal, val index: Int, val isParam: Boolea
     var declList: List<MirStmt>? = null
     // derived by the validation
     val roots = ArrayList<LocalInfo>()
+    /**
+     * A reference that carries no count here (a tracked value of Strict code, see [Tracking]): it can be the root of
+     * an alias (`val s = node.name`) but is never a borrower or moved.
+     */
+    var tracked = false
     var viaField = false
     var rootless = false
+    /** Union of the [Chain.sens] of the definitions (through other borrowers): which heap writes can invalidate the alias. */
+    var sens = Eff()
 }
 
 private class ListCtx(val list: List<MirStmt>, val loop: MirLabel?, val noClose: Boolean) {
@@ -333,6 +266,8 @@ private class RcAnalyzer(
     private val byId = HashMap<Int, LocalInfo>()
     private var pos = 0
     private val events = ArrayList<Int>()
+    /** The effect of the event at the same index of [events]. */
+    private val eventEffs = ArrayList<Eff>()
     private val loops = ArrayList<LoopRange>()
     private val scopeParent = ArrayList<Int>()
     private var scope = 0
@@ -355,7 +290,14 @@ private class RcAnalyzer(
         scopeParent += -1
         val mask = if (probe) null else calleeOwned[f.cName]
         for ((k, p) in f.params.withIndex()) {
-            if (!tr.rcLocal(f, p)) continue
+            if (!tr.rcLocal(f, p)) {
+                if (p.type.isRef) {
+                    val t = info(p, true)
+                    t.tracked = true
+                    t.declList = f.body
+                }
+                continue
+            }
             val i = info(p, true)
             i.declList = f.body
             i.ownedParam = if (probe) f.constructorOf != null && k >= 1 else mask != null && k < mask.size && mask[k]
@@ -385,6 +327,55 @@ private class RcAnalyzer(
         if (!probe && f.constructorOf != null && f.params.isNotEmpty()) findFreshStores()
         if (borrowedIds.isEmpty() && moves.isEmpty() && takes.isEmpty() && ownedParams.isEmpty() && fresh.isEmpty()) return null
         return RcFunctionPlan(borrowedIds, moves, takes, ownedParams, dead, fresh, selfTakes)
+    }
+
+    // ---- borrowed results (Conventions) ---------------------------------------------------------------------------------
+
+    /**
+     * Null when every `return` of [f] hands out a reference some owner outside the function keeps alive (a parameter,
+     * a field read through parameters, a call with a borrowed result of those, a constant): the function can honour the
+     * `ReturnsBorrowed` convention. Otherwise the reason. Runs the analysis, because a returned local must be a
+     * validated borrower (an owned local dies at the function's exit).
+     */
+    fun borrowedReturnViolation(): String? {
+        run()
+        var why: String? = null
+        fun rootsOk(i: LocalInfo): Boolean = i.roots.all { it.isParam && !it.ownedParam && !it.duplicate }
+        fun derived(e: MirExpr): Boolean = when (e) {
+            is MirExpr.StringConst, is MirExpr.NullConst, is MirExpr.ObjectGet -> true
+            is MirExpr.Local -> {
+                val i = byId[e.local.id]
+                i != null && ((i.isParam && !i.ownedParam && !i.duplicate) || (i.borrowed && rootsOk(i)))
+            }
+            is MirExpr.Cast -> derived(e.operand)
+            is MirExpr.NotNull -> derived(e.operand)
+            is MirExpr.FieldGet -> derived(e.obj)
+            is MirExpr.Conditional -> derived(e.thenValue) && derived(e.elseValue)
+            is MirExpr.Call, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.RuntimeCall ->
+                tr.conv?.borrowedResult(e) == true && mirChildren(e).all { !it.type.isRef || derived(it) }
+            else -> false
+        }
+        fun walk(list: List<MirStmt>) {
+            for (s in list) {
+                if (why != null) return
+                when (s) {
+                    is MirStmt.Return -> {
+                        val v = s.value
+                        if (v != null && v.type.isRef && !derived(v)) why = "returns a value it owns (not borrowed from a parameter)"
+                    }
+                    is MirStmt.If -> { walk(s.thenBody); walk(s.elseBody) }
+                    is MirStmt.Block -> walk(s.body)
+                    is MirStmt.While -> walk(s.body)
+                    is MirStmt.Loop -> walk(s.body)
+                    is MirStmt.DoWhile -> { walk(s.body); walk(s.condStmts) }
+                    is MirStmt.ForRange -> walk(s.body)
+                    is MirStmt.Try -> { walk(s.body); for (c in s.catches) walk(c.body) }
+                    else -> {}
+                }
+            }
+        }
+        walk(f.body)
+        return why
     }
 
     // ---- stores into a fresh object ------------------------------------------------------------------------
@@ -475,12 +466,25 @@ private class RcAnalyzer(
         is MirExpr.NotNull -> chainOf(e.operand, acc)
         is MirExpr.FieldGet -> {
             acc.hasField = true
+            acc.sens.addField(fx.fieldId(e.owner, e.field))
             tr.rc(f, e.type) && chainOf(e.obj, acc)
         }
         is MirExpr.ObjectGet, is MirExpr.StringConst, is MirExpr.NullConst -> {
             acc.rootless = true
             true
         }
+        // a call with a borrowed result (see Conventions) is like a field read of whatever it was given
+        is MirExpr.Call, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.RuntimeCall ->
+            if (tr.conv?.borrowedResult(e) != true) {
+                false
+            } else {
+                acc.hasField = true
+                // a borrowed native reads one array slot; a borrowed Kotlin function reads whatever it likes
+                if (e is MirExpr.RuntimeCall) acc.sens.slots = true else acc.sens.unknown = true
+                var ok = true
+                for (o in mirChildren(e)) if (o.type.isRef) ok = chainOf(o, acc) && ok
+                ok
+            }
         else -> false
     }
 
@@ -495,21 +499,26 @@ private class RcAnalyzer(
             is MirExpr.Local -> use(e.local, pos++)
             is MirExpr.ObjectGet -> {
                 val p = pos++
-                if (fx.callMutates(e)) events += p
+                fx.callEff(e)?.let { event(p, it) }
             }
             is MirExpr.Call, is MirExpr.RuntimeCall, is MirExpr.New, is MirExpr.VCall, is MirExpr.ICall -> {
                 val ops = mirChildren(e)
                 for (o in ops) expr(o)
-                callEvent(ops, fx.callMutates(e))
+                callEvent(ops, fx.callEff(e))
             }
             else -> for (c in mirChildren(e)) expr(c)
         }
     }
 
     /** The operation itself runs after its operands: direct local operands are in use until then. */
-    private fun callEvent(operands: List<MirExpr>, mutates: Boolean) {
+    private fun event(p: Int, e: Eff) {
+        events += p
+        eventEffs += e
+    }
+
+    private fun callEvent(operands: List<MirExpr>, effect: Eff?) {
         val p = pos++
-        if (mutates) events += p
+        if (effect != null) event(p, effect)
         for (o in operands) {
             val l = directLocal(o)
             if (l != null) use(l, p)
@@ -547,11 +556,24 @@ private class RcAnalyzer(
                     val i = info(s.local, false)
                     i.declList = curList
                     if (init != null) addDef(i, init, pos++) else i.declaredEmpty = true
+                } else if (s.local.type.isRef) {
+                    val i = info(s.local, false)
+                    i.tracked = true
+                    i.declList = curList
+                    if (init != null) i.firstDef = pos++ else i.declaredEmpty = true
                 }
             }
             is MirStmt.Assign -> {
                 expr(s.value)
-                if (tr.rcLocal(f, s.local)) {
+                if (!tr.rcLocal(f, s.local) && s.local.type.isRef) {
+                    val p = pos++
+                    val i = byId[s.local.id]
+                    if (i != null) {
+                        i.assignPos += p
+                        i.assignLoop += loops.getOrNull(i.declDepth)
+                        if (i.isParam) i.duplicate = true
+                    }
+                } else if (tr.rcLocal(f, s.local)) {
                     val p = pos++
                     val i = byId[s.local.id]
                     if (i == null) return
@@ -565,7 +587,7 @@ private class RcAnalyzer(
                 expr(s.obj)
                 expr(s.value)
                 val p = pos++
-                if (tr.rcStore(f, s)) events += p
+                if (tr.rcStore(f, s)) event(p, fx.fieldEff(fx.fieldId(s.owner, s.field)))
                 val a = directLocal(s.obj)
                 if (a != null) use(a, p)
                 val b = directLocal(s.value)
@@ -651,6 +673,7 @@ private class RcAnalyzer(
         x.roots.clear()
         x.viaField = false
         x.rootless = false
+        x.sens = Eff()
         val seen = ArrayList<LocalInfo>()
         seen += x
         return walk(x, i = x, seen = seen)
@@ -662,6 +685,7 @@ private class RcAnalyzer(
         for (c in i.chains) {
             if (c.hasField) x.viaField = true
             if (c.rootless) x.rootless = true
+            x.sens.orWith(c.sens)
             for (r in c.roots) {
                 val ri = byId[r.id]
                 if (ri == null) {
@@ -679,7 +703,8 @@ private class RcAnalyzer(
         return ok
     }
 
-    private fun eventIn(lo: Int, hi: Int): Boolean {
+    /** Is there an event in (lo, hi] that can invalidate an alias depending on [sens]? */
+    private fun eventHits(lo: Int, hi: Int, sens: Eff): Boolean {
         // events are sorted ascending: find the first one > lo
         var a = 0
         var b = events.size
@@ -687,14 +712,18 @@ private class RcAnalyzer(
             val m = (a + b) / 2
             if (events[m] > lo) b = m else a = m + 1
         }
-        return a < events.size && events[a] <= hi
+        while (a < events.size && events[a] <= hi) {
+            if (eventEffs[a].hits(sens)) return true
+            a++
+        }
+        return false
     }
 
     private fun valid(x: LocalInfo): Boolean {
         if (!closure(x)) return false
         val lo = x.firstDef
         val hi = windowEnd(x)
-        if (x.viaField && eventIn(lo, hi)) return false
+        if (x.viaField && eventHits(lo, hi, x.sens)) return false
         for (r in x.roots) {
             if (r.isParam && !r.ownedParam) {
                 if (r.duplicate) return false
@@ -817,7 +846,7 @@ private class RcAnalyzer(
         }
     }
 
-    private fun usable(x: LocalInfo): Boolean = (!x.isParam || x.ownedParam) && !x.borrowed && !x.duplicate
+    private fun usable(x: LocalInfo): Boolean = !x.tracked && (!x.isParam || x.ownedParam) && !x.borrowed && !x.duplicate
 
     /**
      * The owned local whose reference a use of [l] can take over: [l] itself, or the single owned root of a plain
@@ -867,6 +896,13 @@ private class RcAnalyzer(
                 } else if (e is MirExpr.New) {
                     val mask = calleeOwned[e.ctorCName]
                     if (mask != null) for (k in e.args.indices) if (k + 1 < mask.size && mask[k + 1]) tryTake(s, exprs, e.args[k], out)
+                } else if (e is MirExpr.VCall || e is MirExpr.ICall) {
+                    val mask = tr.conv?.maskOfDynamic(e)
+                    val args = if (e is MirExpr.VCall) e.args else (e as MirExpr.ICall).args
+                    if (mask != null) for (k in args.indices) if (k + 1 < mask.size && mask[k + 1]) tryTake(s, exprs, args[k], out)
+                } else if (e is MirExpr.RuntimeCall) {
+                    val owns = NativeConventions.ownedArgs(e.cName)
+                    if (owns != null) for (k in owns) if (k < e.args.size) tryTake(s, exprs, e.args[k], out)
                 }
             }
         }
@@ -885,7 +921,7 @@ private class RcAnalyzer(
     }
 
     private fun takesIn(s: MirStmt, exprs: List<MirExpr>, out: RcBits, record: Boolean) {
-        if (!record || calleeOwned.isEmpty()) return
+        if (!record || (calleeOwned.isEmpty() && tr.conv?.any != true)) return
         for (e in exprs) scanCalls(s, exprs, e, out, false)
     }
 
@@ -897,7 +933,7 @@ private class RcAnalyzer(
         if (out.get(x.index)) return
         if (target != null) {
             val t = byId[target.id] ?: return
-            if (t.borrowed || t === x) return
+            if (t.tracked || t.borrowed || t === x) return
         }
         if (value == null || countDeep(value, x) != 1) return
         if (s is MirStmt.SetField && (countDeep(s.obj, x) != 0)) return
@@ -1036,7 +1072,7 @@ private class RcAnalyzer(
             is MirStmt.Continue -> return contLive[s.label.id] ?: empty()
             is MirStmt.Panic -> return empty()
             is MirStmt.Return -> {
-                consume(s, s.value, empty(), null, record && tr.rc(f, f.returnType))
+                consume(s, s.value, empty(), null, record && tr.rc(f, f.returnType) && tr.conv?.borrowedFunction(f.cName) != true)
                 s.value?.let { takesIn(s, listOf(it), empty(), record) }
                 val inn = empty()
                 s.value?.let { addUses(it, inn) }
