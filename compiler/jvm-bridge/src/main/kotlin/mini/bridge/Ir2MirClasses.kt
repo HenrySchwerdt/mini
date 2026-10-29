@@ -100,7 +100,6 @@ internal fun Ir2Mir.collectClass(c: IrClass, pkg: String, path: List<String>, fi
         else -> unsupported(c, "${classKind(c)} declaration '${c.name}'")
     }
     if (c.isValue) unsupported(c, "value class '${c.name}'")
-    if (c.isFun) unsupported(c, "fun interface '${c.name}'")
     val cName = Mangling.className(pkg, path)
     val qn = (if (pkg.isEmpty()) "" else "$pkg.") + path.joinToString(".")
     classInfos[c] = ClassInfo(c, cName, qn, file)
@@ -212,7 +211,6 @@ internal fun Ir2Mir.registerMembers(info: ClassInfo) {
             else -> unsupported(d, describe(d))
         }
         if (d is IrProperty) {
-            if (d.isDelegated) unsupported(d, "delegated property '${d.name}'")
         }
     }
 }
@@ -350,7 +348,7 @@ internal fun Ir2Mir.resolveFake(f: IrSimpleFunction): IrSimpleFunction {
 internal fun Ir2Mir.implName(f: IrSimpleFunction?): String? {
     if (f == null) return null
     val p = parentClass(f)
-    if (p != null && isAny(p)) return null
+    if (p != null && (isAny(p) || isRuntimeProvided(p))) return null
     if (!hasBody(f)) return null
     return functionNames[f] ?: error("no C name for ${f.name}")
 }
@@ -408,7 +406,6 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
     val capFields = classCaptures(c).mapIndexed { i, v -> MirField("cap$i", capturedType(v)) }
     val outerField = if (c.isInner) listOf(MirField("\$outer", typeOf(c.parent as IrClass))) else emptyList()
     val fields = if (isInterface) emptyList() else hiddenFields + outerField + capFields + ownFields(c).map { f ->
-        if (f.origin == IrDeclarationOrigin.PROPERTY_DELEGATE) unsupported(f, "delegated property")
         MirField(f.name.asString(), mirType(f.type, f))
     }
     var vtable = emptyList<String?>()
@@ -498,7 +495,10 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
             else coerceFlexible(MirExpr.Local(p), ip[i], impl, out)
         }
         val call = MirExpr.Call(name, args, ir)
-        if (rr == TUnit) {
+        if (ir == TNothing) {
+            out += MirStmt.Eval(call)
+            out += if (rr == TUnit) MirStmt.Return(null) else MirStmt.Return(zeroOf(rr))
+        } else if (rr == TUnit) {
             out += MirStmt.Eval(call)
             out += MirStmt.Return(null)
         } else {

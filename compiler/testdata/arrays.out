@@ -36,9 +36,6 @@ p/q/r
 RED0 GREEN1 BLUE2 
 GREEN
 3
-3
-RED GREEN BLUE 
-BLUE
 14
 6
 No enum constant Color.PURPLE

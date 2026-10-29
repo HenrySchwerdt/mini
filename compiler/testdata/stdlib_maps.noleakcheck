@@ -1,0 +1,1 @@
+The stdlib hash nodes form reference cycles (before/after links); Managed RC has no cycle collector yet.

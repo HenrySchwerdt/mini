@@ -199,8 +199,11 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrFunctionExpression -> lambdaValue(e, out)
     is IrTry -> tryValue(e, out)
     is IrVararg -> varargValue(e, out)
-    is IrThrow -> { throwStmt(e, out); MirExpr.Unreachable(TNothing) }
     is IrFunctionReference -> functionReference(e, out)
+    is org.jetbrains.kotlin.ir.expressions.IrCallableReference<*> ->
+        if (e.origin == org.jetbrains.kotlin.ir.expressions.IrStatementOrigin.PROPERTY_REFERENCE_FOR_DELEGATE) MirExpr.NullConst(anyNullable)
+        else unsupported(e, "property reference")
+    is IrThrow -> { throwStmt(e, out); MirExpr.Unreachable(TNothing) }
     is IrWhen -> whenValue(e, out)
     is IrComposite -> blockValue(e.statements, e, out)
     is IrBlock -> {
@@ -240,6 +243,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             }
             return MirExpr.Cast(v, target, if (safe) MirExpr.CastMode.Safe else MirExpr.CastMode.Checked)
         }
+        IrTypeOperator.SAM_CONVERSION -> return samValue(e, out)
         IrTypeOperator.IMPLICIT_CAST, IrTypeOperator.IMPLICIT_NOTNULL -> {
             val v = value(e.argument, out)
             val target = mirType(e.type, e)

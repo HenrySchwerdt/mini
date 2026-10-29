@@ -8,6 +8,7 @@ import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classFqName
+import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.util.kotlinFqName
 import org.jetbrains.kotlin.ir.util.statements
 
@@ -131,9 +132,12 @@ internal fun Ir2Mir.closureClass(
     hint: String,
     arity: Int,
     capTypes: List<MirType>,
+    sam: SamTarget? = null,
     makeBody: (self: MirLocal, args: List<MirLocal>, caps: List<MirLocal>, out: MutableList<MirStmt>) -> Unit,
 ): Pair<String, TObject> {
-    val iface = functionInterface(arity)
+    val iface = if (sam == null) functionInterface(arity) else null
+    val argTypes: List<MirType> = sam?.argTypes ?: List(arity) { anyNullable }
+    val retType: MirType = sam?.ret ?: anyNullable
     val n = lambdaCounter++
     val qualified = "$hint\$$n"
     val cName = Mangling.className("", listOf("\$closure$n"))
@@ -148,10 +152,10 @@ internal fun Ir2Mir.closureClass(
         extraFunctions += MirFunction("$qualified.<init>", ctorName, listOf(self) + ps, TUnit, body, cName)
     }
     // invoke
-    val invokeName = Mangling.method(cName, "invoke", List(arity) { anyNullable })
+    val invokeName = Mangling.method(cName, sam?.method?.name?.asString() ?: "invoke", argTypes)
     val fn = inFreshFunction {
         val self = MirLocal(localCounter++, "this", type)
-        val args = List(arity) { MirLocal(localCounter++, "p$it", anyNullable) }
+        val args = List(arity) { MirLocal(localCounter++, "p$it", argTypes[it]) }
         val out = ArrayList<MirStmt>()
         val caps = capTypes.mapIndexed { i, t ->
             val l = MirLocal(localCounter++, "cap$i", t)
@@ -159,13 +163,23 @@ internal fun Ir2Mir.closureClass(
             l
         }
         makeBody(self, args, caps, out)
-        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, anyNullable, out)
+        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, out)
     }
     extraFunctions += fn
-    extraClasses += MirClass(
-        qualified, cName, false, null, fields, listOf(iface.cName), listOf(null, null, null),
-        listOf(MirItable(iface.cName, listOf(invokeName))),
-    )
+    if (iface != null) {
+        extraClasses += MirClass(
+            qualified, cName, false, null, fields, listOf(iface.cName), listOf(null, null, null),
+            listOf(MirItable(iface.cName, listOf(invokeName))),
+        )
+    } else {
+        val ifaces = allInterfaces(sam!!.iface) + sam.iface
+        extraClasses += MirClass(
+            qualified, cName, false, null, fields, ifaces.map { info(it).cName }, listOf(null, null, null),
+            ifaces.map { i ->
+                MirItable(info(i).cName, interfaceMethods(i).map { m -> if (m === sam.method) invokeName else implName(if (hasBody(m)) m else null) })
+            },
+        )
+    }
     return ctorName to type
 }
 
@@ -181,18 +195,18 @@ internal fun Ir2Mir.convertBodyOf(f: IrFunction, ret: MirType, out: MutableList<
 }
 
 /** A lambda literal used as a value: allocate its closure object. */
-internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStmt>): MirExpr {
+internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStmt>, sam: SamTarget? = null): MirExpr {
     val fn = e.function
     if (fn in closure.inlinedLambdas) unsupported(e, "lambda passed to an inline function that cannot be expanded in place")
     val caps = closure.capturesOf(fn)
     val capTypes = caps.map { capturedType(it) }
     val arity = fn.parameters.size
     val ret = mirType(fn.returnType, fn)
-    val (ctor, type) = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes) { _, args, capLocals, body ->
+    val (ctor, type) = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam) { _, args, capLocals, body ->
         for ((i, v) in caps.withIndex()) locals[v] = capLocals[i]
         currentFunction = fn
-        currentReturn = if (ret == TUnit) TUnit else anyNullable
-        unitAsNull = true
+        currentReturn = if (sam != null) sam.ret else if (ret == TUnit) TUnit else anyNullable
+        unitAsNull = sam == null
         for ((i, p) in fn.parameters.withIndex()) {
             val t = mirType(p.type, p)
             val l = MirLocal(localCounter++, p.name.asString().ifEmpty { "p$i" }, t)
@@ -200,7 +214,10 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
             locals[p] = l
         }
         convertBodyOf(fn, currentReturn, body)
-        if (body.lastOrNull() !is MirStmt.Return) body += MirStmt.Return(MirExpr.NullConst(anyNullable))
+        if (body.lastOrNull() !is MirStmt.Return) {
+            body += if (sam == null) MirStmt.Return(MirExpr.NullConst(anyNullable))
+            else if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(MirExpr.Unreachable(sam.ret))
+        }
     }
     val values = caps.map { MirExpr.Local(localOf(it, e)) }
     return MirExpr.New(ctor, values, type)
@@ -373,4 +390,36 @@ internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: Ir
     }
     val cName = functionNames[target] ?: unsupported(at, "reference to function '${target.name}'")
     return MirExpr.Call(cName, args, mirType(target.returnType, target))
+}
+
+// ---- SAM conversion (fun interface) ---------------------------------------------------------------------------
+
+/** The single abstract method of a `fun interface` and its erased signature. */
+internal class SamTarget(val iface: IrClass, val method: IrSimpleFunction, val argTypes: List<MirType>, val ret: MirType)
+
+internal fun Ir2Mir.samTarget(iface: IrClass, at: IrElement): SamTarget {
+    if (iface !in classInfos) unsupported(at, "SAM conversion to '${iface.name}'")
+    val abstract = interfaceMethods(iface).filter { it.modality == org.jetbrains.kotlin.descriptors.Modality.ABSTRACT }
+    val m = abstract.singleOrNull() ?: unsupported(at, "SAM conversion to '${iface.name}' (needs exactly one abstract method)")
+    val args = m.parameters.drop(1).map { mirType(it.type, it) }
+    return SamTarget(iface, m, args, mirType(m.returnType, m))
+}
+
+/** `F { ... }` / a lambda or function value converted to the fun interface [e.typeOperand]. */
+internal fun Ir2Mir.samValue(e: IrTypeOperatorCall, out: MutableList<MirStmt>): MirExpr {
+    val iface = e.typeOperand.classOrNull?.owner ?: unsupported(e, "SAM conversion")
+    val sam = samTarget(iface, e)
+    var arg: IrExpression = e.argument
+    while (arg is IrTypeOperatorCall && arg.operator == IrTypeOperator.IMPLICIT_CAST) arg = arg.argument
+    if (arg is IrFunctionExpression) return lambdaValue(arg, out, sam)
+    // any other function value: a closure that holds it and calls invoke
+    val fv = operands(listOf(arg), out)[0]
+    val arity = sam.argTypes.size
+    val fType = functionInterface(arity)
+    val (ctor, type) = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam) { _, args, caps, body ->
+        val boxed = args.map { coerceFlexible(MirExpr.Local(it), anyNullable, e, body) }
+        val call = tmpOf(MirExpr.ICall(fType.cName, 0, MirExpr.Local(caps[0]), boxed, invokeArgTypes(arity), anyNullable), body)
+        body += if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(coerceFlexible(call, sam.ret, e, body))
+    }
+    return MirExpr.New(ctor, listOf(MirExpr.Cast(fv, fType, MirExpr.CastMode.Unchecked)), type)
 }

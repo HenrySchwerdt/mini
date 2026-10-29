@@ -226,6 +226,11 @@ internal fun Ir2Mir.stmt(s: IrStatement, out: MutableList<MirStmt>) {
             } else out += MirStmt.Assign(l, bindValue(s.value, l.type, out))
         }
         is IrSimpleFunction -> liftLocalFunction(s)
+        is org.jetbrains.kotlin.ir.declarations.IrLocalDelegatedProperty -> {
+            s.delegate?.let { stmt(it, out) }
+            liftLocalFunction(s.getter)
+            s.setter?.let { liftLocalFunction(it) }
+        }
         is IrClass -> {} // local class: registered up front, compiled with the other classes
         is IrSetField -> setField(s, out)
         is IrInstanceInitializerCall -> instanceInitializer(s, out)

@@ -38,14 +38,14 @@ internal val BUILTIN_CLASSES: List<BuiltinClass> = listOf(
     b("MkArithmeticException", "java.lang.ArithmeticException", "MkRuntimeException", "kotlin.ArithmeticException"),
     b("MkClassCastException", "java.lang.ClassCastException", "MkRuntimeException", "kotlin.ClassCastException"),
     b("MkIndexOutOfBoundsException", "java.lang.IndexOutOfBoundsException", "MkRuntimeException", "kotlin.IndexOutOfBoundsException"),
-    b("MkArrayIndexOutOfBoundsException", "java.lang.ArrayIndexOutOfBoundsException", "MkIndexOutOfBoundsException"),
+    b("MkArrayIndexOutOfBoundsException", "java.lang.ArrayIndexOutOfBoundsException", "MkIndexOutOfBoundsException", "kotlin.ArrayIndexOutOfBoundsException"),
     b("MkStringIndexOutOfBoundsException", "java.lang.StringIndexOutOfBoundsException", "MkIndexOutOfBoundsException", "kotlin.StringIndexOutOfBoundsException"),
     b("MkUnsupportedOperationException", "java.lang.UnsupportedOperationException", "MkRuntimeException", "kotlin.UnsupportedOperationException"),
     b("MkNoSuchElementException", "java.util.NoSuchElementException", "MkRuntimeException", "kotlin.NoSuchElementException"),
     b("MkNumberFormatException", "java.lang.NumberFormatException", "MkIllegalArgumentException", "kotlin.NumberFormatException"),
     b("MkUninitializedPropertyAccessException", "kotlin.UninitializedPropertyAccessException", "MkRuntimeException"),
     b("MkNotImplementedError", "kotlin.NotImplementedError", "MkError"),
-    b("MkNegativeArraySizeException", "java.lang.NegativeArraySizeException", "MkRuntimeException"),
+    b("MkNegativeArraySizeException", "java.lang.NegativeArraySizeException", "MkRuntimeException", "kotlin.NegativeArraySizeException"),
     b("MkAssertionError", "java.lang.AssertionError", "MkError", "kotlin.AssertionError"),
 )
 
@@ -57,6 +57,9 @@ internal fun builtinMirClasses(): List<MirClass> = BUILTIN_CLASSES.map {
 
 internal fun Ir2Mir.builtinOf(c: IrClass): BuiltinClass? =
     if (c in classInfos) null else builtinByFq[c.kotlinFqName.asString()]
+
+/** Classes the runtime provides (the exception hierarchy): their stdlib source declarations are not compiled. */
+internal fun Ir2Mir.isRuntimeProvided(c: IrClass): Boolean = builtinByFq.containsKey(c.kotlinFqName.asString())
 
 internal fun Ir2Mir.builtinType(name: String, nullable: Boolean = false): TObject {
     val c = BUILTIN_CLASSES.first { it.cName == name }
@@ -107,7 +110,7 @@ private fun Ir2Mir.builtinCtorArgs(k: IrConstructor, args: List<MirExpr>, at: Ir
 
 internal fun Ir2Mir.builtinNew(c: IrConstructorCall, cls: IrClass, bc: BuiltinClass, out: MutableList<MirStmt>): MirExpr {
     val k = c.symbol.owner
-    val given = c.arguments.map { it ?: unsupported(c, "omitted argument in exception constructor") }
+    val given = c.arguments.mapIndexed { i, a -> a ?: k.parameters[i].defaultValue?.expression ?: unsupported(c, "omitted argument in exception constructor") }
     val vals = operands(given, out).mapIndexed { i, v -> coerceFlexible(v, mirType(k.parameters[i].type, k.parameters[i]), c, out) }
     val (msg, cause) = builtinCtorArgs(k, vals, c, out)
     return MirExpr.RuntimeCall(bc.cName + "_new", listOf(msg, asAny(cause)), builtinType(bc.cName))

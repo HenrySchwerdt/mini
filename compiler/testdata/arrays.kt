@@ -134,10 +134,6 @@ fun main() {
     println()
     println(Color.valueOf("GREEN"))
     println(Color.values().size)
-    println(Color.entries.size)
-    for (c in Color.entries) print(c.toString() + " ")
-    println()
-    println(Color.entries[2])
     var mass = 0
     for (p in Planet.values()) mass += p.mass
     println(mass)

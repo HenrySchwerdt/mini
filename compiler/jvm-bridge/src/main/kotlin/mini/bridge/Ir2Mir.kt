@@ -151,13 +151,12 @@ class Ir2Mir {
             for (d in file.declarations) {
                 when (d) {
                     is IrSimpleFunction -> tops += file to d
-                    is IrClass -> collectClass(d, pkg, listOf(d.name.asString()), file)
+                    is IrClass -> if (!isRuntimeProvided(d)) collectClass(d, pkg, listOf(d.name.asString()), file)
                     is org.jetbrains.kotlin.ir.declarations.IrTypeAlias -> {}
                     is IrProperty -> {
-                        if (d.isDelegated) unsupported(d, "delegated property '${d.name.asString()}'")
-                        d.getter?.let { tops += file to it }
-                        d.setter?.let { tops += file to it }
-                        if (d.backingField != null) facadeFor(file)
+                        d.getter?.takeIf { !it.isExternal && it.body != null }?.let { tops += file to it }
+                        d.setter?.takeIf { !it.isExternal && it.body != null }?.let { tops += file to it }
+                        if (d.backingField != null && (d.getter?.body != null || d.getter == null)) facadeFor(file)
                     }
                     else -> unsupported(d, describe(d))
                 }

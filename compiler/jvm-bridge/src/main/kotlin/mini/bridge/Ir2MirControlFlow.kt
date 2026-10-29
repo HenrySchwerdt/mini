@@ -166,7 +166,11 @@ internal fun Ir2Mir.forLoop(b: IrBlock, out: MutableList<MirStmt>) {
         "kotlin.collections.IntIterator" -> TInt
         "kotlin.collections.LongIterator" -> TLong
         "kotlin.collections.CharIterator" -> TChar
-        else -> unsupported(b, "for loop over '${iter.type.classFqName}'")
+        else -> {
+            // any other Iterable: the iterator protocol is ordinary code (iterator(), hasNext(), next())
+            for (x in st) stmt(x, out)
+            return
+        }
     }
     val p = progression(iterCall.arguments[0]!!)
 

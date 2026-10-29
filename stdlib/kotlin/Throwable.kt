@@ -32,21 +32,29 @@ public open class RuntimeException : Exception {
 public open class Error : Throwable {
     public constructor() : super()
     public constructor(message: String?) : super(message)
+    public constructor(message: String?, cause: Throwable?) : super(message, cause)
+    public constructor(cause: Throwable?) : super(cause)
 }
 
 public open class IllegalArgumentException : RuntimeException {
     public constructor() : super()
     public constructor(message: String?) : super(message)
+    public constructor(message: String?, cause: Throwable?) : super(message, cause)
+    public constructor(cause: Throwable?) : super(cause)
 }
 
 public open class IllegalStateException : RuntimeException {
     public constructor() : super()
     public constructor(message: String?) : super(message)
+    public constructor(message: String?, cause: Throwable?) : super(message, cause)
+    public constructor(cause: Throwable?) : super(cause)
 }
 
 public open class UnsupportedOperationException : RuntimeException {
     public constructor() : super()
     public constructor(message: String?) : super(message)
+    public constructor(message: String?, cause: Throwable?) : super(message, cause)
+    public constructor(cause: Throwable?) : super(cause)
 }
 
 public open class IndexOutOfBoundsException : RuntimeException {
@@ -80,3 +88,28 @@ public open class NullPointerException : RuntimeException {
 }
 
 public class NotImplementedError(message: String = "An operation is not implemented.") : Error(message)
+
+public open class ArrayIndexOutOfBoundsException : IndexOutOfBoundsException {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+}
+
+public open class StringIndexOutOfBoundsException : IndexOutOfBoundsException {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+}
+
+public open class NegativeArraySizeException : RuntimeException {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+}
+
+public open class UninitializedPropertyAccessException : RuntimeException {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+}
+
+public open class AssertionError : Error {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+}

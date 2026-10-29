@@ -250,7 +250,7 @@ object CEmitter {
                         out.append("$i${lname(s.local)} = ${coerceTo(init, t, top = true)};\n")
                         if (!init.isOwned() && !isStaticValue(init)) out.append("${i}mk_retain((MkObject *)${lname(s.local)});\n")
                     } else {
-                        val init = s.init?.let { " = " + expr(it) } ?: ""
+                        val init = s.init?.let { " = " + expr(it) } ?: " = 0"
                         out.append("$i${cType(t)} ${lname(s.local)}$init;\n")
                     }
                 }

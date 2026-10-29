@@ -135,10 +135,11 @@ internal fun Ir2Mir.mirType(t: IrType, at: IrElement): MirType {
     functionArity(t)?.let { return functionInterface(it).let { f -> if (nullable) f.copy(nullable = true) else f } }
     arrayKindOfFq(n)?.let { return arrayType(it, nullable) }
     return when (n) {
-        "kotlin.String" -> if (nullable) TNString else TString
+        "kotlin.String", "kotlin.CharSequence" -> if (nullable) TNString else TString
         "kotlin.Unit" -> if (nullable) unsupported(at, "nullable type 'Unit?'") else TUnit
         "kotlin.Nothing" -> if (nullable) TNull else TNothing
-        "kotlin.Any" -> if (nullable) anyNullable else anyType
+        // Comparable values are boxed primitives, strings or user objects: represented as Any (compareTo: mk_compare_to)
+        "kotlin.Any", "kotlin.Comparable" -> if (nullable) anyNullable else anyType
         else -> {
             val c = t.classOrNull?.owner
             if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
@@ -152,7 +153,7 @@ internal fun Ir2Mir.erasedBound(p: org.jetbrains.kotlin.ir.declarations.IrTypePa
         val bn = b.classFqName?.asString()
         val bc = b.classOrNull?.owner
         val supported = (b as? org.jetbrains.kotlin.ir.types.IrSimpleType)?.classifier !is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol &&
-            bn != "kotlin.Comparable" && (bn == "kotlin.String" || arrayKindOfFq(bn) != null || (bc != null && (bc in classInfos || builtinOf(bc) != null)) || functionArity(b) != null)
+            bn != "kotlin.Comparable" && (bn == "kotlin.String" || bn == "kotlin.CharSequence" || arrayKindOfFq(bn) != null || (bc != null && (bc in classInfos || builtinOf(bc) != null)) || functionArity(b) != null)
         if (!supported) continue
         val m = mirType(b, at)
         return if (nullable || b.isMarkedNullable()) m.asNullable() else m

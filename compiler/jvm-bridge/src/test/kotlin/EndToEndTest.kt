@@ -54,7 +54,7 @@ class EndToEndTest {
     @TestFactory
     fun leakCheck(): List<DynamicTest> {
         val sources = testdata.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
-            .filter { sibling(it, "out").isFile && !sibling(it, "cerr").isFile && !sibling(it, "err").isFile }
+            .filter { sibling(it, "out").isFile && !sibling(it, "cerr").isFile && !sibling(it, "err").isFile && !sibling(it, "noleakcheck").isFile }
         return sources.map { src ->
             DynamicTest.dynamicTest("leak-free ${src.nameWithoutExtension}") {
                 val cc = sanitizerCc

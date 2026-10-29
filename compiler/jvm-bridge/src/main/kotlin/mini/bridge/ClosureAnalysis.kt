@@ -153,7 +153,9 @@ internal class ClosureInfo {
                     if (a is IrFunctionExpression && !p.isNoinline && !p.isCrossinline) inlinedLambdas += a.function
                 }
             }
-            if (callee.origin == IrDeclarationOrigin.LOCAL_FUNCTION || callee.origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA) {
+            if (callee.origin == IrDeclarationOrigin.LOCAL_FUNCTION || callee.origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA ||
+                callee.visibility == org.jetbrains.kotlin.descriptors.DescriptorVisibilities.LOCAL
+            ) {
                 calls += ArrayList(stack) to callee
             }
             expression.acceptChildrenVoid(this)

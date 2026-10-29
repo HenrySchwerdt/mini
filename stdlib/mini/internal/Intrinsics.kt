@@ -73,28 +73,21 @@ public external fun refArraySet(array: Any, index: Int, value: Any?)
 public external fun refArrayLength(array: Any): Int
 
 // ---- failures ------------------------------------------------------------------------------
-// Every `throw` of the stdlib goes through these functions. Natively they abort the program
-// (`mk_throw_*`: "fatal: <Kind>: <message>" on stderr, exit code != 0) until the backend supports
-// exceptions; then the bodies become `throw IllegalArgumentException(message)` etc. in this one place.
-// On the JVM (unit tests) they throw the real exceptions.
+// Every `throw` of the stdlib goes through these functions (one seam). The backend supports exceptions
+// natively (error-return ABI, see compiler/README.md), so they are ordinary Kotlin `throw`s. The native
+// runtime also keeps the aborting `mk_throw_*` symbols (v1-S block of minirt.h) for direct use.
 
-@CSymbol("mk_throw_illegal_argument")
-public external fun throwIllegalArgument(message: String?): Nothing
+public fun throwIllegalArgument(message: String?): Nothing = throw IllegalArgumentException(message)
 
-@CSymbol("mk_throw_illegal_state")
-public external fun throwIllegalState(message: String?): Nothing
+public fun throwIllegalState(message: String?): Nothing = throw IllegalStateException(message)
 
-@CSymbol("mk_throw_index_out_of_bounds")
-public external fun throwIndexOutOfBounds(message: String?): Nothing
+public fun throwIndexOutOfBounds(message: String?): Nothing = throw IndexOutOfBoundsException(message)
 
-@CSymbol("mk_throw_no_such_element")
-public external fun throwNoSuchElement(message: String?): Nothing
+public fun throwNoSuchElement(message: String?): Nothing = throw NoSuchElementException(message)
 
-@CSymbol("mk_throw_number_format")
-public external fun throwNumberFormat(message: String?): Nothing
+public fun throwNumberFormat(message: String?): Nothing = throw NumberFormatException(message)
 
-@CSymbol("mk_throw_unsupported_operation")
-public external fun throwUnsupportedOperation(message: String?): Nothing
+public fun throwUnsupportedOperation(message: String?): Nothing = throw UnsupportedOperationException(message)
 
-@CSymbol("mk_throw_not_implemented")
-public external fun throwNotImplemented(message: String?): Nothing
+public fun throwNotImplemented(message: String?): Nothing =
+    throw (if (message == null) NotImplementedError() else NotImplementedError(message))

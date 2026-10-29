@@ -145,10 +145,21 @@ internal fun Ir2Mir.tmpOfPlain(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
 }
 
 internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
+    val r = callInner(c, out)
+    // a call that never returns normally must still be emitted when its (Nothing) value is discarded
+    if (r.type == TNothing && (r is MirExpr.Call || r is MirExpr.VCall || r is MirExpr.ICall || r is MirExpr.RuntimeCall || r is MirExpr.New)) {
+        out += MirStmt.Eval(r)
+        return MirExpr.Unreachable(TNothing)
+    }
+    return r
+}
+
+internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     val owner = c.symbol.owner
     val name = owner.name.asString()
     val parent = owner.parent
 
+    lateinitIsInitialized(c, name, if (parent is IrClass) parent.kotlinFqName.asString() else (parent as? IrPackageFragment)?.packageFqName?.asString() ?: "", out)?.let { return it }
     // natively implemented function (@CSymbol, docs/stdlib.md)
     Reachability.cSymbol(owner)?.let { return cSymbolCall(c, it, out) }
 
@@ -180,7 +191,6 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     if (parent is IrClass && isEnumEntriesList(c, parent)) return arrayMember(c, name, arrayKindOfFq("kotlin.Array")!!, out)
     if (parent is IrClass) arrayKindOfFq(ownerName)?.let { return arrayMember(c, name, it, out) }
     arrayFunction(c, name, ownerName, out)?.let { return it }
-    intrinsicCall(c, owner, ownerName, out)?.let { return it }
     val args = c.arguments.map { it ?: unsupported(c, "call with omitted argument to '$ownerName.$name'") }
 
     return when {
@@ -195,7 +205,8 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         ownerName == "kotlin.io" && (name == "println" || name == "print") -> consoleCall(c, name, args, out)
         ownerName == "kotlin.internal.ir" -> irBuiltin(c, name, args, out)
         parent is IrClass && ownerName in RANGES && name == "contains" -> rangeContains(c, args, out)
-        ownerName == "kotlin.String" && name == "<get-length>" -> MirExpr.StringLength(operands(args, out)[0])
+        (ownerName == "kotlin.String" || ownerName == "kotlin.CharSequence") && name == "<get-length>" -> MirExpr.StringLength(operands(args, out)[0])
+        parent is IrClass && ownerName == "kotlin.CharSequence" -> primitiveMember(c, "kotlin.String", name, args, out)
         parent is IrClass && ownerName in PRIMITIVES -> primitiveMember(c, ownerName, name, args, out)
         else -> unsupported(c, "call to '${if (parent is IrClass) "$ownerName.$name" else "$ownerName.$name"}'")
     }

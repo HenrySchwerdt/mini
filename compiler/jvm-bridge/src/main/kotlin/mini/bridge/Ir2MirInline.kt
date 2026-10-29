@@ -135,3 +135,23 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
         typeSubst.putAll(savedSubst)
     }
 }
+
+/** Calls the function value [arg] (a lambda literal is expanded in place) with [args]. */
+internal fun Ir2Mir.callFunctionArg(arg: IrExpression, args: List<MirExpr>, expected: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
+    val lam = inlineLambdaOf(arg)
+    if (lam != null) {
+        val r = inlineLambdaCall(lam, args, at, out)
+        return if (expected == TUnit || expected == TNothing || r.type == TUnit) r else coerceFlexible(r, expected, at, out)
+    }
+    val fv = value(arg, out)
+    val iface = functionInterface(args.size)
+    val recv = if (fv.type is TObject && (fv.type as TObject).isInterface) fv else MirExpr.Cast(fv, iface, MirExpr.CastMode.Unchecked)
+    val boxed = args.map { coerceOperand(it, anyNullable, at, out) }
+    val call = MirExpr.ICall(iface.cName, 0, recv, boxed, invokeArgTypes(args.size), anyNullable)
+    if (expected == TUnit || expected == TNothing) {
+        out += MirStmt.Eval(call)
+        return MirExpr.UnitValue
+    }
+    return adaptResult(tmpOf(call, out), expected, at, out)
+}
+

@@ -26,7 +26,7 @@ internal fun Ir2Mir.facadeFor(file: IrFile): Facade = facades.getOrPut(file) {
     val base = file.name.removeSuffix(".kt").replaceFirstChar { it.uppercase() } + "Kt"
     val pkg = file.packageFqName.asString()
     val cName = Mangling.className(pkg, listOf(base))
-    val fields = file.declarations.filterIsInstance<IrProperty>().mapNotNull { it.backingField } +
+    val fields = file.declarations.filterIsInstance<IrProperty>().filter { it.getter?.body != null || it.getter == null }.mapNotNull { it.backingField } +
         file.declarations.filterIsInstance<IrField>()
     Facade(cName, (if (pkg.isEmpty()) "" else "$pkg.") + base, file, fields, Mangling.constructor(cName, emptyList()))
 }
@@ -71,4 +71,14 @@ internal fun Ir2Mir.buildFacades(): Pair<List<MirClass>, List<MirFunction>> {
         )
     }
     return classes to functions
+}
+
+/** `this::x.isInitialized` / `::x.isInitialized` of a lateinit property (when the stdlib declares it). */
+internal fun Ir2Mir.lateinitIsInitialized(c: IrCall, name: String, pkg: String, out: MutableList<MirStmt>): MirExpr? {
+    if (pkg != "kotlin" || name != "<get-isInitialized>") return null
+    val ref = c.arguments.getOrNull(0) as? IrPropertyReference ?: return null
+    val field = ref.symbol.owner.backingField ?: unsupported(c, "isInitialized without backing field")
+    val recvIr = ref.arguments.firstOrNull { it != null }
+    val raw = if (recvIr == null) staticFieldGet(field, c) else fieldGet(operands(listOf(recvIr), out)[0], field)
+    return MirExpr.Binary(BinaryOp.IdNe, raw, MirExpr.NullConst())
 }
