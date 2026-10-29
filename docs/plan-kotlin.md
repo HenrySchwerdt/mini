@@ -359,6 +359,25 @@ Programm** als Quelltext durch K2 schicken, mit `-Xallow-kotlin-package` und eig
 So haben auch `inline`-Funktionen wie `map`/`filter` IR-Bodies, die unser Backend
 kompilieren kann. Aus der JVM-stdlib-JAR gibt es nur Bytecode, kein IR.
 
+### 10d. Dogfooding: stdlib und Compiler mit dem eigenen Speichermodell schnell machen (nach v1)
+
+Sobald der Compiler nativ läuft, ist er unser größtes Testprogramm. Ablauf:
+1. **Messen, bevor optimiert wird:** Runtime-Zähler (Allokationen, Frees, Retain/Release,
+   Peak-Speicher) als `--debug-memory`-Build, plus Benchmark-Suite: native `minic` vs. JVM-`minic`
+   auf großen Eingaben (z. B. das eigene Backend), dazu Mikro-Benchmarks für die stdlib
+   (`ArrayList`, `HashMap`, `StringBuilder`, `map`/`filter`).
+2. **RC-Elision im Compiler** (Perceus-artig: Borrow-Inferenz für Parameter, Move der letzten
+   Nutzung, Reuse). Das bringt erfahrungsgemäß den größten Gewinn, ohne den Code anzufassen.
+3. **`minic mem-report` / `M0207`** (Abschnitt 4.4a) über stdlib und Compiler laufen lassen:
+   Wo bleibt Refcounting übrig, und warum?
+4. **Gezielt umstellen:**
+   - stdlib-Interna (Puffer von `ArrayList`/`StringBuilder`/`HashMap`) auf Strict mit
+     `@Owned`-Feldern. Die öffentliche API bleibt unverändert Kotlin-kompatibel.
+   - Im Compiler eine `Arena` pro Phase (Frontend, Ir2Mir, Emit).
+5. **Bewerten:** Zeit, Speicher und Anzahl RC-Operationen vorher/nachher. Und vor allem: Wie viele
+   Annotationen und `free()`s waren nötig, und welche Diagnosen haben gestört? Diese Erfahrungen
+   fließen zurück in `docs/memory-model.md` (Ergonomie, Inferenz von `@Owned`).
+
 ### 10c. Runtime in Kotlin (nach v1)
 
 Ziel: **keine handgeschriebene C-Runtime mehr.** libminirt wird Stück für Stück in Mini-Kotlin
