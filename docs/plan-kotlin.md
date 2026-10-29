@@ -627,6 +627,29 @@ Candidates:
 - **Code:** whole-program devirtualization, and with LLVM (§10g) LTO, PGO and zero-cost unwinding.
 - **IO:** the Kotlin io_uring/kqueue backends (§10c) against libuv.
 
+### 10i. Playground and notebooks in the browser (WebAssembly)
+
+Goal: on the documentation site, every code sample can be edited and run in the browser, plus a
+notebook page (Markdown and code cells sharing state). No server: GitHub Pages is static.
+
+- **The compiler runs in the browser.** It is self-hosted pure Kotlin, so its generated C (or LLVM IR,
+  §10g) compiles to `wasm32-wasi` with clang and wasi-libc; the C runtime too (threads and libuv are left
+  out; IO goes to a small JS shim). Expected size a few MB, loaded once and cached.
+- **Phase A: MIR interpreter.** The browser compiler parses, type-checks, runs the memory checker and
+  lowers to MIR; a MIR interpreter (pure Kotlin, compiled to wasm with the compiler) executes it. No C
+  compiler or linker is needed in the browser, startup is instant. The same interpreter serves
+  `mini repl` and fast `mini run` natively.
+- **Playground features:** run, `check` (Strict diagnostics inline in the editor with M-codes and links to
+  the reference), tabs showing the MIR and generated C/LLVM IR for the "How it works" pages, share via
+  URL, examples gallery. The website's checked samples become runnable in place.
+- **Notebook:** Markdown and code cells; code cells are REPL steps over one interpreter session, outputs
+  rendered below the cell; save and load as files or in the URL.
+- **Phase B: real wasm backend.** MIR → wasm directly (linear memory fits the manual memory model), the
+  runtime precompiled to wasm and linked in the browser, for full speed and for exporting `.wasm`
+  programs. Also the base for `mini build --target wasm32-wasi`.
+- **Fast startup:** the stdlib is shipped precompiled (API metadata + MIR, `.mlib`, §10f) so the browser
+  does not re-check it on every run.
+
 ## 11. Working method: manager and Sonnet agents
 
 - **Manager** (this agent): architecture, interfaces between packages,
