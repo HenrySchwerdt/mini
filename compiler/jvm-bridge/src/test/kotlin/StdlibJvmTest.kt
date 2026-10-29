@@ -71,7 +71,7 @@ class StdlibJvmTest {
 
     /** Stdlib files that exist only for the Mini frontend/backend and have JVM counterparts on the JVM. */
     private val jvmExcluded = listOf("kotlin/Throwable.kt", "kotlin/Platform.kt", "kotlin/jvm/", "kotlin/reflect/", "kotlin/io/",
-        "java/", "mini/")
+        "java/", "mini/", "kotlinx/", "kotlin/native/")
 
     /** `package.Name` of every non-private top-level class/interface/object declared in [files]. */
     private fun classifiers(files: List<File>): List<String> {

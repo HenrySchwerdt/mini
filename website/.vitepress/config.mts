@@ -45,6 +45,7 @@ export default withMermaid(
             items: [
               { text: 'Getting started', link: '/guide/getting-started' },
               { text: 'Mini and Kotlin/JVM', link: '/guide/mini-vs-kotlin' },
+              { text: 'C interop', link: '/guide/c-interop' },
               { text: 'Command line', link: '/reference/cli' },
             ],
           },
