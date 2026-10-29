@@ -1,0 +1,48 @@
+18
+AppException 404 zero
+f2;f2;
+negative: -1
+true
+true
+false
+java.lang.IllegalArgumentException: negative: -1
+f2;
+8
+iae:negative: -2
+app:404:zero
+11111
+inner-finally;caught inner;outer-finally;
+5
+-1
+rf5;rf-5;
+4
+L1;L2;L3;L4;
+derived d
+base-handler;
+wrapped <- negative: -5
+ok
+not found: res
+open r0;close r0;open r1;close r1;
+9
+not found: big key=big
+5
+task failed 2
+gate ok
+gate closed
+arith: / by zero
+rem: / by zero
+npe
+cce
+null
+custom state
+zero must be positive, was 0
+Failed requirement.
+Check failed.
+lazy check
+Required value was null.
+needed a value
+4
+An operation is not implemented: later
+BaseError caught: as base
+null
+done

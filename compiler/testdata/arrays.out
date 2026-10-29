@@ -1,0 +1,45 @@
+4
+[10, 20, 0, 30]
+60
+[0, 1, 4, 9, 16]
+7
+1099511627776
+[3.0, 2.5]
+[false, true, false]
+[a, z, c]
+3
+yz
+x;y;z;
+[z, y, x]
+24
+[1, 20, 3]
+[null, null]
+set
+true
+[0, 1, 4, 9]
+6
+[0, 2, 0]
+Index 4 out of bounds for length 4
+Index -1 out of bounds for length 4
+negative size -1
+0
+1
+6
+30
+63
+a-b-c
+
+p/q/r
+4
+7
+8
+RED0 GREEN1 BLUE2 
+GREEN
+3
+3
+RED GREEN BLUE 
+BLUE
+14
+6
+No enum constant Color.PURPLE
+true

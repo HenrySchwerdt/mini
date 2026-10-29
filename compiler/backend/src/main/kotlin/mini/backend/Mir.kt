@@ -58,6 +58,12 @@ class MirClass(
     val itables: List<MirItable>,
     /** For `object` declarations: C name of the constructor (initialiser) function. */
     val objectCtor: String? = null,
+    /**
+     * Defined by the runtime (libminirt, e.g. the built-in exception classes): the emitter emits no
+     * struct, type info or functions for it, but user classes may extend it; `struct <cName>` and
+     * `<cName>_ti` are declared in minirt.h.
+     */
+    val external: Boolean = false,
 )
 
 class MirFunction(
@@ -205,7 +211,25 @@ sealed class MirStmt {
     class Return(val value: MirExpr?) : MirStmt()
     /** Aborts through `mk_panic`. [message] must be plain ASCII without quotes or backslashes. */
     class Panic(val message: String) : MirStmt()
+
+    /** `throw value`: makes the exception pending and leaves through the exceptional path. */
+    class Throw(val value: MirExpr) : MirStmt()
+
+    /**
+     * `try { body } catch ...`. An exception raised in [body] (directly or in any callee) releases the
+     * locals of the scopes it leaves and runs the first clause whose type matches; without a match it
+     * propagates. Exceptions raised inside a clause propagate outward. `finally` is lowered by the
+     * producer into this construct (catch-all clause that runs the finalizer and rethrows, plus
+     * finalizer copies on the normal and jump paths).
+     */
+    class Try(val body: List<MirStmt>, val catches: List<MirCatch>) : MirStmt()
 }
+
+/**
+ * A catch clause. [type] is the exception class (a [TObject]); [body] must start with
+ * `Declare(local, CaughtException(...))`, which binds the exception (ownership moves to the local).
+ */
+class MirCatch(val type: MirType, val body: List<MirStmt>)
 
 sealed class MirExpr {
     abstract val type: MirType
@@ -320,6 +344,14 @@ sealed class MirExpr {
 
     /** A value of [type] that is never actually used (dead code after return/break). */
     class Unreachable(override val type: MirType) : MirExpr()
+
+    /** The exception being handled; only valid as the first `Declare` of a [MirCatch] body. Owned. */
+    class CaughtException(override val type: MirType) : MirExpr()
+
+    /** `&<type info of target>` (NULL for a null target), as an argument of runtime calls. */
+    class TypeInfoOf(val target: MirType?) : MirExpr() {
+        override val type: MirType get() = TObject("mk.TypeInfo", "mk_TypeInfo", false)
+    }
 }
 
 /**
@@ -329,6 +361,7 @@ sealed class MirExpr {
  * or the operand of [MirStmt.Eval]; every other position sees a [MirExpr.Local] holding it.
  */
 fun MirExpr.isOwned(): Boolean = type.isRef && when (this) {
-    is MirExpr.Call, is MirExpr.RuntimeCall, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.New, is MirExpr.Box -> true
+    is MirExpr.Call, is MirExpr.RuntimeCall, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.New, is MirExpr.Box,
+    is MirExpr.CaughtException -> true
     else -> false
 }

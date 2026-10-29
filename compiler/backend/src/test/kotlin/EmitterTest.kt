@@ -58,7 +58,7 @@ class EmitterTest {
         )
         val c = CEmitter.emit(module(main))
         assertTrue("mkh_div_int(1, 0)" in c)
-        assertTrue("ArithmeticException: / by zero" in c)
+        assertTrue("/ by zero" in c)
     }
 
     @Test

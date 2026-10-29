@@ -398,6 +398,142 @@ _Noreturn void mk_throw_not_implemented(const MkString *message);
 
 /* ---- end v1-S ------------------------------------------------------------------- */
 
+/* ---- v1-L ---------------------------------------------------------------------- */
+
+/* Exceptions, arrays and a few helpers for the v1-L language features (lambdas, generics,
+ * exceptions). Implemented in src/v1l.c.
+ *
+ * Exception ABI (error-return, plan section 5): a function that can throw reports it by
+ * leaving a non-NULL owned reference in the thread-local `mk_pending_exception` and returning a
+ * dummy value (0 / NULL). Every caller checks `mk_pending_exception != NULL` right after the call
+ * and either jumps to its `catch` handler or releases its locals and returns the same way. The
+ * handler takes the exception with mk_catch(). The entry point (generated `mk_main` wrapper)
+ * reports a still pending exception with mk_report_uncaught() and exits with status 1. */
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#define MK_THREAD_LOCAL __declspec(thread)
+#else
+#define MK_THREAD_LOCAL _Thread_local
+#endif
+
+extern MK_THREAD_LOCAL MkObject *mk_pending_exception;
+
+/* `throw e`: retains `e`, makes it the pending exception (a previously pending one is released).
+ * `e == NULL` throws NullPointerException. The caller then runs its exceptional exit path. */
+void mk_throw(MkObject *exception);
+/* Makes `exception` pending, transferring the caller's reference (rethrow after a handler). */
+void mk_rethrow(MkObject *exception);
+/* Takes the pending exception: returns it (owned by the caller) and clears the pending state. */
+MkObject *mk_catch(void);
+/* Prints `Exception in thread "main" <toString>` to stderr (after flushing stdout) and exits
+ * with status 1. Called with an exception pending. */
+_Noreturn void mk_report_uncaught(void);
+
+/* java.lang.Throwable layout; user exception classes embed it as their first member. */
+typedef struct MkThrowable {
+    MkObject header;
+    const MkString *message; /* may be NULL */
+    MkObject *cause;         /* may be NULL */
+} MkThrowable;
+
+/* Built-in exception classes. Every one has the MkThrowable layout; `struct <Name>` wraps it so that
+ * generated subclasses can embed their superclass as the first member. vtable: toString, equals,
+ * hashCode, then slot 3 = `message` getter (`const MkString *(MkObject *)`, owned result). Type
+ * infos are named `<struct>_ti`, constructors `<struct>_new`. */
+#define MK_EXCEPTION_SUBCLASSES(X)                                                       \
+    X(MkException) X(MkRuntimeException) X(MkError)                                      \
+    X(MkIllegalStateException) X(MkIllegalArgumentException) X(MkNullPointerException)  \
+    X(MkArithmeticException) X(MkClassCastException) X(MkIndexOutOfBoundsException)     \
+    X(MkArrayIndexOutOfBoundsException) X(MkStringIndexOutOfBoundsException)           \
+    X(MkUnsupportedOperationException)                                                   \
+    X(MkNoSuchElementException) X(MkNumberFormatException)                              \
+    X(MkUninitializedPropertyAccessException) X(MkNotImplementedError)                   \
+    X(MkNegativeArraySizeException) X(MkAssertionError)
+#define MK_DECLARE_EXCEPTION(Name)                                                       \
+    extern const MkTypeInfo Name##_ti;                                                   \
+    /* allocates an instance (refcount 1); retains message and cause */                  \
+    MkObject *Name##_new(const MkString *message, MkObject *cause);
+#define MK_DEFINE_EXCEPTION_STRUCT(Name) struct Name { MkThrowable base; };
+extern const MkTypeInfo MkThrowable_ti;
+MkObject *MkThrowable_new(const MkString *message, MkObject *cause);
+MK_EXCEPTION_SUBCLASSES(MK_DECLARE_EXCEPTION)
+MK_EXCEPTION_SUBCLASSES(MK_DEFINE_EXCEPTION_STRUCT)
+
+/* Initialiser used by constructors of user classes that extend a built-in exception. */
+void mk_throwable_init(MkObject *self, const MkString *message, MkObject *cause);
+/* `Throwable(cause)`: message is cause.toString() (NULL cause gives NULL). Owned result. */
+const MkString *mk_throwable_cause_message(MkObject *cause);
+const MkString *mk_throwable_message(MkObject *self); /* the slot-3 default, owned result */
+const MkString *mk_throwable_to_string(MkObject *self); /* the slot-0 default of every Throwable */
+MkObject *mk_throwable_cause(MkObject *self);         /* owned result (may be NULL) */
+void mk_throwable_print_stack_trace(MkObject *self);  /* toString to stderr */
+
+/* Raising helpers for runtime-detected failures: they make the exception pending and return
+ * (generated code checks afterwards, so callers return a dummy value). */
+void mk_raise(const MkTypeInfo *type, const char *message); /* message may be NULL */
+void mk_raise_npe(void);
+void mk_raise_class_cast(const MkObject *object, const MkTypeInfo *target);
+void mk_raise_arith(const char *message);
+void mk_raise_index(MkInt index, MkInt length);
+void mk_raise_illegal_argument(const char *message);
+void mk_raise_illegal_state(const char *message);
+void mk_raise_uninitialized(const char *property);
+
+/* Exception-raising variants of the P1-A checks (those abort instead). */
+MkObject *mk_checked_cast(MkObject *object, const MkTypeInfo *target); /* NULL passes */
+MkObject *mk_checked_not_null(MkObject *object);
+MkInt mk_checked_unbox_int(const MkObject *box);
+MkLong mk_checked_unbox_long(const MkObject *box);
+MkBoolean mk_checked_unbox_boolean(const MkObject *box);
+MkDouble mk_checked_unbox_double(const MkObject *box);
+MkChar mk_checked_unbox_char(const MkObject *box);
+
+/* `kotlin.Any()`: a plain instance (refcount 1). */
+MkObject *mk_any_new(void);
+
+/* Comparable.compareTo for boxed primitives and strings; for any other object the function
+ * table of `comparable` (the Comparable interface type info, may be NULL) is used, method 0. */
+MkInt mk_compare_to(MkObject *left, MkObject *right, const MkTypeInfo *comparable);
+
+/* Arrays. `Array<T>` holds references (released by dispose); IntArray etc. hold primitives.
+ * Constructors raise NegativeArraySizeException for a negative size. Element access raises
+ * ArrayIndexOutOfBoundsException. get_obj returns an owned reference. */
+typedef struct MkArray {
+    MkObject header;
+    MkInt length;
+    /* elements follow, 8-byte aligned */
+} MkArray;
+extern const MkTypeInfo MkObjectArray_ti, MkIntArray_ti, MkLongArray_ti, MkDoubleArray_ti, MkBooleanArray_ti,
+    MkCharArray_ti;
+MkObject *mk_array_new_obj(MkInt length);
+MkObject *mk_array_new_int(MkInt length);
+MkObject *mk_array_new_long(MkInt length);
+MkObject *mk_array_new_double(MkInt length);
+MkObject *mk_array_new_boolean(MkInt length);
+MkObject *mk_array_new_char(MkInt length);
+MkInt mk_array_length(const MkObject *array);
+MkObject *mk_array_get_obj(const MkObject *array, MkInt index);
+void mk_array_set_obj(MkObject *array, MkInt index, MkObject *value);
+MkInt mk_array_get_int(const MkObject *array, MkInt index);
+void mk_array_set_int(MkObject *array, MkInt index, MkInt value);
+MkLong mk_array_get_long(const MkObject *array, MkInt index);
+void mk_array_set_long(MkObject *array, MkInt index, MkLong value);
+MkDouble mk_array_get_double(const MkObject *array, MkInt index);
+void mk_array_set_double(MkObject *array, MkInt index, MkDouble value);
+MkBoolean mk_array_get_boolean(const MkObject *array, MkInt index);
+void mk_array_set_boolean(MkObject *array, MkInt index, MkBoolean value);
+MkChar mk_array_get_char(const MkObject *array, MkInt index);
+void mk_array_set_char(MkObject *array, MkInt index, MkChar value);
+/* `string[index]`: the UTF-16 unit, or StringIndexOutOfBoundsException (pending) and 0. */
+MkChar mk_string_get_char(const MkString *string, MkInt index);
+
+/* Copies all elements of `src` (same kind) into `dst` starting at `index` (vararg spread). */
+void mk_array_copy_into(MkObject *dst, MkInt index, const MkObject *src);
+/* `contentToString()`: "[1, 2, 3]"; elements of object arrays through toString. NULL gives "null". */
+const MkString *mk_array_content_to_string(const MkObject *array);
+
+/* ---- end v1-L ------------------------------------------------------------------- */
+
 #ifdef __cplusplus
 }
 #endif

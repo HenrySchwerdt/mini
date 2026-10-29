@@ -112,6 +112,16 @@ internal fun Ir2Mir.describe(e: IrElement): String {
 
 internal fun Ir2Mir.mirType(t: IrType, at: IrElement): MirType {
     val nullable = t.isMarkedNullable()
+    // type parameters are erased to their bound (reified ones inside an inline expansion are substituted)
+    val classifier = (t as? org.jetbrains.kotlin.ir.types.IrSimpleType)?.classifier
+    if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol) {
+        val sub = typeSubst[classifier]
+        if (sub != null) {
+            val m = mirType(sub, at)
+            return if (nullable && m.isRef.not() && m != TUnit && m != TNothing) m.asNullable() else if (nullable) m.asNullable() else m
+        }
+        return erasedBound(classifier.owner, nullable, at)
+    }
     val n = t.classFqName?.asString()
     val prim: MirType? = when (n) {
         "kotlin.Int" -> TInt
@@ -122,6 +132,8 @@ internal fun Ir2Mir.mirType(t: IrType, at: IrElement): MirType {
         else -> null
     }
     if (prim != null) return if (nullable) TBoxed(prim) else prim
+    functionArity(t)?.let { return functionInterface(it).let { f -> if (nullable) f.copy(nullable = true) else f } }
+    arrayKindOfFq(n)?.let { return arrayType(it, nullable) }
     return when (n) {
         "kotlin.String" -> if (nullable) TNString else TString
         "kotlin.Unit" -> if (nullable) unsupported(at, "nullable type 'Unit?'") else TUnit
@@ -129,7 +141,21 @@ internal fun Ir2Mir.mirType(t: IrType, at: IrElement): MirType {
         "kotlin.Any" -> if (nullable) anyNullable else anyType
         else -> {
             val c = t.classOrNull?.owner
-            if (c != null && c in classInfos) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
+            if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
         }
     }
+}
+
+/** The erasure of a type parameter: its first supported bound, else `Any?`. */
+internal fun Ir2Mir.erasedBound(p: org.jetbrains.kotlin.ir.declarations.IrTypeParameter, nullable: Boolean, at: IrElement): MirType {
+    for (b in p.superTypes) {
+        val bn = b.classFqName?.asString()
+        val bc = b.classOrNull?.owner
+        val supported = (b as? org.jetbrains.kotlin.ir.types.IrSimpleType)?.classifier !is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol &&
+            bn != "kotlin.Comparable" && (bn == "kotlin.String" || arrayKindOfFq(bn) != null || (bc != null && (bc in classInfos || builtinOf(bc) != null)) || functionArity(b) != null)
+        if (!supported) continue
+        val m = mirType(b, at)
+        return if (nullable || b.isMarkedNullable()) m.asNullable() else m
+    }
+    return anyNullable
 }
