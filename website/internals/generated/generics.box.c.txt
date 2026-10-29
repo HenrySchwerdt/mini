@@ -1,0 +1,19 @@
+/* class Box */
+struct kc_Box {
+    MkObject header;
+    MkObject * f_value;
+};
+static void kc_Box_dispose(MkObject *self) {
+    struct kc_Box *o = (struct kc_Box *)self;
+    MKH_REL(o->f_value);
+}
+static void *const kc_Box_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code};
+static const MkTypeInfo kc_Box_ti = {"Box", sizeof(struct kc_Box), &mk_type_Any, kc_Box_dispose, kc_Box_vt, 3, NULL, 0};
+/* Box.get */
+MkObject * kc_Box_Mget(MkObject * v_this_0) {
+    {
+        MkObject * r = (((struct kc_Box *)v_this_0)->f_value);
+        MKH_RETAIN(r);
+        return r;
+    }
+}

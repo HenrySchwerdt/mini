@@ -1,0 +1,9 @@
+/* adder.<lambda>$0.invoke */
+MkObject * kc__x0024closure0_Minvoke_AQLmk_Any_E(MkObject * v_this_0, MkObject * v_p0_1) {
+    MkInt v_cap0_2 = (((struct kc__x0024closure0 *)v_this_0)->f_c0);
+    MkInt v_x_3 = ({ MkInt mkt6 = mk_checked_unbox_int(((MkObject *)v_p0_1)); if (mk_pending_exception != NULL) { return NULL; } mkt6; });
+    {
+        MkObject * r = mk_box_int((MkInt)((uint32_t)v_x_3 + (uint32_t)v_cap0_2));
+        return r;
+    }
+}

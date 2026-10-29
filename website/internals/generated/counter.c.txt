@@ -1,0 +1,74 @@
+/* prototypes */
+MkInt kt_fib_AI(MkInt v_n_0);
+void mkh_user_main(void);
+MkInt kc_Counter_M_x003Cget_x002Dn_x003E(MkObject * v_this_0);
+void kc_Counter_M_x003Cset_x002Dn_x003E_AI(MkObject * v_this_0, MkInt v__x003Cset_x002D_x003F_x003E_1);
+MkInt kc_Counter_Minc(MkObject * v_this_0);
+void kc_Counter_C_AI(MkObject * v_this_0, MkInt v_n_1);
+
+/* classes */
+/* class Counter */
+struct kc_Counter {
+    MkObject header;
+    MkInt f_n;
+};
+static void *const kc_Counter_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code};
+static const MkTypeInfo kc_Counter_ti = {"Counter", sizeof(struct kc_Counter), &mk_type_Any, NULL, kc_Counter_vt, 3, NULL, 0};
+
+MKH_FN MkObject *kc_Counter_C_AI_new(MkInt a0) {
+    MkObject *o = mk_alloc(&kc_Counter_ti);
+    kc_Counter_C_AI(o, a0);
+    return o;
+}
+
+/* fib */
+MkInt kt_fib_AI(MkInt v_n_0) {
+    MkInt v_tmp_2 = 0;
+    if (v_n_0 < 2) {
+        v_tmp_2 = v_n_0;
+    } else {
+        MkInt v_tmp_1 = kt_fib_AI((MkInt)((uint32_t)v_n_0 - (uint32_t)1));
+        v_tmp_2 = (MkInt)((uint32_t)v_tmp_1 + (uint32_t)kt_fib_AI((MkInt)((uint32_t)v_n_0 - (uint32_t)2)));
+    }
+    return v_tmp_2;
+}
+
+/* main */
+void mkh_user_main(void) {
+    MkObject * v_c_1 = NULL;
+    v_c_1 = kc_Counter_C_AI_new(0);
+    mk_println_int(kt_fib_AI(10));
+    mk_println_int(kc_Counter_Minc(v_c_1));
+    MKH_REL(v_c_1);
+}
+
+/* Counter.<get-n> */
+MkInt kc_Counter_M_x003Cget_x002Dn_x003E(MkObject * v_this_0) {
+    return (((struct kc_Counter *)v_this_0)->f_n);
+}
+
+/* Counter.<set-n> */
+void kc_Counter_M_x003Cset_x002Dn_x003E_AI(MkObject * v_this_0, MkInt v__x003Cset_x002D_x003F_x003E_1) {
+    ((struct kc_Counter *)(v_this_0))->f_n = v__x003Cset_x002D_x003F_x003E_1;
+}
+
+/* Counter.inc */
+MkInt kc_Counter_Minc(MkObject * v_this_0) {
+    MkObject * v_tmp_2 = NULL;
+    v_tmp_2 = v_this_0;
+    MkInt v_tmp_1 = (((struct kc_Counter *)v_this_0)->f_n);
+    ((struct kc_Counter *)(v_tmp_2))->f_n = (MkInt)((uint32_t)v_tmp_1 + (uint32_t)1);
+    return (((struct kc_Counter *)v_this_0)->f_n);
+}
+
+/* Counter.<init> */
+void kc_Counter_C_AI(MkObject * v_this_0, MkInt v_n_1) {
+    ((struct kc_Counter *)(v_this_0))->f_n = v_n_1;
+}
+
+/* program entry: an exception that escaped main is reported by the runtime */
+void mk_main(void) {
+    mkh_user_main();
+    if (mk_pending_exception != NULL) mk_report_uncaught();
+}
+

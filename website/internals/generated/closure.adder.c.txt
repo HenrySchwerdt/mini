@@ -1,0 +1,7 @@
+/* adder */
+MkObject * kt_adder_AI(MkInt v_k_0) {
+    {
+        MkObject * r = kc__x0024closure0_C_AI_new(v_k_0);
+        return r;
+    }
+}
