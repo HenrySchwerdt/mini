@@ -1,0 +1,150 @@
+{
+  "_comment": "Hand-written prose per code (from docs/memory-model.md section 7). The example program, its .diag line and the compiler output are generated from compiler/testdata/memory by gen-diagnostics.mjs.",
+  "M0101": {
+    "title": "Use after free",
+    "severity": "error",
+    "example": "uaf_simple",
+    "meaning": "A value is read, called or borrowed after `free()`, `close()` or the end of a `use {}` block released it. It also fires for a borrowed alias (`val b = a`) or a `@Borrowed` result once the owner it derives from was freed. If only one control-flow path frees the value, the message says it \"may have been freed\".",
+    "fix": "Move the use before the release, or release later. If you need the value after the call that frees it, keep ownership (do not pass it to an `@Owned` parameter) or copy out the data you need first."
+  },
+  "M0102": {
+    "title": "Leak: allocation is never released",
+    "severity": "error",
+    "example": "leak_early_return",
+    "meaning": "An owning variable, parameter or field leaves its scope while it still holds a live allocation from a `Deallocating` allocator (`Heap`, `Pool`) or an unclosed `Arena`/`Pool` resource. The label names the path that leaks: end of scope, early return, `break`, `continue`, `throw`, not released on all branches, overwritten, result discarded, or an `@Owned` parameter that is never freed.",
+    "fix": "Release the value on every path (`x.free()`, `x.close()`, or wrap it in `x.use { }` for `AutoCloseable` classes), or hand ownership on (return it as `@Owned`, pass it to an `@Owned` parameter, store it in an owning field). Put the release in a `finally` block when exceptions are involved."
+  },
+  "M0103": {
+    "title": "Double free",
+    "severity": "error",
+    "example": "dfree_simple",
+    "meaning": "`free()`, `close()` or the end of a `use {}` block is applied to a value that is already freed on some path that reaches it, including a free in a loop body that runs twice.",
+    "fix": "Delete the second release. If the value is conditionally freed earlier, restructure so that exactly one path frees it, or free it only in one place (for example a `finally`)."
+  },
+  "M0104": {
+    "title": "Use after move",
+    "severity": "error",
+    "example": "move_explicit",
+    "meaning": "A value is used after ownership moved away from it: through `x.move()`, by passing it to an `@Owned` parameter, by storing it in an owning field, by capturing it in a thread lambda, or by a `use {}`/`close()` that consumed it. A move inside a loop that is hit again on the next iteration is reported too.",
+    "fix": "Use the new owner instead of the old variable, or write `val b = a` (a borrowed alias) if no transfer was intended. Inside loops, re-initialise the variable before the back edge."
+  },
+  "M0105": {
+    "title": "Escape from a Scoped allocator",
+    "severity": "error",
+    "example": "arena_escape_return",
+    "meaning": "A value allocated in an `Arena` leaves the scope of that arena: it is returned, becomes the result of the `use {}` block, is stored in a field of a longer-lived object or a global, or is captured by a lambda that outlives the arena.",
+    "fix": "Return a value that needs no allocation (`Int`, `Boolean`, ...), copy the data out, or let the caller own the arena: declare the function with `context(a: Arena)` so that the objects live in the caller's region."
+  },
+  "M0106": {
+    "title": "Individual free of a Scoped object",
+    "severity": "error",
+    "example": "free_scoped",
+    "meaning": "`free()` is called on an object of an arena, or an arena object is passed to an `@Owned` parameter (the callee could free it). Arena objects have no individual release: the whole arena dies together.",
+    "fix": "Remove the `free()`. The arena reclaims the object when it is closed. If an arena object has resources, call its `close()` directly (that does not release memory)."
+  },
+  "M0107": {
+    "title": "Release of a non-owned value",
+    "severity": "error",
+    "example": "free_borrowed_param",
+    "meaning": "`free()`, `close()` or `use {}` is applied to a value this code does not own: a parameter that is not `@Owned`, a `@Borrowed` slot, an alias, a Managed object, or a variable whose ownership was already moved away. The same code reports `alias.use { }` and passing an alias to an `@Owned` parameter.",
+    "fix": "If the function should take over the object, declare the parameter `@Owned` (and let callers move into it). Otherwise leave the release to the owner."
+  },
+  "M0108": {
+    "title": "Wrong allocator when freeing",
+    "severity": "error",
+    "example": "free_wrong_allocator",
+    "meaning": "`alloc.free(x)` names an allocator, but `x` demonstrably came from a different one, as far as the compiler can tell statically.",
+    "fix": "Use `x.free()`, which finds the right allocator by itself, or name the allocator that actually produced the object."
+  },
+  "M0109": {
+    "title": "Loan is stored or returned as owned",
+    "severity": "error",
+    "example": "borrow_returned_owned",
+    "meaning": "A borrowed value (a parameter without `@Owned`, an alias, a `@Borrowed` result) flows into an owning field, an owning return, an `@Owned` argument, or is captured by an escaping lambda. The loan would outlive the owner it was lent from.",
+    "fix": "Make the parameter `@Owned` (and move at the call site), or declare the function's return type `@Borrowed` so that it returns a loan instead of ownership."
+  },
+  "M0110": {
+    "title": "Violation of the Strict/Managed boundary",
+    "severity": "error",
+    "example": "boundary_collection",
+    "meaning": "A tracked (Strict) value crosses into Managed code in a way the checker cannot follow: it goes into a Kotlin collection, into a field of a Managed class, into a Managed function parameter that is not `@Borrowed`, or Managed code calls a Strict function that takes or returns ownership.",
+    "fix": "Build your own container class from owning fields, wrap the Managed call in a Strict function that frees internally, or mark the Managed parameter `@Borrowed` if it really only borrows."
+  },
+  "M0111": {
+    "title": "Invalid ownership annotation",
+    "severity": "error",
+    "example": "annotation_misuse",
+    "meaning": "`@Owned` is placed on a type that has no ownership (primitives, `String`, Managed classes), `@Owned` and `@Borrowed` are combined, or `@Borrowed` contradicts an owning return.",
+    "fix": "Remove the annotation."
+  },
+  "M0112": {
+    "title": "Owning value in an escaping lambda",
+    "severity": "error",
+    "example": "capture_escaping_lambda",
+    "meaning": "A lambda that is not inlined and is not a thread boundary captures an owning value. Closures as owners (move capture) are not supported yet.",
+    "fix": "Pass the value to the code that needs it as an explicit parameter, or read the data you need (`b.v`) before creating the lambda and capture that instead."
+  },
+  "M0113": {
+    "title": "Owned field stays moved",
+    "severity": "error",
+    "example": "field_left_moved",
+    "meaning": "A value was moved out of an owning field with `s.item.move()` and the field was not given a valid value again before the next call or the end of the function.",
+    "fix": "Assign the field again (a new value or `null`) before the function returns or calls anything else."
+  },
+  "M0114": {
+    "title": "Ambiguous allocator",
+    "severity": "error",
+    "example": "ambiguous_allocator",
+    "meaning": "Two or more allocator context parameters are visible at the same level (`context(a: Arena, h: Heap)`), so the compiler cannot tell which one an allocation should use.",
+    "fix": "Nest the contexts: `context(h) { ... }` inside the outer one. The innermost context wins."
+  },
+  "M0115": {
+    "title": "Arena object owns a foreign reference",
+    "severity": "error",
+    "example": "arena_owns_string",
+    "meaning": "An arena never runs `dispose` on its objects, so an object in an arena must not own anything that needs releasing. A reference-counted `String`, a Managed object, or a Heap/Pool object flows into an owning field of an arena object. String literals are static and allowed.",
+    "fix": "Mark the field `@Borrowed` (non-owning; you are then responsible for the lifetime), keep only primitives, literals and objects of the same arena in arena objects, or avoid the arena for this data."
+  },
+  "M0201": {
+    "title": "Allocation moved to the stack",
+    "severity": "info",
+    "status": "planned",
+    "meaning": "An informational note that an allocation does not escape and lives on the stack. It is specified in docs/memory-model.md (shown only with `-Minfo`), but no `M0201` exists in the compiler yet.",
+    "fix": "Nothing to fix: it is not an error and never changes whether a program is accepted."
+  },
+  "M0202": {
+    "title": "Allocation in an arena loop",
+    "severity": "warning",
+    "example": "arena_loop_warn",
+    "meaning": "An allocation inside a loop uses a `Scoped` arena. Nothing is freed until the arena closes, so memory grows with every iteration. This is a warning: the program is still accepted (`-Werror` turns it into a failure).",
+    "fix": "Hoist the allocation out of the loop, or reset/recreate the arena per iteration."
+  },
+  "M0203": {
+    "title": "Large object on the stack",
+    "severity": "warning",
+    "status": "planned",
+    "meaning": "A warning for objects larger than a size threshold (default 64 KB in the spec) that would be placed on the stack. Specified in docs/memory-model.md, not implemented in the compiler yet (it belongs to the escape-analysis work).",
+    "fix": "Not applicable yet."
+  },
+  "M0204": {
+    "title": "No allocator for an escaping Strict value",
+    "severity": "error",
+    "example": "no_allocator_escape",
+    "meaning": "In a Strict file there is no default allocator. A value that escapes (is returned, stored, passed as `@Owned`) needs one from a visible `context(...)` parameter or from an `@AllocatedBy` class annotation. Non-escaping values simply live on the stack and need none.",
+    "fix": "Add `context(h: Heap)` to the function, wrap the call in `context(Heap()) { ... }`, or annotate the class with `@AllocatedBy(Heap::class)`."
+  },
+  "M0205": {
+    "title": "Allocation in a @NoAlloc function",
+    "severity": "error",
+    "example": "noalloc_alloc",
+    "meaning": "A function marked `@NoAlloc` contains an allocation that is not on the stack (it escapes) or calls `alloc.allocate(...)`. Only the function's own body is checked; calls to other functions are not followed yet.",
+    "fix": "Take the object as a parameter, keep it non-escaping so that it lives on the stack, or remove `@NoAlloc`."
+  },
+  "M0206": {
+    "title": "Object leaves the thread but its allocator is not ThreadSafe",
+    "severity": "error",
+    "example": "thread_nonsafe",
+    "meaning": "A value from an allocator that does not implement `ThreadSafe` (`Arena`, `Pool`), or the allocator itself, is captured by a thread lambda (`spawn { }`).",
+    "fix": "Allocate the shared objects from a `Heap`, which is `ThreadSafe`."
+  }
+}
