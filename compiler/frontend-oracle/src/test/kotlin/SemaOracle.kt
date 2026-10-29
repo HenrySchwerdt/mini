@@ -74,7 +74,7 @@ object SemaOracle {
         val st = Stat()
         val ours = HashMap<String, Rec>()
         for (r in sema.dumpFile(f)) {
-            val decl = r.kind == "PropertyDecl" || r.kind == "FunDecl" || r.kind == "Param" || r.kind == "DestructEntry" || r.kind == "LambdaParam"
+            val decl = r.kind == "PropertyDecl" || r.kind == "FunDecl" || r.kind == "Param" || r.kind == "DestructEntry" || r.kind == "LambdaParam" || r.kind == "DestructuringDecl"
             val key = "${r.start}-${r.end}-" + (if (decl) "d" else if (r.kind == "SmartCast") "s" else "e")
             if (!ours.containsKey(key)) ours[key] = r
         }
@@ -100,12 +100,27 @@ object SemaOracle {
                     while (rs < text.length && text[rs].isWhitespace()) rs++
                 }
             }
-            val key = "${rs}-${r.end}-" + (if (decl) "d" else "e")
-            groups.getOrPut(key) { ArrayList() }.add(if (rs == r.start) r else FirRec(rs, r.end, r.kind, r.type, r.callee, r.extra))
+            var re = r.end
+            if (decl) {
+                // ... and a trailing comment on the last line
+                val lineStart = text.lastIndexOf('\n', re - 1) + 1
+                val ci = text.indexOf("//", maxOf(lineStart, rs))
+                if (ci in (rs + 1) until re) {
+                    var quotes = 0
+                    for (k in lineStart until ci) if (text[k] == '"') quotes++
+                    if (quotes % 2 == 0) {
+                        re = ci
+                        while (re > rs && text[re - 1].isWhitespace()) re--
+                    }
+                }
+            }
+            val key = "${rs}-${re}-" + (if (decl) "d" else "e")
+            groups.getOrPut(key) { ArrayList() }.add(if (rs == r.start && re == r.end) r else FirRec(rs, re, r.kind, r.type, r.callee, r.extra))
         }
         for ((key, list) in groups) {
             val first = list[0]
             val cat = categories[first.kind]!!
+            val firstOrig = first
             var calleeFir: String? = null
             for (r in list) if (r.callee != null && calleeFir == null) calleeFir = r.callee
             // a smart cast at this position: K2 reports the narrowed type

@@ -24,6 +24,8 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     var capturedNames: HashSet<String> = HashSet()
     var lambdaDepth = 0
     var pendingLabel: String? = null
+    /** > 0 while checking the branches / operands of an if, when, try, elvis or `!!` */
+    var synthDepth = 0
     /** the argument expression being checked: its expected type is a hint only (K2 resolves arguments independently) */
     var argNode: Expr? = null
     var lambdaLabel: String? = null
@@ -142,6 +144,15 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             base = rs
         }
         val l = LocalScope(base)
+        val cps = f.decl?.mods?.contextParams
+        if (cps != null) {
+            for (cp in cps) {
+                val t = if (cp.type != null) sema.resolveType(cp.type, base) else ErrType("context parameter type")
+                val v = VarSym(cp.name, t, false, true, cp.start)
+                l.vars[cp.name] = v
+                record(cp, t, v)
+            }
+        }
         for (p in f.params) l.vars[p.name] = p
         return l
     }
@@ -215,9 +226,11 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         if (newScope) newLocal()
         var last: Type = sema.unitType
         var i = 0
+        val depth0 = synthDepth
         try {
             for (s in stmts) {
                 val isLast = i == stmts.size - 1
+                if (!isLast) synthDepth = 0 else synthDepth = depth0
                 if (s is Expr) {
                     last = expr(s, if (isLast) expected else null)
                     if (!isLast && ops.isNothing(last)) flow.dead = true
@@ -229,6 +242,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             }
         } finally {
             scope = saved
+            synthDepth = depth0
         }
         return last
     }
@@ -261,7 +275,11 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val deleg = d.delegate
         if (init != null) {
             val it = expr(init, declared)
-            if (declared == null) t = fin(it) else expectCompatible(init, it, declared)
+            if (declared == null) {
+                // K2 keeps the declared type of the initializer; smart cast information is carried by the new variable
+                val orig = rec.get(AstWalk.unparen(init))?.type
+                t = if (orig != null && rec.get(AstWalk.unparen(init))?.smart != null) fin(orig) else fin(it)
+            } else expectCompatible(init, it, declared)
             if (declared != null && init !is LambdaExpr) {
                 // `val x: Any = ...` keeps the declared type; flow knows the initializer's more precise type
             }
@@ -276,6 +294,13 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         sema.declSyms[d] = v
         record(d, v.type ?: ErrType("?"), v)
         declareVar(l, v)
+        if (init != null && !d.isVar && declared == null) {
+            val k = stableKey(init)
+            if (k != null) {
+                val f = flow.facts[k.key]
+                if (f != null) for (ty in f.types) flow.add(FactAdd("v" + v.id, v.name, ty))
+            }
+        }
         // flow: the initializer's type is known when it is more precise
         val g = d.getter
         val s = d.setter

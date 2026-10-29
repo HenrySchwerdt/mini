@@ -61,7 +61,10 @@ class Rendering(private val sema: Sema) {
 
     fun callee(sym: Sym): String {
         when (sym) {
-            is VarSym -> return (if (sym.isParam) "param " else "local ") + sym.name + "@" + sym.declStart
+            is VarSym -> {
+                if (sym.isField) return "<local>.field"
+                return (if (sym.isParam) "param " else "local ") + sym.name + "@" + sym.declStart
+            }
             is FunSym -> {
                 if (sym.kind == FunKind.FUNCTION_INVOKE) {
                     val n = sym.invokeArity

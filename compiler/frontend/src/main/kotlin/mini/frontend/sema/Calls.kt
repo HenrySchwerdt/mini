@@ -191,6 +191,7 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
     var pass = 0
     while (pass < 2) {
       s = scope
+      var seenRecv = false
       while (s != null) {
         when (s) {
             is LocalScope -> if (pass == 0) {
@@ -222,7 +223,8 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
             }
             is ClassScope -> if (pass == 1) {
                 if (s.instance) {
-                    addReceiverGroups(s.cls.thisType(), name, groups)
+                    addReceiverGroups(narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv), name, groups)
+                    seenRecv = true
                 }
                 val comp = s.cls.companion
                 if (comp != null) addReceiverGroups(comp.thisType(), name, groups)
@@ -230,7 +232,10 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 val nc = s.cls.nested[name]
                 if (nc != null) groups.add(ctorCandidates(nc))
             }
-            is ReceiverScope -> if (pass == 1) addReceiverGroups(s.type, name, groups)
+            is ReceiverScope -> if (pass == 1) {
+                addReceiverGroups(narrowRecv(s.type, s.label, !seenRecv), name, groups)
+                seenRecv = true
+            }
             is FileScope -> if (pass == 1) {
                 for (g in sema.topLevel(file, name)) {
                     val l = ArrayList<Candidate>()
@@ -246,7 +251,7 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                     // properties with invoke
                     val il = ArrayList<Candidate>()
                     for (x in g) {
-                        if (x is PropSym && x.receiver == null) {
+                        if (x is PropSym && x.decl?.receiver == null) {
                             sema.ensurePropSig(x)
                             val pt = sema.typeOfProp(x)
                             il.addAll(invokeCandidates(pt))
@@ -727,7 +732,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
     i = 0
     while (i < args.size) {
         val a = args[i]
-        if (a.postponed) finalizePostponed(a, cs)
+        if (a.postponed) finalizePostponed(a, cs, pts[i])
         i++
     }
     val text: String? = if (fn.kind == FunKind.FUNCTION_INVOKE) null else null
@@ -751,12 +756,15 @@ fun BodyChecker.samFunType(t: ClassType): FunType? {
     return null
 }
 
-fun BodyChecker.finalizePostponed(a: Arg, cs: ConstraintSystem) {
+fun BodyChecker.finalizePostponed(a: Arg, cs: ConstraintSystem, pt: Type?) {
     val e = a.expr ?: return
     val u = unwrapPostponed(e)
     for (n in listOf<Ast>(e, u)) {
         val r = rec.get(n) ?: continue
-        r.type = cs.resolveFixed(r.type)
+        var t = cs.resolveFixed(r.type)
+        // a lambda has the (resolved) function type it is checked against when its own type fits
+        if (u is LambdaExpr && pt is FunType && !pt.nullable && t is FunType && !containsError(pt) && ops.isSubtype(t, pt)) t = pt
+        r.type = t
     }
 }
 

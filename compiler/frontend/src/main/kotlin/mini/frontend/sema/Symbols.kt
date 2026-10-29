@@ -136,6 +136,8 @@ class VarSym(name: String, var type: Type?, val isVar: Boolean, val isParam: Boo
     /** true for a `val` without initializer at declaration (assigned later) */
     var isLateInit = false
     var ownerFun: Any? = null
+    /** the implicit `field` of an accessor */
+    var isField = false
 }
 
 enum class FunKind { NORMAL, CONSTRUCTOR, LOCAL, ANONYMOUS, SYNTH, FUNCTION_INVOKE }

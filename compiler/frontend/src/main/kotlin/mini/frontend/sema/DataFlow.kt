@@ -83,6 +83,9 @@ object FlowOps {
                     out.add(x)
                 } else if (ops.isSubtype(x.type, y.type)) {
                     out.add(y)
+                } else {
+                    val l = ops.commonSuperType(listOf(x.type, y.type))
+                    if (!(l is ClassType && l.cls.name == "Any") && l !is ErrType) out.add(FactAdd(x.key, x.root, l))
                 }
             }
         }

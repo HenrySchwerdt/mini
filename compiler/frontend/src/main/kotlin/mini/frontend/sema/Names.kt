@@ -28,7 +28,7 @@ fun BodyChecker.propBaseType(p: PropSym, subst: Map<TypeParamSym, Type>): Type =
 fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
     for (g in sema.topLevel(file, name)) {
         for (x in g) {
-            if (x is PropSym && x.receiver != null) {
+            if (x is PropSym && x.decl?.receiver != null) {
                 sema.ensurePropSig(x)
                 val r = x.receiver!!
                 val cs = ConstraintSystem(sema)
@@ -40,6 +40,18 @@ fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
                     return NameRes(x, t, null, NameRes.VALUE)
                 }
             }
+        }
+    }
+    return null
+}
+
+/** extension properties declared as members of the classes of the implicit receivers */
+fun BodyChecker.memberExtensionProp(name: String, recv: Type): NameRes? {
+    for (r in implicitReceivers()) {
+        if (r.cls == null) continue
+        for (mp in members.propsNamed(r.type, name)) {
+            val er = mp.prop.receiver ?: continue
+            if (ops.isSubtype(recv, ops.substitute(er, mp.subst))) return NameRes(mp.prop, propBaseType(mp.prop, mp.subst), null, NameRes.VALUE)
         }
     }
     return null
@@ -69,11 +81,13 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
         ls = ls.parent
     }
     var s: Scope? = scope
+    var seenRecv = false
     while (s != null) {
         when (s) {
             is ClassScope -> {
                 if (s.instance) {
-                    val r = memberPropRes(s.cls.thisType(), name)
+                    val r = memberPropRes(narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv), name)
+                    seenRecv = true
                     if (r != null) return r
                 }
                 val comp = s.cls.companion
@@ -89,7 +103,8 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
                 for (en in s.cls.entries) if (en.name == name) return NameRes(en, s.cls.thisType(), null, NameRes.VALUE)
             }
             is ReceiverScope -> {
-                val r = memberPropRes(s.type, name)
+                val r = memberPropRes(narrowRecv(s.type, s.label, !seenRecv), name)
+                seenRecv = true
                 if (r != null) return r
             }
             else -> {}
@@ -102,7 +117,7 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
     }
     for (g in sema.topLevel(file, name)) {
         for (x in g) {
-            if (x is PropSym && x.receiver == null) {
+            if (x is PropSym && x.decl?.receiver == null) {
                 return NameRes(x, sema.typeOfProp(x), null, NameRes.VALUE)
             }
             if (x is EnumEntrySym) return NameRes(x, x.owner.thisType(), null, NameRes.VALUE)
@@ -138,6 +153,7 @@ fun BodyChecker.nameResult(node: Expr, r: NameRes): Type {
         }
         NameRes.OBJECT -> {
             val rr = record(node, r.type, null)
+            rr.target = r.type
             return r.type
         }
     }
@@ -233,7 +249,8 @@ fun BodyChecker.resolveReceiverChain(d: DotExpr): RecvInfo? {
             val nc = sema.nestedClassifier(base.cls, sel.name, 0)
             if (nc is ClassSym) {
                 val ct = classQualifierType(nc)
-                record(d, ct, null)
+                val rr = record(d, ct, null)
+                if (nc.isObject) rr.target = ct
                 return ClassRecv(nc)
             }
             val t = selectProperty(d, base, sel, false)
@@ -258,6 +275,7 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
             val saf = safe || recv.safe
             if (saf) rt = ops.makeNotNull(rt)
             var res = memberPropRes(rt, name)
+            if (res == null) res = memberExtensionProp(name, rt)
             if (res == null) res = extensionProp(name, rt)
             if (res == null) {
                 // member of an object / companion reached through a class-typed value
@@ -331,7 +349,8 @@ fun BodyChecker.dotExpr(e: DotExpr, expected: Type?): Type {
             val nc = sema.nestedClassifier(info.cls, sel.name, 0)
             if (nc is ClassSym) {
                 val ct = classQualifierType(nc)
-                record(e, ct, null)
+                val rr = record(e, ct, null)
+                if (nc.isObject) rr.target = ct
                 return ct
             }
         }
@@ -431,6 +450,24 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
             a2.add(ra)
             a2.addAll(args)
             res = resolveCallGroups(node, listOf(invokeCandidates(ft)), a2, typeArgs, expected, true)
+        }
+    }
+    if (res == null && recv == null && name != null) {
+        // `f()` where `f` is a variable of type `Recv.() -> R` and the receiver is implicit
+        val vr = resolveSimpleName(name)
+        val vt = vr?.type
+        val ft = if (vt != null) (ops.asFunType(vt) ?: vt) else null
+        if (ft is FunType && ft.receiver != null) {
+            for (r in implicitReceivers()) {
+                if (r.isCompanion || !ops.isSubtype(r.type, ft.receiver)) continue
+                val a2 = ArrayList<Arg>()
+                val ra = Arg(null, null, false)
+                ra.type = r.type
+                a2.add(ra)
+                a2.addAll(args)
+                res = resolveCallGroups(node, listOf(invokeCandidates(ft)), a2, typeArgs, expected, true)
+                if (res != null) break
+            }
         }
     }
     if (res == null) {

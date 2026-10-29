@@ -110,6 +110,7 @@ class Collector(private val sema: Sema) {
                     for (p in pc.params) {
                         if (p.valVar != null) {
                             val ps = PropSym(p.name, null, p, c, file)
+                            ps.start = p.start
                             ps.isVar = p.valVar == "var"
                             ps.scope = header
                             addTo(c.props, p.name, ps)

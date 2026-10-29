@@ -66,12 +66,12 @@ fun Sema.typeOfProp(p: PropSym): Type {
 }
 
 /** scope for property initializers and init blocks of a class: primary constructor parameters over the body scope */
-fun Sema.initializerScope(c: ClassSym): Scope {
+fun Sema.initializerScope(c: ClassSym, allParams: Boolean = false): Scope {
     val body = c.bodyScope!!
     val pc = c.primaryCtor ?: return body
     ensureSig(pc)
     val l = LocalScope(body)
-    for (p in pc.params) if (p.decl?.valVar == null) l.vars[p.name] = p
+    for (p in pc.params) if (allParams || p.decl?.valVar == null) l.vars[p.name] = p
     return l
 }
 
@@ -122,7 +122,9 @@ fun Sema.checkProp(p: PropSym) {
         val gc = BodyChecker(this, file)
         val ls = LocalScope(accBase)
         val gt = if (g.returnType != null) resolveType(g.returnType, accBase) else p.type
-        ls.vars["field"] = VarSym("field", gt ?: ErrType("field"), true, false, g.start)
+        val fv = VarSym("field", gt ?: ErrType("field"), true, false, g.start)
+        fv.isField = true
+        ls.vars["field"] = fv
         gc.scope = ls
         val target = ReturnTarget(null, gt, null, false)
         gc.targets.add(target)
@@ -151,7 +153,9 @@ fun Sema.checkProp(p: PropSym) {
     if (s != null && s.body != null) {
         val sc = BodyChecker(this, file)
         val ls = LocalScope(accBase)
-        ls.vars["field"] = VarSym("field", p.type ?: ErrType("field"), true, false, s.start)
+        val fv2 = VarSym("field", p.type ?: ErrType("field"), true, false, s.start)
+        fv2.isField = true
+        ls.vars["field"] = fv2
         val pn = s.param?.name ?: "value"
         val sv = VarSym(pn, p.type ?: ErrType("value"), false, true, s.param?.start ?: s.start)
         ls.vars[pn] = sv
@@ -201,7 +205,7 @@ fun Sema.checkClass(c: ClassSym) {
     for (s in d.supers) {
         if (s is SuperCall) {
             val sc = BodyChecker(this, file)
-            sc.scope = initScope
+            sc.scope = initializerScope(c, true)
             sc.superConstructorCall(c, s)
         }
     }
@@ -377,7 +381,26 @@ fun Sema.dumpFile(f: FileInfo): List<Rec> {
         val r = records.get(n) ?: continue
         var end = n.end
         if (n is PropertyDecl || n is DestructuringDecl) {
-            // the PSI range of a declaration statement does not include its terminating semicolon
+            // the PSI range of a declaration statement does not include its terminating semicolon or a trailing comment
+            var last = n.start
+            if (n is PropertyDecl) {
+                val ex = ArrayList<Ast>()
+                val i = n.initializer
+                if (i != null) ex.add(i)
+                val dl = n.delegate
+                if (dl != null) ex.add(dl)
+                val ty = n.type
+                if (ty != null) ex.add(ty)
+                val st = n.setter
+                if (st != null) ex.add(st)
+                val gt = n.getter
+                if (gt != null) ex.add(gt)
+                for (x in ex) if (x.end > last) last = x.end
+                if (last > n.start && last < end) end = last
+            } else if (n is DestructuringDecl) {
+                val i = n.initializer
+                if (i != null && i.end < end) end = i.end
+            }
             while (end > n.start && (f.text[end - 1] == ';' || f.text[end - 1].isWhitespace())) end--
         }
         out.add(Rec(n.start, end, n::class.simpleName ?: "?", renderType(r.type), renderCallee(this, r.callee, r.calleeText)))

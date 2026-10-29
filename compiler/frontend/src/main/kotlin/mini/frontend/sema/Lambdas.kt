@@ -61,6 +61,8 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     var lastIsExpr = false
     val stmts = lam.body
     var i = 0
+    val depth0 = synthDepth
+    synthDepth = 0
     for (s in stmts) {
         val isLast = i == stmts.size - 1
         if (s is Expr) {
@@ -73,6 +75,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
         }
         i++
     }
+    synthDepth = depth0
     lambdaDepth--
     targets.removeAt(targets.size - 1)
     scope = savedScope
@@ -281,7 +284,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     val t: Type
     if (chosen.isProp) {
         val k = if (chosen.propReceiver) 1 else 0
-        val cls = sema.kRefClass(if (chosen.mutable) "KMutableProperty" else "KProperty", k)
+        val cls = sema.classNamed("kotlin.reflect." + (if (chosen.mutable) "KMutableProperty" else "KProperty") + k) ?: sema.kRefClass(if (chosen.mutable) "KMutableProperty" else "KProperty", k)
         val args = ArrayList<TArg>()
         for (p in ps) args.add(TArg(p, Variance.INV))
         args.add(TArg(ret, Variance.INV))

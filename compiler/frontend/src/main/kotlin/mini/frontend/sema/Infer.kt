@@ -299,6 +299,7 @@ class ConstraintSystem(private val sema: Sema) {
                 }
             }
             var r = ops.commonSuperType(lows)
+            if (r is TypeParamType && r.definitelyNotNull && !r.nullable) r = TypeParamType(r.tp, false, false)
             if (r is IsectType && ups.isNotEmpty()) {
                 for (u in ups) {
                     if (ops.isSubtype(r, u)) continue

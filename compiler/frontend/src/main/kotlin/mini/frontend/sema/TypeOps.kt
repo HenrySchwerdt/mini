@@ -320,6 +320,19 @@ class TypeOps(private val sema: Sema) {
             }
             return FunType(null, ps, t.args[t.args.size - 1].type ?: sema.nullableAny, t.nullable, false)
         }
+        if (t is ClassType) return funSuper(t, 0)
+        return null
+    }
+
+    private fun funSuper(t: ClassType, depth: Int): FunType? {
+        if (depth > 5 || t.cls.supertypes.isEmpty() && t.cls.supertypeState == 2) return null
+        for (s in directSupertypes(t)) {
+            if (s is FunType) return s
+            if (s is ClassType && s.cls.fnArity < 0) {
+                val r = funSuper(s, depth + 1)
+                if (r != null) return r
+            }
+        }
         return null
     }
 

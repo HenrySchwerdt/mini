@@ -66,7 +66,7 @@ private fun BodyChecker.expr0(e: Expr, expected: Type?): Type {
         is TryExpr -> return tryExpr(e, expected)
         is ThrowExpr -> {
             val x = e.expr
-            if (x != null) expr(x, null)
+            if (x != null) expr(x, sema.classNamed("kotlin.Throwable")?.let { sema.cls0(it) })
             return sema.nothingType
         }
         is ReturnExpr -> return returnExpr(e)
@@ -223,14 +223,35 @@ fun BodyChecker.labeled(e: LabeledExpr, expected: Type?): Type {
 
 class ImplRecv(val type: Type, val label: String?, val cls: ClassSym?, val isCompanion: Boolean, val fn: FunSym?)
 
+/** the type of an implicit receiver with the smart casts known for `this` (innermost receiver) / `this@label` */
+fun BodyChecker.narrowRecv(t: Type, label: String?, innermost: Boolean): Type {
+    var types: List<Type>? = null
+    if (innermost) types = flow.facts["this"]?.types
+    if (label != null) {
+        val f = flow.facts["this@$label"]
+        if (f != null) {
+            val l = ArrayList<Type>()
+            if (types != null) l.addAll(types)
+            l.addAll(f.types)
+            types = l
+        }
+    }
+    if (types == null || types.isEmpty()) return t
+    return ops.narrow(t, types)
+}
+
 /** the implicit receivers visible from the current scope, innermost first */
-fun BodyChecker.implicitReceivers(): List<ImplRecv> {
+fun BodyChecker.implicitReceivers(narrow: Boolean = true): List<ImplRecv> {
     val out = ArrayList<ImplRecv>()
     var s: Scope? = scope
+    var first = true
     while (s != null) {
         when (s) {
             is ClassScope -> {
-                if (s.instance) out.add(ImplRecv(s.cls.thisType(), s.cls.name, s.cls, false, null))
+                if (s.instance) {
+                    out.add(ImplRecv(if (narrow) narrowRecv(s.cls.thisType(), s.cls.name, first) else s.cls.thisType(), s.cls.name, s.cls, false, null))
+                    first = false
+                }
                 val comp = s.cls.companion
                 if (comp != null) out.add(ImplRecv(comp.thisType(), comp.name, comp, true, null))
                 if (s.cls.isObject && !s.instance) {
@@ -238,7 +259,10 @@ fun BodyChecker.implicitReceivers(): List<ImplRecv> {
                     out.add(ImplRecv(s.cls.thisType(), s.cls.name, s.cls, false, null))
                 }
             }
-            is ReceiverScope -> out.add(ImplRecv(s.type, s.label, null, false, s.fn))
+            is ReceiverScope -> {
+                out.add(ImplRecv(if (narrow) narrowRecv(s.type, s.label, first) else s.type, s.label, null, false, s.fn))
+                first = false
+            }
             else -> {}
         }
         s = s.parent
@@ -247,7 +271,7 @@ fun BodyChecker.implicitReceivers(): List<ImplRecv> {
 }
 
 fun BodyChecker.thisExpr(e: ThisExpr): Type {
-    val rs = implicitReceivers()
+    val rs = implicitReceivers(false)
     val lbl = e.label
     for (r in rs) {
         if (r.isCompanion) continue
@@ -379,6 +403,16 @@ fun BodyChecker.andOr(e: BinaryExpr): Type {
 }
 
 fun BodyChecker.elvis(e: BinaryExpr, expected: Type?): Type {
+    val top = synthDepth == 0
+    synthDepth++
+    try {
+        return elvisBody(e, expected, top)
+    } finally {
+        synthDepth--
+    }
+}
+
+private fun BodyChecker.elvisBody(e: BinaryExpr, expected: Type?, top: Boolean): Type {
     val l = fin(expr(e.left, null))
     val saved = flow
     flow = flow.copy()
@@ -409,7 +443,7 @@ fun BodyChecker.elvis(e: BinaryExpr, expected: Type?): Type {
         val k = stableKey(e.left)
         if (k != null) flow.add(FactAdd(k.key, k.root, sema.anyType))
     }
-    res = preferExpected(res, expected, e)
+    res = preferExpected(res, expected, e, top, 1)
     record(e, res, null)
     return res
 }
@@ -493,11 +527,14 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
 
 fun BodyChecker.postfix(e: PostfixExpr, expected: Type?): Type {
     if (e.op == "!!") {
+        val top = synthDepth == 0
+        synthDepth++
         val t = fin(expr(e.expr, null))
+        synthDepth--
         val nn = if (ops.mayBeNull(t)) ops.makeNotNull(t) else t
         val k = stableKey(e.expr)
         if (k != null) flow.add(FactAdd(k.key, k.root, sema.anyType))
-        val pe = preferExpected(nn, expected, e)
+        val pe = preferExpected(nn, expected, e, top, 2)
         record(e, pe, null)
         return pe
     }
@@ -718,7 +755,17 @@ fun BodyChecker.nonNullFacts(e0: Expr): ArrayList<FactAdd> {
 // ---- control flow ---------------------------------------------------------------------------------------------------------------
 
 fun BodyChecker.ifExpr(e: IfExpr, expected: Type?): Type {
+    val top = synthDepth == 0
     expr(e.cond, sema.booleanType)
+    synthDepth++
+    try {
+        return ifBody(e, expected, top)
+    } finally {
+        synthDepth--
+    }
+}
+
+private fun BodyChecker.ifBody(e: IfExpr, expected: Type?, top: Boolean): Type {
     val c = condFacts(e.cond)
     val base = flow
     val thenE = e.then
@@ -746,7 +793,7 @@ fun BodyChecker.ifExpr(e: IfExpr, expected: Type?): Type {
     if (elseE == null) {
         return sema.unitType
     }
-    return preferExpected(joinBranches(listOf(tt, et!!)), expected, e)
+    return preferExpected(joinBranches(listOf(tt, et!!)), expected, e, top)
 }
 
 fun BodyChecker.recheck(b: Expr, hint: Type, base: Flow, facts: List<FactAdd>): Type {
@@ -767,14 +814,18 @@ fun BodyChecker.branchValue(b: Expr, expected: Type?): Type {
  * `if`, `when`, `try`, `?:` and `!!` are resolved by K2 as calls of a synthetic generic function; with a proper expected
  * type (other than `Any`) their result has exactly that type when all branches fit.
  */
-fun BodyChecker.preferExpected(res: Type, expected: Type?, node: Ast): Type {
-    if (node === argNode) return res
+fun BodyChecker.preferExpected(res: Type, expected: Type?, node: Ast, top: Boolean, kind: Int = 0): Type {
+    if (node === argNode || !top) return res
     if (expected == null || res is ErrType || expected is ErrType) return res
     if (expected is ClassType && expected.cls === sema.anyType.cls) return res
     if (expected is VarType || containsVar(expected)) return res
     if (ops.isNothing(res)) return res
     if (res is IntLiteralType) return res
+    if (res is TypeParamType && res.definitelyNotNull) return res
     if (!ops.isSubtype(res, expected)) return res
+    // `!!` with a nullable expected type keeps its own type; `?:` yields the non-null part of the expected type
+    if (kind == 2 && expected.nullable) return res
+    if (kind == 1 && !res.nullable) return ops.makeNotNull(expected)
     return expected
 }
 
@@ -805,6 +856,16 @@ fun BodyChecker.joinBranches(types: List<Type>): Type {
 }
 
 fun BodyChecker.tryExpr(e: TryExpr, expected: Type?): Type {
+    val top = synthDepth == 0
+    synthDepth++
+    try {
+        return tryBody(e, expected, top)
+    } finally {
+        synthDepth--
+    }
+}
+
+private fun BodyChecker.tryBody(e: TryExpr, expected: Type?, top: Boolean): Type {
     val before = flow
     val assigned = HashSet<String>()
     AstWalk.assignedNames(e.body, assigned)
@@ -832,7 +893,7 @@ fun BodyChecker.tryExpr(e: TryExpr, expected: Type?): Type {
         for (n in assigned) flow.killRoot(n)
         block(fin.stmts, null, true)
     }
-    return preferExpected(joinBranches(types), expected, e)
+    return preferExpected(joinBranches(types), expected, e, top)
 }
 
 fun BodyChecker.returnExpr(e: ReturnExpr): Type {
@@ -946,6 +1007,16 @@ fun BodyChecker.forExpr(e: ForExpr): Type {
 // ---- when -----------------------------------------------------------------------------------------------------------------------
 
 fun BodyChecker.whenExpr(e: WhenExpr, expected: Type?): Type {
+    val top = synthDepth == 0
+    synthDepth++
+    try {
+        return whenBody(e, expected, top)
+    } finally {
+        synthDepth--
+    }
+}
+
+private fun BodyChecker.whenBody(e: WhenExpr, expected: Type?, top: Boolean): Type {
     val subj = e.subject
     var subjType: Type? = null
     var subjKey: StableRef? = null
@@ -1003,7 +1074,8 @@ fun BodyChecker.whenExpr(e: WhenExpr, expected: Type?): Type {
                             }
                             val callee = rec.get(c.expr)?.callee
                             if (callee is EnumEntrySym) covered.add(callee)
-                            if (callee is ClassSym) covered.add(callee)
+                            val tgt = rec.get(c.expr)?.target
+                            if (tgt is ClassType && tgt.cls.isObject) covered.add(tgt.cls)
                             // `when (x) { Obj -> }`: equal to a non-null value
                             val ctt = rec.get(c.expr)?.type
                             if (subjKey != null && ctt != null && !ops.mayBeNull(ctt)) one.onTrue.add(FactAdd(subjKey.key, subjKey.root, sema.anyType))
@@ -1082,7 +1154,7 @@ fun BodyChecker.whenExpr(e: WhenExpr, expected: Type?): Type {
     scope = saved
     if (!exhaustive) return sema.unitType
     if (types.isEmpty()) return sema.unitType
-    return preferExpected(joinBranches(types), expected, e)
+    return preferExpected(joinBranches(types), expected, e, top)
 }
 
 fun BodyChecker.isExhaustive(subj: Type, covered: List<Any>, t: Boolean, f: Boolean, hasNull: Boolean): Boolean {

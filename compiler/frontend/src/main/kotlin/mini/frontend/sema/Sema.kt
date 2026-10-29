@@ -386,6 +386,7 @@ class Sema {
                 val recv = ref.receiver
                 val rt = if (recv != null) resolveType0(recv, scope, file) else null
                 val ps = ArrayList<Type>()
+                for (c in ref.contextTypes) ps.add(resolveType0(c, scope, file))
                 for (p in ref.params) ps.add(resolveType0(p.type, scope, file))
                 val ret = resolveType0(ref.returnType, scope, file)
                 val susp = ref.mods?.has("suspend") == true
@@ -544,7 +545,7 @@ class Sema {
                     is SuperDelegate -> s.type
                 }
                 val t = resolveType(ref, hs)
-                if (t is ClassType) out.add(t)
+                if (t is ClassType || t is FunType) out.add(t)
             }
         }
         if (c.isEnum) {
