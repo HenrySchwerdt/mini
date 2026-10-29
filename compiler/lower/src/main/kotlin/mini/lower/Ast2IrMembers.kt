@@ -176,6 +176,9 @@ private fun Ast2Ir.hashCodeFunction(c: IrClass, sym: ClassSym, fs: FunSym, props
             val stmts = ArrayList<IrStatement>()
             if (props.isEmpty()) {
                 stmts.add(ret(f, constInt(0)))
+            } else if (props.size == 1) {
+                val p0 = props[0]
+                stmts.add(ret(f, hashOf(f, fieldGet(f, p0), p0.backingField!!.type)))
             } else {
                 val result = IrVariable("result", sema.intType, true)
                 result.parent = f

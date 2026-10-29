@@ -30,11 +30,44 @@ fun Ast2Ir.convert(e: Expr): IrExpression {
     var ir = convertRaw(e)
     val r = rec(e)
     val sm = r?.smart
-    if (sm != null) {
+    if (sm != null && !(sm is TypeParamType && sm.definitelyNotNull)) {
         val st = irType(sm)
-        if (!typeEquals(st, ir.type)) ir = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, ir, st)
+        if (!typeEquals(st, ir.type)) {
+            val c = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, ir, st)
+            c.isSmart = true
+            ir = c
+        }
     }
     return ir
+}
+
+/** the operand of `is` / `as`: no smart cast of its own */
+fun Ast2Ir.convertNoSmart(e: Expr): IrExpression {
+    if (e is ParenExpr) return convertNoSmart(e.inner)
+    if (e is AnnotatedExpr) return convertNoSmart(e.expr)
+    return convertRaw(e)
+}
+
+/**
+ * A smart cast on a receiver is only kept when the callee needs the narrower type: [p] is the receiver parameter of the
+ * callee; when the original type already fits it, the cast is dropped.
+ */
+fun Ast2Ir.adaptReceiver(v: IrExpression?, p: IrValueParameter?): IrExpression? {
+    if (v == null || p == null) return v
+    if (v is IrTypeOperatorCall && v.isSmart && v.operator == IrTypeOperator.IMPLICIT_CAST) {
+        val orig = v.argument.type
+        if (receiverFits(orig, p.type)) return v.argument
+    }
+    return v
+}
+
+fun Ast2Ir.receiverFits(t: Type, pt: Type): Boolean {
+    if (t.nullable && !pt.nullable && !(pt is TypeParamType)) return false
+    if (pt is TypeParamType) return !t.nullable || pt.nullable || ops.hasNullableBound(pt.tp)
+    val pc = classOf(pt) ?: return true
+    val c = classOf(t) ?: return false
+    if (c === pc) return true
+    return ops.asSuper(ClassType(c, emptyList(), false), pc) != null
 }
 
 private fun Ast2Ir.convertRaw(e: Expr): IrExpression {
@@ -67,6 +100,7 @@ private fun Ast2Ir.convertRaw(e: Expr): IrExpression {
         is AnonFunExpr -> return anonFunExpr(e)
         is ObjectLiteral -> return objectLiteral(e)
         is CallableRefExpr -> return callableRef(e)
+        is SuperExpr -> return superExpr(e)
         else -> fail(e, "expression " + e::class.simpleName)
     }
 }
@@ -196,6 +230,20 @@ private fun appendStringPart(sb: StringBuilder, p: StrPart, raw: Boolean) {
 
 /** the dispatch / extension receiver parameter of the enclosing context that [ref] denotes */
 fun Ast2Ir.implicitReceiver(ref: RecvRef, at: Ast?): IrExpression {
+    val base = implicitReceiver0(ref, at)
+    val sm = ref.smart
+    if (sm != null) {
+        val st = irType(sm)
+        if (!typeEquals(st, base.type)) {
+            val c = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, base, st)
+            c.isSmart = true
+            return c
+        }
+    }
+    return base
+}
+
+private fun Ast2Ir.implicitReceiver0(ref: RecvRef, at: Ast?): IrExpression {
     if (ref.isObject) {
         val rcs = ref.cls!!
         val c = irClass(rcs)
@@ -340,7 +388,22 @@ fun Ast2Ir.accessorCall(f: IrSimpleFunction, access: Access?, recvClassHint: IrC
     return call
 }
 
+/** `super` as a receiver: the `this` of the innermost class (the call carries the qualifier) */
+fun Ast2Ir.superExpr(e: SuperExpr): IrExpression {
+    var c = ctx
+    while (c != null) {
+        for (i in c.recvs.indices.reversed()) {
+            val re = c.recvs[i]
+            if (re.cls != null) return IrGetValue(re.param, re.param.type, null)
+        }
+        c = c.parent
+    }
+    fail(e, "super outside of a class")
+}
+
 fun Ast2Ir.propertyGet(sym: PropSym, access: Access?, type: Type, node: Ast): IrExpression {
+    val cv = constantOf(sym, type)
+    if (cv != null) return cv
     val p = propertyOf(sym)
     val g = p.getter ?: fail(node, "property " + sym.name + " has no getter")
     return withReceivers(access, node, g, type) { callee, call, disp, ext ->
@@ -360,8 +423,8 @@ fun Ast2Ir.findMember(f: IrSimpleFunction, recv: RecvUse?): IrSimpleFunction {
 fun Ast2Ir.fillAccessorArgs(call: IrCall, callee: IrFunction, disp: IrExpression?, ext: IrExpression?, value: IrExpression?) {
     for (p in callee.parameters) {
         when (p.kind) {
-            IrParameterKind.DispatchReceiver -> call.arguments.add(disp)
-            IrParameterKind.ExtensionReceiver -> call.arguments.add(ext)
+            IrParameterKind.DispatchReceiver -> call.arguments.add(adaptReceiver(disp, p))
+            IrParameterKind.ExtensionReceiver -> call.arguments.add(adaptReceiver(ext, p))
             IrParameterKind.Regular -> call.arguments.add(value)
             else -> call.arguments.add(null)
         }
@@ -428,14 +491,14 @@ fun Ast2Ir.eqNull(e: IrExpression): IrExpression {
 fun Ast2Ir.isExpr(e: IsExpr): IrExpression {
     val r = rec(e) ?: fail(e, "is without record")
     val target = irType(r.target ?: fail(e, "is without target"))
-    val arg = convert(e.expr)
+    val arg = convertNoSmart(e.expr)
     return IrTypeOperatorCall(if (e.negated) IrTypeOperator.NOT_INSTANCEOF else IrTypeOperator.INSTANCEOF, sema.booleanType, arg, target)
 }
 
 fun Ast2Ir.asExpr(e: AsExpr): IrExpression {
     val r = rec(e) ?: fail(e, "as without record")
     val target = irType(r.target ?: fail(e, "as without target"))
-    val arg = convert(e.expr)
+    val arg = convertNoSmart(e.expr)
     if (e.safe) return IrTypeOperatorCall(IrTypeOperator.SAFE_CAST, irType(ops.makeNullable(target)), arg, target)
     return IrTypeOperatorCall(IrTypeOperator.CAST, target, arg, target)
 }

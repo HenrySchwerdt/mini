@@ -465,7 +465,7 @@ fun Ast2Ir.buildAccessorBody(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c
             }
         } else {
             // default accessor: reads / writes the backing field
-            val fld = field ?: fail(d, "property without backing field " + sym.name)
+            val fld = field ?: return@withCtx null
             val recv = f.parameters.firstOrNull { it.kind == IrParameterKind.DispatchReceiver }
             val recvExpr = if (recv != null) getValue(recv) else null
             if (isGetter) {

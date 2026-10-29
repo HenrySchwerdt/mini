@@ -255,14 +255,22 @@ fun Ast2Ir.ifExpr(e: IfExpr): IrExpression {
     val r = rec(e) ?: fail(e, "if without record")
     val t = irType(r.type)
     val branches = ArrayList<IrBranch>()
-    val cond = convert(e.cond)
-    val thenE = e.then
-    val elseE = e.otherwise
-    val tb = if (thenE != null) convert(thenE) else unitValue()
-    branches.add(IrBranch(cond, if (isUnit(t)) coerceToUnit(tb) else tb))
-    if (elseE != null) {
+    // `if (a) x else if (b) y else z` is one `when` with three branches
+    var cur: IfExpr = e
+    while (true) {
+        val cond = convert(cur.cond)
+        val thenE = cur.then
+        val tb = if (thenE != null) convert(thenE) else unitValue()
+        branches.add(IrBranch(cond, if (isUnit(t)) coerceToUnit(tb) else tb))
+        val elseE = cur.otherwise
+        if (elseE == null) break
+        if (elseE is IfExpr) {
+            cur = elseE
+            continue
+        }
         val eb = convert(elseE)
         branches.add(IrBranch(constBool(true), if (isUnit(t)) coerceToUnit(eb) else eb))
+        break
     }
     return IrWhen(branches, t, "IF")
 }

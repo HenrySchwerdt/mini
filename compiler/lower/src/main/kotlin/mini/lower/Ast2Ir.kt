@@ -69,6 +69,9 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
                         val s = sema.declSyms[d] as? PropSym ?: continue
                         val p = irProperty(s, null)
                         p.parent = irf
+                        p.backingField?.parent = irf
+                        p.getter?.parent = irf
+                        p.setter?.parent = irf
                         irf.declarations.add(p)
                     }
                     else -> {}
@@ -100,7 +103,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         return when (t) {
             is IntLiteralType -> ops.literalDefault(t)
             is CapType -> irType(ops.approximate(t))
-            is IsectType -> if (t.parts.isNotEmpty()) irType(t.parts[0]) else sema.anyType
+            is IsectType -> if (t.parts.isNotEmpty()) irType(t.parts[t.parts.size - 1]) else sema.anyType
             is ErrType -> sema.nullableAny
             is VarType -> sema.nullableAny
             else -> t
@@ -203,6 +206,23 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         sema.ensureSupertypes(sym)
         val sup = ArrayList<Type>()
         for (t in sym.supertypes) sup.add(irType(t))
+        if (sym.fnArity >= 0) {
+            // KFunctionN / KPropertyN: the reflection interface of the stdlib and the function type
+            val tps = sym.typeParams
+            if (tps.isNotEmpty()) {
+                val retTp = tps[tps.size - 1]
+                val baseName = if (sym.name.startsWith("KFunction")) "KFunction" else if (sym.name.startsWith("KMutableProperty")) "KMutableProperty" else "KProperty"
+                val base = sema.classNamed(REFLECT_PKG + "." + baseName)
+                if (base != null) sup.add(ClassType(base, listOf(TArg(TypeParamType(retTp, false, false), Variance.INV)), false))
+                val ps = ArrayList<Type>()
+                var pi = 0
+                while (pi < tps.size - 1) {
+                    ps.add(TypeParamType(tps[pi], false, false))
+                    pi++
+                }
+                sup.add(FunType(null, ps, TypeParamType(retTp, false, false), false, false))
+            }
+        }
         if (sup.isEmpty() && sym !== sema.anyType.cls) sup.add(sema.anyType)
         c.superTypes = sup
         c.fqName = classFqName(sym)

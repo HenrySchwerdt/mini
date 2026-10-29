@@ -1170,6 +1170,7 @@ private fun BodyChecker.whenBody(e: WhenExpr, expected: Type?, top: Boolean): Ty
                         if (res != null) {
                             val rr = record(c, sema.booleanType, res.callee)
                             rr.calleeText = res.calleeText
+                            rr.call = res.info
                         }
                     }
                     one = noFacts()

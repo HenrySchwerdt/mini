@@ -94,10 +94,13 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
         when (s) {
             is ClassScope -> {
                 if (s.instance) {
-                    val r = memberPropRes(narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv), name)
+                    val nrt = narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv)
+                    val r = memberPropRes(nrt, name)
                     seenRecv = true
                     if (r != null) {
-                        r.dispatch = RecvRef(s.cls, null, false)
+                        val nref = RecvRef(s.cls, null, false)
+                        if (nrt !== s.cls.thisType()) nref.smart = nrt
+                        r.dispatch = nref
                         return r
                     }
                 }
@@ -120,10 +123,13 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
                 for (en in s.cls.entries) if (en.name == name) return NameRes(en, s.cls.thisType(), null, NameRes.VALUE)
             }
             is ReceiverScope -> {
-                val r = memberPropRes(narrowRecv(s.type, s.label, !seenRecv), name)
+                val nrt = narrowRecv(s.type, s.label, !seenRecv)
+                val r = memberPropRes(nrt, name)
                 seenRecv = true
                 if (r != null) {
-                    r.dispatch = RecvRef(null, s, false)
+                    val nref = RecvRef(null, s, false)
+                    if (nrt !== s.type) nref.smart = nrt
+                    r.dispatch = nref
                     return r
                 }
             }

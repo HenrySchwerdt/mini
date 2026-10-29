@@ -253,7 +253,10 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
             }
             is ClassScope -> if (pass == 1) {
                 if (s.instance) {
-                    addReceiverGroups(narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv), name, groups, RecvRef(s.cls, null, false))
+                    val nrt = narrowRecv(s.cls.thisType(), s.cls.name, !seenRecv)
+                    val nref = RecvRef(s.cls, null, false)
+                    if (nrt !== s.cls.thisType()) nref.smart = nrt
+                    addReceiverGroups(nrt, name, groups, nref)
                     seenRecv = true
                 }
                 val comp = s.cls.companion
@@ -263,7 +266,10 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 if (nc != null) groups.add(ctorCandidates(nc))
             }
             is ReceiverScope -> if (pass == 1) {
-                addReceiverGroups(narrowRecv(s.type, s.label, !seenRecv), name, groups, RecvRef(null, s, false))
+                val nrt2 = narrowRecv(s.type, s.label, !seenRecv)
+                val nref2 = RecvRef(null, s, false)
+                if (nrt2 !== s.type) nref2.smart = nrt2
+                addReceiverGroups(nrt2, name, groups, nref2)
                 seenRecv = true
             }
             is FileScope -> if (pass == 1) {

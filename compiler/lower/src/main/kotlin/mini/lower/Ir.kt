@@ -348,7 +348,10 @@ class IrComposite(statements: ArrayList<IrStatement>, type: Type, origin: String
 
 enum class IrTypeOperator { CAST, IMPLICIT_CAST, IMPLICIT_NOTNULL, IMPLICIT_COERCION_TO_UNIT, SAFE_CAST, INSTANCEOF, NOT_INSTANCEOF, SAM_CONVERSION, IMPLICIT_INTEGER_COERCION }
 
-class IrTypeOperatorCall(val operator: IrTypeOperator, type: Type, var argument: IrExpression, val typeOperand: Type) : IrExpression(type)
+class IrTypeOperatorCall(val operator: IrTypeOperator, type: Type, var argument: IrExpression, val typeOperand: Type) : IrExpression(type) {
+    /** an implicit cast that stands for a smart cast of the source (dropped where the call does not need it) */
+    var isSmart = false
+}
 
 /** A return from [returnTarget] (a function, or the lambda function of a function expression). */
 class IrReturn(val returnTarget: IrFunction, var value: IrExpression, type: Type) : IrExpression(type)

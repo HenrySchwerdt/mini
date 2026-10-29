@@ -159,7 +159,15 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         }
         return call
     }
-    fail(e, "property reference")
+    if (sym is PropSym) {
+        val p = propertyOf(sym)
+        val ref = IrPropertyReference(p, t)
+        val rv = e.receiver
+        if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
+        else if (sym.owner != null) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
+        return ref
+    }
+    fail(e, "callable reference to " + (sym?.name ?: "?"))
 }
 
 fun Ast2Ir.isClassQualifier(e: Expr): Boolean {

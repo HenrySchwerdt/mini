@@ -86,6 +86,8 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
 }
 
 fun Ast2Ir.propertyGetDot(sym: PropSym, r: ExprRec, t: Type, node: Ast): IrExpression {
+    val cv = constantOf(sym, t)
+    if (cv != null) return cv
     val access = r.access
     val p = propertyOf(sym)
     val g = p.getter ?: fail(node, "property " + sym.name + " has no getter")
@@ -213,8 +215,8 @@ fun Ast2Ir.fillCallArgs(
     }
     for (p in callee.parameters) {
         when (p.kind) {
-            IrParameterKind.DispatchReceiver -> call.arguments.add(dispatch)
-            IrParameterKind.ExtensionReceiver -> call.arguments.add(ext)
+            IrParameterKind.DispatchReceiver -> call.arguments.add(adaptReceiver(dispatch, p))
+            IrParameterKind.ExtensionReceiver -> call.arguments.add(adaptReceiver(ext, p))
             IrParameterKind.Regular -> {
                 call.arguments.add(if (info == null) null else argFor(info, regular, p, subst, label))
                 regular++
@@ -255,7 +257,7 @@ private fun Ast2Ir.argFor(info: CallInfo, j: Int, p: IrValueParameter, subst: Ma
         }
     }
     val et = elemType ?: irType(ops.substitute(ve, subst))
-    return IrVararg(et, elems, irType(sema.varargArrayType(et)))
+    return IrVararg(et, elems, irType(ops.substitute(p.type, subst)))
 }
 
 private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpression {
@@ -279,7 +281,11 @@ fun Ast2Ir.invokeCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExp
     if (v != null) {
         val iv2 = varMap[v] ?: fail(node, "variable " + v.name + " is not declared in the IR")
         fv = IrGetValue(iv2, iv2.type, "VARIABLE_AS_FUNCTION")
-        val sm = rec(e.callee)?.smart
+        val narrowed = info.cand?.invokeType
+        if (narrowed != null) {
+            val nt = irType(narrowed)
+            if (fv.type.nullable && !nt.nullable) fv = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, nt, fv, nt)
+        }
         staticType = irType(v.type ?: sema.nullableAny)
     } else if (p != null) {
         val access = Access(if (info.recvAsFirstArg) null else d, null)
@@ -342,8 +348,8 @@ fun Ast2Ir.callOperator(info: CallInfo, recv: IrExpression, args: List<IrExpress
     var regular = 0
     for (p in callee.parameters) {
         when (p.kind) {
-            IrParameterKind.DispatchReceiver -> call.arguments.add(if (fn.receiver == null) recv else null)
-            IrParameterKind.ExtensionReceiver -> call.arguments.add(recv)
+            IrParameterKind.DispatchReceiver -> call.arguments.add(if (fn.receiver == null) adaptReceiver(recv, p) else null)
+            IrParameterKind.ExtensionReceiver -> call.arguments.add(adaptReceiver(recv, p))
             IrParameterKind.Regular -> {
                 call.arguments.add(if (regular < args.size) args[regular] else null)
                 regular++
@@ -440,11 +446,20 @@ fun Ast2Ir.comparison(e: BinaryExpr): IrExpression {
     val lt = ops.makeNotNull(l.type)
     val rt = ops.makeNotNull(rr.type)
     val ln = lt.classFqName
-    if (!l.type.nullable && !rr.type.nullable && ln == rt.classFqName && isPrimitiveName(ln)) {
+    val rn = rt.classFqName
+    if (!l.type.nullable && !rr.type.nullable && isPrimitiveName(ln) && isPrimitiveName(rn)) {
+        var a = l
+        var b = rr
+        if (ln != rn) {
+            // the narrower operand is converted to the wider type: `x.toLong()`
+            val wide = widerNumber(ln!!, rn!!)
+            if (ln != wide) a = convertNumber(a, wide)
+            if (rn != wide) b = convertNumber(b, wide)
+        }
         val c = IrCall(builtinFun(fname), sema.booleanType)
         c.origin = origin
-        c.arguments.add(l)
-        c.arguments.add(rr)
+        c.arguments.add(a)
+        c.arguments.add(b)
         return c
     }
     val info = r.call ?: fail(e, "compareTo is not resolved")
@@ -456,8 +471,29 @@ fun Ast2Ir.comparison(e: BinaryExpr): IrExpression {
     return c
 }
 
+fun numberRank(n: String): Int = when (n) {
+    "kotlin.Int" -> 1
+    "kotlin.Long" -> 2
+    "kotlin.Float" -> 3
+    else -> 4
+}
+
+fun widerNumber(a: String, b: String): String = if (numberRank(a) >= numberRank(b)) a else b
+
+fun Ast2Ir.convertNumber(e: IrExpression, to: String): IrExpression {
+    val name = when (to) {
+        "kotlin.Long" -> "toLong"
+        "kotlin.Float" -> "toFloat"
+        "kotlin.Double" -> "toDouble"
+        else -> "toInt"
+    }
+    val call = IrCall(memberFunNamed(e.type, name, 0), sema.classTypeOf(to))
+    call.arguments.add(e)
+    return call
+}
+
 fun isPrimitiveName(n: String?): Boolean =
-    n == "kotlin.Int" || n == "kotlin.Long" || n == "kotlin.Double" || n == "kotlin.Float" || n == "kotlin.Short" || n == "kotlin.Byte" || n == "kotlin.Char"
+    n == "kotlin.Int" || n == "kotlin.Long" || n == "kotlin.Double" || n == "kotlin.Float"
 
 fun Ast2Ir.inExpr(e: BinaryExpr): IrExpression {
     val r = rec(e) ?: fail(e, "in without record")
@@ -499,12 +535,9 @@ fun Ast2Ir.prefixExpr(e: PrefixExpr): IrExpression {
         }
         "-", "+" -> {
             val operand = e.expr
-            if (e.op == "-" && operand is LiteralExpr && (operand.kind == LitKind.INT || operand.kind == LitKind.REAL)) {
-                // `-<literal>` is a literal
+            if (e.op == "-" && operand is LiteralExpr && operand.kind == LitKind.INT) {
+                // `-<integer literal>` is a literal
                 val t = irType(r.type)
-                if (operand.kind == LitKind.REAL) {
-                    return IrConst(t, -(operand.text.replace("_", "").toDouble()))
-                }
                 var text = operand.text
                 if (text.endsWith("L")) text = text.substring(0, text.length - 1)
                 val v = parseIntLiteral(text) ?: fail(e, "integer literal")

@@ -24,7 +24,10 @@ class ExprRec(var type: Type, var callee: Sym?) {
 class LambdaInfo(val params: List<VarSym>)
 
 /** An implicit receiver: `this` of a class, an object / companion value, or a receiver of an extension function / lambda. */
-class RecvRef(val cls: ClassSym?, val scope: ReceiverScope?, val isObject: Boolean)
+class RecvRef(val cls: ClassSym?, val scope: ReceiverScope?, val isObject: Boolean) {
+    /** the type of the receiver after smart casts (`this` of a class inside `if (this is X)`), null when unchanged */
+    var smart: Type? = null
+}
 
 /** How a receiver is provided: an explicit expression (possibly safe-called) or an implicit receiver. */
 class RecvUse(val expr: Expr?, val safe: Boolean, val ref: RecvRef?, val type: Type?)
