@@ -68,6 +68,7 @@ Tests: `gradle -p compiler test`.
 | Module | Role | May use JVM APIs? |
 |---|---|---|
 | `compiler/backend` | MIR data model (`Mir.kt`), name mangling (`Mangling.kt`), MIR → C emitter (`CEmitter.kt`) | **No** |
+| `compiler/native-driver` | B1: `main(args)` that reads a `.mir` file, runs `CEmitter`, writes the `.c` file (runs on the JVM via Gradle, natively once minic can compile the backend) | **No** (file access through `mini.io`) |
 | `compiler/jvm-bridge` | Runs K2 (`FrontendDriver`), converts Kotlin IR to MIR (`Ir2Mir*.kt`, see the source layout below), CLI (`Cli`, `Main`), starts clang | Yes, and the only module allowed to touch compiler internals |
 
 ### How the IR is obtained
@@ -434,3 +435,17 @@ constructors. `Comparable` and `CharSequence` are erased (`Any` / `String`); `co
 * The generated C uses GNU statement expressions (clang and gcc; not MSVC).
 * The Gradle build resolves from `repo1.maven.org` first (same content as Maven Central);
   this only matters in environments where `repo.maven.apache.org` is rate limited.
+
+## Bootstrap B1: serialized MIR and the native driver
+
+`minic emit-mir <file.kt>... -o out.mir` runs the frontend and writes the MIR as text (`MirWriter` in
+`compiler/backend/.../MirSerial.kt`; `MirReader` reads it back). The format is versioned (`(mini-mir 1 ...)`),
+S-expression based, ASCII only, one class/function/statement per line; the format description is the header
+comment of `MirSerial.kt`. `MirSerialTest` checks for every `compiler/testdata` program that MIR -> text -> MIR -> C is
+byte-identical to MIR -> C and that `native-driver` (JVM run) produces the same C from the `.mir` file.
+
+`compiler/native-driver` (`fun main(args: Array<String>)`): `native-driver in.mir -o out.c`. Its file access is the Mini
+stdlib API `mini.io.readTextFile/writeTextFile` (`stdlib/mini/io/Files.kt`, intrinsics `mk_b1_*` in the B1 block of
+`minirt.h`, `runtime/src/b1.c`); on the JVM the Gradle build compiles `Files.kt` together with
+`stdlib-test/jvm/mini/internal/B1Intrinsics.kt`. `fun main(args: Array<String>)` is supported by the compiler (the C
+entry wrapper takes the array from `mk_b1_args()`).
