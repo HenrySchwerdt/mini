@@ -5,6 +5,7 @@
 
 #include "minirt.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -46,16 +47,53 @@ static inline uint32_t mk_atomic_fetch_or(uint32_t *p, uint32_t v) {
 
 /* ---- Allocation ------------------------------------------------------------ */
 
+/* Thread-local context handed from mk_alloc_sized / mk_free to allocators that
+ * care (the DebugAllocator): the type being allocated and the call site. */
+#if defined(_MSC_VER) && !defined(__clang__)
+#define MK_TLS __declspec(thread)
+#else
+#define MK_TLS _Thread_local
+#endif
+typedef struct MkAllocCtx {
+    const MkTypeInfo *type;
+    const char *site;
+} MkAllocCtx;
+extern MK_TLS MkAllocCtx mk_tls_ctx;
+
 /* Like mk_alloc_with, but with an explicit instance size (>= sizeof(MkObject)),
  * for variable-sized objects such as strings. NULL allocator = default. */
 MkObject *mk_alloc_sized(MkAllocator *allocator, const MkTypeInfo *type, size_t size);
+MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, size_t size,
+                              const char *site);
 
-/* Frees the block of a heap object through its owning allocator (no dispose). */
+/* Frees the block of a heap object through its owning allocator (no dispose).
+ * Marks the object MK_FLAG_FREED with refcount 0 first. */
 void mk_free_object_memory(MkObject *object);
 
-/* Allocates a string of `length` UTF-16 units from the default allocator
- * (panics on failure / too long). Characters are zero-initialised. */
-MkString *mk_string_alloc(size_t length);
+/* The prefix in front of every heap object (see alloc.c). */
+#define MK_PREFIX_SIZE MK_MAX_ALIGN
+
+/* ---- ASan integration (arena poisons unused / reset memory) --------------- */
+#if defined(__SANITIZE_ADDRESS__)
+#define MK_HAS_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define MK_HAS_ASAN 1
+#endif
+#endif
+#ifdef MK_HAS_ASAN
+#include <sanitizer/asan_interface.h>
+#define MK_POISON(p, n) ASAN_POISON_MEMORY_REGION((p), (n))
+#define MK_UNPOISON(p, n) ASAN_UNPOISON_MEMORY_REGION((p), (n))
+#else
+#define MK_POISON(p, n) ((void)(p), (void)(n))
+#define MK_UNPOISON(p, n) ((void)(p), (void)(n))
+#endif
+
+/* ---- DebugAllocator hooks used by mk_free ----------------------------------- */
+bool mk_debug_is_debug(const MkAllocator *allocator);
+_Noreturn void mk_debug_double_free(MkAllocator *debug, void *block, const char *site);
+size_t mk_debug_report_leaks_to(MkAllocator *debug, FILE *out);
 
 /* ---- UTF helpers ----------------------------------------------------------- */
 
@@ -72,7 +110,8 @@ char *mk_utf16_to_utf8(const MkChar *chars, size_t length, size_t *out_length);
 void mk_runtime_init(void);  /* idempotent; also done lazily by console output */
 void mk_runtime_flush(void); /* flushes stdout */
 
-/* Formats a double like Kotlin/JVM Double.toString into buf (capacity >= 48). */
+/* Format like Kotlin/JVM Double.toString / Float.toString into buf (capacity >= 48). */
 size_t mk_format_double(MkDouble value, char *buf, size_t capacity);
+size_t mk_format_float(MkFloat value, char *buf, size_t capacity);
 
 #endif

@@ -9,7 +9,7 @@ const MkTypeInfo mk_type_String = {
     "kotlin.String", sizeof(MkString), &mk_type_Any, NULL, NULL, 0, NULL, 0,
 };
 
-MkString *mk_string_alloc(size_t length) {
+static MkString *string_alloc(size_t length) {
     if (length > (size_t)INT32_MAX) mk_panic("string too long");
     size_t size = sizeof(MkString) + length * sizeof(MkChar);
     MkObject *o = mk_alloc_sized(NULL, &mk_type_String, size);
@@ -18,6 +18,13 @@ MkString *mk_string_alloc(size_t length) {
     s->length = (MkInt)length;
     return s;
 }
+
+MkString *mk_string_alloc(MkInt length) {
+    if (length < 0) mk_panic("negative string length");
+    return string_alloc((size_t)length);
+}
+
+MkInt mk_string_length(const MkString *s) { return s ? s->length : 0; }
 
 MkString *mk_string_from_utf8(const char *utf8, size_t length) {
     const uint8_t *begin = (const uint8_t *)utf8;
@@ -28,7 +35,7 @@ MkString *mk_string_from_utf8(const char *utf8, size_t length) {
         p += mk_utf8_decode(p, end, &cp);
         units += cp >= 0x10000 ? 2 : 1;
     }
-    MkString *s = mk_string_alloc(units);
+    MkString *s = string_alloc(units);
     size_t i = 0;
     for (const uint8_t *p = begin; p < end;) {
         p += mk_utf8_decode(p, end, &cp);
@@ -51,14 +58,14 @@ MkString *mk_string_concat(const MkString *left, const MkString *right) {
     const MkChar *rc = right ? right->chars : null_chars;
     size_t ln = left ? (size_t)left->length : 4;
     size_t rn = right ? (size_t)right->length : 4;
-    MkString *s = mk_string_alloc(ln + rn);
+    MkString *s = string_alloc(ln + rn);
     memcpy(s->chars, lc, ln * sizeof(MkChar));
     memcpy(s->chars + ln, rc, rn * sizeof(MkChar));
     return s;
 }
 
 static MkString *from_ascii(const char *text, size_t n) {
-    MkString *s = mk_string_alloc(n);
+    MkString *s = string_alloc(n);
     for (size_t i = 0; i < n; i++) s->chars[i] = (MkChar)(unsigned char)text[i];
     return s;
 }
@@ -73,6 +80,14 @@ MkString *mk_string_from_long(MkLong value) {
     return from_ascii(buf, (size_t)snprintf(buf, sizeof buf, "%" PRId64, value));
 }
 
+MkString *mk_string_from_float(MkFloat value) {
+    char buf[64];
+    return from_ascii(buf, mk_format_float(value, buf, sizeof buf));
+}
+
+MkString *mk_string_from_byte(MkByte value) { return mk_string_from_int(value); }
+MkString *mk_string_from_short(MkShort value) { return mk_string_from_int(value); }
+
 MkString *mk_string_from_double(MkDouble value) {
     char buf[64];
     return from_ascii(buf, mk_format_double(value, buf, sizeof buf));
@@ -83,7 +98,7 @@ MkString *mk_string_from_boolean(MkBoolean value) {
 }
 
 MkString *mk_string_from_char(MkChar value) {
-    MkString *s = mk_string_alloc(1);
+    MkString *s = string_alloc(1);
     s->chars[0] = value;
     return s;
 }

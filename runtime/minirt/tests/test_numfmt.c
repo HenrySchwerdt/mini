@@ -11,7 +11,49 @@ static void D(double v, const char *expected) {
     }
 }
 
+static void F(float v, const char *expected) {
+    MkString *s = mk_string_from_float(v);
+    t_checks++;
+    if (!t_str_is(s, expected, 1)) {
+        t_failures++;
+        fprintf(stderr, "  for float %.9g\n", (double)v);
+    }
+}
+
+static void floats(void) {
+    F(0.1f, "0.1");
+    F(1.0f, "1.0");
+    F(-1.5f, "-1.5");
+    F(0.0f, "0.0");
+    F(-0.0f, "-0.0");
+    F(NAN, "NaN");
+    F(INFINITY, "Infinity");
+    F(-INFINITY, "-Infinity");
+    F(1.0e10f, "1.0E10");
+    F(3.4028235e38f, "3.4028235E38");
+    F(-3.4028235e38f, "-3.4028235E38");
+    F(1.4e-45f, "1.4E-45");
+    F(2.8e-45f, "2.8E-45");
+    F(1.17549435e-38f, "1.1754944E-38"); /* shortest round-trip, JDK 19+ */
+    F(3.14159f, "3.14159");
+    F(16777216.0f, "1.6777216E7");
+    F(9999999.0f, "9999999.0");
+    F(1.0f / 3, "0.33333334");
+    F(0.001f, "0.001");
+    F(0.0001f, "1.0E-4");
+    F(123456.789f, "123456.79");
+    F(100.0f, "100.0");
+    F(0.3f, "0.3");
+    F(0.1f + 0.2f, "0.3");
+    /* byte and short go through the int path */
+    CHECK_STR(mk_string_from_byte(-128), "-128");
+    CHECK_STR(mk_string_from_byte(127), "127");
+    CHECK_STR(mk_string_from_short(-32768), "-32768");
+    CHECK_STR(mk_string_from_short(32767), "32767");
+}
+
 int main(void) {
+    floats();
     D(NAN, "NaN");
     D(INFINITY, "Infinity");
     D(-INFINITY, "-Infinity");

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-size_t mk_format_double(MkDouble v, char *buf, size_t cap) {
+static size_t format_fp(double v, bool single, char *buf, size_t cap) {
     if (isnan(v)) {
         strcpy(buf, "NaN");
         return 3;
@@ -25,12 +25,20 @@ size_t mk_format_double(MkDouble v, char *buf, size_t cap) {
 
     /* Shortest round-trip digits: smallest precision whose %e output parses back. */
     char tmp[48];
-    for (int prec = 0; prec <= 16; prec++) {
+    int max_prec = single ? 8 : 16;
+    for (int prec = 0; prec <= max_prec; prec++) {
         snprintf(tmp, sizeof tmp, "%.*e", prec, a);
-        if (strtod(tmp, NULL) == a) {
+        if (single ? strtof(tmp, NULL) == (float)a : strtod(tmp, NULL) == a) {
             /* JDK rule: if one digit suffices, pick the 2-digit decimal closest
-             * to the exact value (e.g. 4.9E-324 for Double.MIN_VALUE). */
-            if (prec == 0) snprintf(tmp, sizeof tmp, "%.1e", a);
+             * to the exact value (e.g. 4.9E-324 for Double.MIN_VALUE, 1.4E-45
+             * for Float.MIN_VALUE). Keep the 1-digit form if that would not
+             * round-trip. */
+            if (prec == 0) {
+                char two[48];
+                snprintf(two, sizeof two, "%.1e", a);
+                if (single ? strtof(two, NULL) == (float)a : strtod(two, NULL) == a)
+                    memcpy(tmp, two, sizeof two);
+            }
             break;
         }
     }
@@ -73,3 +81,9 @@ size_t mk_format_double(MkDouble v, char *buf, size_t cap) {
     }
     return n;
 }
+
+size_t mk_format_double(MkDouble v, char *buf, size_t cap) { return format_fp(v, false, buf, cap); }
+
+/* Float is formatted from its exact double value; shortest digits are searched
+ * so that they round-trip as a float (JDK 19+ Float.toString). */
+size_t mk_format_float(MkFloat v, char *buf, size_t cap) { return format_fp((double)v, true, buf, cap); }

@@ -94,7 +94,7 @@ int main(void) {
     CHECK_EQ_INT(disposed_count, 1);
 
     /* custom allocator: allocate and release go through it */
-    Counting ca = {{c_alloc, c_free}, 0, 0, NULL, 0};
+    Counting ca = {{c_alloc, c_free, 0}, 0, 0, NULL, 0};
     Obj *co = (Obj *)mk_alloc_with(&ca.base, &T_Count);
     CHECK(co != NULL);
     CHECK_EQ_INT(ca.allocs, 1);
@@ -109,7 +109,7 @@ int main(void) {
     CHECK_EQ_INT(disposed_count, 2);
 
     /* Scoped allocator: free == NULL, dispose still runs, memory untouched */
-    Counting scoped = {{c_alloc, NULL}, 0, 0, NULL, 0};
+    Counting scoped = {{c_alloc, NULL, 0}, 0, 0, NULL, 0};
     Obj *so = (Obj *)mk_alloc_with(&scoped.base, &T_Count);
     void *block = scoped.last;
     mk_release(&so->h);
