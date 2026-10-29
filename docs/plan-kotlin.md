@@ -602,6 +602,14 @@ without LLVM; new optimizations and features target LLVM first.
 - **Together with §10c** (runtime in Kotlin) Mini programs then contain no C at all; only libc and libuv
   remain, both as prebuilt libraries.
 
+**Status (phase 1 done).** A first LLVM backend exists as **textual IR**: `compiler/backend/.../llvm` (`LlvmEmitter`, pure Kotlin, self-hosted) lowers MIR to `.ll`
+and clang compiles it with libminirt (`minic build --backend=llvm [--emit-ll x.ll]`, `native-driver --backend=llvm`, `minic-native --emit-ll`). It reuses RcOpt's plan, `ThrowAnalysis` and the
+runtime ABI unchanged, keeps the error-return exception ABI and computes object layouts itself (`LlvmTarget`: LP64 or ILP32), so the phase-2 switch to the in-process C API and ORC JIT can reuse the lowering.
+Measured: all test programs (53, including the Strict ones) identical to the C backend (also `-O0`..`-O3`, ASan/LSan/UBSan leak check), self-host through LLVM works (`bootstrap.sh --backend=llvm`: stage2 == stage3 and equal
+to the C-built chain), run time at parity with C at the same `-O` level (0.91-1.11, self-hosted backend 3-8 % faster) and clang is about 20 % faster on the IR than on the C.
+Prototype: `wasm32` IR compiles and hello runs under node (no WASI sysroot on the box, so no libminirt yet). `lli` was evaluated as a JIT and dropped: it cannot resolve the thread-local `mk_pending_exception` of the runtime (the real JIT is ORC through the C API, phase 2). Open: debug info, TBAA, real unwinding,
+the C API binding (phase 2)and lld. Details: `compiler/README.md`, "LLVM backend".
+
 Order after B3: C interop complete (§7: pointers, structs, callbacks) → LLVM backend reaching parity
 with the C backend (same test suite, byte-identical program output) → switch the default to LLVM,
 embedded lld, single binary → ORC JIT, `.kts`, REPL → cross-compilation and static musl binaries.

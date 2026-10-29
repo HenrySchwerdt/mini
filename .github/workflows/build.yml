@@ -69,7 +69,7 @@ jobs:
         os: ${{ fromJSON(github.ref == 'refs/heads/main' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
         # `stage0` (bootstrap from the latest release's native compiler, ~1 min) runs everywhere; `bootstrap` (from the
         # JVM stage1, ~4 min, guards the K2 path) only on main.
-        shard: ${{ fromJSON(github.ref == 'refs/heads/main' && '["modules","e2e","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","stage0","bootstrap"]' || '["modules","e2e","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","stage0"]') }}
+        shard: ${{ fromJSON(github.ref == 'refs/heads/main' && '["modules","e2e","llvm","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","stage0","bootstrap"]' || '["modules","e2e","llvm","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","stage0"]') }}
         include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"selfhost"},{"os":"macos-latest","shard":"modules"}]') }}
     name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -85,7 +85,8 @@ jobs:
             modules)           args=(test -x :jvm-bridge:test -x :frontend-oracle:test) ;;
             e2e)               args=(:jvm-bridge:test --tests EndToEndTest) ;;
             selfhost)          args=(:jvm-bridge:test --tests SelfHostTest) ;;
-            bridge)            args=(:jvm-bridge:test -PtestExclude=EndToEndTest,SelfHostTest) ;;
+            llvm)              args=(:jvm-bridge:test --tests LlvmEndToEndTest) ;;
+            bridge)            args=(:jvm-bridge:test -PtestExclude=EndToEndTest,SelfHostTest,LlvmEndToEndTest) ;;
             oracle)            args=(:frontend-oracle:test -PtestExclude=FrontendSelfHostTest,SemaSelfHostTest) ;;
             frontend-selfhost) args=(:frontend-oracle:test --tests FrontendSelfHostTest) ;;
             sema-selfhost)     args=(:frontend-oracle:test --tests SemaSelfHostTest) ;;

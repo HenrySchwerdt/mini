@@ -15,6 +15,13 @@
 #   stage0 (given, native) -> stage1 (native) -> stage2 -> stage3, and stage2 == stage3 is checked.
 # stage0 may come from an older compiler version, so stage1 is not compared (stage2 == stage3 is the fixpoint).
 # Environment: CC (default clang), BOOT_OPT (default -O1, -O0 with --stage0, the optimization level of the built stages).
+#
+#   compiler/bootstrap.sh [--backend=llvm [--reference <dir>]] [work-dir]
+#
+# --backend=llvm (docs/plan-kotlin.md 10g): every stage is built through the LLVM backend (MIR -> textual LLVM IR ->
+# clang) instead of C: stage1 = JVM minic --frontend=mini --backend=llvm; stage2 and stage3 are built from the .ll files
+# written by the previous stage (`--emit-ll`). Check: C, MIR and LLVM IR of stage2 and stage3 are byte-identical; with
+# --reference <dir> (the work dir of a C bootstrap) the C and MIR of stage2 must also equal the C-built compiler's.
 set -e
 STAGE0=""
 if [ "$1" = "--stage0" ]; then
@@ -24,6 +31,16 @@ if [ "$1" = "--stage0" ]; then
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
+BACKEND=c
+REFERENCE=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --backend=llvm) BACKEND=llvm; shift ;;
+    --backend=c) BACKEND=c; shift ;;
+    --reference) REFERENCE="$2"; shift 2 ;;
+    *) break ;;
+    esac
+done
 WORK="${1:-$(mktemp -d)}"
 MINIC="$HERE/jvm-bridge/build/install/minic/bin/minic"
 CC="${CC:-clang}"
@@ -38,6 +55,37 @@ RT=$(ls "$ROOT"/runtime/src/*.c)
 
 stamp() { date +%s.%N; }
 elapsed() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f s", b - a }'; }
+
+if [ "$BACKEND" = llvm ]; then
+    t0=$(stamp)
+    "$MINIC" build $SRCS -o "$WORK/stage1" --frontend=mini --backend=llvm --emit-ll "$WORK/stage1.ll"
+    t1=$(stamp)
+    echo "stage1 (JVM minic --frontend=mini --backend=llvm builds the compiler): $(elapsed $t0 $t1)"
+    # libminirt once; the compiler itself is built from the IR
+    mkdir -p "$WORK/rt"
+    for f in $RT; do "$CC" -std=c17 -O1 -w -I "$ROOT/runtime/include" -c "$f" -o "$WORK/rt/$(basename "$f" .c).o"; done
+    prev="$WORK/stage1"
+    t_prev=$t1
+    for stage in 2 3; do
+        "$prev" -o "$WORK/stage$stage.c" --emit-mir "$WORK/stage$stage.mir" --emit-ll "$WORK/stage$stage.ll" $SRCS --stdlib $STD
+        ta=$(stamp)
+        "$CC" -O1 -Wno-override-module "$WORK/stage$stage.ll" "$WORK/rt"/*.o -o "$WORK/stage$stage" -lm
+        tb=$(stamp)
+        echo "stage$stage (stage$((stage - 1)) compiles the sources: $(elapsed $t_prev $ta); clang on the .ll: $(elapsed $ta $tb))"
+        prev="$WORK/stage$stage"
+        t_prev=$tb
+    done
+    cmp "$WORK/stage2.c" "$WORK/stage3.c"
+    cmp "$WORK/stage2.mir" "$WORK/stage3.mir"
+    cmp "$WORK/stage2.ll" "$WORK/stage3.ll"
+    if [ -n "$REFERENCE" ]; then
+        cmp "$WORK/stage2.c" "$REFERENCE/stage2.c"
+        cmp "$WORK/stage2.mir" "$REFERENCE/stage2.mir"
+        echo "same C and MIR as the C-built compiler in $REFERENCE"
+    fi
+    echo "bootstrap via LLVM OK: stage2 == stage3 (C, MIR and LLVM IR byte-identical), work dir $WORK"
+    exit 0
+fi
 
 t0=$(stamp)
 if [ -n "$STAGE0" ]; then

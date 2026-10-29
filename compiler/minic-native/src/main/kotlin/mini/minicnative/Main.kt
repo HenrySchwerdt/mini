@@ -2,6 +2,7 @@ package mini.minicnative
 
 import mini.backend.CEmitter
 import mini.backend.MirWriter
+import mini.backend.llvm.LlvmEmitter
 import mini.io.readTextFile
 import mini.io.writeTextFile
 import mini.lower.LowerDiagnostics
@@ -10,7 +11,7 @@ import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
 
 /*
- *   minic-native [-o out.c] [--emit-mir out.mir] [--no-rc-opt] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--no-rc-opt] <user.kt>... [--stdlib <stdlib.kt>...]
  *
  * The compiler without K2: our own parser and semantic analysis (mini.frontend), the lowering to MIR (mini.lower) and the C
  * backend (mini.backend) behind one driver. Files before `--stdlib` are the program (the first one names the module),
@@ -19,11 +20,12 @@ import mini.lower.lowerToMir
  * the other pure modules and mini.io; the same source runs on the JVM and, compiled by minic, as a native binary.
  */
 
-const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--no-rc-opt] <user.kt>... [--stdlib <stdlib.kt>...]"
+const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--no-rc-opt] <user.kt>... [--stdlib <stdlib.kt>...]"
 
 fun main(args: Array<String>) {
     var output: String? = null
     var mirOut: String? = null
+    var llOut: String? = null
     var rcOpt = true
     val inputs = ArrayList<LowerInput>()
     var stdlib = false
@@ -38,6 +40,10 @@ fun main(args: Array<String>) {
         } else if (a == "--emit-mir") {
             if (i + 1 >= args.size) throw IllegalArgumentException("missing value for --emit-mir\n" + USAGE)
             mirOut = args[i + 1]
+            i += 2
+        } else if (a == "--emit-ll") {
+            if (i + 1 >= args.size) throw IllegalArgumentException("missing value for --emit-ll\n" + USAGE)
+            llOut = args[i + 1]
             i += 2
         } else if (a == "--no-rc-opt") {
             rcOpt = false
@@ -55,7 +61,7 @@ fun main(args: Array<String>) {
             i += 1
         }
     }
-    if (firstName == null || (output == null && mirOut == null)) throw IllegalArgumentException(USAGE)
+    if (firstName == null || (output == null && mirOut == null && llOut == null)) throw IllegalArgumentException(USAGE)
     val module = try {
         lowerToMir(inputs, firstName)
     } catch (e: LowerDiagnostics) {
@@ -65,6 +71,7 @@ fun main(args: Array<String>) {
     }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (output != null) writeTextFile(output, CEmitter.emit(module, rcOpt))
+    if (llOut != null) writeTextFile(llOut, LlvmEmitter.emit(module, rcOpt))
 }
 
 private fun fileNameOf(path: String): String {

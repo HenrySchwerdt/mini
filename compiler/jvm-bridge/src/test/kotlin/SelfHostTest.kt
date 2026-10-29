@@ -175,8 +175,15 @@ class SelfHostTest {
                 assertTrue(proc.waitFor(120, TimeUnit.SECONDS), "minic-backend timed out on ${src.name}")
                 assertEquals(0, proc.exitValue(), "native minic-backend failed on ${src.name}:\n${errFile.readText()}")
                 assertEquals(CEmitter.emit(MirReader.read(text)), cFile.readText(), "C from the native backend differs for ${src.name}")
+                // the LLVM backend (mini.backend.llvm) is part of the same native program: its IR must equal the JVM's, too
+                val llFile = File(work, src.nameWithoutExtension + ".ll")
+                val llProc = ProcessBuilder(exe.path, mir.path, "-o", llFile.path, "--backend=llvm").redirectErrorStream(true).redirectOutput(errFile).start()
+                assertTrue(llProc.waitFor(120, TimeUnit.SECONDS), "minic-backend --backend=llvm timed out on ${src.name}")
+                assertEquals(0, llProc.exitValue(), "native minic-backend --backend=llvm failed on ${src.name}:\n${errFile.readText()}")
+                assertEquals(mini.backend.llvm.LlvmEmitter.emit(MirReader.read(text)), llFile.readText(), "LLVM IR from the native backend differs for ${src.name}")
                 mir.delete()
                 cFile.delete()
+                llFile.delete()
             }
         }
     }
