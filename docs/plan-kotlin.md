@@ -651,23 +651,31 @@ Candidates:
 Goal: on the documentation site, every code sample can be edited and run in the browser, plus a
 notebook page (Markdown and code cells sharing state). No server: GitHub Pages is static.
 
-- **Decision: one backend everywhere, no interpreter and no extra wasm backend.** The compiler binds LLVM
-  through its C API with Mini's own C interop (`external`, §7; the same binding as §10g phase 2). LLVM's
-  code generator (wasm32 target only) and `wasm-ld` are built once for wasm with wasi-sdk/Emscripten, and
-  the compiler itself is compiled to wasm and linked against them.
-- **In the browser:** source → own frontend, memory checker, MIR → LLVM → `.wasm` → `wasm-ld` with the
-  precompiled runtime (`libminirt` for wasm32-wasi, without threads/libuv) → run with a small WASI shim.
-  The toolchain (an estimated 5-10 MB compressed) loads lazily on the first "Run" and is cached by a
-  service worker; reading and "Check" work without it.
+- **Decision: one backend everywhere, no interpreter and no extra wasm backend; nothing of LLVM is built by us.** The compiler itself
+  runs in the browser as `minic.wasm` (the self-hosted `minic-native`: own frontend, memory checker, MIR, `LlvmEmitter`, compiled to
+  wasm32-wasip1 through the LLVM backend) and emits textual LLVM IR. That IR is compiled and linked by the prebuilt, maintained
+  `@yowasp/clang` npm package (clang, wasm-ld, wasi-libc and compiler-rt as wasm modules, pinned version). The LLVM C API binding
+  (§10g phase 2) stays the native path for the JIT and the single binary; it is no longer on the browser's critical path.
+- **In the browser:** source -> `minic.wasm --check` (Strict diagnostics inline) / `--emit-ll --target=wasm32` -> `clang.wasm -c` ->
+  `clang.wasm` link with `libminirt-wasm32.a` and wasi-libc -> run the `.wasm` as a WASI command (a small shim, in-memory files). Everything runs in a
+  Web Worker; reading and "Check" need only `minic.wasm` (4.2 MB, 0.64 MB gzip) and the stdlib sources (0.26 MB); compile and run additionally load
+  clang (22 MB gzip, lazy on the first "Run", cached by a service worker).
 - **Playground features:** run and check (Strict diagnostics inline with M-codes and links to the
   reference), tabs with the MIR and LLVM IR for the "How it works" pages, share via URL, an examples
   gallery; every sample on the site becomes editable and runnable.
 - **Notebook:** Markdown and code cells; code cells are compiled incrementally (each cell sees the
   declarations of the cells before it) and run in one WASI instance per session.
-- **Order:** C interop (§7) → native LLVM C API binding (§10g phase 2) → LLVM + lld built for wasm →
-  the compiler built for wasm → website integration and notebook.
+- **Order:** wasm toolchain (done, below) -> website integration (`MiniToolchain`: load/check/compile/run in a worker) -> notebook. C interop (§7) and the
+  native LLVM C API binding (§10g phase 2) are independent of it.
 - **Fast startup:** the stdlib is shipped precompiled (API metadata + MIR, `.mlib`, §10f) so the browser
   does not re-check it on every run.
+
+**Status (toolchain done, website pending).** `scripts/build-wasm-toolchain.sh` / `.github/workflows/wasm-toolchain.yml` produce `minic.wasm`, `libminirt-wasm32.a`,
+`stdlib.json` and `toolchain.json` (artifact `wasm-toolchain`). Verified under `node:wasi`: all 53 test programs (JVM compiler -> clang.wasm -> run, output identical to the
+native build), `minic.wasm --check` (M-codes) and `minic.wasm --emit-ll --target=wasm32` -> clang.wasm -> run with IR byte-identical to the JVM compiler's. No runtime
+source needed a platform guard. Open: the website worker and WASI shim, a precompiled stdlib bundle (`.mlib`, §10f) to skip re-parsing the stdlib, incremental cells for the
+notebook, a faster clang step (the prebuilt clang is an assertions build: about 29 min for `minic.wasm` at `-O1`, seconds for user programs). Details: `compiler/README.md`,
+"WebAssembly toolchain".
 
 ## 11. Working method: manager and Sonnet agents
 

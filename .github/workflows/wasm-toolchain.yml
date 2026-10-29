@@ -1,0 +1,81 @@
+name: WebAssembly toolchain
+
+# Builds the browser toolchain of docs/plan-kotlin.md section 10i with scripts/build-wasm-toolchain.sh:
+# minic.wasm (the compiler as a WASI module), libminirt-wasm32.a, the stdlib sources, toolchain.json.
+# clang and wasm-ld are not built here: they are the pinned prebuilt npm package @yowasp/clang
+# (scripts/wasm/package.json). The script proves the pipeline in node before it packs anything:
+# every program of compiler/testdata through the JVM compiler -> wasm clang -> node:wasi, and minic.wasm itself
+# (check + emit LLVM IR -> clang -> run).
+#
+# Consumers: `uses: ./.github/workflows/wasm-toolchain.yml` (workflow_call; then `actions/download-artifact` with
+# name `wasm-toolchain` in a later job of the same run), or the artifact of a workflow_dispatch / main run.
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - 'compiler/**'
+      - 'runtime/**'
+      - 'stdlib/**'
+      - 'scripts/wasm/**'
+      - 'scripts/build-wasm-toolchain.sh'
+      - '.github/workflows/wasm-toolchain.yml'
+  pull_request:
+    paths:
+      - 'scripts/wasm/**'
+      - 'scripts/build-wasm-toolchain.sh'
+      - 'runtime/**'
+      - '.github/workflows/wasm-toolchain.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wasm-toolchain-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: scripts/wasm/package-lock.json
+
+      - name: Install the pinned clang/wasm-ld (npm)
+        run: npm ci --prefix scripts/wasm
+
+      - name: Build the compiler (JVM drivers)
+        working-directory: compiler
+        run: ./gradlew installDist :native-driver:installDist --console=plain
+
+      # The compiled minic.wasm depends on exactly these inputs; the IR -> wasm step is the slow one (the prebuilt clang
+      # is an assertions build running as wasm), so it is cached.
+      - name: Restore cached minic.wasm objects
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: build/wasm/minic
+          key: minic-wasm-${{ hashFiles('compiler/*/src/main/**', 'stdlib/**', 'runtime/**', 'scripts/wasm/package-lock.json', 'scripts/wasm/build-minic-wasm.sh') }}
+
+      - name: Build and test the toolchain
+        env:
+          MINIC_WASM_REUSE: ${{ steps.cache.outputs.cache-hit }}
+        run: scripts/build-wasm-toolchain.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-toolchain
+          path: |
+            build/wasm-toolchain.tar.gz
+            build/wasm-toolchain/
+          if-no-files-found: error
+          retention-days: 30
