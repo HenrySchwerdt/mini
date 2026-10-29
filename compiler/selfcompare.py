@@ -18,7 +18,7 @@ for m in ['minic-native', 'lower', 'frontend', 'backend']:
     srcs += sorted(glob.glob(os.path.join(here, m, 'src/main/kotlin/**/*.kt'), recursive=True))
 work = tempfile.mkdtemp(prefix='selfcompare-')
 env = dict(os.environ, JAVA_OPTS='-Xss512m -Xmx6g')
-for name, extra in [('k2', []), ('mini', ['--frontend=mini'])]:
+for name, extra in [('k2', ['--frontend=k2']), ('mini', ['--frontend=mini'])]:
     p = subprocess.run([minic, 'emit-mir'] + srcs + ['-o', f'{work}/{name}.mir'] + extra, capture_output=True, text=True, env=env)
     if p.returncode != 0:
         sys.exit(f'{name}: minic emit-mir failed\n{p.stderr[-1500:]}')
