@@ -523,13 +523,17 @@ class Parser(internal val lex: LexResult) {
             val before = p
             val pm = mark()
             val ps = tokStart()
+            // modifier keywords before a named context parameter (`context(value value: A)`)
+            var i = 0
+            while (la(i) == Tk.IDENT && isModifierWord(textAt(i)) && la(i + 1) == Tk.IDENT) i++
+            val mods = if (i > 0 && la(i + 1) == Tk.COLON) parseModifierList() else null
             if (kind() == Tk.IDENT && la(1) == Tk.COLON) {
                 val name = tokText()
                 advance()
                 advance()
                 val t = parseType()
                 done(pm, NodeKind.PARAM)
-                list.add(fin(Param(null, null, name, t, null), ps))
+                list.add(fin(Param(mods, null, name, t, null), ps))
             } else if (kind() == Tk.IDENT && la(1) == Tk.AT && adjacent(0)) {
                 // `context(label@ Type)`
                 advance()
