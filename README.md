@@ -91,6 +91,8 @@ In Strict mode a separate checker runs before code generation.
 | **Own frontend to MIR without K2 (B2-3)** | In progress. On the working branch all 47 test programs already lower to MIR identical to the K2 path, also from a natively built, K2-free `minic-native`. |
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. |
 | **Full bootstrap, stage 2 == stage 3 (B3)** | Next. `minic` compiles itself without a JVM. |
+| Project tool `mini` (`mini new/build/run/test`, `mini.toml`, no Gradle) | Planned, right after B2-3. |
+| Reflection (static metadata, ownership-aware), JSON (kotlinx.serialization API), compile-time DI and a web framework with one arena per request | Planned after B3. |
 | Coroutines and async IO on libuv, LLVM backend, runtime written in Kotlin, Windows | Later. |
 
 Platforms: Linux and macOS (CI). Windows follows later. The full plan is in
