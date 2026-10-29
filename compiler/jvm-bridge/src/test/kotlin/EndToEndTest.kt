@@ -31,6 +31,66 @@ class EndToEndTest {
 
     private fun sibling(src: File, ext: String) = File(src.parentFile, src.nameWithoutExtension + "." + ext)
 
+    /** A C compiler that can link AddressSanitizer (clang here often cannot; gcc is the fallback), or null. */
+    private val sanitizerCc: String? by lazy {
+        listOf("clang", "gcc").firstOrNull { cc ->
+            try {
+                val probe = File(work, "probe.c").also { it.writeText("int main(void){return 0;}\n") }
+                val p = ProcessBuilder(cc, "-fsanitize=address,undefined", probe.path, "-o", File(work, "probe").path)
+                    .redirectErrorStream(true).start()
+                p.inputStream.readBytes()
+                p.waitFor() == 0
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    /**
+     * Leak check: every program that terminates normally is built with AddressSanitizer +
+     * LeakSanitizer + UBSan and must produce the same output, exit 0 and report nothing.
+     * (Reference cycles would leak by design; no test program builds one.)
+     */
+    @TestFactory
+    fun leakCheck(): List<DynamicTest> {
+        val sources = testdata.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+            .filter { sibling(it, "out").isFile && !sibling(it, "cerr").isFile && !sibling(it, "err").isFile }
+        return sources.map { src ->
+            DynamicTest.dynamicTest("leak-free ${src.nameWithoutExtension}") {
+                val cc = sanitizerCc
+                org.junit.jupiter.api.Assumptions.assumeTrue(cc != null, "no C compiler with sanitizer runtimes")
+                val name = src.nameWithoutExtension
+                val exe = File(work, "$name.asan")
+                val errBuf = ByteArrayOutputStream()
+                val oldErr = System.err
+                val rc = try {
+                    System.setErr(PrintStream(errBuf, true, "UTF-8"))
+                    Cli.run(
+                        listOf(
+                            "build", src.path, "-o", exe.path, "--cc", cc!!,
+                            "--runtime-src", File(runtime, "src").path,
+                            "--runtime-include", File(runtime, "include").path,
+                            "--cflag", "-fsanitize=address,undefined", "--cflag", "-fno-sanitize-recover=undefined",
+                            "--cflag", "-g", "--cflag", "-fno-omit-frame-pointer",
+                        ),
+                        repoRoot,
+                    )
+                } finally {
+                    System.setErr(oldErr)
+                }
+                assertEquals(0, rc, "sanitizer build of $name failed:\n${errBuf.toString("UTF-8")}")
+                val pb = ProcessBuilder(exe.path)
+                pb.environment()["ASAN_OPTIONS"] = "detect_leaks=1:exitcode=99"
+                val proc = pb.start()
+                val stdout = proc.inputStream.readBytes().toString(Charsets.UTF_8)
+                val stderr = proc.errorStream.readBytes().toString(Charsets.UTF_8)
+                assertTrue(proc.waitFor(60, TimeUnit.SECONDS), "$name timed out")
+                assertEquals(0, proc.exitValue(), "$name failed under sanitizers (leak or memory error):\n$stderr")
+                assertEquals(sibling(src, "out").readText(), stdout)
+            }
+        }
+    }
+
     private fun check(src: File) {
         val name = src.nameWithoutExtension
         val exe = File(work, name)

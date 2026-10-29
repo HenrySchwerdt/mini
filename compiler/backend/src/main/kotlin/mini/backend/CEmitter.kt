@@ -11,22 +11,34 @@ class EmitError(message: String) : Exception(message)
  * zero and handle MIN / -1; shifts mask the count; Double to integer conversions
  * saturate and map NaN to 0.
  *
- * TODO(P1): String temporaries are never released (reference counting is not
- * modelled in MIR yet), so programs leak the strings they build.
+ * Reference counting (Managed mode), see compiler/README.md:
+ *  - every reference-typed local owns one reference; it is NULL-initialised at the top of
+ *    its C scope and released at every exit of that scope (end, break, continue, return);
+ *  - parameters are borrowed;
+ *  - "owned" expressions ([isOwned]) transfer their +1 to the Declare/Assign/SetField/Return
+ *    that consumes them; borrowed values are retained first;
+ *  - fields: retain the new value, release the old one;
+ *  - returns are owned (+1).
  */
 object CEmitter {
     fun emit(module: MirModule): String = State(module).run()
 
+    private class Scope(val locals: List<MirLocal>, val loop: MirLabel?)
+
     private class State(val module: MirModule) {
         val literals = LinkedHashMap<String, String>() // kotlin value -> C name
         val sig = HashMap<String, MirFunction>()
+        val classes = HashMap<String, MirClass>()
         var usedLabels = HashSet<String>()
+        val scopes = ArrayList<Scope>()
+        var currentReturn: MirType = TUnit
 
         fun run(): String {
             val bodies = StringBuilder()
             for (f in module.functions) {
                 if (sig.put(f.cName, f) != null) throw EmitError("duplicate C symbol ${f.cName}")
             }
+            for (c in module.classes) classes[c.cName] = c
             for (f in module.functions) emitFunction(f, bodies)
 
             val out = StringBuilder()
@@ -39,6 +51,8 @@ object CEmitter {
             }
             out.append("\n/* prototypes */\n")
             for (f in module.functions) out.append(prototype(f)).append(";\n")
+            out.append("\n/* classes */\n")
+            emitClasses(out)
             out.append("\n").append(bodies)
             return out.toString()
         }
@@ -50,10 +64,105 @@ object CEmitter {
             return "${cType(f.returnType)} ${f.cName}($params)"
         }
 
+        // ---- classes -----------------------------------------------------------------
+
+        fun typeInfoOf(t: MirType): String = when (t) {
+            TString, TNString -> "mk_type_String"
+            is TObject -> t.typeInfo
+            is TBoxed -> boxTypeInfo(t.prim)
+            else -> throw EmitError("no type info for $t")
+        }
+
+        fun boxTypeInfo(p: MirType): String = when (p) {
+            TInt -> "mk_type_Int"
+            TLong -> "mk_type_Long"
+            TBoolean -> "mk_type_Boolean"
+            TDouble -> "mk_type_Double"
+            TChar -> "mk_type_Char"
+            else -> throw EmitError("no box for $p")
+        }
+
+        fun boxName(p: MirType): String = when (p) {
+            TInt -> "int"
+            TLong -> "long"
+            TBoolean -> "boolean"
+            TDouble -> "double"
+            TChar -> "char"
+            else -> throw EmitError("no box for $p")
+        }
+
+        fun fnRef(name: String?, abstractDefault: String): String = "(void *)" + (name ?: abstractDefault)
+
+        fun emitClasses(out: StringBuilder) {
+            for (c in module.classes) {
+                out.append("/* ${if (c.isInterface) "interface" else "class"} ${comment(c.qualifiedName)} */\n")
+                val ifs = if (c.interfaces.isEmpty()) "NULL" else "${c.cName}_ifs"
+                if (c.interfaces.isNotEmpty()) {
+                    out.append("static const MkTypeInfo *const ${c.cName}_ifs[] = {")
+                    out.append(c.interfaces.joinToString(", ") { "&${it}_ti" }).append("};\n")
+                }
+                if (c.isInterface) {
+                    out.append("static const MkTypeInfo ${c.cName}_ti = {\"${c.qualifiedName}\", 0, NULL, NULL, NULL, 0, $ifs, ${c.interfaces.size}};\n\n")
+                    continue
+                }
+                // layout
+                val sup = c.superCName?.let { classes[it] ?: throw EmitError("unknown superclass $it") }
+                out.append("struct ${c.cName} {\n    ${if (sup == null) "MkObject header;" else "struct ${sup.cName} base;"}\n")
+                for (f in c.fields) out.append("    ${cType(f.type)} ${Mangling.field(f.name)};\n")
+                out.append("};\n")
+                // dispose
+                val refFields = c.fields.filter { it.type.isRef }
+                var dispose = "NULL"
+                if (refFields.isNotEmpty()) {
+                    dispose = "${c.cName}_dispose"
+                    out.append("static void ${c.cName}_dispose(MkObject *self) {\n    struct ${c.cName} *o = (struct ${c.cName} *)self;\n")
+                    for (f in refFields) out.append("    mk_release((MkObject *)o->${Mangling.field(f.name)});\n")
+                    out.append("}\n")
+                }
+                // itables and vtable
+                val vt = ArrayList<String>()
+                val anyDefaults = listOf("mk_any_to_string", "mk_any_equals", "mk_any_hash_code")
+                for ((i, e) in c.vtable.withIndex()) {
+                    vt += if (i < 3) fnRef(e, anyDefaults[i]) else fnRef(e, "mkh_abstract")
+                }
+                for ((k, it) in c.itables.withIndex()) {
+                    val entries = if (it.entries.isEmpty()) "(void *)0" else it.entries.joinToString(", ") { e -> fnRef(e, "mkh_abstract") }
+                    out.append("static void *const ${c.cName}_it$k[] = {$entries};\n")
+                    vt += "(void *)${c.cName}_it$k"
+                }
+                out.append("static void *const ${c.cName}_vt[] = {${vt.joinToString(", ")}};\n")
+                val superTi = if (sup == null) "&mk_type_Any" else "&${sup.cName}_ti"
+                out.append(
+                    "static const MkTypeInfo ${c.cName}_ti = {\"${c.qualifiedName}\", sizeof(struct ${c.cName}), $superTi, $dispose, " +
+                        "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}};\n",
+                )
+                if (c.objectCtor != null) {
+                    out.append("static MkObject *${c.cName}_obj;\n")
+                    out.append(
+                        "MKH_FN MkObject *${c.cName}_get(void) {\n    if (${c.cName}_obj == NULL) {\n" +
+                            "        MkObject *o = mk_alloc(&${c.cName}_ti);\n        ${c.cName}_obj = o;\n" +
+                            "        ${c.objectCtor}(o);\n    }\n    return ${c.cName}_obj;\n}\n",
+                    )
+                }
+                out.append("\n")
+            }
+            for (f in module.functions) {
+                val cls = f.constructorOf ?: continue
+                val ps = f.params.drop(1)
+                val decl = if (ps.isEmpty()) "void" else ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }
+                val call = (listOf("o") + ps.indices.map { "a$it" }).joinToString(", ")
+                out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = mk_alloc(&${cls}_ti);\n    ${f.cName}($call);\n    return o;\n}\n")
+            }
+        }
+
+        // ---- functions ---------------------------------------------------------------
+
         fun emitFunction(f: MirFunction, out: StringBuilder) {
             out.append("/* ${comment(f.qualifiedName)} */\n")
             out.append(prototype(f)).append(" {\n")
-            stmts(f.body, 1, out)
+            scopes.clear()
+            currentReturn = f.returnType
+            scope(f.body, 1, out)
             val last = f.body.lastOrNull()
             if (f.returnType != TUnit && last !is MirStmt.Return) {
                 val safe = f.qualifiedName.filter { it.isLetterOrDigit() || it == '.' || it == '_' }
@@ -62,67 +171,179 @@ object CEmitter {
             out.append("}\n\n")
         }
 
-        // ---- statements --------------------------------------------------------------
+        // ---- scopes / reference counting -------------------------------------------------
 
         fun ind(n: Int) = "    ".repeat(n)
 
-        fun stmts(list: List<MirStmt>, depth: Int, out: StringBuilder) {
-            for (s in list) stmt(s, depth, out)
+        fun isTerminator(s: MirStmt?) = s is MirStmt.Return || s is MirStmt.Break || s is MirStmt.Continue || s is MirStmt.Panic
+
+        fun refDecls(list: List<MirStmt>): List<MirLocal> =
+            list.filterIsInstance<MirStmt.Declare>().map { it.local }.filter { it.type.isRef }
+
+        fun lname(l: MirLocal) = Mangling.local(l.name, l.id)
+
+        /**
+         * Emits [body] as the contents of one C scope. Reference locals declared directly in it
+         * ([extra] adds declarations of statements emitted by [mid]) are NULL-initialised first,
+         * [mid] runs after the body (loop continue label, do-while condition) and the locals
+         * are released at the end unless [epilogue] is false.
+         */
+        fun scope(
+            body: List<MirStmt>,
+            d: Int,
+            out: StringBuilder,
+            loop: MirLabel? = null,
+            extra: List<MirStmt> = emptyList(),
+            epilogue: Boolean = true,
+            mid: ((StringBuilder) -> Unit)? = null,
+        ) {
+            val locals = refDecls(body) + refDecls(extra)
+            for (l in locals) out.append("${ind(d)}${cType(l.type)} ${lname(l)} = NULL;\n")
+            scopes += Scope(locals, loop)
+            for (s in body) stmt(s, d, out)
+            mid?.invoke(out)
+            if (epilogue && (mid != null || !isTerminator(body.lastOrNull()))) out.append(releases(scopes.size - 1, scopes.size - 1, d, null))
+            scopes.removeAt(scopes.size - 1)
         }
+
+        /** Release statements for scopes [from] down to [to] (indices, from >= to), skipping [keep]. */
+        fun releases(from: Int, to: Int, d: Int, keep: MirLocal?): String {
+            val sb = StringBuilder()
+            for (i in from downTo to) {
+                for (l in scopes[i].locals.asReversed()) {
+                    if (l === keep) continue
+                    sb.append("${ind(d)}mk_release((MkObject *)${lname(l)});\n")
+                }
+            }
+            return sb.toString()
+        }
+
+        fun isStaticValue(e: MirExpr) = e is MirExpr.StringConst || e is MirExpr.NullConst
+
+        // ---- statements --------------------------------------------------------------
 
         fun stmt(s: MirStmt, d: Int, out: StringBuilder) {
             val i = ind(d)
             when (s) {
                 is MirStmt.Declare -> {
-                    if (s.local.type == TUnit || s.local.type == TNothing) throw EmitError("local of type ${s.local.type}")
-                    val init = s.init?.let { " = " + expr(it) } ?: ""
-                    out.append("$i${cType(s.local.type)} ${Mangling.local(s.local.name, s.local.id)}$init;\n")
+                    val t = s.local.type
+                    if (t == TUnit || t == TNothing) throw EmitError("local of type $t")
+                    if (t.isRef) {
+                        // declared (NULL) at the top of the scope
+                        val init = s.init ?: return
+                        out.append("$i${lname(s.local)} = ${coerceTo(init, t, top = true)};\n")
+                        if (!init.isOwned() && !isStaticValue(init)) out.append("${i}mk_retain((MkObject *)${lname(s.local)});\n")
+                    } else {
+                        val init = s.init?.let { " = " + expr(it) } ?: ""
+                        out.append("$i${cType(t)} ${lname(s.local)}$init;\n")
+                    }
                 }
-                is MirStmt.Assign -> out.append("$i${Mangling.local(s.local.name, s.local.id)} = ${expr(s.value)};\n")
+                is MirStmt.Assign -> {
+                    val l = s.local
+                    if (l.type.isRef) {
+                        out.append("$i{\n")
+                        out.append("${ind(d + 1)}${cType(l.type)} n = ${coerceTo(s.value, l.type, top = true)};\n")
+                        if (!s.value.isOwned() && !isStaticValue(s.value)) out.append("${ind(d + 1)}mk_retain((MkObject *)n);\n")
+                        out.append("${ind(d + 1)}${cType(l.type)} old = ${lname(l)};\n")
+                        out.append("${ind(d + 1)}${lname(l)} = n;\n")
+                        out.append("${ind(d + 1)}mk_release((MkObject *)old);\n")
+                        out.append("$i}\n")
+                    } else {
+                        out.append("$i${lname(l)} = ${expr(s.value)};\n")
+                    }
+                }
+                is MirStmt.SetField -> {
+                    val target = "((struct ${s.owner} *)(${expr(s.obj)}))->${Mangling.field(s.field)}"
+                    if (s.fieldType.isRef) {
+                        out.append("$i{\n")
+                        out.append("${ind(d + 1)}${cType(s.fieldType)} n = ${coerceTo(s.value, s.fieldType, top = true)};\n")
+                        if (!s.value.isOwned() && !isStaticValue(s.value)) out.append("${ind(d + 1)}mk_retain((MkObject *)n);\n")
+                        out.append("${ind(d + 1)}${cType(s.fieldType)} *p = &$target;\n")
+                        out.append("${ind(d + 1)}${cType(s.fieldType)} old = *p;\n")
+                        out.append("${ind(d + 1)}*p = n;\n")
+                        out.append("${ind(d + 1)}mk_release((MkObject *)old);\n")
+                        out.append("$i}\n")
+                    } else {
+                        out.append("$i$target = ${expr(s.value)};\n")
+                    }
+                }
                 is MirStmt.Eval -> {
-                    if (s.expr === MirExpr.UnitValue) return
-                    // (void) keeps clang quiet about unused values of pure expressions
-                    if (s.expr.type == TUnit || s.expr.type == TNothing) out.append("$i${expr(s.expr)};\n")
-                    else out.append("${i}(void)${expr(s.expr)};\n")
+                    val e = s.expr
+                    if (e === MirExpr.UnitValue) return
+                    if (e.type == TUnit || e.type == TNothing) out.append("$i${expr(e, top = true)};\n")
+                    else if (e.isOwned()) out.append("${i}mk_release((MkObject *)${expr(e, top = true)});\n")
+                    else out.append("${i}(void)${expr(e)};\n")
                 }
                 is MirStmt.If -> {
                     out.append("${i}if (${condExpr(s.cond)}) {\n")
-                    stmts(s.thenBody, d + 1, out)
+                    scope(s.thenBody, d + 1, out)
                     if (s.elseBody.isEmpty()) {
                         out.append("$i}\n")
                     } else {
                         out.append("$i} else {\n")
-                        stmts(s.elseBody, d + 1, out)
+                        scope(s.elseBody, d + 1, out)
                         out.append("$i}\n")
                     }
                 }
                 is MirStmt.Block -> {
                     out.append("$i{\n")
-                    stmts(s.body, d + 1, out)
+                    scope(s.body, d + 1, out)
                     out.append("$i}\n")
                 }
                 is MirStmt.While -> loop(s.label, "while (${condExpr(s.cond)})", s.body, d, out)
                 is MirStmt.Loop -> loop(s.label, "for (;;)", s.body, d, out)
-                is MirStmt.DoWhile -> {
-                    val tail = StringBuilder()
-                    stmts(s.condStmts, d + 1, tail)
-                    tail.append("${ind(d + 1)}if (!${expr(s.cond)}) break;\n")
-                    loop(s.label, "for (;;)", s.body, d, out, tail)
-                }
+                is MirStmt.DoWhile -> doWhile(s, d, out)
                 is MirStmt.ForRange -> forRange(s, d, out)
-                is MirStmt.Break -> { usedLabels.add(brk(s.label)); out.append("${i}goto ${brk(s.label)};\n") }
-                is MirStmt.Continue -> { usedLabels.add(cont(s.label)); out.append("${i}goto ${cont(s.label)};\n") }
+                is MirStmt.Break -> {
+                    usedLabels.add(brk(s.label))
+                    out.append(releases(scopes.size - 1, loopIndex(s.label), d, null))
+                    out.append("${i}goto ${brk(s.label)};\n")
+                }
+                is MirStmt.Continue -> {
+                    usedLabels.add(cont(s.label))
+                    out.append(releases(scopes.size - 1, loopIndex(s.label) + 1, d, null))
+                    out.append("${i}goto ${cont(s.label)};\n")
+                }
                 is MirStmt.Panic -> {
                     if (s.message.any { it < ' ' || it > '~' || it == '"' || it == '\\' }) throw EmitError("unsafe panic message")
                     out.append("${i}mk_panic(\"${s.message}\");\n")
                 }
-                is MirStmt.Return -> {
-                    val v = s.value
-                    if (v == null || v === MirExpr.UnitValue) out.append("${i}return;\n")
-                    else if (v.type == TUnit) out.append("$i${expr(v)};\n${i}return;\n")
-                    else out.append("${i}return ${expr(v)};\n")
-                }
+                is MirStmt.Return -> returnStmt(s, d, out)
             }
+        }
+
+        fun loopIndex(l: MirLabel): Int {
+            for (k in scopes.indices.reversed()) if (scopes[k].loop === l) return k
+            throw EmitError("jump to unknown loop ${l.id}")
+        }
+
+        fun returnStmt(s: MirStmt.Return, d: Int, out: StringBuilder) {
+            val i = ind(d)
+            val v = s.value
+            if (v == null || v === MirExpr.UnitValue) {
+                out.append(releases(scopes.size - 1, 0, d, null)).append("${i}return;\n")
+                return
+            }
+            if (v.type == TUnit) {
+                out.append("$i${expr(v, top = true)};\n").append(releases(scopes.size - 1, 0, d, null)).append("${i}return;\n")
+                return
+            }
+            if (!currentReturn.isRef) {
+                val rels = releases(scopes.size - 1, 0, d + 1, null)
+                if (rels.isEmpty()) {
+                    out.append("${i}return ${expr(v)};\n")
+                } else {
+                    out.append("$i{\n${ind(d + 1)}${cType(currentReturn)} r = ${expr(v)};\n").append(rels).append("${ind(d + 1)}return r;\n$i}\n")
+                }
+                return
+            }
+            // reference result: +1 for the caller. An owned local is moved out instead of retained.
+            val moved = (v as? MirExpr.Local)?.local?.takeIf { l -> scopes.any { sc -> sc.locals.any { it === l } } }
+            out.append("$i{\n")
+            out.append("${ind(d + 1)}${cType(currentReturn)} r = ${coerceTo(v, currentReturn, top = true)};\n")
+            if (moved == null && !v.isOwned() && !isStaticValue(v)) out.append("${ind(d + 1)}mk_retain((MkObject *)r);\n")
+            out.append(releases(scopes.size - 1, 0, d + 1, moved))
+            out.append("${ind(d + 1)}return r;\n$i}\n")
         }
 
         /** Expression for use as a condition: drops one redundant pair of outer parentheses. */
@@ -143,15 +364,28 @@ object CEmitter {
         fun brk(l: MirLabel) = "brk_${l.id}"
         fun cont(l: MirLabel) = "cont_${l.id}"
 
-        fun loop(label: MirLabel, header: String, body: List<MirStmt>, d: Int, out: StringBuilder, tail: CharSequence = "") {
+        fun loop(label: MirLabel, header: String, body: List<MirStmt>, d: Int, out: StringBuilder) {
             val i = ind(d)
-            val inner = StringBuilder()
-            stmts(body, d + 1, inner)
-            out.append("$i$header {\n").append(inner)
-            if (cont(label) in usedLabels) out.append("${ind(d + 1)}${cont(label)}:;\n")
-            out.append(tail)
+            out.append("$i$header {\n")
+            scope(body, d + 1, out, loop = label, mid = { sb ->
+                if (cont(label) in usedLabels) sb.append("${ind(d + 1)}${cont(label)}:;\n")
+            })
             out.append("$i}\n")
             if (brk(label) in usedLabels) out.append("$i${brk(label)}:;\n")
+        }
+
+        fun doWhile(s: MirStmt.DoWhile, d: Int, out: StringBuilder) {
+            val i = ind(d)
+            out.append("${i}for (;;) {\n")
+            scope(s.body, d + 1, out, loop = s.label, extra = s.condStmts, epilogue = false, mid = { sb ->
+                if (cont(s.label) in usedLabels) sb.append("${ind(d + 1)}${cont(s.label)}:;\n")
+                for (c in s.condStmts) stmt(c, d + 1, sb)
+                sb.append("${ind(d + 1)}{\n${ind(d + 2)}MkBoolean c = ${expr(s.cond)};\n")
+                sb.append(releases(scopes.size - 1, scopes.size - 1, d + 2, null))
+                sb.append("${ind(d + 2)}if (!c) break;\n${ind(d + 1)}}\n")
+            })
+            out.append("$i}\n")
+            if (brk(s.label) in usedLabels) out.append("$i${brk(s.label)}:;\n")
         }
 
         fun forRange(s: MirStmt.ForRange, d: Int, out: StringBuilder) {
@@ -181,13 +415,12 @@ object CEmitter {
             val dist = if (s.ascending) "(uint64_t)(int64_t)$last - (uint64_t)(int64_t)$cur" else "(uint64_t)(int64_t)$cur - (uint64_t)(int64_t)$last"
             val stop = if (s.inclusive) "$dist < (uint64_t)$st" else "$dist <= (uint64_t)$st"
             val adv = if (s.ascending) "(int64_t)$cur + $st" else "(int64_t)$cur - $st"
-            val inner = StringBuilder()
-            stmts(s.body, d + 3, inner)
             out.append("${ind(d + 1)}if ($enter) {\n")
             out.append("${ind(d + 2)}for (;;) {\n")
             out.append("${ind(d + 3)}const $t $v = $cur;\n")
-            out.append(inner)
-            if (cont(s.label) in usedLabels) out.append("${ind(d + 3)}${cont(s.label)}:;\n")
+            scope(s.body, d + 3, out, loop = s.label, mid = { sb ->
+                if (cont(s.label) in usedLabels) sb.append("${ind(d + 3)}${cont(s.label)}:;\n")
+            })
             out.append("${ind(d + 3)}if ($stop) break;\n")
             out.append("${ind(d + 3)}$cur = ($t)($adv);\n")
             out.append("${ind(d + 2)}}\n")
@@ -204,42 +437,99 @@ object CEmitter {
             TBoolean -> "MkBoolean"
             TDouble -> "MkDouble"
             TChar -> "MkChar"
-            TString -> "const MkString *"
+            TString, TNString -> "const MkString *"
             TUnit, TNothing -> "void"
+            TNull, is TObject, is TBoxed -> "MkObject *"
         }
 
-        fun expr(e: MirExpr): String = when (e) {
-            is MirExpr.IntConst -> if (e.value == Int.MIN_VALUE) "(-2147483647-1)" else if (e.value < 0) "(${e.value})" else e.value.toString()
-            is MirExpr.LongConst ->
-                if (e.value == Long.MIN_VALUE) "(-INT64_C(9223372036854775807)-1)"
-                else if (e.value < 0) "(-INT64_C(${-e.value}))" else "INT64_C(${e.value})"
-            is MirExpr.DoubleConst -> doubleLiteral(e.value)
-            is MirExpr.BooleanConst -> if (e.value) "true" else "false"
-            is MirExpr.CharConst -> "((MkChar)${e.code})"
-            is MirExpr.StringConst -> {
-                val name = literals.getOrPut(e.value) { "kstr_${literals.size}" }
-                "((const MkString *)&$name)"
-            }
-            MirExpr.UnitValue -> "((void)0)"
-            is MirExpr.Local -> Mangling.local(e.local.name, e.local.id)
-            is MirExpr.Binary -> binary(e)
-            is MirExpr.Unary -> unary(e)
-            is MirExpr.Convert -> convert(e)
-            is MirExpr.Call -> {
-                val f = sig[e.cName] ?: throw EmitError("call of unknown function ${e.cName}")
-                if (f.params.size != e.args.size) throw EmitError("wrong argument count for ${e.cName}")
-                "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
-            }
-            is MirExpr.RuntimeCall -> "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
-            is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
-            is MirExpr.Conditional -> "(${expr(e.cond)} ? ${expr(e.thenValue)} : ${expr(e.elseValue)})"
-            is MirExpr.Unreachable -> when (e.type) {
-                TString -> "((const MkString *)0)"
-                TDouble -> "0.0"
-                TUnit, TNothing -> "((void)0)"
-                else -> "(${cType(e.type)})0"
+        /** [e] as a C expression of C type `cType(to)` (adds a cast between reference types). */
+        fun coerceTo(e: MirExpr, to: MirType, top: Boolean = false): String {
+            val s = expr(e, top)
+            if (!to.isRef || !e.type.isRef) return s
+            return if (cType(e.type) == cType(to)) s else "((${cType(to)})$s)"
+        }
+
+        fun obj(e: MirExpr): String = "((MkObject *)${expr(e)})"
+
+        fun expr(e: MirExpr, top: Boolean = false): String {
+            if (!top && e.isOwned()) throw EmitError("owned temporary in operand position: ${e.type}")
+            return when (e) {
+                is MirExpr.IntConst -> if (e.value == Int.MIN_VALUE) "(-2147483647-1)" else if (e.value < 0) "(${e.value})" else e.value.toString()
+                is MirExpr.LongConst ->
+                    if (e.value == Long.MIN_VALUE) "(-INT64_C(9223372036854775807)-1)"
+                    else if (e.value < 0) "(-INT64_C(${-e.value}))" else "INT64_C(${e.value})"
+                is MirExpr.DoubleConst -> doubleLiteral(e.value)
+                is MirExpr.BooleanConst -> if (e.value) "true" else "false"
+                is MirExpr.CharConst -> "((MkChar)${e.code})"
+                is MirExpr.StringConst -> {
+                    val name = literals.getOrPut(e.value) { "kstr_${literals.size}" }
+                    "((const MkString *)&$name)"
+                }
+                MirExpr.UnitValue -> "((void)0)"
+                is MirExpr.Local -> lname(e.local)
+                is MirExpr.Binary -> binary(e)
+                is MirExpr.Unary -> unary(e)
+                is MirExpr.Convert -> convert(e)
+                is MirExpr.Call -> {
+                    val f = sig[e.cName] ?: throw EmitError("call of unknown function ${e.cName}")
+                    if (f.params.size != e.args.size) throw EmitError("wrong argument count for ${e.cName}")
+                    "${e.cName}(${e.args.indices.joinToString(", ") { coerceTo(e.args[it], f.params[it].type) }})"
+                }
+                is MirExpr.RuntimeCall -> "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
+                is MirExpr.Conditional -> "(${expr(e.cond)} ? ${coerceTo(e.thenValue, e.type)} : ${coerceTo(e.elseValue, e.type)})"
+                is MirExpr.Unreachable -> when (e.type) {
+                    TDouble -> "0.0"
+                    TUnit, TNothing -> "((void)0)"
+                    else -> "(${cType(e.type)})0"
+                }
+                is MirExpr.NullConst -> "NULL"
+                is MirExpr.Box -> "mk_box_${boxName(e.operand.type)}(${expr(e.operand)})"
+                is MirExpr.Unbox -> "mk_unbox_${boxName(e.to)}(${obj(e.operand)})"
+                is MirExpr.Cast -> cast(e)
+                is MirExpr.IsInstance -> "mk_is_instance((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
+                is MirExpr.NotNull -> "((${cType(e.type)})mk_not_null(${obj(e.operand)}))"
+                is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
+                is MirExpr.VCall -> {
+                    val fp = fnPtrType(e.type, e.paramTypes)
+                    val r = obj(e.receiver)
+                    "((($fp)$r->type->vtable[${e.slot}]))(${listOf(r).plus(argList(e.args, e.paramTypes)).joinToString(", ")})"
+                }
+                is MirExpr.ICall -> {
+                    val fp = fnPtrType(e.type, e.paramTypes)
+                    val r = obj(e.receiver)
+                    "((($fp)mk_itable($r, &${e.interfaceCName}_ti)[${e.index}]))(${listOf(r).plus(argList(e.args, e.paramTypes)).joinToString(", ")})"
+                }
+                is MirExpr.New -> {
+                    val f = sig[e.ctorCName] ?: throw EmitError("unknown constructor ${e.ctorCName}")
+                    val ps = f.params.drop(1)
+                    "${e.ctorCName}_new(${e.args.indices.joinToString(", ") { coerceTo(e.args[it], ps[it].type) }})"
+                }
+                is MirExpr.ObjectGet -> "${e.classCName}_get()"
             }
         }
+
+        fun argList(args: List<MirExpr>, types: List<MirType>): List<String> = args.indices.map { coerceTo(args[it], types[it]) }
+
+        fun fnPtrType(ret: MirType, params: List<MirType>): String =
+            "${cType(ret)} (*)(${(listOf("MkObject *") + params.map { cType(it) }).joinToString(", ")})"
+
+        fun cast(e: MirExpr.Cast): String {
+            val to = e.to
+            return when (e.mode) {
+                MirExpr.CastMode.Unchecked -> {
+                    val s = expr(e.operand)
+                    if (cType(e.operand.type) == cType(to)) s else "((${cType(to)})$s)"
+                }
+                MirExpr.CastMode.Checked -> {
+                    val fn = if (to.isNullableRef()) "mk_cast" else "mkh_cast_nn"
+                    "((${cType(to)})$fn(${obj(e.operand)}, &${typeInfoOf(to)}))"
+                }
+                MirExpr.CastMode.Safe -> "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
+            }
+        }
+
+        fun MirType.isNullableRef(): Boolean = this === TNString || (this is TObject && nullable) || this is TBoxed
 
         fun doubleLiteral(v: Double): String = when {
             v.isNaN() -> "NAN"
@@ -258,10 +548,14 @@ object CEmitter {
         }
 
         fun binary(e: MirExpr.Binary): String {
+            val op = e.op
+            val t = e.left.type
+            if (op == BinaryOp.IdEq || op == BinaryOp.IdNe) {
+                val c = if (op == BinaryOp.IdEq) "==" else "!="
+                return "((const void *)${expr(e.left)} $c (const void *)${expr(e.right)})"
+            }
             val a = expr(e.left)
             val b = expr(e.right)
-            val t = e.left.type
-            val op = e.op
             if (op == BinaryOp.AndAnd) return "($a && $b)"
             if (op == BinaryOp.OrOr) return "($a || $b)"
             if (t == TString) {
@@ -276,6 +570,7 @@ object CEmitter {
                     BinaryOp.Eq -> "=="; BinaryOp.Ne -> "!="; BinaryOp.Lt -> "<"
                     BinaryOp.Le -> "<="; BinaryOp.Gt -> ">"; else -> ">="
                 }
+                if (t.isRef) throw EmitError("operator $op on references")
                 return "($a $c $b)"
             }
             if (t == TBoolean) {
@@ -378,6 +673,13 @@ object CEmitter {
 #else
 #define MKH_FN static inline
 #endif
+
+MKH_FN void mkh_abstract(void) { mk_panic("AbstractMethodError"); }
+MKH_FN MkObject *mkh_cast_nn(MkObject *o, const MkTypeInfo *t) {
+    if (o == NULL) mk_panic("NullPointerException: null cannot be cast to non-null type");
+    return mk_cast(o, t);
+}
+MKH_FN MkObject *mkh_safe_cast(MkObject *o, const MkTypeInfo *t) { return mk_is_instance(o, t) ? o : NULL; }
 
 /* Kotlin-exact integer helpers. */
 MKH_FN MkInt mkh_div_int(MkInt a, MkInt b) {

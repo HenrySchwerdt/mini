@@ -35,15 +35,43 @@ object Mangling {
     /** C identifier for a local variable or parameter: `v_<name>_<id>`. */
     fun local(name: String, id: Int): String = "v_" + escape(name) + "_" + id
 
-    fun typeLetter(type: MirType): Char = when (type) {
-        TInt -> 'I'
-        TLong -> 'J'
-        TBoolean -> 'Z'
-        TDouble -> 'D'
-        TChar -> 'C'
-        TString -> 'S'
-        TUnit -> 'V'
-        TNothing -> 'N'
+    /**
+     * C stem of a class: `kc_` + package parts and the nested class path joined by `_D`.
+     * Methods are `<class stem>_M<name>_A<letters>`, constructors `<class stem>_C_A<letters>`,
+     * fields `f_<name>`. `_M`, `_C`, `_D`, `_A`, `_E` never occur inside an escaped segment.
+     */
+    fun className(packageName: String, path: List<String>): String {
+        val segments = (if (packageName.isEmpty()) emptyList() else packageName.split('.')) + path
+        return "kc_" + segments.joinToString("_D") { escape(it) }
+    }
+
+    fun method(classCName: String, name: String, params: List<MirType>): String =
+        classCName + "_M" + escape(name) + paramSuffix(params)
+
+    fun constructor(classCName: String, params: List<MirType>): String = classCName + "_C" + paramSuffix(params)
+
+    fun field(name: String): String = "f_" + escape(name)
+
+    private fun paramSuffix(params: List<MirType>): String {
+        if (params.isEmpty()) return ""
+        val sb = StringBuilder("_A")
+        for (p in params) sb.append(typeLetter(p))
+        return sb.toString()
+    }
+
+    fun typeLetter(type: MirType): String = when (type) {
+        TInt -> "I"
+        TLong -> "J"
+        TBoolean -> "Z"
+        TDouble -> "D"
+        TChar -> "C"
+        TString -> "S"
+        TUnit -> "V"
+        TNothing -> "N"
+        TNString -> "QS"
+        TNull -> "QN"
+        is TBoxed -> "Q" + typeLetter(type.prim)
+        is TObject -> (if (type.nullable) "Q" else "") + "L" + type.cName + "_E"
     }
 
     private fun escape(s: String): String {

@@ -1,1 +1,0 @@
-unsupported_nullable.kt:1:11: error: unsupported construct: nullable type 'kotlin.String?'

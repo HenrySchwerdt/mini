@@ -1,6 +1,6 @@
-// P0 has no classes yet.
+// Generic classes are not supported yet.
 
-class Foo(val x: Int)
+class Box<T>(val value: T)
 
 fun main() {
     println(1)

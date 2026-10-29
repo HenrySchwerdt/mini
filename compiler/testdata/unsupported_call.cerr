@@ -1,2 +1,2 @@
 unsupported_call.kt:2:
-unsupported construct: call to 'kotlin.collections.listOf'
+unsupported construct: type 'kotlin.collections.List'

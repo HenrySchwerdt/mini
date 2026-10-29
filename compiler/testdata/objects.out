@@ -1,0 +1,16 @@
+start
+registry
+register a -> 1
+register b -> 2
+2
+before lazy
+Lazy initialised
+hello from Lazy
+hello from Lazy
+Hello
+MiniBank #1: 105
+MiniBank #2: 250
+2
+MiniBank
+factory
+true

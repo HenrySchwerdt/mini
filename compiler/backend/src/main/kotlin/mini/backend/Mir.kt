@@ -19,6 +19,45 @@ class MirModule(
     /** Name of the source file, used in generated comments only. */
     val sourceName: String,
     val functions: List<MirFunction>,
+    /** Classes, interfaces and objects. Superclasses and interfaces precede their subtypes. */
+    val classes: List<MirClass> = emptyList(),
+)
+
+class MirField(val name: String, val type: MirType)
+
+/** The function table a class provides for one interface (see compiler/README.md, itables). */
+class MirItable(
+    /** C name of the interface ([MirClass.cName]). */
+    val interfaceCName: String,
+    /** One entry per interface method (in the interface's method-index order); null = abstract. */
+    val entries: List<String?>,
+)
+
+/**
+ * A class, interface or object. [cName] is the C identifier stem: `struct <cName>` is the
+ * instance layout and `<cName>_ti` the MkTypeInfo.
+ */
+class MirClass(
+    /** Fully qualified Kotlin name (MkTypeInfo.name). */
+    val qualifiedName: String,
+    val cName: String,
+    val isInterface: Boolean,
+    /** Direct superclass (a user class), null when it is kotlin.Any. Always null for interfaces. */
+    val superCName: String?,
+    /** Fields declared by this class (not inherited ones). */
+    val fields: List<MirField>,
+    /** All implemented interfaces (transitively, including those of superclasses), by [cName]. */
+    val interfaces: List<String>,
+    /**
+     * Class vtable: three Any slots (toString, equals, hashCode) followed by the user slots.
+     * An entry is the C name of the implementation; null means the default Any member
+     * (slots 0..2) or abstract (later slots). Empty for interfaces.
+     */
+    val vtable: List<String?>,
+    /** One table per entry of [interfaces], same order. Empty for interfaces. */
+    val itables: List<MirItable>,
+    /** For `object` declarations: C name of the constructor (initialiser) function. */
+    val objectCtor: String? = null,
 )
 
 class MirFunction(
@@ -29,6 +68,11 @@ class MirFunction(
     val params: List<MirLocal>,
     val returnType: MirType,
     val body: List<MirStmt>,
+    /**
+     * Non-null for constructors: [cName] is the initialiser `void f(MkObject *this, ...)`;
+     * the value is the [MirClass.cName]. The emitter adds an allocating wrapper `<cName>_new`.
+     */
+    val constructorOf: String? = null,
 )
 
 class MirLocal(
@@ -53,11 +97,57 @@ object TString : MirType("String")
 object TUnit : MirType("Unit")
 object TNothing : MirType("Nothing")
 
+/*
+ * Reference types. All of them are C pointers (`MkObject *`, except strings which are
+ * `const MkString *`) and may be NULL at the C level; nullability is a Kotlin-level fact.
+ */
+object TNString : MirType("String?")
+
+/** The type of the `null` literal. */
+object TNull : MirType("Nothing?")
+
+const val ANY_CNAME = "mk_Any"
+
+/** `kotlin.Any` has [cName] [ANY_CNAME]; user classes use [MirClass.cName]. */
+data class TObject(
+    val qualifiedName: String,
+    val cName: String,
+    val nullable: Boolean,
+    val isInterface: Boolean = false,
+) : MirType(if (nullable) "$qualifiedName?" else qualifiedName) {
+    val typeInfo: String get() = if (cName == ANY_CNAME) "mk_type_Any" else "${cName}_ti"
+}
+
+/** `Int?`, `Long?`, `Boolean?`, `Double?`, `Char?`: a boxed primitive (a reference). */
+data class TBoxed(val prim: MirType) : MirType(prim.displayName + "?")
+
+val MirType.isRef: Boolean
+    get() = this === TString || this === TNString || this is TObject || this is TBoxed || this === TNull
+
+val MirType.isPrimitive: Boolean
+    get() = this === TInt || this === TLong || this === TBoolean || this === TDouble || this === TChar
+
+fun MirType.nonNull(): MirType = when (this) {
+    TNString -> TString
+    is TObject -> if (nullable) copy(nullable = false) else this
+    is TBoxed -> prim
+    else -> this
+}
+
+fun MirType.asNullable(): MirType = when (this) {
+    TString -> TNString
+    is TObject -> if (nullable) this else copy(nullable = true)
+    TInt, TLong, TBoolean, TDouble, TChar -> TBoxed(this)
+    else -> this
+}
+
 enum class BinaryOp(val isComparison: Boolean = false, val isShift: Boolean = false) {
     Add, Sub, Mul, Div, Rem,
     Shl(isShift = true), Shr(isShift = true), Ushr(isShift = true),
     And, Or, Xor,
     Eq(true), Ne(true), Lt(true), Le(true), Gt(true), Ge(true),
+    /** Reference identity (`===`, null checks); operands are any reference types. */
+    IdEq(true), IdNe(true),
     /** Short-circuit; the right operand must not need hoisted statements. */
     AndAnd, OrOr,
 }
@@ -68,6 +158,14 @@ sealed class MirStmt {
     /** `val`/`var`/temporary declaration. [init] is null for "declared, assigned later". */
     class Declare(val local: MirLocal, val init: MirExpr?) : MirStmt()
     class Assign(val local: MirLocal, val value: MirExpr) : MirStmt()
+    /** `obj.field = value`; [owner] is the [MirClass.cName] that declares the field. */
+    class SetField(
+        val obj: MirExpr,
+        val owner: String,
+        val field: String,
+        val fieldType: MirType,
+        val value: MirExpr,
+    ) : MirStmt()
     /** Expression evaluated for its effect; the value is discarded. */
     class Eval(val expr: MirExpr) : MirStmt()
     class If(val cond: MirExpr, val thenBody: List<MirStmt>, val elseBody: List<MirStmt>) : MirStmt()
@@ -145,14 +243,92 @@ sealed class MirExpr {
     /** Call of a libminirt function declared in minirt.h. */
     class RuntimeCall(val cName: String, val args: List<MirExpr>, override val type: MirType) : MirExpr()
 
-    /** `cond ? a : b`; branches must not need hoisted statements. */
-    class Conditional(val cond: MirExpr, val thenValue: MirExpr, val elseValue: MirExpr) : MirExpr() {
-        override val type: MirType get() = thenValue.type
+    /** `cond ? a : b`; branches must not need hoisted statements. [resultType] defaults to the then type. */
+    class Conditional(
+        val cond: MirExpr,
+        val thenValue: MirExpr,
+        val elseValue: MirExpr,
+        val resultType: MirType? = null,
+    ) : MirExpr() {
+        override val type: MirType get() = resultType ?: thenValue.type
     }
+
+    /** The `null` literal retyped to [type] (a nullable reference type, or [TNull]). */
+    class NullConst(override val type: MirType = TNull) : MirExpr()
+
+    /** Boxes a primitive into [to] (a [TBoxed] or `Any`/`Any?`). Owned result. */
+    class Box(val operand: MirExpr, val to: MirType) : MirExpr() { override val type: MirType get() = to }
+
+    /** Unboxes a [TBoxed] (NullPointerException on null) into the primitive [to]. */
+    class Unbox(val operand: MirExpr, val to: MirType) : MirExpr() { override val type: MirType get() = to }
+
+    enum class CastMode {
+        /** Statically known to succeed (upcast, smart cast): only a C-level retyping. */
+        Unchecked,
+        /** `as`: ClassCastException / NullPointerException on failure. */
+        Checked,
+        /** `as?`: null on failure. `to` must be nullable. */
+        Safe,
+    }
+
+    /** Reference cast to [to]. Borrowed result (the same reference). */
+    class Cast(val operand: MirExpr, val to: MirType, val mode: CastMode) : MirExpr() {
+        override val type: MirType get() = to
+    }
+
+    /** `operand is target` (null gives false). Boxed types test for the box. */
+    class IsInstance(val operand: MirExpr, val target: MirType) : MirExpr() {
+        override val type: MirType get() = TBoolean
+    }
+
+    /** `operand!!`: NullPointerException when null. Borrowed. */
+    class NotNull(val operand: MirExpr) : MirExpr() { override val type: MirType get() = operand.type.nonNull() }
+
+    /** Reads a field; [owner] is the [MirClass.cName] that declares it. Borrowed result. */
+    class FieldGet(val obj: MirExpr, val owner: String, val field: String, override val type: MirType) : MirExpr()
+
+    /**
+     * Virtual call through class vtable slot [slot] (index into the whole vtable, so >= 3).
+     * [paramTypes] are the declared parameter types without the receiver. Owned result if reference.
+     */
+    class VCall(
+        val slot: Int,
+        val receiver: MirExpr,
+        val args: List<MirExpr>,
+        val paramTypes: List<MirType>,
+        override val type: MirType,
+    ) : MirExpr()
+
+    /** Interface call: method [index] of the table of interface [interfaceCName]. Owned result if reference. */
+    class ICall(
+        val interfaceCName: String,
+        val index: Int,
+        val receiver: MirExpr,
+        val args: List<MirExpr>,
+        val paramTypes: List<MirType>,
+        override val type: MirType,
+    ) : MirExpr()
+
+    /** Allocates an instance and runs the constructor [ctorCName]. Owned result. */
+    class New(val ctorCName: String, val args: List<MirExpr>, override val type: MirType) : MirExpr()
+
+    /** The singleton of an `object`, created on first access. Borrowed (the singleton is immortal). */
+    class ObjectGet(val classCName: String, override val type: MirType) : MirExpr()
 
     /** `String.length` (Int). */
     class StringLength(val operand: MirExpr) : MirExpr() { override val type: MirType get() = TInt }
 
     /** A value of [type] that is never actually used (dead code after return/break). */
     class Unreachable(override val type: MirType) : MirExpr()
+}
+
+/**
+ * True for expressions that produce a new reference the consumer must release (+1). The
+ * producer guarantees that such an expression only appears as the initialiser of a
+ * [MirStmt.Declare], the value of [MirStmt.Assign] / [MirStmt.SetField] / [MirStmt.Return],
+ * or the operand of [MirStmt.Eval]; every other position sees a [MirExpr.Local] holding it.
+ */
+fun MirExpr.isOwned(): Boolean = type.isRef && when (this) {
+    is MirExpr.Call, is MirExpr.RuntimeCall, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.New, is MirExpr.Box -> true
+    else -> false
 }
