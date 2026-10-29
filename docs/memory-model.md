@@ -794,7 +794,7 @@ Korpus: `capture_escaping_lambda`.
 **Regel:** 5.3, Teil-Moves.
 
 ```kotlin
-fun steal(s: Slot): @Owned Box? { val b = s.item; return b }   // error[M0113]: field `item` of `s` is moved out and not restored
+fun steal(s: Slot): @Owned Box? { val b = s.item.move(); return b }   // error[M0113]: field `item` of `s` is moved out and not restored
 ```
 Behoben: `s.item = null` vor dem `return`. Korpus: `field_left_moved`.
 

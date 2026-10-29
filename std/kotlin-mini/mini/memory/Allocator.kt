@@ -22,7 +22,7 @@ interface Allocator {
 interface Deallocating : Allocator {
     fun free(ptr: NativePtr)
 
-    /** `alloc.free(x)`: same as `x.free()`, but names the allocator (checked: M0112). */
+    /** `alloc.free(x)`: same as `x.free()`, but names the allocator (checked: M0108). */
     fun free(obj: Any?) {
         obj.free()
     }
