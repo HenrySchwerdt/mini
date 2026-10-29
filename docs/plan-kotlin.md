@@ -411,6 +411,18 @@ number and string formatting → UTF-8/16 → allocators (Heap, Arena, Pool, Deb
 object model and refcounting → console/entry point. After that `runtime/src/*.c` is gone.
 For the bootstrap this is a win: compiler, stdlib and runtime are then all Kotlin.
 
+**IO and threads in Kotlin, libuv as a fallback.** `mini.io` (suspend APIs) and `mini.concurrent`
+are our own Kotlin interfaces. They first run on libuv (coroutines and async IO, §5), then get
+native Kotlin backends over libc syscalls, each passing the same test suite as the libuv variant:
+- Linux: io_uring (network and truly asynchronous file IO, fewer syscalls), epoll as fallback.
+- macOS: kqueue; file IO on a thread pool.
+- Threads, mutexes, condition variables, timers (a timer heap), atomics: pthreads and C11/LLVM atomics.
+- Processes and signals (`posix_spawn`, `signalfd`/kqueue) last, they carry most of libuv's edge cases.
+
+Why: IO completions resume coroutines directly, all buffers go through our allocators (one arena per
+request covers its IO buffers too, and the checker sees them), io_uring performance, no C. libuv
+stays as the fallback backend, mainly for Windows, until the Kotlin backends reach parity; then it goes.
+
 ### 10a. Self-hosting
 
 Goal: the compiler is compiled by itself and runs as a native binary without a JVM.
@@ -578,6 +590,27 @@ without LLVM; new optimizations and features target LLVM first.
 Order after B3: C interop complete (§7: pointers, structs, callbacks) → LLVM backend reaching parity
 with the C backend (same test suite, byte-identical program output) → switch the default to LLVM,
 embedded lld, single binary → ORC JIT, `.kts`, REPL → cross-compilation and static musl binaries.
+
+### 10h. Performance phase (after the features are complete)
+
+Goal: peak performance with numbers to prove it. **Measure first:** a benchmark suite (Benchmarks Game
+programs binary-trees, n-body, fannkuch, spectral-norm, mandelbrot, plus JSON and the compiler itself)
+against C, Rust, Go, Swift, Kotlin/JVM and Kotlin/Native; Mini in Managed, Arena and Strict variants;
+time, peak memory, startup and `mem-report` counters; results published on the website per release.
+Every optimization has to show up in that table.
+
+Candidates:
+- **Object layout:** 8-byte header (compressed type index + refcount + flags in one word), field
+  reordering and packing, immortal static objects (literals, singletons, empty collections), no
+  refcount word for arena objects.
+- **Values instead of objects:** primitive specialization of generics (`List<Int>` stores ints),
+  `value class` and small data classes inline in fields, arrays and on the stack, escape analysis to
+  stack allocation, Perceus-style reuse of dying objects of the same size.
+- **Strings:** compact Latin-1 strings, small-string optimization, ropes for concatenation.
+- **Allocators:** bump-pointer arenas, thread-local size-class pools (mimalloc-style) instead of
+  `malloc`, non-atomic refcounting by default (atomic only for shared objects).
+- **Code:** whole-program devirtualization, and with LLVM (§10g) LTO, PGO and zero-cost unwinding.
+- **IO:** the Kotlin io_uring/kqueue backends (§10c) against libuv.
 
 ## 11. Working method: manager and Sonnet agents
 
