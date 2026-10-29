@@ -21,7 +21,7 @@ class MemoryRunTest {
     private val corpus = File(System.getProperty("mini.memoryCorpus") ?: error("mini.memoryCorpus not set"))
     private val api = File(System.getProperty("mini.memoryApi") ?: error("mini.memoryApi not set"))
     private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
-    private val runtime = File(repoRoot, "runtime/minirt")
+    private val runtime = File(repoRoot, "runtime")
     private val work = Files.createTempDirectory("minic-memrun-").toFile().also { it.deleteOnExit() }
     private val apiFiles = api.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
     private val ran = mutableListOf<String>()

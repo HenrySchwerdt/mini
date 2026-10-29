@@ -21,21 +21,21 @@ import java.net.URLClassLoader
 import java.nio.file.Files
 
 /**
- * Tests of the Mini stdlib sources (std/kotlin-mini) that do not need the native backend:
+ * Tests of the Mini stdlib sources (stdlib) that do not need the native backend:
  *
  *  1. [stdlibGivesIrForEverything]: all stdlib sources go through K2 in the JVM-free configuration used by
  *     `minic build` (no JDK, no kotlin-stdlib jar) and every function that is not abstract/external/builtin has an
  *     IR body.
  *  2. [stdlibUnitTestsOnJvm]: the stdlib sources (builtins excluded, `package kotlin.x` renamed to `mkt.x`,
  *     `mini.internal` replaced by the JVM implementation) are compiled for the JVM together with the unit tests in
- *     std/kotlin-mini-test and the tests are run. [testsAgreeWithRealStdlib] runs the same tests against the real
+ *     stdlib-test and the tests are run. [testsAgreeWithRealStdlib] runs the same tests against the real
  *     kotlin-stdlib to show that the expectations are real Kotlin behaviour.
  *  3. [intrinsicsAreInSync]: every `@CSymbol` of the stdlib exists in minirt.h and in the JVM implementation.
  */
 class StdlibJvmTest {
     private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
-    private val stdDir = File(repoRoot, "std/kotlin-mini")
-    private val testDir = File(repoRoot, "std/kotlin-mini-test")
+    private val stdDir = File(repoRoot, "stdlib")
+    private val testDir = File(repoRoot, "stdlib-test")
     private val work = Files.createTempDirectory("minic-stdlib-test-").toFile().also { it.deleteOnExit() }
 
     @Test
@@ -196,7 +196,7 @@ class StdlibJvmTest {
     fun intrinsicsAreInSync() {
         val native = File(stdDir, "mini/internal/Intrinsics.kt").readText()
         val jvm = File(testDir, "jvm/mini/internal/Intrinsics.kt").readText()
-        val header = File(repoRoot, "runtime/minirt/include/minirt.h").readText()
+        val header = File(repoRoot, "runtime/include/minirt.h").readText()
         val decl = Regex("@CSymbol\\(\"(\\w+)\"\\)\\s*public external fun (\\w+)\\(([^)]*)\\)(?::\\s*(\\w+\\??))?")
         val all = decl.findAll(native).toList()
         assertTrue(all.size >= 15, "expected the intrinsic declarations")

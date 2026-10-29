@@ -91,7 +91,7 @@ import org.jetbrains.kotlin.ir.util.statements
 
 /* Types and constants shared by the Ir2Mir files. */
 
-internal class ClassInfo(val ir: IrClass, val cName: String, val qualified: String, val file: IrFile)
+internal class ClassInfo(val ir: IrClass, val cName: String, val qualified: String, val file: IrFile?)
 
 internal sealed class Dispatch {
     class AnyMember(val slot: Int) : Dispatch()

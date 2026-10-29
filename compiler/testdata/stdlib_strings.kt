@@ -1,4 +1,4 @@
-// String functions of the Mini stdlib (std/kotlin-mini/kotlin/text/Strings.kt), compiled from source.
+// String functions of the Mini stdlib (stdlib/kotlin/text/Strings.kt), compiled from source.
 fun show(label: String, value: String) {
     println(label + " = [" + value + "]")
 }

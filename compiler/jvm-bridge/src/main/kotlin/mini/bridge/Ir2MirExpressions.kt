@@ -66,6 +66,11 @@ import org.jetbrains.kotlin.ir.expressions.IrDelegatingConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrDoWhileLoop
 import org.jetbrains.kotlin.ir.expressions.IrEnumConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrGetEnumValue
+import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
+import org.jetbrains.kotlin.ir.expressions.IrThrow
+import org.jetbrains.kotlin.ir.expressions.IrVararg
+import org.jetbrains.kotlin.ir.expressions.IrTry
+import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrFunctionAccessExpression
@@ -162,7 +167,18 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrConst -> constant(e)
     is IrGetValue -> {
         val owner = e.symbol.owner
-        MirExpr.Local(localOf(owner, e))
+        if (owner is IrValueParameter && owner.kind == IrParameterKind.ExtensionReceiver && owner !in locals) unsupported(e, "receiver parameter")
+        val l = localOf(owner, e)
+        if (owner is IrVariable && owner.isLateinit) {
+            val body = ArrayList<MirStmt>()
+            val msg = MirExpr.StringConst("lateinit property " + owner.name.asString() + " has not been initialized")
+            body += MirStmt.Throw(tmpOf(newBuiltin("MkUninitializedPropertyAccessException", msg), body))
+            out += MirStmt.If(MirExpr.Binary(BinaryOp.IdEq, MirExpr.Local(l), MirExpr.NullConst()), body, emptyList())
+        }
+        if (owner in closure.boxed) {
+            val rc = refClassFor(declType(owner))
+            MirExpr.FieldGet(MirExpr.Local(l), rc.cName, "value", rc.valueType)
+        } else MirExpr.Local(l)
     }
     is IrCall -> if (isNoWhenBranch(e)) {
         out += MirStmt.Panic("NoWhenBranchMatchedException")
@@ -176,10 +192,18 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     }
     is IrGetField -> {
         val f = e.symbol.owner
-        val r = e.receiver ?: unsupported(e, "static field")
-        fieldGet(operands(listOf(r), out)[0], f)
+        val r = e.receiver
+        if (r == null) staticFieldGet(f, e) else fieldGet(operands(listOf(r), out)[0], f)
     }
     is IrStringConcatenation -> stringConcat(e, out)
+    is IrFunctionExpression -> lambdaValue(e, out)
+    is IrTry -> tryValue(e, out)
+    is IrVararg -> varargValue(e, out)
+    is IrFunctionReference -> functionReference(e, out)
+    is org.jetbrains.kotlin.ir.expressions.IrCallableReference<*> ->
+        if (e.origin == org.jetbrains.kotlin.ir.expressions.IrStatementOrigin.PROPERTY_REFERENCE_FOR_DELEGATE) MirExpr.NullConst(anyNullable)
+        else unsupported(e, "property reference")
+    is IrThrow -> { throwStmt(e, out); MirExpr.Unreachable(TNothing) }
     is IrWhen -> whenValue(e, out)
     is IrComposite -> blockValue(e.statements, e, out)
     is IrBlock -> {
@@ -219,6 +243,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             }
             return MirExpr.Cast(v, target, if (safe) MirExpr.CastMode.Safe else MirExpr.CastMode.Checked)
         }
+        IrTypeOperator.SAM_CONVERSION -> return samValue(e, out)
         IrTypeOperator.IMPLICIT_CAST, IrTypeOperator.IMPLICIT_NOTNULL -> {
             val v = value(e.argument, out)
             val target = mirType(e.type, e)
@@ -268,6 +293,9 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (from is TBoxed && to.isPrimitive) {
         if (from.prim == to) return MirExpr.Unbox(e, to)
         unsupported(at, "conversion from $from to $to")
+    }
+    if (from is TObject && from.cName == ANY_CNAME && to.isPrimitive) {
+        return MirExpr.Unbox(MirExpr.Cast(e, TBoxed(to), MirExpr.CastMode.Unchecked), to)
     }
     if (from.isRef && to.isRef) return e // C-level retyping is done by the emitter
     unsupported(at, "conversion from $from to $to")

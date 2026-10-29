@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Runs the Kotlin/Mini compiler from a source checkout; builds it first if needed.
+#   ./minic build examples/hello.kt -o build/hello
+#   ./minic check examples/memory_leak.kt
+set -euo pipefail
+root="$(cd "$(dirname "$0")" && pwd)"
+bin="$root/compiler/jvm-bridge/build/install/minic/bin/minic"
+if [ ! -x "$bin" ] || [ -n "$(find "$root/compiler" -name '*.kt' -path '*/src/main/*' -newer "$bin" -print -quit)" ]; then
+    (cd "$root/compiler" && ./gradlew -q installDist) >&2
+fi
+exec "$bin" "$@"

@@ -83,7 +83,7 @@ in beiden Varianten dieselben.
 ```
 
 Der Compiler ist ein Gradle-Projekt in Kotlin unter `compiler/` mit gepinnter
-Kotlin-Version. Die Runtime bleibt C17 mit xmake unter `runtime/`.
+Kotlin-Version. Die Runtime bleibt C17 unter `runtime/` und wird von `minic` mitkompiliert.
 
 ## 4. Das Speichermodell
 
@@ -309,11 +309,9 @@ bestehenden KMP-Projekten einfach ein Target hinzufügen kann (spätere Phase).
 
 | Bestand | Zukunft |
 |---|---|
-| `bootstrap/` (mini0, C) | wird als `v0.3-legacy` getaggt und eingefroren, später entfernt |
-| `runtime/` + libuv-Anbindung aus `bootstrap/src/lowering/threading.c`, `std/mini/net` | wird zur Basis von `libminirt` (C17, xmake) |
-| `std/mini/*.mini` | als `.kt` neu geschrieben: Kotlin-Namen gibt es in der echten stdlib, Mini-Spezifisches kommt nach `mini.*` |
-| `examples/*.mini` | nach `.kt` portiert und Teil der Testsuite |
-| CI-Matrix, xmake | bleibt für die Runtime, Gradle kommt für den Compiler dazu |
+| `bootstrap/` (mini0, C), alte `std/*.mini`, `examples/*.mini`, Docs v0.2/v0.3 | **entfernt** (letzter Stand: Merge-Commit `391270a` auf `main`) |
+| `runtime/` | ist jetzt libminirt (C17), die libuv-Anbindung des alten Compilers diente als Vorlage |
+| CI, xmake | xmake entfernt; CI = Runtime-Suite (`runtime/run_tests.sh`) + Gradle-Tests auf Linux/macOS |
 | Docs v0.2/v0.3 | Archiv. Neue Referenz: „Kotlin + Mini-Speichermodell“ |
 
 ## 10. Phasen und Abnahmekriterien
@@ -361,6 +359,25 @@ Programm** als Quelltext durch K2 schicken, mit `-Xallow-kotlin-package` und eig
 So haben auch `inline`-Funktionen wie `map`/`filter` IR-Bodies, die unser Backend
 kompilieren kann. Aus der JVM-stdlib-JAR gibt es nur Bytecode, kein IR.
 
+### 10d. Dogfooding: stdlib und Compiler mit dem eigenen Speichermodell schnell machen (nach v1)
+
+Sobald der Compiler nativ läuft, ist er unser größtes Testprogramm. Ablauf:
+1. **Messen, bevor optimiert wird:** Runtime-Zähler (Allokationen, Frees, Retain/Release,
+   Peak-Speicher) als `--debug-memory`-Build, plus Benchmark-Suite: native `minic` vs. JVM-`minic`
+   auf großen Eingaben (z. B. das eigene Backend), dazu Mikro-Benchmarks für die stdlib
+   (`ArrayList`, `HashMap`, `StringBuilder`, `map`/`filter`).
+2. **RC-Elision im Compiler** (Perceus-artig: Borrow-Inferenz für Parameter, Move der letzten
+   Nutzung, Reuse). Das bringt erfahrungsgemäß den größten Gewinn, ohne den Code anzufassen.
+3. **`minic mem-report` / `M0207`** (Abschnitt 4.4a) über stdlib und Compiler laufen lassen:
+   Wo bleibt Refcounting übrig, und warum?
+4. **Gezielt umstellen:**
+   - stdlib-Interna (Puffer von `ArrayList`/`StringBuilder`/`HashMap`) auf Strict mit
+     `@Owned`-Feldern. Die öffentliche API bleibt unverändert Kotlin-kompatibel.
+   - Im Compiler eine `Arena` pro Phase (Frontend, Ir2Mir, Emit).
+5. **Bewerten:** Zeit, Speicher und Anzahl RC-Operationen vorher/nachher. Und vor allem: Wie viele
+   Annotationen und `free()`s waren nötig, und welche Diagnosen haben gestört? Diese Erfahrungen
+   fließen zurück in `docs/memory-model.md` (Ergonomie, Inferenz von `@Owned`).
+
 ### 10c. Runtime in Kotlin (nach v1)
 
 Ziel: **keine handgeschriebene C-Runtime mehr.** libminirt wird Stück für Stück in Mini-Kotlin
@@ -381,7 +398,7 @@ härteste Praxistest unseres eigenen Speichermodells.
 
 Reihenfolge, jeweils mit den bestehenden C-Tests als Abnahme (dasselbe ABI aus `minirt.h`):
 Zahlen- und String-Formatierung → UTF-8/16 → Allocatoren (Heap, Arena, Pool, Debug) →
-Objektmodell und Refcounting → Konsole/Einstieg. Danach entfällt `runtime/minirt/src/*.c`.
+Objektmodell und Refcounting → Konsole/Einstieg. Danach entfällt `runtime/src/*.c`.
 Für den Bootstrap ist das ein Gewinn: Compiler, stdlib und Runtime sind dann alle Kotlin.
 
 ### 10a. Self-Hosting

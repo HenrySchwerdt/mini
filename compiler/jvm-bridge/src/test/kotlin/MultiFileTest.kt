@@ -7,7 +7,7 @@ import java.nio.file.Files
 /** `minic build a.kt b.kt -o out`: several input files, with the stdlib compiled from source and pruned. */
 class MultiFileTest {
     private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
-    private val runtime = File(repoRoot, "runtime/minirt")
+    private val runtime = File(repoRoot, "runtime")
 
     @Test
     fun twoFilesAndTheStdlib() {

@@ -100,6 +100,7 @@ internal fun Ir2Mir.flattenBody(e: IrExpression?, out: MutableList<MirStmt>) {
 internal fun Ir2Mir.whileLoop(s: IrWhileLoop, out: MutableList<MirStmt>) {
     val label = MirLabel(labelCounter++)
     loopLabels[s] = label
+    loopFinallyDepth[s] = finallyStack.size
     val pre = ArrayList<MirStmt>()
     val cond = value(s.condition, pre)
     val body = ArrayList<MirStmt>()
@@ -117,6 +118,7 @@ internal fun Ir2Mir.whileLoop(s: IrWhileLoop, out: MutableList<MirStmt>) {
 internal fun Ir2Mir.doWhileLoop(s: IrDoWhileLoop, out: MutableList<MirStmt>) {
     val label = MirLabel(labelCounter++)
     loopLabels[s] = label
+    loopFinallyDepth[s] = finallyStack.size
     val body = ArrayList<MirStmt>()
     flattenBody(s.body, body)
     val pre = ArrayList<MirStmt>()
@@ -159,11 +161,16 @@ internal fun Ir2Mir.forLoop(b: IrBlock, out: MutableList<MirStmt>) {
     val loop = st.getOrNull(1) as? IrWhileLoop
     val iterCall = iter?.initializer as? IrCall
     if (iter == null || loop == null || iterCall == null || st.size != 2) unsupported(b, "for loop shape")
+    if (arrayForLoop(b, loop, iterCall, out)) return
     val elemType = when (iter.type.classFqName?.asString()) {
         "kotlin.collections.IntIterator" -> TInt
         "kotlin.collections.LongIterator" -> TLong
         "kotlin.collections.CharIterator" -> TChar
-        else -> unsupported(b, "for loop over '${iter.type.classFqName}'")
+        else -> {
+            // any other Iterable: the iterator protocol is ordinary code (iterator(), hasNext(), next())
+            for (x in st) stmt(x, out)
+            return
+        }
     }
     val p = progression(iterCall.arguments[0]!!)
 
@@ -171,6 +178,7 @@ internal fun Ir2Mir.forLoop(b: IrBlock, out: MutableList<MirStmt>) {
     val loopVar = body.statements.getOrNull(0) as? IrVariable ?: unsupported(loop, "for loop variable")
     val label = MirLabel(labelCounter++)
     loopLabels[loop] = label
+    loopFinallyDepth[loop] = finallyStack.size
 
     val exprs = listOfNotNull(p.start, p.end, p.step)
     val vals = operands(exprs, out)

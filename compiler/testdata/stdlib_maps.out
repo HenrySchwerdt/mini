@@ -1,0 +1,12 @@
+{bob=3, alice=5, carol=5, dave=4}
+{3=[bob], 5=[alice, carol], 4=[dave]}
+2
+false
+3
+24
+{z=1, a=2}
+{1=x, 2=y}
+3
+true
+[a, b, c]
+3

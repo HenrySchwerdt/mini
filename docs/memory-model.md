@@ -1,7 +1,7 @@
 # Kotlin/Mini: Das Speichermodell (Spezifikation P1)
 
 Status: **normativ für P1, Test-first.** Die Analyse existiert noch nicht. Dieses Dokument,
-die API `std/kotlin-mini/mini/memory/*.kt` und der Korpus `compiler/testdata/memory/` legen
+die API `stdlib/mini/memory/*.kt` und der Korpus `compiler/testdata/memory/` legen
 fest, was der Compiler später akzeptieren und ablehnen muss. Der Entwurf steht in
 `docs/plan-kotlin.md` (Abschnitt 4). Wo dieses Dokument davon abweicht, gilt dieses Dokument;
 die Abweichungen stehen in Abschnitt 10.
@@ -116,7 +116,7 @@ freigeben oder weiterreichen“ (Abschnitt 3 und 5). Ein `Scoped`-Allocator erze
 
 ### 2.3 Die mitgelieferten Allocatoren (`mini.memory`)
 
-Alle als Kotlin-Quelltext in `std/kotlin-mini/mini/memory/`.
+Alle als Kotlin-Quelltext in `stdlib/mini/memory/`.
 
 | Typ | Traits | Ressource? | Bemerkung |
 |---|---|---|---|
@@ -169,7 +169,7 @@ fun main() {
 
 **Arena-Objekte besitzen keine fremden Referenzen (M0115).** Eine Arena führt beim
 `close()`/Reset **nie** `dispose` (weder `close()` noch Feld-Glue) der Objekte aus; sie
-führt keine Einzelbuchführung (so arbeitet die Runtime, siehe `runtime/minirt/README.md`).
+führt keine Einzelbuchführung (so arbeitet die Runtime, siehe `runtime/README.md`).
 Deshalb darf ein Objekt, das in einer Arena liegt, in seinen **besitzenden** Feldern
 (auch Property-Parametern des Konstruktors) nur enthalten: Primitive, konstante String-Literale
 (statisch, ohne Refcount), und Objekte **derselben Arena**. Der Compiler meldet M0115, wenn ein
@@ -968,7 +968,7 @@ bestätigt, Punkt 9 **geändert** (siehe dort); String-Literale sind statisch (P
 Verzeichnis `compiler/testdata/memory/`. Der Gradle-Test `:memory-spec:test`
 (`MemoryCorpusTest`) prüft:
 
-1. Alle Programme und `std/kotlin-mini/mini/memory/*.kt` kompilieren zusammen mit dem
+1. Alle Programme und `stdlib/mini/memory/*.kt` kompilieren zusammen mit dem
    echten Kotlin-Compiler (K2, 2.4.21, JVM) ohne Fehler.
 2. Jede Datei hat eine Kopfzeile (`// REJECT <Code>: ...` oder `// ACCEPT: ...`) und liegt in
    `package memory.<dateiname>`.

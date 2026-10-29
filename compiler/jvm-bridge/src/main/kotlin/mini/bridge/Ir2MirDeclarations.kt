@@ -57,6 +57,8 @@ import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.IrBlock
 import org.jetbrains.kotlin.ir.expressions.IrBlockBody
 import org.jetbrains.kotlin.ir.expressions.IrBreak
+import org.jetbrains.kotlin.ir.expressions.IrThrow
+import org.jetbrains.kotlin.ir.expressions.IrTry
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrComposite
 import org.jetbrains.kotlin.ir.expressions.IrConst
@@ -115,7 +117,23 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
     }
     val ret = if (f is IrConstructor) TUnit else mirType(f.returnType, f)
     currentReturn = ret
+    unitAsNull = false
+    finallyStack = ArrayList()
     val out = ArrayList<MirStmt>()
+    (f.parent as? IrClass)?.takeIf { it in classInfos }?.let { enterClassMember(f, it, params, out) }
+    if (f is IrSimpleFunction && f.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR && f.name.asString().startsWith("<get-")) {
+        // reading a lateinit property that was never assigned throws
+        val prop = f.correspondingPropertySymbol?.owner
+        val fld = prop?.backingField
+        if (prop != null && prop.isLateinit && fld != null) {
+            val raw = if (fld.parent is IrFile) staticFieldGet(fld, f)
+            else MirExpr.FieldGet(MirExpr.Local(params[0]), fieldOwner(fld).cName, fld.name.asString(), mirType(fld.type, fld))
+            val body = ArrayList<MirStmt>()
+            val msg = MirExpr.StringConst("lateinit property " + prop.name.asString() + " has not been initialized")
+            body += MirStmt.Throw(tmpOf(newBuiltin("MkUninitializedPropertyAccessException", msg), body))
+            out += MirStmt.If(MirExpr.Binary(BinaryOp.IdEq, raw, MirExpr.NullConst()), body, emptyList())
+        }
+    }
     if (f is IrConstructor && (f.parent as IrClass).kind == ClassKind.ENUM_CLASS) {
         val cn = info(f.parent as IrClass).cName
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$name", TString, MirExpr.Local(params[1]))
@@ -157,8 +175,13 @@ internal fun Ir2Mir.consumeOwned(v: MirExpr, out: MutableList<MirStmt>): MirExpr
 }
 
 internal fun Ir2Mir.returnValue(e: IrExpression, out: MutableList<MirStmt>) {
-    val v = bindValue(e, currentReturn, out)
+    var v = bindValue(e, currentReturn, out)
     if (v.type == TNothing) return
+    if (finallyStack.isNotEmpty()) {
+        // the value is computed before the finally blocks of the try statements being left run
+        if (v !is MirExpr.IntConst && v !is MirExpr.BooleanConst && v !is MirExpr.StringConst) v = tmpOf(v, out)
+        runFinalizers(0, out)
+    }
     out += MirStmt.Return(v)
 }
 
@@ -167,13 +190,20 @@ internal fun Ir2Mir.returnValue(e: IrExpression, out: MutableList<MirStmt>) {
 internal fun Ir2Mir.stmt(s: IrStatement, out: MutableList<MirStmt>) {
     when (s) {
         is IrVariable -> {
-            if (s.isLateinit) unsupported(s, "lateinit variable '${s.name}'")
             val t = mirType(s.type, s)
             if (t == TUnit || t == TNothing) unsupported(s, "variable '${s.name}' of type $t")
             val init = s.initializer?.let { bindValue(it, t, out) }
-            val l = MirLocal(localCounter++, s.name.asString(), t)
-            locals[s] = l
-            out += MirStmt.Declare(l, init)
+            if (s in closure.boxed) {
+                // captured `var`: lives in a heap cell shared with the closures
+                val rc = refClassFor(t)
+                val l = MirLocal(localCounter++, s.name.asString(), rc.type)
+                locals[s] = l
+                out += MirStmt.Declare(l, MirExpr.New(rc.ctor, listOf(init ?: zeroOf(t)), rc.type))
+            } else {
+                val l = MirLocal(localCounter++, s.name.asString(), t)
+                locals[s] = l
+                out += MirStmt.Declare(l, init)
+            }
         }
         is IrComposite -> for (x in s.statements) stmt(x, out)
         is IrBlock -> {
@@ -182,13 +212,26 @@ internal fun Ir2Mir.stmt(s: IrStatement, out: MutableList<MirStmt>) {
         is IrWhen -> whenStmt(s, out)
         is IrWhileLoop -> whileLoop(s, out)
         is IrDoWhileLoop -> doWhileLoop(s, out)
-        is IrBreak -> out += MirStmt.Break(labelOf(s.loop, s))
-        is IrContinue -> out += MirStmt.Continue(labelOf(s.loop, s))
+        is IrBreak -> { runFinalizers(loopFinallyDepth[s.loop] ?: 0, out); out += MirStmt.Break(labelOf(s.loop, s)) }
+        is IrContinue -> { runFinalizers(loopFinallyDepth[s.loop] ?: 0, out); out += MirStmt.Continue(labelOf(s.loop, s)) }
+        is IrThrow -> throwStmt(s, out)
+        is IrTry -> discard(tryValue(s, out, true), out)
         is IrReturn -> returnStmt(s, out)
         is IrSetValue -> {
-            val l = localOf(s.symbol.owner, s)
-            out += MirStmt.Assign(l, bindValue(s.value, l.type, out))
+            val owner = s.symbol.owner
+            val l = localOf(owner, s)
+            if (owner in closure.boxed) {
+                val rc = refClassFor(declType(owner))
+                out += MirStmt.SetField(MirExpr.Local(l), rc.cName, "value", rc.valueType, bindValue(s.value, rc.valueType, out))
+            } else out += MirStmt.Assign(l, bindValue(s.value, l.type, out))
         }
+        is IrSimpleFunction -> liftLocalFunction(s)
+        is org.jetbrains.kotlin.ir.declarations.IrLocalDelegatedProperty -> {
+            s.delegate?.let { stmt(it, out) }
+            liftLocalFunction(s.getter)
+            s.setter?.let { liftLocalFunction(it) }
+        }
+        is IrClass -> {} // local class: registered up front, compiled with the other classes
         is IrSetField -> setField(s, out)
         is IrInstanceInitializerCall -> instanceInitializer(s, out)
         is IrDelegatingConstructorCall -> delegatingCall(s, out)
@@ -220,10 +263,21 @@ internal fun Ir2Mir.isNoWhenBranch(c: IrCall): Boolean {
 
 internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
     val f = currentFunction!!
-    if (s.returnTargetSymbol.owner !== f) unsupported(s, "return from a lambda or nested function")
+    val target = s.returnTargetSymbol.owner
+    returnTargets[target]?.let { r ->
+        // return from an inline function / lambda expanded in place: store the result and leave the expansion
+        val rt = r.result
+        if (rt == null) stmt(s.value, out)
+        else out += MirStmt.Assign(rt, bindValue(s.value, rt.type, out))
+        runFinalizers(r.finallyDepth, out)
+        out += MirStmt.Break(r.label)
+        return
+    }
+    if (target !== f) unsupported(s, "return from a lambda or nested function")
     if (currentReturn == TUnit) {
         stmt(s.value, out)
-        out += MirStmt.Return(null)
+        runFinalizers(0, out)
+        out += MirStmt.Return(if (unitAsNull) MirExpr.NullConst(anyNullable) else null)
     } else {
         returnValue(s.value, out)
     }
@@ -244,7 +298,7 @@ internal fun Ir2Mir.fieldGet(recv: MirExpr, f: IrField): MirExpr =
 
 internal fun Ir2Mir.setField(s: IrSetField, out: MutableList<MirStmt>) {
     val f = s.symbol.owner
-    val r = s.receiver ?: unsupported(s, "static field")
+    val r = s.receiver ?: run { staticFieldSet(f, s.value, s, out); return }
     val ops = operands(listOf(r), out)
     val ft = mirType(f.type, f)
     out += MirStmt.SetField(ops[0], fieldOwner(f).cName, f.name.asString(), ft, bindValue(s.value, ft, out))
@@ -273,17 +327,21 @@ internal fun Ir2Mir.delegatingCall(c: IrDelegatingConstructorCall, out: MutableL
     val k = c.symbol.owner
     val cls = k.parent as IrClass
     if (isAny(cls)) return
+    if (builtinOf(cls) != null) { builtinSuperInit(c, k, out); return }
     val cName = functionNames[k] ?: unsupported(c, "call of constructor of '${cls.kotlinFqName}'")
     val self = MirExpr.Local(locals.values.first { it.name == "this" && it.id == 0 })
     val args = callArgs(c, k, out)
-    out += MirStmt.Eval(MirExpr.Call(cName, listOf<MirExpr>(self) + args, TUnit))
+    out += MirStmt.Eval(MirExpr.Call(cName, listOf<MirExpr>(self) + args + captureArgsFor(cls, c), TUnit))
 }
 
 internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirStmt>): MirExpr {
     val k = c.symbol.owner
     val cls = k.parent as IrClass
+    builtinOf(cls)?.let { return builtinNew(c, cls, it, out) }
+    if (cls.kotlinFqName.asString() == "kotlin.Any") return MirExpr.RuntimeCall("mk_any_new", emptyList(), anyType)
+    arrayKindOfFq(cls.kotlinFqName.asString())?.let { return arrayConstructor(c, it, out) }
     val cName = functionNames[k] ?: unsupported(c, "construction of '${cls.kotlinFqName}'")
     if (cls.kind != ClassKind.CLASS) unsupported(c, "construction of ${classKind(cls)} '${cls.name}'")
     if (cls.modality == Modality.ABSTRACT || cls.modality == Modality.SEALED) unsupported(c, "construction of abstract class '${cls.name}'")
-    return MirExpr.New(cName, callArgs(c, k, out), typeOf(cls))
+    return MirExpr.New(cName, callArgs(c, k, out) + captureArgsFor(cls, c), typeOf(cls))
 }

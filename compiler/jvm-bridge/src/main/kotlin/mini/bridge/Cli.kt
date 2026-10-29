@@ -154,7 +154,7 @@ object Cli {
     fun findRepoRoot(start: File): File? {
         var d: File? = start.absoluteFile.normalize()
         while (d != null) {
-            if (File(d, "runtime/minirt/include/minirt.h").isFile) return d
+            if (File(d, "runtime/include/minirt.h").isFile) return d
             d = d.parentFile
         }
         return null
@@ -170,12 +170,12 @@ object Cli {
         }
 
         // 1. runtime location (fail early, before the slow frontend)
-        val include = o.runtimeInclude ?: repoRoot?.let { File(it, "runtime/minirt/include") }
+        val include = o.runtimeInclude ?: repoRoot?.let { File(it, "runtime/include") }
         if (include == null || !File(include, "minirt.h").isFile) {
             throw BuildFailure("cannot find minirt.h; pass --runtime-include <dir>")
         }
-        val runtimeSrc = o.runtimeSrc ?: repoRoot?.let { File(it, "runtime/minirt/src") }?.takeIf { it.isDirectory }
-            ?: throw BuildFailure("runtime sources not found (runtime/minirt/src); pass --runtime-src <dir>")
+        val runtimeSrc = o.runtimeSrc ?: repoRoot?.let { File(it, "runtime/src") }?.takeIf { it.isDirectory }
+            ?: throw BuildFailure("runtime sources not found (runtime/src); pass --runtime-src <dir>")
         val runtimeFiles = runtimeSrc.walkTopDown().filter { it.isFile && it.extension == "c" }.sortedBy { it.path }.toList()
         if (runtimeFiles.isEmpty()) throw BuildFailure("no .c files in $runtimeSrc")
 

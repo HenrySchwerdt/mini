@@ -2,11 +2,11 @@
 
 Stand: Meilenstein v1-S. Zugehörig: `docs/plan-kotlin.md` (Abschnitte 6 und 10b), `compiler/README.md`,
 Code in `compiler/jvm-bridge` (`FrontendDriver.kt`, `Stdlib.kt`, `Reachability.kt`, `Ir2MirIntrinsics.kt`),
-Quellen in `std/kotlin-mini/`, Tests in `std/kotlin-mini-test/` und `compiler/jvm-bridge/src/test/kotlin/StdlibJvmTest.kt`.
+Quellen in `stdlib/`, Tests in `stdlib-test/` und `compiler/jvm-bridge/src/test/kotlin/StdlibJvmTest.kt`.
 
 ## 1. Entscheidung
 
-`minic build a.kt [b.kt ...]` schickt die Benutzerdateien **zusammen mit allen Quellen aus `std/kotlin-mini/`**
+`minic build a.kt [b.kt ...]` schickt die Benutzerdateien **zusammen mit allen Quellen aus `stdlib/`**
 durch den K2-Frontend-Lauf. Es gibt **keine** JVM-kotlin-stdlib-JAR und **kein JDK** im Spiel. Dadurch hat jede
 Funktion der Standardbibliothek (auch `inline`-Funktionen wie `map`/`filter`) einen IR-Body, den `Ir2Mir` nach
 MIR übersetzen kann. Vor der Übersetzung schneidet `Reachability` alles ab, was vom Benutzercode aus nicht
@@ -21,7 +21,7 @@ Konfiguration (`FrontendDriver.runFrontend`):
 | `-no-jdk` (`args.noJdk`) | an | kein `java.lang.*`; `kotlin.collections.List` bleibt ein normales Kotlin-Interface (keine JVM-Abbildung auf `java.util.List`) |
 | `-Xallow-kotlin-package` | an | Quellen dürfen `package kotlin...` deklarieren |
 | `-Xstdlib-compilation` | an | wie beim Bau der echten stdlib; für Frontend und fir2ir nicht zwingend (Versuch ohne das Flag: gleiches Ergebnis, nur die JVM-Lowerings stürzen ab, die wir ohnehin überspringen), bleibt als Absicherung gesetzt |
-| Eingabe | Benutzerdateien + `std/kotlin-mini/**/*.kt` | `--stdlib <dir>` überschreibt, `--no-stdlib` schaltet auf das alte Verhalten (JVM-JAR) zurück |
+| Eingabe | Benutzerdateien + `stdlib/**/*.kt` | `--stdlib <dir>` überschreibt, `--no-stdlib` schaltet auf das alte Verhalten (JVM-JAR) zurück |
 | nach dem Consumer | `module.files.clear()` | die JVM-Backend-Phase hätte sonst unsere Quellen „lowern“ wollen und stürzt ab (z.B. `kotlin/arrayOfNulls`) |
 
 Pro Build kostet das einen K2-Lauf über rund 5700 Zeilen Stdlib-Quellcode (rund 3 s zusätzlich zum Start).
@@ -51,20 +51,20 @@ Alle Versuche mit kotlin-compiler-embeddable 2.4.21, Werkzeug: `K2JVMCompiler` a
   Klassen existieren, die `IrBuiltInsOverSymbolFinder`/`Fir2IrBuiltinSymbolsContainer` über `StandardClassIds` laden. Die Menge, die wir
   liefern müssen: `Any, Nothing, Unit, Boolean, Char, Byte/Short/Int/Long/Float/Double, Number, String, CharSequence, Comparable, Enum, Array,
   {Boolean,Byte,Char,Double,Float,Int,Long,Short}Array, {…}Iterator (kotlin.collections), Iterable, Collection, List, Set, Map, Map.Entry,
-  Iterator, Throwable, Annotation, DeprecationLevel, KCallable/KClass/KFunction/KProperty*` (siehe `std/kotlin-mini/kotlin/*.kt`).
+  Iterator, Throwable, Annotation, DeprecationLevel, KCallable/KClass/KFunction/KProperty*` (siehe `stdlib/kotlin/*.kt`).
 * **`enum class`** gegen ein `Enum(name: String, ordinal: Int)`: K2 meldet `no value passed for parameter 'name'`. Lösung: `protected constructor()`
   (nur eine Deklaration; `name`/`ordinal` sind für Ir2Mir ohnehin Sonderfälle).
 * **JVM-Abbildung (`List` ↔ `java.util.List`, `StringBuilder` = Typalias auf `java.lang.StringBuilder`):** entsteht ausschließlich durch das JDK
   im Klassenpfad. Mit `-no-jdk` und eigenen Quellen gibt es das nicht; eigene `kotlin.collections.List`, `kotlin.collections.ArrayList`,
   `kotlin.text.StringBuilder` sind gewöhnliche Klassen. Die kleine Konsequenz: `java.lang.Thread` (von `mini.memory.Spawn` unqualifiziert
-  benutzt) existiert nicht und wird durch einen Platzhalter `std/kotlin-mini/java/lang/Thread.kt` ersetzt.
+  benutzt) existiert nicht und wird durch einen Platzhalter `stdlib/java/lang/Thread.kt` ersetzt.
 * **Standard-Auflösung in JVM-Tests** (siehe 7): Typen wie `List` aus den Default-Imports gewinnen gegen Stern-Importe; nur explizite
   Einzel-Importe gewinnen. Betrifft nur den JVM-Test, nicht den Compiler.
 
 Entscheidungsgrund in einem Satz: **Eigene Quellen, JVM-Pipeline ohne JDK und ohne stdlib-JAR, ein Plugin, kein zusätzlicher Compiler-Hack** —
 die kleinste Änderung am bestehenden Aufbau, und `-no-jdk` verhindert genau die Abbildungen, die uns stören würden.
 
-## 3. Aufbau von `std/kotlin-mini/`
+## 3. Aufbau von `stdlib/`
 
 ```
 kotlin/                 Builtins (Builtin-markiert) und Kern: Any, Int, String, Enum, Array ..., Throwable/Exceptions,
@@ -102,7 +102,7 @@ Alle anderen Quellen sind normaler Kotlin-Code und werden übersetzt, soweit err
 
 ## 4. Native Primitive („Intrinsics“) — Konvention
 
-Alles Native läuft über **`mini.internal.CSymbol("mk_name")`** (`std/kotlin-mini/mini/internal/CSymbol.kt`):
+Alles Native läuft über **`mini.internal.CSymbol("mk_name")`** (`stdlib/mini/internal/CSymbol.kt`):
 
 ```kotlin
 @CSymbol("mk_string_substring")
@@ -119,9 +119,9 @@ Regeln (gilt für Top-Level-Funktionen, Memberfunktionen, Properties-Getter):
 4. Ergebnistyp `Nothing`: die C-Funktion ist `_Noreturn`; der Aufruf wird als Anweisung ausgegeben.
 5. Die Deklaration ist `external` (ohne Rumpf) oder steht in einer Builtin-Datei. Top-Level-`external`/`@CSymbol`-Funktionen entfernt
    `Reachability` aus den Dateien; der Aufruf wird am Symbol des Callee erkannt.
-6. Jedes Symbol steht in `runtime/minirt/include/minirt.h` im Block `/* ---- v1-S ---- */` (Implementierung `runtime/minirt/src/v1s.c`,
-   Test `runtime/minirt/tests/test_v1s.c`). `StdlibJvmTest.intrinsicsAreInSync` prüft, dass jedes `@CSymbol` im Header steht und in der
-   JVM-Implementierung (`std/kotlin-mini-test/jvm/mini/internal/Intrinsics.kt`) dieselbe Signatur hat.
+6. Jedes Symbol steht in `runtime/include/minirt.h` im Block `/* ---- v1-S ---- */` (Implementierung `runtime/src/v1s.c`,
+   Test `runtime/tests/test_v1s.c`). `StdlibJvmTest.intrinsicsAreInSync` prüft, dass jedes `@CSymbol` im Header steht und in der
+   JVM-Implementierung (`stdlib-test/jvm/mini/internal/Intrinsics.kt`) dieselbe Signatur hat.
 
 Die gesamte native Fläche von v1-S (außer Builtin-Members von `String` und der Konsole):
 
@@ -194,13 +194,13 @@ Sobald Generics/Lambdas/Exceptions im Backend vorhanden sind, ist hier idealerwe
 * `StdlibJvmTest.stdlibGivesIrForEverything`: alle Stdlib-Quellen laufen mit der Compiler-Konfiguration aus Abschnitt 1 durch K2; jede Funktion
   (nicht abstrakt, nicht `external`, nicht Builtin) hat einen IR-Body.
 * `StdlibJvmTest.stdlibUnitTestsOnJvm`: die Stdlib-Quellen (ohne Builtins, `package kotlin.x` → `mkt.x`, `mini.internal` durch
-  `std/kotlin-mini-test/jvm/mini/internal/Intrinsics.kt` ersetzt, alle Klassen explizit importiert) werden für die JVM kompiliert und mit den
-  Unit-Tests aus `std/kotlin-mini-test/tests/` ausgeführt (rund 40 Tests: Strings, StringBuilder, Listen, Mengen, Maps, HashMap-Reihenfolge,
+  `stdlib-test/jvm/mini/internal/Intrinsics.kt` ersetzt, alle Klassen explizit importiert) werden für die JVM kompiliert und mit den
+  Unit-Tests aus `stdlib-test/tests/` ausgeführt (rund 40 Tests: Strings, StringBuilder, Listen, Mengen, Maps, HashMap-Reihenfolge,
   Sortierung, Aggregate, Scope-Funktionen, Preconditions). `UsesMiniStdlib` stellt sicher, dass wirklich *unsere* Klassen getestet werden.
 * `StdlibJvmTest.testsAgreeWithRealStdlib`: dieselben Tests laufen gegen die echte kotlin-stdlib — die Erwartungswerte sind echtes Kotlin-Verhalten.
 * `StdlibJvmTest.intrinsicsAreInSync`: `@CSymbol` ↔ `minirt.h` ↔ JVM-Implementierung.
 * `EndToEndTest` mit `compiler/testdata/stdlib_{strings,stringbuilder,numbers,panic}.kt` (`.out` stammt von der echten JVM).
-* `runtime/minirt/tests/test_v1s.c` (ASan/UBSan) für die C-Funktionen.
+* `runtime/tests/test_v1s.c` (ASan/UBSan) für die C-Funktionen.
 
 ## 8. Risiken und offene Punkte
 
@@ -217,4 +217,4 @@ Sobald Generics/Lambdas/Exceptions im Backend vorhanden sind, ist hier idealerwe
    keine String-/StringBuilder-Gleichbehandlung.
 6. **Unicode**: nur ASCII/Latin-1; das Verhalten bei anderen Zeichen weicht von der JVM ab.
 7. **`Throwable.toString`/`typeName`**: der Paketname ist `kotlin.…` statt `java.lang.…`.
-8. **Lizenz**: abgeleitete Dateien tragen den Apache-2.0-Kopf und `std/kotlin-mini/NOTICE`.
+8. **Lizenz**: abgeleitete Dateien tragen den Apache-2.0-Kopf und `stdlib/NOTICE`.
