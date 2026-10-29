@@ -43,6 +43,7 @@ import org.jetbrains.kotlin.ir.declarations.IrAnonymousInitializer
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
+import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
 import org.jetbrains.kotlin.ir.declarations.IrField
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
@@ -63,6 +64,8 @@ import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrContinue
 import org.jetbrains.kotlin.ir.expressions.IrDelegatingConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrDoWhileLoop
+import org.jetbrains.kotlin.ir.expressions.IrEnumConstructorCall
+import org.jetbrains.kotlin.ir.expressions.IrGetEnumValue
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrFunctionAccessExpression
@@ -164,7 +167,15 @@ class Ir2Mir {
             if (!done.add(c)) return
             superclassOf(c)?.let { visit(it) }
             for (i in directInterfaces(c)) visit(i)
-            classes += buildClass(classInfos[c]!!)
+            val inf = classInfos[c]!!
+            classes += buildClass(inf)
+            if (c.kind == ClassKind.ENUM_CLASS) {
+                classes += MirClass(
+                    inf.qualified + ".\$entries", holderName(inf), false, null,
+                    enumEntries(c).indices.map { MirField("e$it", typeOf(c)) }, emptyList(), listOf(null, null, null), emptyList(),
+                    holderName(inf) + "_C",
+                )
+            }
         }
         for (c in classInfos.keys.toList()) visit(c)
         return MirModule(sourceName, functions, classes)
@@ -180,7 +191,7 @@ class Ir2Mir {
     private fun collectClass(c: IrClass, pkg: String, path: List<String>, file: IrFile) {
         when (c.kind) {
             ClassKind.CLASS, ClassKind.INTERFACE, ClassKind.OBJECT -> {}
-            ClassKind.ENUM_CLASS -> unsupported(c, "enum class declaration '${c.name}'")
+            ClassKind.ENUM_CLASS -> {}
             else -> unsupported(c, "${classKind(c)} declaration '${c.name}'")
         }
         if (c.typeParameters.isNotEmpty()) unsupported(c, "generic class '${c.name}'")
@@ -210,7 +221,7 @@ class Ir2Mir {
         if (c.kind == ClassKind.INTERFACE) return null
         for (t in c.superTypes) {
             val s = t.classOrNull?.owner ?: unsupported(c, "supertype '${t.classFqName}' of '${c.name}'")
-            if (isAny(s)) continue
+            if (isAny(s) || s.kotlinFqName.asString() == "kotlin.Enum") continue
             if (s.kind == ClassKind.INTERFACE) {
                 if (s !in classInfos) unsupported(c, "supertype '${s.kotlinFqName}' of '${c.name}'")
                 continue
@@ -265,6 +276,7 @@ class Ir2Mir {
         val c = info.ir
         for (f in classFunctions(c)) {
             if (f.isFakeOverride) continue
+            if (isEnumSpecial(c, f)) continue // values(), valueOf(), entries
             checkFunctionShape(f, member = true)
             val params = f.parameters.filter { it.kind == IrParameterKind.Regular }.map { mirType(it.type, it) }
             functionNames[f] = Mangling.method(info.cName, f.name.asString(), params)
@@ -274,11 +286,13 @@ class Ir2Mir {
                 if (p.kind != IrParameterKind.Regular) unsupported(k, "constructor of an inner class")
                 if (p.varargElementType != null) unsupported(p, "vararg parameter '${p.name}'")
             }
-            functionNames[k] = Mangling.constructor(info.cName, k.parameters.map { mirType(it.type, it) })
+            val hidden = if (c.kind == ClassKind.ENUM_CLASS) listOf(TString, TInt) else emptyList()
+            functionNames[k] = Mangling.constructor(info.cName, hidden + k.parameters.map { mirType(it.type, it) })
         }
         for (d in c.declarations) {
             when (d) {
                 is IrSimpleFunction, is IrProperty, is IrConstructor, is IrClass, is IrAnonymousInitializer, is IrField -> {}
+                is IrEnumEntry -> if (d.correspondingClass != null) unsupported(d, "enum entry with a body '${d.name}'")
                 else -> unsupported(d, describe(d))
             }
             if (d is IrProperty) {
@@ -296,9 +310,9 @@ class Ir2Mir {
         val out = ArrayList<MirFunction>()
         val c = info.ir
         for (f in classFunctions(c)) {
-            if (f.isFakeOverride) continue
+            if (f.isFakeOverride || isEnumSpecial(c, f)) continue
             if (f.body == null) {
-                if (f.modality == Modality.ABSTRACT || c.kind == ClassKind.INTERFACE) continue
+                if (f.modality == Modality.ABSTRACT || c.kind == ClassKind.INTERFACE || c.kind == ClassKind.ENUM_CLASS) continue
                 unsupported(f, "function without body '${f.name}'")
             }
             out += convertFunction(f, functionNames[f]!!, info.qualified + "." + f.name.asString(), null)
@@ -306,7 +320,59 @@ class Ir2Mir {
         for (k in c.declarations.filterIsInstance<IrConstructor>()) {
             out += convertFunction(k, functionNames[k]!!, info.qualified + ".<init>", info.cName)
         }
+        if (c.kind == ClassKind.ENUM_CLASS) {
+            out += convertEnumHolder(info)
+            out += enumToString(info)
+        }
         return out
+    }
+
+    // ---- enums ----------------------------------------------------------------------------------
+    //
+    // An enum class is an ordinary class with two hidden leading constructor parameters and fields
+    // ($name, $ordinal). Its entries live in a hidden singleton `<cName>_E` (created on first access,
+    // like an object) with one field per entry; `Color.RED` reads that field.
+
+    /** The compiler-synthesised `values()`, `valueOf()` and `entries` of an enum class (arrays are not supported yet). */
+    private fun isEnumSpecial(c: IrClass, f: IrSimpleFunction): Boolean {
+        if (c.kind != ClassKind.ENUM_CLASS) return false
+        val n = f.name.asString()
+        return (n == "values" || n == "valueOf" || n == "<get-entries>") && f.origin != IrDeclarationOrigin.DEFINED
+    }
+
+    private fun enumEntries(c: IrClass): List<IrEnumEntry> = c.declarations.filterIsInstance<IrEnumEntry>()
+
+    private fun holderName(info: ClassInfo) = info.cName + "_E"
+
+    private fun holderType(info: ClassInfo) = TObject(info.qualified + ".\$entries", holderName(info), false)
+
+    private fun enumGet(info: ClassInfo, ordinal: Int): MirExpr =
+        MirExpr.FieldGet(MirExpr.ObjectGet(holderName(info), holderType(info)), holderName(info), "e$ordinal", typeOf(info.ir))
+
+    private fun convertEnumHolder(info: ClassInfo): MirFunction {
+        locals = HashMap()
+        localCounter = 0
+        currentFunction = null
+        currentReturn = TUnit
+        val self = MirLocal(localCounter++, "this", holderType(info))
+        val out = ArrayList<MirStmt>()
+        for ((i, e) in enumEntries(info.ir).withIndex()) {
+            val call = e.initializerExpression?.expression as? IrEnumConstructorCall ?: unsupported(e, "enum entry '${e.name}'")
+            val k = call.symbol.owner
+            val args = callArgs(call, k, out)
+            val ctor = functionNames[k] ?: unsupported(e, "enum entry '${e.name}'")
+            val n = MirExpr.New(ctor, listOf(MirExpr.StringConst(e.name.asString()), MirExpr.IntConst(i)) + args, typeOf(info.ir))
+            out += MirStmt.SetField(MirExpr.Local(self), holderName(info), "e$i", typeOf(info.ir), n)
+        }
+        return MirFunction(info.qualified + ".<entries>", holderName(info) + "_C", listOf(self), TUnit, out)
+    }
+
+    private fun enumToString(info: ClassInfo): MirFunction {
+        val self = MirLocal(0, "this", typeOf(info.ir))
+        val body = listOf<MirStmt>(
+            MirStmt.Return(MirExpr.FieldGet(MirExpr.Local(self), info.cName, "\$name", TString)),
+        )
+        return MirFunction(info.qualified + ".toString", info.cName + "_enumToString", listOf(self), TString, body)
     }
 
     // ---- dispatch tables ---------------------------------------------------------------------
@@ -404,7 +470,8 @@ class Ir2Mir {
         val c = info.ir
         val isInterface = c.kind == ClassKind.INTERFACE
         val ifaces = if (isInterface) allInterfaces(c).filter { it !== c } else allInterfaces(c)
-        val fields = if (isInterface) emptyList() else ownFields(c).map { f ->
+        val hiddenFields = if (c.kind == ClassKind.ENUM_CLASS) listOf(MirField("\$name", TString), MirField("\$ordinal", TInt)) else emptyList()
+        val fields = if (isInterface) emptyList() else hiddenFields + ownFields(c).map { f ->
             if (f.origin == IrDeclarationOrigin.PROPERTY_DELEGATE) unsupported(f, "delegated property")
             MirField(f.name.asString(), mirType(f.type, f))
         }
@@ -413,6 +480,7 @@ class Ir2Mir {
         if (!isInterface) {
             val slots = slotsOf(c)
             vtable = (0..2).map { implAny(c, it) } + slots.map { implClass(c, it) }
+            if (c.kind == ClassKind.ENUM_CLASS && vtable[0] == null) vtable = listOf<String?>(info.cName + "_enumToString") + vtable.drop(1)
             itables = ifaces.map { i ->
                 MirItable(info(i).cName, interfaceMethods(i).map { m -> implName(findImpl(c, m)) })
             }
@@ -525,6 +593,10 @@ class Ir2Mir {
             val self = MirLocal(localCounter++, "this", typeOf(cls))
             params += self
             f.parent.let { (it as IrClass).thisReceiver }?.let { locals[it] = self }
+            if (cls.kind == ClassKind.ENUM_CLASS) {
+                params += MirLocal(localCounter++, "\$name", TString)
+                params += MirLocal(localCounter++, "\$ordinal", TInt)
+            }
         }
         for (p in f.parameters) {
             val l = MirLocal(localCounter++, if (p.kind == IrParameterKind.DispatchReceiver) "this" else p.name.asString(), mirType(p.type, p))
@@ -534,6 +606,11 @@ class Ir2Mir {
         val ret = if (f is IrConstructor) TUnit else mirType(f.returnType, f)
         currentReturn = ret
         val out = ArrayList<MirStmt>()
+        if (f is IrConstructor && (f.parent as IrClass).kind == ClassKind.ENUM_CLASS) {
+            val cn = info(f.parent as IrClass).cName
+            out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$name", TString, MirExpr.Local(params[1]))
+            out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$ordinal", TInt, MirExpr.Local(params[2]))
+        }
         when (val body = f.body) {
             is IrBlockBody -> for (s in body.statements) stmt(s, out)
             is IrExpressionBody -> {
@@ -605,6 +682,7 @@ class Ir2Mir {
             is IrSetField -> setField(s, out)
             is IrInstanceInitializerCall -> instanceInitializer(s, out)
             is IrDelegatingConstructorCall -> delegatingCall(s, out)
+            is IrEnumConstructorCall -> {}
             is IrTypeOperatorCall -> {
                 if (s.operator == IrTypeOperator.IMPLICIT_COERCION_TO_UNIT) stmt(s.argument, out)
                 else discard(value(s, out), out)
@@ -947,6 +1025,11 @@ class Ir2Mir {
             MirExpr.Unreachable(TNothing)
         } else call(e, out)
         is IrConstructorCall -> constructorCall(e, out)
+        is IrGetEnumValue -> {
+            val entry = e.symbol.owner
+            val cls = entry.parent as IrClass
+            enumGet(info(cls), enumEntries(cls).indexOf(entry))
+        }
         is IrGetField -> {
             val f = e.symbol.owner
             val r = e.receiver ?: unsupported(e, "static field")
@@ -1176,6 +1259,17 @@ class Ir2Mir {
     private fun memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<MirStmt>): MirExpr {
         // direct access to the backing field for final default accessors
         val real = resolveFake(f)
+        (real.parent as? IrClass)?.let { rp ->
+            if (rp.kotlinFqName.asString() == "kotlin.Enum" && c.superQualifierSymbol == null) {
+                val recv = operands(listOf(c.arguments[0] ?: unsupported(c, "enum member")), out)[0]
+                val owner = (recv.type as? TObject)?.cName ?: unsupported(c, "enum member on a non-enum receiver")
+                return when (real.name.asString()) {
+                    "<get-name>" -> MirExpr.FieldGet(recv, owner, "\$name", TString)
+                    "<get-ordinal>" -> MirExpr.FieldGet(recv, owner, "\$ordinal", TInt)
+                    else -> unsupported(c, "call to 'kotlin.Enum.${real.name}'")
+                }
+            }
+        }
         val prop = real.correspondingPropertySymbol?.owner
         if (c.superQualifierSymbol == null && real.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR &&
             real.modality == Modality.FINAL && prop?.backingField != null && !isAny(real.parent as IrClass)
@@ -1249,7 +1343,19 @@ class Ir2Mir {
         }
         if (args.size != 1) unsupported(c, "call to '$name'")
         val v = operands(args, out)[0]
-        if (name == "print") return MirExpr.RuntimeCall("mk_print_string", listOf(toStringExpr(v, c, out)), TUnit)
+        if (name == "print") {
+            val fn = when (v.type) {
+                TString -> "mk_print_string"
+                TInt -> "mk_print_int"
+                TLong -> "mk_print_long"
+                TDouble -> "mk_print_double"
+                TBoolean -> "mk_print_boolean"
+                TChar -> "mk_print_char"
+                else -> null
+            }
+            if (fn != null) return MirExpr.RuntimeCall(fn, listOf(v), TUnit)
+            return MirExpr.RuntimeCall("mk_print_string", listOf(toStringExpr(v, c, out)), TUnit)
+        }
         return when (v.type) {
             TString -> MirExpr.RuntimeCall("mk_println_string", listOf(v), TUnit)
             TInt -> MirExpr.RuntimeCall("mk_println_int", listOf(v), TUnit)

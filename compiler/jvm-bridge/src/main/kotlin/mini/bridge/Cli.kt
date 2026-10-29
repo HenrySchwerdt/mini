@@ -38,6 +38,7 @@ object Cli {
         return try {
             build(opts, repoRoot)
         } catch (e: UnsupportedConstruct) {
+            if (System.getenv("MINIC_DEBUG") != null) e.printStackTrace()
             System.err.println(e.message)
             1
         } catch (e: FrontendDriver.FrontendFailure) {
