@@ -632,21 +632,21 @@ Candidates:
 Goal: on the documentation site, every code sample can be edited and run in the browser, plus a
 notebook page (Markdown and code cells sharing state). No server: GitHub Pages is static.
 
-- **The compiler runs in the browser.** It is self-hosted pure Kotlin, so its generated C (or LLVM IR,
-  §10g) compiles to `wasm32-wasi` with clang and wasi-libc; the C runtime too (threads and libuv are left
-  out; IO goes to a small JS shim). Expected size a few MB, loaded once and cached.
-- **Phase A: MIR interpreter.** The browser compiler parses, type-checks, runs the memory checker and
-  lowers to MIR; a MIR interpreter (pure Kotlin, compiled to wasm with the compiler) executes it. No C
-  compiler or linker is needed in the browser, startup is instant. The same interpreter serves
-  `mini repl` and fast `mini run` natively.
-- **Playground features:** run, `check` (Strict diagnostics inline in the editor with M-codes and links to
-  the reference), tabs showing the MIR and generated C/LLVM IR for the "How it works" pages, share via
-  URL, examples gallery. The website's checked samples become runnable in place.
-- **Notebook:** Markdown and code cells; code cells are REPL steps over one interpreter session, outputs
-  rendered below the cell; save and load as files or in the URL.
-- **Phase B: real wasm backend.** MIR → wasm directly (linear memory fits the manual memory model), the
-  runtime precompiled to wasm and linked in the browser, for full speed and for exporting `.wasm`
-  programs. Also the base for `mini build --target wasm32-wasi`.
+- **Decision: one backend everywhere, no interpreter and no extra wasm backend.** The compiler binds LLVM
+  through its C API with Mini's own C interop (`external`, §7; the same binding as §10g phase 2). LLVM's
+  code generator (wasm32 target only) and `wasm-ld` are built once for wasm with wasi-sdk/Emscripten, and
+  the compiler itself is compiled to wasm and linked against them.
+- **In the browser:** source → own frontend, memory checker, MIR → LLVM → `.wasm` → `wasm-ld` with the
+  precompiled runtime (`libminirt` for wasm32-wasi, without threads/libuv) → run with a small WASI shim.
+  The toolchain (an estimated 5-10 MB compressed) loads lazily on the first "Run" and is cached by a
+  service worker; reading and "Check" work without it.
+- **Playground features:** run and check (Strict diagnostics inline with M-codes and links to the
+  reference), tabs with the MIR and LLVM IR for the "How it works" pages, share via URL, an examples
+  gallery; every sample on the site becomes editable and runnable.
+- **Notebook:** Markdown and code cells; code cells are compiled incrementally (each cell sees the
+  declarations of the cells before it) and run in one WASI instance per session.
+- **Order:** C interop (§7) → native LLVM C API binding (§10g phase 2) → LLVM + lld built for wasm →
+  the compiler built for wasm → website integration and notebook.
 - **Fast startup:** the stdlib is shipped precompiled (API metadata + MIR, `.mlib`, §10f) so the browser
   does not re-check it on every run.
 
