@@ -315,6 +315,32 @@ bestehenden KMP-Projekten einfach ein Target hinzufügen kann (spätere Phase).
 | **P5 Concurrency/IO** | `mini.concurrent`, `mini.io` auf libuv, Coroutines-Lowering, kotlinx.coroutines-Port | Echo-Server mit Coroutines, TSan sauber |
 | **P6 Libs** | klib-Import, Gradle-Plugin/KMP-Target | eine echte KMP-Lib (z. B. kotlinx-datetime oder okio) läuft unverändert |
 | **P7** | LLVM-Backend, Zyklensammler, Performance | Box-Tests ≥ 80 %, Benchmarks gegen Kotlin/Native |
+| **P8 Self-Hosting** | siehe Abschnitt 10a | Mini-Compiler baut sich selbst, Stage 2 == Stage 3 |
+
+### 10a. Self-Hosting
+
+Ziel: Der Compiler wird von sich selbst kompiliert und läuft als natives Binary ohne JVM.
+Unser eigener Code wird dabei mit dem Speichermodell schneller gemacht: `Arena` pro
+Compiler-Phase und `Strict` in den heißen Pfaden.
+
+**Designregel ab sofort:** Das Backend (`compiler/backend`, alles nach Fir2Ir) und die
+Mini-Analysen sind **reines `common`-Kotlin**: kein `java.*`, kein `kotlin.jvm.*`, keine
+JVM-Reflection. Der JVM-Kontakt sitzt in genau einem dünnen Modul `compiler/jvm-bridge`
+(K2 aufrufen, Dateien lesen, clang starten). Damit kann sich das Backend schon früh
+selbst kompilieren (Meilenstein „Backend self-hosted“).
+
+Das Frontend ist der schwierige Teil. K2 hängt an Java-Code (intellij-core, der per JFlex
+generierte Lexer, `java.util`). Zwei Wege:
+
+1. **Eigenes Frontend in `common`-Kotlin**, mit K2 als **Orakel**: Für jede Datei der
+   Testsuite und für den Compiler selbst muss unser Frontend dasselbe IR liefern wie K2
+   (differentielles Testen). Das ist viel leichter als „Frontend ohne Referenz“ (Weg A
+   aus Abschnitt 2), weil jede Abweichung automatisch auffällt.
+2. **Java-Teile von K2 nach Kotlin portieren** (intellij-core-Subset), das Kotlin-Frontend
+   dann mit unserem Backend kompilieren. Das ist eine Option, falls Weg 1 stockt.
+
+Bootstrap-Kette: JVM-Compiler (K2 + unser Backend) → kompiliert unser Frontend und
+Backend → `minic` Stage 1 (nativ) → Stage 2 → Stage 3 und Vergleich Stage 2 == Stage 3.
 
 ## 11. Arbeitsweise: Manager und Sonnet-Agenten
 
