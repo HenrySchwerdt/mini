@@ -361,6 +361,29 @@ Programm** als Quelltext durch K2 schicken, mit `-Xallow-kotlin-package` und eig
 So haben auch `inline`-Funktionen wie `map`/`filter` IR-Bodies, die unser Backend
 kompilieren kann. Aus der JVM-stdlib-JAR gibt es nur Bytecode, kein IR.
 
+### 10c. Runtime in Kotlin (nach v1)
+
+Ziel: **keine handgeschriebene C-Runtime mehr.** libminirt wird Stück für Stück in Mini-Kotlin
+neu geschrieben. Nur libc und libuv bleiben als `external`-Bibliotheken, später ist libc über
+Syscalls ersetzbar (freestanding).
+
+Was der Compiler dafür braucht, ist eine kleine Low-Level-Schicht `mini.unsafe`, angelehnt an
+`kotlinx.cinterop`:
+- rohe Zeiger (`NativePtr`/`CPointer<T>`), Zeigerarithmetik, `load`/`store`, `sizeOf<T>()`,
+  `reinterpret`;
+- Atomics (`AtomicInt`, CAS, Fences), die direkt auf C11/LLVM-Atomics abgebildet werden;
+- `external` C-Funktionen (`malloc`, `free`, `write`, `uv_*`) und `@CName`-Export
+  (z. B. für `main`).
+
+Das Henne-Ei-Problem: Die Runtime selbst darf nicht über Refcounting allozieren. Deshalb wird
+sie in **`@file:MemoryMode(Mode.Strict)` + `@NoAlloc`** geschrieben. Die Runtime ist damit der
+härteste Praxistest unseres eigenen Speichermodells.
+
+Reihenfolge, jeweils mit den bestehenden C-Tests als Abnahme (dasselbe ABI aus `minirt.h`):
+Zahlen- und String-Formatierung → UTF-8/16 → Allocatoren (Heap, Arena, Pool, Debug) →
+Objektmodell und Refcounting → Konsole/Einstieg. Danach entfällt `runtime/minirt/src/*.c`.
+Für den Bootstrap ist das ein Gewinn: Compiler, stdlib und Runtime sind dann alle Kotlin.
+
 ### 10a. Self-Hosting
 
 Ziel: Der Compiler wird von sich selbst kompiliert und läuft als natives Binary ohne JVM.
