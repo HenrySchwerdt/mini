@@ -287,6 +287,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (v.isNull) return true
         val arenaTarget = targetSites.firstOrNull { it.kind == SK.Arena }
         if (arenaTarget != null) {
+            if (v.sites.any { it.kind == SK.Arena && it.id != arenaTarget.id } &&
+                arenaEscape(v) { id -> id != arenaTarget.id }
+            ) {
+                return false
+            }
             val bad = when (v.type.tk) {
                 TK.Str -> !v.strLit
                 TK.Managed -> true
@@ -749,7 +754,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (!l.type.tracked) return
         val s = slot(l.id) ?: return
         val nm = l.name
-        if (s.bits and B != 0) return
+        if (s.bits and B != 0) {
+            diag(
+                "M0107", op.pos, "`$nm` is borrowed and cannot be closed by `use`", "`$nm` does not own its value",
+                "call `use` on the owner", slot = rootsOf(l.id).firstOrNull() ?: l.id,
+            )
+            return
+        }
         if (s.bits and F != 0) {
             diag("M0103", op.pos, "`$nm` is closed twice", "closed again at the end of this block", "remove the extra `close()`/`free()`", slot = l.id)
         }

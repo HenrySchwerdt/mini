@@ -29,7 +29,9 @@ tasks.test {
     // Memory-model corpus (docs/memory-model.md) and the mini.memory API sources for MemoryCheckTest.
     systemProperty("mini.memoryCorpus", rootProject.file("testdata/memory").absolutePath)
     systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("std/kotlin-mini/mini/memory").absolutePath)
+    systemProperty("mini.memoryExtra", rootProject.file("testdata/memory-extra").absolutePath)
     inputs.dir(rootProject.file("testdata/memory"))
+    inputs.dir(rootProject.file("testdata/memory-extra"))
     inputs.dir(rootProject.projectDir.parentFile.resolve("std/kotlin-mini/mini/memory"))
     // Declared as inputs so edits to test programs or the runtime re-run the test instead of hitting the cache.
     inputs.dir(rootProject.file("testdata"))

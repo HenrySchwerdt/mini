@@ -22,8 +22,17 @@ compiler/jvm-bridge/build/install/minic/bin/minic build hello.kt -o build/hello
 
 ```
 minic build <file.kt> -o <out> [--emit-c <path>] [--cc clang]
-            [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
+            [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]... [--extra-src <file.kt>]...
+minic check <file.kt> [--extra-src <file.kt>]... [--brief]
 ```
+
+* `--extra-src <file.kt>` (repeatable): additional Kotlin sources compiled together with the program, only
+  as declarations (they are not translated to C). The memory-model programs need the `mini.memory` API:
+  `--extra-src std/kotlin-mini/mini/memory/Allocator.kt ...` (all four files).
+* `minic check`: only the Strict-mode ownership checker (see "Memory-model checker" below); prints rustc-like
+  diagnostics to stderr, or with `--brief` `line:col: CODE` lines to stdout. Exit 1 on an error, 0 otherwise
+  (warnings do not fail). `minic build` runs the same checker after the frontend and before the C backend:
+  errors stop the build (exit 1), warnings are printed.
 
 * `--emit-c <path>`: keep the generated C file there (otherwise a temporary file is used).
 * `--runtime-src <dir>`: directory whose `*.c` files (recursively) are linked in. Default:
@@ -206,6 +215,60 @@ elision pass exists yet.
 All non-cyclic test programs are verified leak-free and ASan/UBSan-clean (see Tests). **Reference
 cycles leak** (no cycle collector; `weak` references do not exist yet) and the leak check programs avoid
 them.
+
+## Memory-model checker (Strict mode)
+
+Implements the analysis of `docs/memory-model.md` (the corpus in `testdata/memory` is its test).
+
+```
+K2 -> Kotlin IR --+--> Ir2Mir -> MIR -> C                      (code generation, jvm-bridge + backend)
+                  |
+                  +--> MemoryFacts -> MemIr -> CFG -> dataflow -> diagnostics   (the checker)
+                       (jvm-bridge)   \_______ compiler/backend/.../memory _______/
+```
+
+* **`MemoryFacts.kt` (jvm-bridge)** lowers the Kotlin IR of the user file to **MemIr** (`backend/.../memory/MemIr.kt`),
+  the MIR-level program the checker consumes. It is a second view of the same IR module as `Ir2Mir` and lives in its
+  own files, because the C-oriented MIR can neither carry what the checker needs (source positions, `@Owned` /
+  `@Borrowed` / `@MemoryMode` / `@AllocatedBy` / `@NoAlloc` / `@ThreadBoundary`, context parameters, allocator
+  objects, calls to `free` / `move` / `use` / `close`, `context(x) { }` blocks, Strict vs Managed per function) nor
+  represent lambdas, try/finally or generics yet. MemIr is pure data; `Ir2Mir` is untouched. Inline lambdas (`use`,
+  `context`, `run`, `let`, `repeat`, `forEach`, ...) become `MStmt.Scope` blocks read like code; thread-boundary
+  lambdas are scopes whose captured owners move in; all other lambdas are `MExpr.Lambda` (analysed separately).
+  `Foo.free()` / `alloc.free(x)` / `x.close()` become `MExpr.Free`, `x.move()` becomes `MExpr.Move`.
+* **`backend/.../memory`** (pure Kotlin, covered by the purity rule, self-hosts later):
+  * `Cfg.kt`: builds a control-flow graph per function (and per escaping lambda). A stack of frames (scope locals,
+    loops, `finally` bodies, `use` closes, thread-lambda ends, try handlers) makes every leaving edge (end of
+    scope, `return`, `break`, `continue`, `throw`) run the right exit operations: `finally` bodies are copied into
+    each exit path, leaks of dying owners are checked per path (the path kind appears in the message). Exception
+    edges only arise at `throw` and `require`-like calls and at calls of functions that (transitively) throw.
+    `x == null` tests refine the state on the branch edges.
+  * `State.kt`: the abstract domain. A tracked slot holds a *set* of states {Owned, Null, Freed, Moved, Borrowed,
+    already-reported} (the join at a merge is the union, i.e. the spec's `Maybe`), the owner slots an alias borrows
+    from, and the allocation sites of the value (position, allocator kind, allocator identity). Field states
+    (`local.field`: unknown / null / owned / moved-out) support overwrite leaks and partial moves.
+  * `Transfer.kt`: the transfer functions: allocator resolution per allocation site (innermost context level,
+    `@AllocatedBy` as a restriction with default instances only for `Heap`/`Rc`, ambiguity M0114, no allocator =
+    stack object or M0204 when it escapes), moves and borrows, function summaries from annotations (`@Owned`
+    parameters, owned/borrowed returns, context parameters, Managed callees, a summary of borrowed parameters a
+    callee stores), arena scopes (M0105/M0106/M0115/M0202), thread boundaries (M0206), `@NoAlloc` (M0205), field
+    moves (M0113) and annotation checks (M0111).
+  * `Checker.kt`: the driver. Per function: build the CFG, iterate the forward dataflow to a fixpoint (reporting
+    off), then one reporting pass over the stable block entry states. One cause, one message: diagnostics are
+    deduplicated by code and position, and a leak (M0102) of a slot that already has a use/free/move error is
+    dropped (cascade suppression). Managed functions are not analysed except for the boundary rule M0110.
+  * `Diagnostics.kt`: rustc-like rendering (`error[M0102]: ...`, `--> file:line:col label`, `help:`); the stable
+    parts are the code and the primary position.
+* **Tests.** `jvm-bridge/src/test/kotlin/MemoryCheckTest.kt` runs the checker on every `testdata/memory/*.kt`
+  (`.diag` = exact expected `line:col: CODE` multiset, no `.diag` = no diagnostics at all) and on our own additional
+  programs in `testdata/memory-extra` (same conventions); `build/reports/memory-check-summary.txt` has the pass
+  rate per code. `MemoryRunTest` builds the accepted programs natively (`.out` comparison); programs the C backend
+  cannot lower yet (context parameters, lambdas, generics) are skipped with the reason listed in
+  `build/reports/memory-run-summary.txt`.
+* **Code generation.** Strict programs are checked, but until `Ir2Mir` lowers context parameters / inline lambdas
+  / allocator objects, the ones using them do not build natively; programs that do build run with the Managed
+  (reference counting) code generation. Allocation through `mk_alloc_with`, `mk_free` for `free()` and
+  `mk_arena_*` for arenas (all in `minirt.h`) is the next step.
 
 ## Known gaps
 

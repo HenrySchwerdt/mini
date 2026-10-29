@@ -22,6 +22,10 @@ object Cli {
         val runtimeSrc: File?,
         val runtimeInclude: File?,
         val cflags: List<String>,
+        /** Extra Kotlin sources compiled with the program (e.g. the mini.memory API); not translated to C. */
+        val extraSrc: List<File> = emptyList(),
+        /** `-Werror`: memory-checker warnings fail the build. */
+        val werror: Boolean = false,
     )
 
     /** Returns the process exit code. */
@@ -58,7 +62,7 @@ object Cli {
     class BuildFailure(message: String) : Exception(message)
 
     /**
-     * `minic check <file.kt> [--extra-src <file.kt>]... [--brief]`: the Strict-mode ownership checker only.
+     * `minic check <file.kt> [--extra-src <file.kt>]... [--brief] [-Werror]`: the Strict-mode ownership checker only.
      * Prints rustc-like diagnostics to stderr (or, with `--brief`, `line:col: CODE` lines to stdout);
      * exit 1 when there is an error, 0 otherwise (warnings do not fail).
      */
@@ -66,11 +70,13 @@ object Cli {
         var source: File? = null
         val extra = mutableListOf<File>()
         var brief = false
+        var werror = false
         var i = 0
         while (i < a.size) {
             when (val x = a[i]) {
                 "--extra-src" -> { if (i + 1 >= a.size) { System.err.println("minic: missing value for $x"); return 2 }; extra += File(a[++i]) }
                 "--brief" -> brief = true
+                "-Werror" -> werror = true
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x"); return 2 }
                     source = File(x)
@@ -84,7 +90,7 @@ object Cli {
             val r = MemoryCheck.check(source, extra)
             if (brief) r.brief().forEach { println(it) } else if (r.diags.isNotEmpty()) System.err.println(r.render())
             for (f in r.failures) System.err.println("minic: warning: memory checker skipped $f")
-            if (r.hasErrors) 1 else 0
+            if (r.failed(werror) || r.strictFailures.isNotEmpty()) 1 else 0
         } catch (e: FrontendDriver.FrontendFailure) {
             System.err.println(e.message)
             1
@@ -99,6 +105,8 @@ object Cli {
         var rtSrc: File? = null
         var rtInc: File? = null
         val cflags = mutableListOf<String>()
+        val extra = mutableListOf<File>()
+        var werror = false
         var i = 0
         fun next(flag: String): String? {
             if (i + 1 >= a.size) { System.err.println("minic: missing value for $flag"); return null }
@@ -112,6 +120,8 @@ object Cli {
                 "--runtime-src" -> rtSrc = File(next(x) ?: return null)
                 "--runtime-include" -> rtInc = File(next(x) ?: return null)
                 "--cflag" -> cflags += next(x) ?: return null
+                "--extra-src" -> extra += File(next(x) ?: return null)
+                "-Werror" -> werror = true
                 else -> {
                     if (x.startsWith("-")) { System.err.println("minic: unknown option $x\n$USAGE"); return null }
                     if (source != null) { System.err.println("minic: more than one input file"); return null }
@@ -121,7 +131,7 @@ object Cli {
             i++
         }
         if (source == null || out == null) { System.err.println(USAGE); return null }
-        return Options(source, out, emitC, cc, rtSrc, rtInc, cflags)
+        return Options(source, out, emitC, cc, rtSrc, rtInc, cflags, extra, werror)
     }
 
     fun findRepoRoot(start: File): File? {
@@ -148,7 +158,9 @@ object Cli {
 
         // 2. K2 -> IR -> MIR
         var mir: mini.backend.MirModule? = null
-        FrontendDriver.runFrontend(o.source) { module, _ ->
+        FrontendDriver.runFrontend(o.source, o.extraSrc) { module, _ ->
+            MemoryCheck.gate(module, o.source, o.werror) // Strict-mode ownership checker: errors stop the build, warnings are printed
+            MemoryCheck.keepOnly(module, o.source) // extra sources only provide declarations
             mir = Ir2Mir().convert(module, o.source.name)
         }
         val module = mir ?: throw BuildFailure("the Kotlin frontend produced no IR for ${o.source}")

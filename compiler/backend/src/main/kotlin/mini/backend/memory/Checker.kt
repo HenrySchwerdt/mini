@@ -20,7 +20,7 @@ object MemoryChecker {
         // one cause, one message: a leak report for a slot that already has a use/free/move error is a follow-up
         val dirty = all.values.filter { it.code != "M0102" && it.slot >= 0 }.map { it.slot }.toSet()
         return all.values
-            .filter { !(it.code == "M0102" && it.slot in dirty) }
+            .filter { !(it.code == "M0102" && it.slot in dirty) && it.pos.line > 0 }
             .sortedWith(compareBy({ it.pos.line }, { it.pos.col }, { it.code }))
     }
 

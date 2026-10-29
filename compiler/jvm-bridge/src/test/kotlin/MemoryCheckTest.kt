@@ -19,7 +19,10 @@ class MemoryCheckTest {
     private val corpus = File(System.getProperty("mini.memoryCorpus") ?: error("mini.memoryCorpus not set"))
     private val api = File(System.getProperty("mini.memoryApi") ?: error("mini.memoryApi not set"))
     private val apiFiles = api.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
-    private val programs = corpus.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+    // additional programs written for the checker itself (the spec corpus above is read-only)
+    private val extra = File(System.getProperty("mini.memoryExtra") ?: error("mini.memoryExtra not set"))
+    private val programs = (corpus.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name } +
+        extra.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name })
 
     /** code -> (found, expected) over the diagnostics expected by the corpus; "accept" counts clean accepted programs. */
     private val perCode = sortedMapOf<String, IntArray>()

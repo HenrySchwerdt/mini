@@ -96,6 +96,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
 
     /** Functions that could not be lowered (name -> reason); the checker skips them. */
     val failures = ArrayList<String>()
+    val strictFailures = ArrayList<String>()
 
     fun lower(module: IrModuleFragment): MModule {
         val functions = ArrayList<MFunction>()
@@ -118,12 +119,12 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
 
     private fun lowerDeclaration(d: org.jetbrains.kotlin.ir.declarations.IrDeclaration, out: MutableList<MFunction>) {
         when (d) {
-            is IrSimpleFunction -> lowerFunction(d)?.let { out += it }
+            is IrSimpleFunction -> if (d.origin == IrDeclarationOrigin.DEFINED) lowerFunction(d)?.let { out += it }
             is IrClass -> {
                 classOf(d)
                 for (m in d.declarations) {
                     when (m) {
-                        is IrSimpleFunction -> if (!m.isFakeOverride) lowerFunction(m)?.let { out += it }
+                        is IrSimpleFunction -> if (!m.isFakeOverride && m.origin == IrDeclarationOrigin.DEFINED) lowerFunction(m)?.let { out += it }
                         is IrProperty -> {
                             m.getter?.let { g -> if (g.origin != IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR) lowerFunction(g)?.let { out += it } }
                             m.setter?.let { g -> if (g.origin != IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR) lowerFunction(g)?.let { out += it } }
@@ -288,7 +289,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             receiver = receiver,
             noAlloc = annos(f.annotations, NO_ALLOC) != null,
             external = external,
-            borrowsAll = external && name in BORROWS_ALL,
+            borrowsAll = external && (name in BORROWS_ALL || fq.startsWith("kotlin.internal.ir.")),
             ctorOf = ctorClass,
             pos = pos(f),
             throwsKnown = external && name in THROWERS,
@@ -308,6 +309,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 MFunction(m, lw.lowerFunctionBody(body)).also { m.body = it.body }
             } catch (e: Exception) {
                 failures += "${m.qname}: ${e.message ?: e.toString()}"
+                if (m.mode == MemMode.Strict) strictFailures += "${m.qname}: ${e.message ?: e.toString()}"
                 if (System.getenv("MINIC_DEBUG") != null) e.printStackTrace()
                 null
             }
@@ -764,6 +766,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     }
                 }
             }
+
+            if (pkg == "kotlin.internal.ir" && name == "CHECK_NOT_NULL" && args.isNotEmpty() && args[0] != null) return expr(args[0]!!, out)
 
             // null tests and negation
             if (pkg == "kotlin.internal.ir" && name == "EQEQ") {

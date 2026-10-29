@@ -337,7 +337,7 @@ internal class CfgBuilder(
         frames += Frame.Lam(s.id, after)
         val lamIdx = frames.size - 1
         when (s.kind) {
-            ScopeKind.Use -> frames += Frame.Use(s.target!!, s.lambdaPos)
+            ScopeKind.Use -> frames += Frame.Use(s.target!!, s.pos)
             ScopeKind.Thread -> {
                 emit(Op.ThreadStart(s.captures, s.lambdaPos, env()))
                 frames += Frame.Thread(s.captures, s.lambdaPos)
