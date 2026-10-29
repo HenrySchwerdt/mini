@@ -241,7 +241,7 @@ function firstWords(code: string): string[] {
   // strip annotations (with an optional argument list that has no nested parentheses on the first line)
   let rest = code.trim()
   for (;;) {
-    const m = /^@(?!file:)[\w.]+(\([^)]*\))?\s*/.exec(rest)
+    const m = /^(@(?!file:)[\w.]+(\([^)]*\))?|context\s*\([^)]*\)(?=\s*(\n|@|\w+\s+(fun|class|val|var)\b|fun\b|class\b|val\b|var\b)))\s*/.exec(rest)
     if (!m) break
     rest = rest.slice(m[0].length)
   }
@@ -316,6 +316,8 @@ export function splitCell(source: string): Chunk[] {
     if (/^(@(?!file:)[\w.]+(\([^)]*\))?\s*)+$/.test(joined)) return true // annotations only
     const l2 = lastInfo.last2
     if (CONT_END.has(lastInfo.last) && l2 !== '++' && l2 !== '--' && l2 !== '.*') return true
+    // `context(a: Arena)` on its own line belongs to the declaration on the next line
+    if (/^context\s*\(.*\)$/.test(joined) && nextCode !== undefined && /^\s*(@|fun\b|val\b|var\b|class\b|interface\b|object\b|[a-z]+\s+(fun|class|val|var|interface|object)\b)/.test(nextCode)) return true
     if (/\b(else|do)$/.test(lastInfo.code.trim())) return true
     if (c.lines.length === 1 && /^(if|while|for|when)\b/.test(joined) && lastInfo.last === ')') return true
     if (nextCode !== undefined && CONT_START.test(nextCode.trim())) return true

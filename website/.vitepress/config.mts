@@ -28,6 +28,8 @@ export default withMermaid(
         { text: 'Language tour', link: '/tour/', activeMatch: '/tour/' },
         { text: 'Memory', link: '/memory/', activeMatch: '/memory/' },
         { text: 'Diagnostics', link: '/reference/diagnostics/', activeMatch: '/reference/' },
+        { text: 'Playground', link: '/playground' },
+        { text: 'Notebook', link: '/notebook' },
         { text: 'How it works', link: '/internals/', activeMatch: '/internals/' },
         {
           text: 'More',
@@ -47,6 +49,7 @@ export default withMermaid(
               { text: 'Mini and Kotlin/JVM', link: '/guide/mini-vs-kotlin' },
               { text: 'C interop', link: '/guide/c-interop' },
               { text: 'Command line', link: '/reference/cli' },
+              { text: 'Playground and notebook', link: '/guide/playground' },
             ],
           },
         ],

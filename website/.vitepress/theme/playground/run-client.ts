@@ -20,6 +20,8 @@ export function runInWorker(wasm: Uint8Array, opts: RunOptions): Promise<RunResu
       worker.terminate()
       resolve({ ...r, durationMs: r.durationMs ?? performance.now() - t0 })
     }
+    if (opts.signal?.aborted) return finish({ exitCode: 130 })
+    opts.signal?.addEventListener('abort', () => finish({ exitCode: 130 }), { once: true })
     timer = setTimeout(() => finish({ exitCode: 124, timedOut: true }), opts.timeoutMs)
 
     worker.onmessage = (ev: MessageEvent<RunEvent>) => {

@@ -16,6 +16,8 @@ import {
   type ToolchainResponse,
 } from './types.ts'
 
+type RequestBody = ToolchainRequest extends infer R ? (R extends unknown ? Omit<R, 'id'> : never) : never
+
 /** Where the toolchain build drops its files. Relative to the site base, so it works under /mini/. */
 export function toolchainBase(siteBase: string): string {
   return `${siteBase.replace(/\/?$/, '/')}toolchain/`
@@ -77,7 +79,7 @@ export class WorkerToolchain implements MiniToolchain {
     return this.info?.loaded
   }
 
-  private send<T>(req: Omit<ToolchainRequest, 'id'>, onProgress?: (p: LoadProgress) => void): Promise<T> {
+  private send<T>(req: RequestBody, onProgress?: (p: LoadProgress) => void): Promise<T> {
     const worker = this.worker!
     const id = this.nextId++
     return new Promise<T>((resolve, reject) => {

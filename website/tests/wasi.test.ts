@@ -4,7 +4,7 @@ import wabt from 'wabt'
 import { ERRNO, Wasi, runModule } from '../.vitepress/theme/playground/wasi.ts'
 
 const w = await wabt()
-const compile = (wat: string): Uint8Array => w.parseWat('t.wat', wat).toBinary({}).buffer
+const compile = (wat: string) => w.parseWat('t.wat', wat).toBinary({}).buffer as Uint8Array<ArrayBuffer>
 
 function run(wat: string, opts: Parameters<typeof runModule>[1] = {}) {
   let out = ''

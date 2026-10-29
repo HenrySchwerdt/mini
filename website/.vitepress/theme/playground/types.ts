@@ -83,10 +83,12 @@ export interface RunOptions {
   timeoutMs: number
   /** Total stdout+stderr bytes after which the run is killed. Default 4 MiB. */
   maxOutputBytes?: number
+  /** Aborting kills the run; the result has exitCode 130. */
+  signal?: AbortSignal
 }
 
 export interface RunResult {
-  /** 124 on timeout, 134 on a wasm trap, 153 when the output limit was exceeded, otherwise the program's exit status. */
+  /** 124 on timeout, 130 when aborted, 134 on a wasm trap, 153 when the output limit was exceeded, otherwise the program's exit status. */
   exitCode: number
   durationMs: number
   timedOut?: boolean

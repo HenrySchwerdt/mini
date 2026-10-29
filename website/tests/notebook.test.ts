@@ -70,6 +70,12 @@ println("next")`
   assert.deepEqual(kinds(src), ['stmt', 'stmt'])
 })
 
+test('splitCell: context receivers belong to the declaration, a context block is a statement', () => {
+  const c = splitCell('context(a: Arena)\nfun diagonal(n: Int): Point = Point(n, n)\n\ncontext(Heap()) { load(8).free() }')
+  assert.deepEqual(c.map((x) => x.kind), ['decl', 'stmt'])
+  assert.equal(c[0].lines.length, 2)
+})
+
 test('splitCell: import with star does not swallow the next line', () => {
   assert.deepEqual(kinds('import a.b.*\nfun f() {}'), ['import', 'decl'])
 })
