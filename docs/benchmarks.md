@@ -344,14 +344,33 @@ runs without any change to what it executes).
 
 | benchmark | C | Mini-M before | Mini-M after | Mini-M-ll before | Mini-M-ll after |
 |---|---:|---:|---:|---:|---:|
-| binarytrees | 0.95 | 1.15 | 1.22 | 1.13 | 1.16 |
-| nbody | 0.99 | 1.72 | **1.03** | 1.88 | 1.25 |
-| fannkuch | 2.13 | 7.06 | **2.68** | 6.85 | 3.43 |
-| spectralnorm | 1.01 | 2.00 | **1.26** | 2.00 | 2.01 |
-| mandelbrot | 0.87 | 0.90 | 0.88 | 0.84 | 0.80 |
-| wordcount | 0.53 | 4.10 | 3.42 | 3.98 | 3.63 |
-| strbuild | 0.58 | 1.46 | **0.81** | 1.49 | 0.82 |
-| json | 0.82 | 1.36 | 1.37 | 1.25 | 1.33 |
+| binarytrees | 0.95 | 1.15 | 1.22 | 1.13 | 1.15 |
+| nbody | 0.99 | 1.72 | **1.03** | 1.88 | **0.94** |
+| fannkuch | 2.13 | 7.06 | **2.68** | 6.85 | **2.03** |
+| spectralnorm | 1.01 | 2.00 | **1.26** | 2.00 | **1.29** |
+| mandelbrot | 0.87 | 0.90 | 0.88 | 0.84 | 0.81 |
+| wordcount | 0.53 | 4.10 | 3.42 | 3.98 | 4.28 |
+| strbuild | 0.58 | 1.46 | **0.81** | 1.49 | 0.83 |
+| json | 0.82 | 1.36 | 1.37 | 1.25 | 1.36 |
+
+**LLVM backend follow-up.** The "Mini-M-ll after" column above is after these fixes to the LLVM lowering (text and in-process
+paths share them; the in-process path, `--opt=O2`, measured within 3 percent of the text path on all eight). The quick wins had
+left it behind the C backend (`spectralnorm` 2.01 vs 1.26, `fannkuch` 3.43 vs 2.68, `nbody` 1.25 vs 1.03), for three reasons
+visible in the optimized IR and the assembly:
+
+1. **TLS model.** The emitted IR declared `mk_pending_exception` as a plain `thread_local` global. Without module flags
+   clang assumes PIC and uses the general-dynamic model: every pending-exception test (after every array access) called
+   `__tls_get_addr`. It is now `thread_local(initialexec)` (`LLVMSetThreadLocalMode` in the API builder), one `%fs` relative
+   load, as in the C backend's executable. This alone took `spectralnorm` from 2.01 s to 1.2 s.
+2. **No TBAA.** The C backend's struct accesses carry type-based alias tags, the IR did not, so every store to a `Double`
+   field or array element forced reloads of the others (28 instead of 16 double loads in `nbody`'s `advance`, the array
+   length reloaded after each element store). Loads and stores of fields (tag per declaring class and field), array lengths,
+   array elements (tag per element kind) and the pending slot now carry flat TBAA tags (`IrBuilder.loadTagged/storeTagged`);
+   the object header (reference counts) stays untagged and so aliases everything. `nbody` 1.25 s to 1.05 s.
+3. **Pending test after inline array accesses.** The failing bounds path merged back into the fast path, which then tested
+   `mk_pending_exception` on every access (a load the optimizer could neither hoist nor remove). The failing path now leaves
+   the function (or goes to the handler) itself after `mk_raise_index`, as the pending test would have, and the fast path has
+   no test. `fannkuch` 3.06 s to 2.1 s, now faster than the C backend, which still has this test.
 
 Per step (C backend, same session): `fannkuch` 7.06 s to 2.65 s after step 1; `nbody` 1.72 s to 1.48 s after step 1 and to
 1.01 s after step 2; `strbuild` 1.46 s to 0.88 s (0.81 s in the final run) after step 3. The measured experiments above

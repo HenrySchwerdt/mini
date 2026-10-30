@@ -57,6 +57,7 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
     private val kZeroExt: Int = enumKind("zeroext")
     private val kSignExt: Int = enumKind("signext")
     private val kProf: Int = mdKind("prof")
+    private val kTbaa: Int = mdKind("tbaa")
     private var weights: COpaquePointer? = null
 
     override val none: ApiVal = ApiVal(LLVMConstPointerNull(tPtr))
@@ -113,6 +114,7 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
             memScoped {
                 val g = LLVMAddGlobal(module, tPtr, "mk_pending_exception".cstr.ptr)
                 LLVMSetThreadLocal(g, 1)
+                LLVMSetThreadLocalMode(g, 3) // LLVMInitialExecTLSModel: no __tls_get_addr call per access
             }
         }
     }
@@ -318,6 +320,37 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
     override fun store(v: ApiVal, ptr: ApiVal, align: Int) {
         val s = LLVMBuildStore(builder, v.ref, ptr.ref)
         if (align > 0) LLVMSetAlignment(s, align)
+    }
+
+    /**
+     * The access tag [tag] (see [IrBuilder.loadTagged]): `!{!T, !T, i64 0}` over the scalar type node `!T = !{!"tag", !root, i64 0}`.
+     * LLVM uniques metadata nodes, so building it again for every access yields the same node (and no pointer is kept in a collection).
+     */
+    private fun tbaaTag(tag: String): COpaquePointer = memScoped {
+        val rv = allocArray<COpaquePointerVar>(1)
+        rv[0] = LLVMMDStringInContext(context, "mini tbaa".cstr.ptr, 9)
+        val root = LLVMMDNodeInContext(context, rv, 1)
+        val tv = allocArray<COpaquePointerVar>(3)
+        tv[0] = LLVMMDStringInContext(context, tag.cstr.ptr, IrStrings.utf8(tag).size)
+        tv[1] = root
+        tv[2] = LLVMConstInt(tI64, 0L, 0)
+        val type = LLVMMDNodeInContext(context, tv, 3)
+        val av = allocArray<COpaquePointerVar>(3)
+        av[0] = type
+        av[1] = type
+        av[2] = LLVMConstInt(tI64, 0L, 0)
+        LLVMMDNodeInContext(context, av, 3)
+    }
+
+    override fun loadTagged(t: IrType, ptr: ApiVal, tag: String, name: String): ApiVal {
+        val v = load(t, ptr, 0, name)
+        LLVMSetMetadata(v.ref, kTbaa, tbaaTag(tag))
+        return v
+    }
+
+    override fun storeTagged(v: ApiVal, ptr: ApiVal, tag: String) {
+        val s = LLVMBuildStore(builder, v.ref, ptr.ref)
+        LLVMSetMetadata(s, kTbaa, tbaaTag(tag))
     }
 
     override fun gep(base: ApiVal, offset: ApiVal, inbounds: Boolean, name: String): ApiVal = memScoped {

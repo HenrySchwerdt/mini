@@ -109,6 +109,14 @@ interface IrBuilder<V : Any, B : Any> {
     fun load(t: IrType, ptr: V, align: Int, name: String): V
     fun store(v: V, ptr: V, align: Int)
 
+    /**
+     * [load] / [store] with a type-based alias tag (TBAA): accesses with different [tag]s never alias (the tags are flat, no
+     * subtype relation), so the optimizer can keep a field, an array length or elements in registers across stores of other tags.
+     * Natural alignment.
+     */
+    fun loadTagged(t: IrType, ptr: V, tag: String, name: String): V
+    fun storeTagged(v: V, ptr: V, tag: String)
+
     /** `getelementptr i8, ptr base, i64 offset`. */
     fun gep(base: V, offset: V, inbounds: Boolean, name: String): V
 
