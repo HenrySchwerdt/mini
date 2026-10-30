@@ -204,20 +204,18 @@ await step('tutorial: Run, edit and run, Check, exercise goal, Run all', async (
     await cells.nth(0).getByRole('button', { name: 'Run', exact: true }).click()
     await cells.nth(0).locator('.mc-verdict.ok').waitFor({ timeout: 180000 })
     assert.match(await cells.nth(0).locator('.mp-output').innerText(), /Hello, Mini!/)
-    // Edit: the editor replaces the static code; run the edited program
-    await cells.nth(0).getByRole('button', { name: 'Edit', exact: true }).click()
+    // Learn opens visible code cells directly in the editor.
     const editor = cells.nth(0).locator('.cm-content')
     await editor.waitFor({ timeout: 30000 })
-    await editor.click()
-    await page.keyboard.press('Control+A')
-    await page.keyboard.insertText('fun main() {\n    println("edited ${6 * 7}")\n}\n')
+    await editor.fill('fun main() {\n    println("edited ${6 * 7}")\n}\n')
     await cells.nth(0).getByRole('button', { name: 'Run', exact: true }).click()
     await page.waitForFunction(() => /edited 42/.test(document.querySelector('.mc .mp-output')?.textContent ?? ''), null, { timeout: 60000 })
     assert.equal(await cells.nth(0).locator('.mc-verdict').count(), 0, 'an edited program is not compared with the documentation')
     await shot('tutorial-hello-edited')
     // Reset restores the original
     await cells.nth(0).getByRole('button', { name: 'Reset', exact: true }).click()
-    assert.equal(await cells.nth(0).locator('.cm-editor').count(), 0)
+    await cells.nth(0).locator('.cm-editor').waitFor()
+    assert.match(await cells.nth(0).locator('.cm-content').innerText(), /Hello, Mini!/)
     // notebook semantics: the third cell uses `name` from the cell above
     await cells.nth(2).getByRole('button', { name: 'Run', exact: true }).click()
     await page.waitForFunction(() => /Goodbye, Mini \(2027 is next year\)/.test(document.querySelectorAll('.mc')[2]?.textContent ?? ''), null, { timeout: 60000 })

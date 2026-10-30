@@ -1,9 +1,13 @@
 ---
-title: "3. Classes, data and sealed types"
+title: "5. Classes, data and sealed types"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 3. Classes, data and sealed types
+# 5. Classes, data and sealed types
+
+**By the end:** put data and behavior together, choose between a plain class and a data class, and model a closed set of alternatives with a sealed hierarchy. Pay attention to the difference between a new object and another reference to an existing object.
 
 ## Classes
 
@@ -137,6 +141,14 @@ println(Registry.nextId())
 101
 ```
 
+## Checkpoint
+
+When should you choose a data class? Does `copy` duplicate objects held in its properties? What changes when you add a new sealed subtype?
+
+::: details Reasoning
+Use a data class for a value whose equality follows its constructor properties. `copy` is shallow, so referenced mutable objects remain shared. A new subtype makes an exhaustive `when` incomplete until you handle the case.
+:::
+
 ## Exercise
 
 ::: tip Exercise: a new shape
@@ -185,4 +197,4 @@ square with area 9.0
 ```
 :::
 
-Next: [Lambdas, collections and strings](./collections). More listings: [classes](/tour/classes) and [data, enum and sealed](/tour/types) in the tour.
+Language reference: [Kotlin classes](https://kotlinlang.org/docs/classes.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

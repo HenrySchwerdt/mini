@@ -1,11 +1,13 @@
 ---
-title: "8. Strict mode: leaks are compile errors"
+title: "17. Strict mode and ownership"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 8. Strict mode: leaks are compile errors
+# 17. Strict mode and ownership
 
-Managed code cannot leak by forgetting to free (it frees for you). Strict code gives you full control and takes the safety net away, and in exchange **the compiler proves you did it right**. A file opts in with its first line:
+Managed code releases ordinary acyclic objects automatically; cycles can still leak. Strict code gives you full control and takes the safety net away, and in exchange **the compiler proves you did it right**. A file opts in with its first line:
 
 ```kotlin norun
 @file:MemoryMode(Mode.Strict)
@@ -14,6 +16,8 @@ import mini.memory.*
 ```
 
 In Strict mode every allocation has exactly one **owner**, and the owner must release it exactly once on every path, or hand it on. If the compiler cannot prove that, the program does not compile. Everything below is a live **Check** cell: edit the code and press Check to watch the checker answer. Diagnostics carry a stable code such as `M0102`; click it for the [reference page](/reference/diagnostics/).
+
+**By the end:** follow an owned allocation through every exit path, distinguish borrowing from moving, and repair a leak without creating a double free. These are checker experiments: an expected diagnostic is a result to understand, not an instruction to execute unsafe code.
 
 ## A leak
 
@@ -93,6 +97,14 @@ Press **Run** and it prints `5`. This variant escapes the object and is rejected
 
 It follows references to instances of classes declared in a Strict file (and the `Arena` and `Pool` resources). `Int`, `String` and objects of Managed classes carry no obligations. Escape analysis for stack placement (M0201, M0203) is specified but not implemented. The [Strict mode reference](/memory/strict) and the [diagnostics reference](/reference/diagnostics/) list every rule and code, and [the checker internals](/internals/checker) explain how it works.
 
+## Checkpoint
+
+If one branch returns early, where must an allocation be released? Is `val alias = owner` an ownership transfer? Can you free a borrowed parameter?
+
+::: details Reasoning
+Every exit path must discharge or transfer the ownership obligation. An alias only borrows; `move()` explicitly transfers ownership. Borrowed parameters do not grant permission to free the object.
+:::
+
 ## Exercise
 
 ::: tip Exercise: fix the leak
@@ -140,5 +152,3 @@ fun main() {
 }
 ```
 :::
-
-Next: [C interop](./c-interop).

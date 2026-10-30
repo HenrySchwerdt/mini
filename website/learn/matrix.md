@@ -1,15 +1,19 @@
 ---
-title: "11. The @ operator"
+title: "23. The @ operator"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 11. The `@` operator
+# 23. The @ operator
 
 Mini adds exactly one operator to Kotlin: a binary `@`, in the spirit of Python's `@` ([PEP 465](https://peps.python.org/pep-0465/)). It is the matrix-multiplication operator. Nothing in the standard library defines it; you give your own types an `operator fun matmul`.
 
 ::: warning Not Kotlin
 Programs that use `@` are not valid Kotlin and the Kotlin compiler cannot read them. Everything else in Mini is.
 :::
+
+**By the end:** define the operation behind `@`, predict its precedence and distinguish a binary operator from an annotation or a label. This is a Mini syntax extension, so it is the point where these examples leave standard Kotlin syntax.
 
 ## Define it, use it
 
@@ -57,9 +61,17 @@ println(fib(80))
 
 The reference section is [Mini and Kotlin/JVM: Matrix operator](/guide/mini-vs-kotlin#matrix-operator).
 
+## Checkpoint
+
+How is `a + b @ c` grouped? Does using `@` change who owns the result? Is `a @b` another spelling of matrix multiplication?
+
+::: details Reasoning
+It groups as `a + (b @ c)`. Ownership follows the same rules as an ordinary `matmul` call. Whitespace on both sides distinguishes the binary operator; `a @b` is not a product.
+:::
+
 ## Where to go next
 
-You have seen all of Mini. From here:
+Continue with [From notebook to native project](./workflow) to put the pieces into a source tree with repeatable checks. Further references:
 
 - [Install Mini](/install) and build a project with the [`mini` tool](/reference/mini).
 - The [memory guide](/memory/) and the [diagnostics reference](/reference/diagnostics/) for everything about Strict mode.

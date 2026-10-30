@@ -1,80 +1,119 @@
 ---
 title: Learn Mini
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# Learn Mini
+# Kotlin, with a native way of thinking
 
-A hands-on tutorial. Every code block on these pages is a live cell: **edit it, press Run, and the compiler that runs in your browser builds and runs it**. No install needed. If you would rather work locally, [install Mini](/install) and paste the code into a `.kt` file.
+Learn the language, build something useful, then understand what Mini does with its memory. This is a guided notebook: explanations stay in place, while every runnable code cell is yours to change.
+
+Mini compiles Kotlin to native programs. You learn Kotlin's types, functions, objects and collections first, then Mini's reference counting, allocators, ownership checker and native boundary. Mini also adds a matrix operator, `@`; that chapter calls out the syntax extension explicitly.
+
+**No installation needed.** Read a cell, predict its result, then press **Run**. Click directly into the code to experiment; **Ctrl/Cmd+Enter** runs the focused cell. **Reset** restores the example. Nothing you edit changes the published lesson.
 
 ```kotlin
 fun main() {
-    println("Hello from your browser!")
+    val language = "Kotlin"
+    val destination = "native code"
+    println("$language → $destination, with Mini")
 }
 ```
 ```output
-Hello from your browser!
+Kotlin → native code, with Mini
 ```
 
-The first Run downloads the compiler (about 100 MB, cached by your browser afterwards; it starts in the background as soon as a page opens, see the badge in the corner). The cells compile real Mini with the real compiler: what you see is what `minic` prints on your machine, apart from timing.
+## A course, not a list of language features
 
-## The chapters
+This course has **26 chapters**, arranged so that a concept first appears in a small example, then in an API or project, and finally in a lifetime or testing decision. Read in order if you are new to programming. Each chapter gives you code to inspect, a prediction to make and an experiment or exercise to complete.
 
-Mini is Kotlin, so the first part is a quick Kotlin tour. The second part is what Kotlin does not give you.
+Use the chapter list on the left to jump directly to a topic. On a phone, open **Menu**. The links at the bottom continue to the next lesson. Keep the code editable while treating explanations as your reference: you cannot accidentally delete a lesson or change its structure.
 
-| # | Chapter | You learn |
+| Part | Chapters | Skills to practice |
 |---|---|---|
-| 1 | [Hello, Mini](./hello) | `main`, `println`, string templates, building a native binary |
-| 2 | [Values, functions and control flow](./basics) | `val`/`var`, functions, `if`, `when`, loops, ranges |
-| 3 | [Classes, data and sealed types](./classes) | classes, interfaces, `data`, `enum`, `sealed`, `object` |
-| 4 | [Lambdas, collections and strings](./collections) | higher-order functions, `List`/`Map`/`Set`, `StringBuilder`, generics |
-| 5 | [Null safety and exceptions](./errors) | `?.`, `?:`, smart casts, `try`/`catch`, extension functions |
-| 6 | [Memory: managed by default](./memory-managed) | reference counting, what it costs, `@file:MemoryMode` |
-| 7 | [Allocators and arenas](./memory-allocators) | `Heap`, `Arena`, allocators as context parameters |
-| 8 | [Strict mode](./memory-strict) | leaks, double free, use after free as compile errors, with live Check cells |
-| 9 | [C interop](./c-interop) | calling C, and what the browser cannot run |
-| 10 | [Performance](./performance) | native code, RC elision, `-O`, the LLVM backends, numbers |
-| 11 | [The `@` operator](./matrix) | Mini's one syntax extension |
+| Getting started | [1. Hello](./hello), [2. Values and types](./values), [3. Branching and loops](./basics), [4. Functions and scope](./functions) | Trace execution, choose types, understand references and write small operations with explicit inputs and results. |
+| Model data and behavior | [5. Classes](./classes), [6. States and invariants](./modelling) | Define constructors, protect valid state, distinguish equality from identity and choose sealed alternatives. |
+| Work with data | [7. Lambdas and collections](./collections), [8. Collection design](./collection-design), [9. Null safety](./errors), [10. Failure and parsing](./error-design) | Transform data without silently losing information; make ordering, missing values and invalid input explicit. |
+| Build reusable programs | [11. Generics](./generics), [12. Extensions and receivers](./extensions), [13. Task-report project](./project) | Read type contracts, build small APIs and connect parsing, transformation and formatting. |
+| Understand Mini memory | [14. Managed memory](./memory-managed), [15. Reference graphs](./memory-graphs), [16. Allocators](./memory-allocators), [17. Strict mode](./memory-strict) | Draw an object graph, recognize cycles, explain region lifetimes and read ownership diagnostics. |
+| Design Mini lifetimes | [18. Ownership APIs](./ownership), [19. Resources](./resources), [20. C interop](./c-interop), [21. Performance](./performance), [22. Memory boundaries](./memory-design) | Follow transfer and cleanup across calls, failures, fields, callbacks and native boundaries; understand current checker limits. |
+| Practice and build | [23. Matrix operator](./matrix), [24. Tests and debugging](./testing), [25. Native workflow](./workflow), [26. Import-report capstone](./capstone) | Verify behavior, reduce failures and build a larger program with structured errors, deterministic reports and explicit lifetime decisions. |
 
-Chapters 1 to 5 can be skipped if you know Kotlin. Chapters 6 to 8 are the heart of Mini.
+### Choose a starting point
 
-## How the cells work
+**New to programming:** begin with Hello and spend time predicting each result. Do not skip the small exercises in favor of the longest example. A useful session is one or two chapters, followed by writing a similar example without looking.
 
-- **Run** compiles the cell and runs it in a fresh WebAssembly instance. Output appears below the cell, with the exit code and time. **Stop** ends a running program. Programs are killed after 10 seconds or 4 MiB of output.
-- **Check** runs only the type checker and the memory checker. It is quick (a few MB of the compiler) and prints diagnostics like `minic check` does, with the error code linked to its [reference page](/reference/diagnostics/).
-- **Edit** turns the code into an editor (syntax highlighting, squiggles for diagnostics, Ctrl+Enter to run). **Reset** returns to the original code.
-- **Playground** opens the cell in the full [playground](/playground).
-- A green check mark below the output says that it matches the output printed in this tutorial. In an exercise it means you reached the goal.
+**Know another language:** work through values, modelling, collection design and error design before assuming familiar syntax has familiar behavior. Pay particular attention to read-only references, shallow copies, nullable lookup results and extension dispatch.
 
-### Cells share declarations
+**Already know Kotlin:** start with Managed memory and reference graphs, then continue through the lifetime chapters. Return to the capstone to practice Mini's project workflow and its current boundaries around collections and allocators.
 
-Tutorial pages are *notebooks*. A cell that is not a complete program (no `fun main`) sees the **declarations** of the cells above it (functions, classes, `val`s at the top level, imports) and its own statements run as the body of `main`. The statements of earlier cells are not run again. Try it:
+The estimated chapter times include hands-on work, not just reading. Plan several sessions: about **15–20 hours** for a first careful pass, longer if programming itself is new. Mastery comes from changing and explaining examples, not reaching the last page quickly.
+
+### A practice routine that reveals gaps
+
+For each chapter, do four things:
+
+1. Predict a result before Run or Check.
+2. Change one input or operation and predict the change.
+3. Complete the exercise before opening the solution.
+4. Explain the rule in your own words and test one boundary the lesson did not show.
+
+Hints and solutions are separate so you can ask for a nudge before seeing the entire answer. A solution is one implementation; its contract and the reasons it works matter more than copying its spelling.
+
+## Read → predict → run → explain
+
+Before running this cell, decide whether the second line prints `1` or `2`:
+
+```kotlin
+fun main() {
+    val numbers = mutableListOf(1)
+    val sameNumbers = numbers
+    sameNumbers.add(2)
+    println(numbers)
+    println(numbers.size)
+}
+```
+```output
+[1, 2]
+2
+```
+
+`val` fixes a reference; it does not freeze the object. Both names refer to the same list. This distinction will return in data classes, collections and memory ownership. After running, replace `sameNumbers = numbers` with `sameNumbers = numbers.toMutableList()` and explain the new output.
+
+**Exercises are experiments, not exams.** Their starter code runs but deliberately misses the requested output. The goal appears below the cell. Try a small edit, run again and only then reveal a solution. You can use **Playground** for a separate experiment or the [free-form notebook](/notebook) to write your own explanations and add cells.
+
+## How this notebook executes code
+
+A Run compiles a program and executes it in a fresh WebAssembly instance. The first run loads the browser toolchain; its status appears in the corner. Later runs reuse the downloaded compiler. If the build you are reading has no toolchain, the examples and documented results remain readable and you can [run them locally](/install).
+
+A **complete program**, with its own `fun main`, runs independently. A **fragment** sees declarations from the earlier fragment cells on that page. Imports, functions, classes and top-level properties accumulate; earlier statements do not execute. Chapters start a fresh declaration context.
 
 ```kotlin
 val greeting = "Hello"
-fun shout(s: String) = s.uppercase() + "!"
-println(shout(greeting))
+fun welcome(name: String) = "$greeting, $name!"
+println(welcome("Mini"))
 ```
 ```output
-HELLO!
+Hello, Mini!
 ```
 
 ```kotlin
-// `greeting` and `shout` come from the cell above
-println(shout("$greeting, notebook"))
+// This fragment uses declarations from the fragment above.
+println(welcome("notebook"))
 ```
 ```output
-HELLO, NOTEBOOK!
+Hello, notebook!
 ```
 
-Every Run is a separate program, so values do not survive from one Run to the next, and a top-level `var` starts from its initial value every time. A cell with its own `fun main` stands alone. **Run all** at the top of a chapter runs every cell from top to bottom.
+Each run initializes top-level properties again. There is no persistent Python-style kernel, and running a later cell does not preserve the effects of an earlier run. Edit an existing declaration rather than defining it twice. A `@file:` annotation in a shared fragment affects the assembled program, so Strict examples use independent complete programs.
 
-::: tip Not in the browser
-Some things need a real machine: calling C libraries, files and the network, anything that runs longer than a few seconds. Those blocks are plain highlighted code and say so. [Install Mini](/install) to try them.
-:::
+**Run all** runs the chapter's examples in order, skips exercise starters and stops at an unexpected result. **Check** runs the type and memory checker without executing the program. Some ownership examples intentionally fail: their expected diagnostic, such as `M0102`, is part of the lesson. Native-only listings are labelled and have no Run button.
 
-## Exercises
+## Where the explanations come from
 
-Each chapter ends with exercises. The starter code compiles and runs; change it until the output matches the goal. *Show solution* reveals one possible answer, which is a live cell too.
+The sequence takes inspiration from the official [Kotlin tour](https://kotlinlang.org/docs/kotlin-tour-welcome.html): small executable examples, one concept at a time, followed by practice. The explanations and exercises here are written for Mini. Links in the chapters point to Kotlin's documentation for the language rules and to this repository's guides for Mini's behavior.
 
-Ready? Start with [Hello, Mini](./hello).
+Kotlin documentation covers more platforms and libraries than Mini implements. A Kotlin/JVM example using `java.*`, or a library expecting JVM bytecode, cannot simply be linked into a Mini binary. Use the [compatibility guide](/guide/mini-vs-kotlin), the [standard library reference](/stdlib) and the [roadmap](/roadmap) to check a feature's status.
+
+Start with [Hello, Mini](./hello).

@@ -2,6 +2,7 @@ import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
 import diagnosticsSidebar from './diagnostics-sidebar.json'
 import { miniCellsPlugin } from './mini-cells.ts'
+import { learnSidebar } from './theme/learn-course.ts'
 
 // GitHub Pages serves the site under /mini/ (https://henryschwerdt.github.io/mini/).
 const base = '/mini/'
@@ -71,30 +72,7 @@ export default withMermaid(
         },
       ],
       sidebar: {
-        '/learn/': [
-          {
-            text: 'Learn Mini',
-            items: [
-              { text: 'Introduction', link: '/learn/' },
-              { text: '1. Hello, Mini', link: '/learn/hello' },
-              { text: '2. Values, functions, control flow', link: '/learn/basics' },
-              { text: '3. Classes, data and sealed types', link: '/learn/classes' },
-              { text: '4. Lambdas, collections, strings', link: '/learn/collections' },
-              { text: '5. Null safety and exceptions', link: '/learn/errors' },
-            ],
-          },
-          {
-            text: 'What makes Mini different',
-            items: [
-              { text: '6. Memory: managed by default', link: '/learn/memory-managed' },
-              { text: '7. Allocators and arenas', link: '/learn/memory-allocators' },
-              { text: '8. Strict mode', link: '/learn/memory-strict' },
-              { text: '9. C interop', link: '/learn/c-interop' },
-              { text: '10. Performance', link: '/learn/performance' },
-              { text: '11. The @ operator', link: '/learn/matrix' },
-            ],
-          },
-        ],
+        '/learn/': learnSidebar,
         '/guide/': guideSidebar,
         '/install': guideSidebar,
         '/tour/': [

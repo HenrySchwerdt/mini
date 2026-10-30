@@ -1,11 +1,15 @@
 ---
-title: "10. Performance"
+title: "21. Measure and understand performance"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 10. Performance
+# 21. Measure and understand performance
 
 Mini compiles Kotlin to C17 (or LLVM IR) and lets clang optimize it. There is no virtual machine, no garbage collector and no warm-up. A hello-world starts in about a millisecond and the binary is 80 to 210 KiB.
+
+**By the end:** separate compile time from runtime, compare equivalent algorithms and use native counters to investigate allocation costs. A browser timing is a useful experiment in that browser, not a native benchmark.
 
 ## Measure something
 
@@ -38,12 +42,12 @@ In the browser this runs as WebAssembly. Compiled natively with `minic build -O2
 
 ## What the compiler gives you
 
-- **`-O0`, `-O1` (default), `-O2`, `-O3`, `-Os`.** The optimization level of the C compiler.
+- **`-O0`, `-O1`, `-O2`, `-O3`.** The native driver defaults to `-O2` for `minic build` and `-O1` for the temporary build in `minic run`. `-g` selects a debug build. These are C compiler settings; the project tool has its own `mini build --release` option.
 - **RcOpt, reference-count elision.** The pass that removes most retain and release calls from Managed code. On the project's micro benchmarks the time of `arraylist`, `mapfilter` and `tree` drops by 35 to 40 percent, and `tree` goes from 8.3 million retains to none. `--no-rc-opt` turns it off for comparison.
-- **`--stats`.** Builds the program so that it prints allocation and reference-count counters to stderr at exit: allocations, frees, live objects at exit and the peak, and retain/release calls split into non-atomic, atomic and no-ops. Use it to find where counting remains.
+- **Runtime counters.** An instrumented runtime built with `MK_STATS` reports allocations, frees and reference-count operations. The native `minic` driver does not expose the old `--stats` option; that flag belongs to the optional JVM/K2 developer tool. See the [compiler reference](/reference/minic#optional-k2-oracle) and [benchmarks](/benchmarks) rather than passing a legacy flag to the installed driver.
 - **`--emit-c file.c`.** Keeps the generated C. It is readable; the [How it works](/internals/) pages walk through it.
-- **Backends.** The default backend writes C. `--backend=llvm` writes textual LLVM IR, and a build of the compiler with the LLVM C API bound in has `--backend=llvm-api`, which emits object files directly and can **run a program in memory with a JIT** (`--run`). See the [command line reference](/reference/minic).
-- **Allocators.** Arenas allocate by bumping a pointer and free everything at once, with no per-object counting. For a workload with many small objects of one lifetime (a request, a compiler phase, a frame) that is the biggest single lever. [Chapter 7](./memory-allocators) shows the syntax.
+- **Backends.** The `minic` driver uses C. Call `minic-native` directly for MIR or textual LLVM output (`--emit-mir`, `--emit-ll`); a special build with the LLVM C API bound in supports `--backend=llvm-api` and an in-memory JIT (`--run`). These are compiler-engine options, not flags forwarded by the ordinary shell driver. See the [command line reference](/reference/minic).
+- **Allocators.** Arenas allocate by bumping a pointer and free everything at once, with no per-object counting. For a workload with many small objects of one lifetime (a request, a compiler phase, a frame) that is the biggest single lever. [The allocator chapter](./memory-allocators) shows the syntax.
 
 ## Numbers
 
@@ -57,6 +61,14 @@ The project measures eight programs against C, Rust, Go, Kotlin/JVM and Kotlin/N
 | json | 1.67 | wordcount | 6.5 |
 
 Mini is on par with C where the program is numeric and within a factor of about 1.3 on five of the eight. It is clearly slower on `wordcount` (a generic `HashMap` with boxed counts) and `json`. The [benchmarks page](/benchmarks) has the full tables with all languages, the memory use, the profiles of where the time goes and the commands to reproduce them. Numbers on a shared VM are good to about 5 percent.
+
+## Checkpoint
+
+Does a faster browser Run prove a faster native binary? What should you check before replacing a pipeline with a loop?
+
+::: details Reasoning
+No. Targets, compilation, sandbox overhead and workloads differ. First verify identical results and representative input, then compare native runs under the same build settings. Inspect allocation and reference-count counters if those are your suspected cost.
+:::
 
 ## Exercise
 
@@ -105,5 +117,3 @@ fun main() {
 9592
 ```
 :::
-
-Next: [The `@` operator](./matrix).

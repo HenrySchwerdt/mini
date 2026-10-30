@@ -1,9 +1,13 @@
 ---
-title: "4. Lambdas, collections and strings"
+title: "7. Lambdas, collections and strings"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 4. Lambdas, collections and strings
+# 7. Lambdas, collections and strings
+
+**By the end:** read a function type, follow a lambda capture, transform a collection and identify where a pipeline may allocate. The dedicated [generics chapter](./generics) will develop the type contracts behind these APIs.
 
 ## Lambdas
 
@@ -25,7 +29,7 @@ println("${c1()} ${c1()} ${c1()} ${c2()}")
 
 `n` is captured by the lambda and lives as long as the lambda does. Under the hood it is a shared, reference-counted cell; the [closures chapter of How it works](/internals/closures) shows the generated C.
 
-`inline` functions are expanded at the call site, so their lambdas cost nothing and may `return` from the enclosing function:
+`inline` functions are expanded at the call site, which can remove function-object and call overhead for their inline lambdas. The work inside the lambda still has a cost. Eligible inline lambdas may `return` from the enclosing function:
 
 ```kotlin
 inline fun twice(action: () -> Unit) {
@@ -49,6 +53,53 @@ xx
 big: 20
 none
 ```
+
+## Read a function type one part at a time
+
+`(Int) -> String` means a function accepting an integer and returning a string. `(Int, Int) -> Int` accepts two integers. `() -> Unit` accepts no arguments and performs an action without a meaningful returned value.
+
+```kotlin
+fun applyTo(value: Int, operation: (Int) -> Int): Int = operation(value)
+
+fun main() {
+    val double: (Int) -> Int = { number -> number * 2 }
+    println(applyTo(6, double))
+    println(applyTo(6) { number -> number + 3 })
+    println(applyTo(6) { it * it })
+}
+```
+```output
+12
+9
+36
+```
+
+The second call moves the final lambda argument outside the parentheses. The third uses the implicit name `it` because there is one parameter. These are alternate spellings of function values passed to the same parameter, not different kinds of loop.
+
+For two parameters you write their names explicitly, as in `{ sum, value -> sum + value }`. The last expression supplies the lambda's result. A `println` at the end supplies `Unit`, so a logging statement can accidentally change the result of a multi-line lambda.
+
+Prefer explicit names when nesting lambdas. In `groups.map { group -> group.filter { item -> ... } }`, names reveal which object is being used. Several nested `it` references force the reader to count scopes.
+
+## Local returns and non-local returns
+
+```kotlin
+fun main() {
+    listOf(1, 2, 3).forEach { value ->
+        if (value == 2) return@forEach
+        println(value)
+    }
+    println("after loop")
+}
+```
+```output
+1
+3
+after loop
+```
+
+`return@forEach` returns from this lambda invocation, much like skipping one iteration. An eligible inline lambda can use an unlabelled `return` to leave the enclosing function instead. Those behaviors are different; adding or removing a label can change which later work executes.
+
+Use an ordinary `for` loop when its `break` and `continue` express the intended control flow more clearly. A functional-looking chain is not a goal by itself. In Mini, inline bodies also matter to ownership checking because the checker can analyze them as part of the surrounding path.
 
 ## Collections
 
@@ -141,6 +192,14 @@ Box(n=20)
 zebra
 ```
 
+## Checkpoint
+
+What does `(Int) -> String` promise? Which names are shared by two calls of `makeCounter`? Does `filter().map()` necessarily fuse into one loop?
+
+::: details Reasoning
+The function takes an `Int` and returns a `String`. Each call to `makeCounter` creates its own captured counter; calls of the same returned function share that counter. Eager list operations usually create intermediate collections; do not assume fusion without checking the implementation.
+:::
+
 ## Exercise
 
 ::: tip Exercise: word lengths
@@ -185,4 +244,4 @@ dog: 3
 ```
 :::
 
-Next: [Null safety and exceptions](./errors).
+Language reference: [Kotlin collections](https://kotlinlang.org/docs/collections-overview.html) and [higher-order functions](https://kotlinlang.org/docs/lambdas.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

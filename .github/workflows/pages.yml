@@ -92,6 +92,12 @@ jobs:
         working-directory: website
         run: npm run docs:build
 
+      - name: Learn and sidebar browser regression tests
+        working-directory: website
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:learn
+
       # The same cells through the in-browser toolchain (the real worker and wasm files, in node): what the Run and Check buttons do.
       - name: Run the documentation cells with the wasm toolchain
         if: github.event_name != 'pull_request'
@@ -103,7 +109,6 @@ jobs:
         if: github.event_name != 'pull_request'
         working-directory: website
         run: |
-          npx playwright install --with-deps chromium
           node scripts/e2e-playground.mjs --shots "$RUNNER_TEMP/e2e-shots"
 
       - name: Upload the end-to-end screenshots

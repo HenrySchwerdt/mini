@@ -48,3 +48,15 @@
   color: var(--vp-c-text-2);
   font-style: italic;
 }
+
+/* Keep documentation navigation at the viewport edge. VitePress' wide-screen
+   centering otherwise grows the sidebar and its inner left padding together. The
+   same variable also aligns the logo, search bar, content offset and local nav. */
+.Layout:has(.VPSidebar) {
+  --vp-layout-max-width: 100vw;
+}
+@media (min-width: 960px) {
+  .Layout:has(.VPSidebar) .VPSidebar {
+    border-right: 1px solid var(--vp-c-divider);
+  }
+}
