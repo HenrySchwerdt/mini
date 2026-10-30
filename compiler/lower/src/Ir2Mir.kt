@@ -22,6 +22,14 @@ class Ir2Mir {
     internal lateinit var currentFile: IrFile
     /** Record the source line of the statements of the user's files ([MirStmt.srcLine]) for `#line` directives. */
     var lineDirectives = false
+    /**
+     * Makes the generated names (closure classes, lifted local functions, `staticCFunction` wrappers) of a precompiled
+     * library unique among the modules that are linked together (docs/mlib.md). Empty for a program.
+     */
+    var nameTag = ""
+
+    /** Building a library: non-null collects the functions that cannot be lowered (C name to message) instead of failing. */
+    var libFailures: MutableMap<String, String>? = null
     internal val fileName: String get() = currentFile.name
 
     internal val classInfos = LinkedHashMap<IrClass, ClassInfo>()
@@ -85,9 +93,9 @@ class Ir2Mir {
                     is IrSimpleFunction -> if (!(d.isInline && d.typeParameters.any { it.reified })) tops += file to d
                     is IrClass -> if (!isRuntimeProvided(d)) collectClass(d, pkg, listOf(d.name), file)
                     is IrProperty -> {
-                        d.getter?.takeIf { !it.isExternal && it.body != null }?.let { tops += file to it }
-                        d.setter?.takeIf { !it.isExternal && it.body != null }?.let { tops += file to it }
-                        if (d.backingField != null && (d.getter?.body != null || d.getter == null)) facadeFor(file)
+                        d.getter?.takeIf { !it.isExternal && hasBodyIn(file, it) }?.let { tops += file to it }
+                        d.setter?.takeIf { !it.isExternal && hasBodyIn(file, it) }?.let { tops += file to it }
+                        if (d.backingField != null && (d.getter == null || hasBodyIn(file, d.getter!!))) facadeFor(file)
                     }
                     else -> unsupported(d, describe(d))
                 }
@@ -96,6 +104,7 @@ class Ir2Mir {
         // local and anonymous classes (declared inside function bodies)
         val localCounts = HashMap<String, Int>()
         for (lc in closure.localClasses) {
+            if (lc.file.isLib) continue
             setFile(lc.file)
             val n = (localCounts[lc.enclosing] ?: 0) + 1
             localCounts[lc.enclosing] = n
@@ -111,7 +120,11 @@ class Ir2Mir {
             if (f.name == "main" && params.isNotEmpty() && !isArgsMain(f)) {
                 unsupported(f, "main function with unsupported parameters (only `fun main()` and `fun main(args: Array<String>)`)")
             }
-            functionNames[f] = uniqueTopLevelName(Mangling.function(file.packageFqName, f.name, params))
+            var mangled = Mangling.function(file.packageFqName, f.name, params)
+            // overloads that differ only in a pointer type share the mangled name; the suffix comes from the full parameter types, not from
+            // the order of the declarations, so a library and the program compiled against its stubs agree (docs/mlib.md)
+            if (params.any { it is TPtr }) mangled += "_T" + MlibHasher().add(f.parameters.joinToString(",") { renderType(it.type) }).hex().substring(0, 8)
+            functionNames[f] = uniqueTopLevelName(mangled)
         }
         for (info in classInfos.values) {
             setFile(info.file ?: continue)
@@ -120,17 +133,19 @@ class Ir2Mir {
         // pass 3: bodies
         val functions = ArrayList<MirFunction>()
         for ((file, f) in tops) {
+            if (file.isLib) continue   // the library has these functions (docs/mlib.md); only their names matter here
             setFile(file)
             val pkg = file.packageFqName
             var mf = convertFunction(f, functionNames[f]!!, (if (pkg.isEmpty()) "" else "$pkg.") + f.name, null)
             if (mf.cName == Mangling.MAIN && facades.isNotEmpty()) {
                 // top-level property initialisers run before main
-                val force = facades.values.map { MirStmt.Eval(MirExpr.ObjectGet(it.cName, it.type)) }
+                val force = facades.values.filter { !it.file.isLib }.map { MirStmt.Eval(MirExpr.ObjectGet(it.cName, it.type)) }
                 mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects)
             }
             functions += mf
         }
         for (info in classInfos.values) {
+            if (info.file?.isLib == true) continue
             setFile(info.file ?: continue)
             functions += convertMembers(info)
         }
@@ -146,6 +161,7 @@ class Ir2Mir {
             superclassOf(c)?.let { visit(it) }
             for (i in directInterfaces(c)) visit(i)
             val inf = classInfos[c]!!
+            if (inf.file?.isLib == true) return
             classes += buildClass(inf)
             if (c.kind == IrClassKind.ENUM_CLASS) {
                 classes += MirClass(
@@ -173,6 +189,9 @@ class Ir2Mir {
         while (!topLevelNames.add(name + "_O" + k)) k++
         return name + "_O" + k
     }
+
+    /** Does the function have a body in the source (a library stub drops the body, but the function exists in the library)? */
+    internal fun hasBodyIn(file: IrFile, f: IrFunction): Boolean = if (file.isLib) f.hasBody else f.body != null
 
     internal fun setFile(f: IrFile) {
         currentFile = f

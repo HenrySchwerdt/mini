@@ -25,7 +25,9 @@ class BodyCtx(val parent: BodyCtx?, val fn: IrFunction?, val label: String?, val
  * Builds the IR of a set of analysed sources: the equivalent of K2's fir2ir, producing the same shapes (declaration
  * order, fake overrides, synthesized members, desugared expressions) so that [Ir2Mir] gives the same MIR as on the K2 IR.
  */
-class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
+class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<String> = emptySet()) {
+    /** The declaration is in an API stub of a library (its bodies are not built, see [StubRules]). */
+    fun inLib(f: FileInfo?): Boolean = f != null && libPaths.isNotEmpty() && libPaths.contains(f.path)
     val ops: TypeOps = sema.ops
     /** set while the argument of an inline function's parameter is built (see BodyCtx.shareTmp) */
     var inlineArgument = false
@@ -55,6 +57,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         for (f in sema.files) {
             val irf = IrFile(f.path, f.text, f.pkg, !userPaths.contains(f.path))
             irf.isBuiltin = isBuiltinFile(f)
+            irf.isLib = libPaths.contains(f.path)
             irf.annotations = annotationsOfEntries(f.ast.fileAnnotations, f)
             fileMap[f] = irf
             module.files.add(irf)
@@ -358,6 +361,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         entryMap[es] = e
         e.parent = c
         e.initializerBuilder = { buildEnumEntryInit(es, c) }
+        if (inLib(c.sym?.file)) e.stub = true
         return e
     }
 
@@ -367,6 +371,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         val i = IrAnonymousInitializer()
         i.parent = c
         i.bodyBuilder = { buildInitializerBody(m, c) }
+        if (inLib(c.sym?.file)) i.stub = true
         return i
     }
 
@@ -599,6 +604,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         val d = sym.decl
         if (d != null && d.body != null) {
             fn.bodyBuilder = { buildFunctionBody(fn, sym) }
+            if (inLib(sym.file) && sym.kind != FunKind.LOCAL && sym.kind != FunKind.ANONYMOUS && !StubRules.keepsBody(d)) fn.stub = true
         }
         return fn
     }
@@ -670,6 +676,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         addValueParameters(k, sym.params, idx)
         k.returnType = irType(c.sym!!.thisType())
         k.bodyBuilder = { buildConstructorBody(k, sym, c) }
+        if (inLib(sym.file)) k.stub = true
         return k
     }
 
@@ -728,6 +735,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             p.backingField = f
             val dd = d!!.delegate!!
             f.initializerBuilder = { buildDelegateInit(p, sym, c, dd) }
+            if (inLib(sym.file) && !StubRules.keepsInitializer(d)) f.stub = true
         } else if (needsField) {
             val f = IrField(sym.name, type)
             f.origin = "PROPERTY_BACKING_FIELD"
@@ -743,8 +751,10 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
             if (sym.decl == null) {
                 val cp = sym.ctorParam
                 f.initializerBuilder = { buildCtorPropInit(f, sym, c!!) }
+                if (inLib(sym.file)) f.stub = true
             } else if (hasInit) {
                 f.initializerBuilder = { buildPropertyInit(f, sym, c) }
+                if (inLib(sym.file) && !StubRules.keepsInitializer(d!!)) f.stub = true
             }
         }
         // accessors
@@ -774,6 +784,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         f.visibility = vis
         f.cSymbolName = null
         f.typeParameters = sym.typeParams
+        for (tp in sym.typeParams) sema.ensureBounds(tp)
         val d = sym.decl
         val acc = if (d == null) null else if (isGetter) d.getter else d.setter
         val customBody = acc != null && acc.body != null
@@ -804,6 +815,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>) {
         }
         val abstract = modality == IrModality.ABSTRACT
         if (!abstract) f.bodyBuilder = { buildAccessorBody(f, p, sym, c, isGetter) }
+        if (!abstract && d != null && inLib(sym.file) && !StubRules.keepsAccessors(d)) f.stub = true
     }
 
     // ---- fake overrides --------------------------------------------------------------------------------------------

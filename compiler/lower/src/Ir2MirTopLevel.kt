@@ -24,7 +24,7 @@ internal fun Ir2Mir.facadeFor(file: IrFile): Facade = facades.getOrPut(file) {
     val base = (if (stem.isEmpty()) stem else stem.substring(0, 1).uppercase() + stem.substring(1)) + "Kt"
     val pkg = file.packageFqName
     val cName = Mangling.className(pkg, listOf(base))
-    val fields = file.declarations.filterIsInstance<IrProperty>().filter { it.getter?.body != null || it.getter == null }.mapNotNull { it.backingField } +
+    val fields = file.declarations.filterIsInstance<IrProperty>().filter { it.getter == null || hasBodyIn(file, it.getter!!) }.mapNotNull { it.backingField } +
         file.declarations.filterIsInstance<IrField>()
     Facade(cName, (if (pkg.isEmpty()) "" else "$pkg.") + base, file, fields, Mangling.constructor(cName, emptyList()))
 }
@@ -51,6 +51,7 @@ internal fun Ir2Mir.buildFacades(): Pair<List<MirClass>, List<MirFunction>> {
     val classes = ArrayList<MirClass>()
     val functions = ArrayList<MirFunction>()
     for (fa in facades.values.toList()) {
+        if (fa.file.isLib) continue
         setFile(fa.file)
         val fn = inFreshFunction {
             val self = MirLocal(localCounter++, "this", fa.type)

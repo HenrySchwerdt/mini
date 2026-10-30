@@ -24,6 +24,8 @@ sealed class Sym(val name: String) {
 class FileInfo(val path: String, val text: String, val ast: KtFile, val pkg: String) {
     lateinit var scope: FileScope
     var index: Int = 0
+    /** An API stub of a precompiled library: the bodies [mini.frontend.StubRules] does not keep are not checked. */
+    var declOnly: Boolean = false
 }
 
 class TypeParamSym(name: String, val variance: Variance, val reified: Boolean, val decl: TypeParam?, val index: Int) : Sym(name) {

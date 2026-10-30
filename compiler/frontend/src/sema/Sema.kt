@@ -44,9 +44,10 @@ class Sema {
 
     // ---- loading -----------------------------------------------------------------------------------------------
 
-    fun addFile(path: String, text: String): FileInfo {
+    fun addFile(path: String, text: String, declOnly: Boolean = false): FileInfo {
         val r = parseKotlinUnquoted(text)
         val f = FileInfo(path, text, r.file, r.file.packageName ?: "")
+        f.declOnly = declOnly
         f.index = files.size
         files.add(f)
         for (e in r.errors) diags.add(Diag(path, e.offset, "syntax error: " + e.message))

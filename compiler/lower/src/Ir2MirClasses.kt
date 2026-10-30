@@ -256,7 +256,7 @@ internal fun Ir2Mir.anyMember(f: IrSimpleFunction): Int? {
     }
 }
 
-internal fun Ir2Mir.hasBody(f: IrSimpleFunction) = f.body != null && f.modality != IrModality.ABSTRACT
+internal fun Ir2Mir.hasBody(f: IrSimpleFunction) = (f.body != null || (f.stub && f.hasBody)) && f.modality != IrModality.ABSTRACT
 
 internal fun Ir2Mir.resolveFake(f: IrSimpleFunction): IrSimpleFunction {
     if (!f.isFakeOverride) return f
@@ -379,7 +379,7 @@ internal fun Ir2Mir.checkFunctionShape(f: IrSimpleFunction, member: Boolean) {
         }
     }
     if (f.isExternal) unsupported(f, "external function '${f.name}'")
-    if (!member && f.body == null) unsupported(f, "function without body '${f.name}'")
+    if (!member && f.body == null && !currentFile.isLib) unsupported(f, "function without body '${f.name}'")
 }
 
 // ---- bridges ----------------------------------------------------------------------------------------------
@@ -408,7 +408,8 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
     if (rp.size == ip.size && rp.indices.all { it == 0 || cKind(rp[it]) == cKind(ip[it]) } && cKind(rr) == cKind(ir)) return name
     val bname = name + "_br" + rp.joinToString("") { Mangling.typeLetter(it) } + "_" + Mangling.typeLetter(rr)
     if (!bridgeCache.add(bname)) return bname
-    val fn = inFreshFunction {
+    val failures = libFailures
+    val fn = try { inFreshFunction {
         val ps = rp.mapIndexed { i, t -> MirLocal(localCounter++, if (i == 0) "this" else "p$i", t) }
         val out = ArrayList<MirStmt>()
         val args = ps.mapIndexed { i, p ->
@@ -427,6 +428,11 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
             out += MirStmt.Return(coerceFlexible(v, rr, impl, out))
         }
         MirFunction(impl.name + "\$bridge", bname, ps, rr, out)
+    } } catch (e: UnsupportedConstruct) {
+        // building a library: record it, the link reports it when a program reaches the bridge (docs/mlib.md)
+        if (failures == null) throw e
+        failures[bname] = (e.message ?: "unsupported construct").replace('\n', ' ')
+        MirFunction(impl.name + "\$bridge", bname, rp.mapIndexed { i, t -> MirLocal(i, if (i == 0) "this" else "p$i", t) }, rr, listOf(MirStmt.Panic("unsupported construct in library code")))
     }
     extraFunctions += fn
     return bname

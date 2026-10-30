@@ -190,6 +190,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
                 expectCompatible(dv, t, pt)
             }
         }
+        if (file.declOnly && !StubRules.keepsBody(d)) return
         val declared = if (d.returnType != null || !d.expressionBody) f.returnType else null
         val target = ReturnTarget(null, declared, f, false)
         targets.add(target)
