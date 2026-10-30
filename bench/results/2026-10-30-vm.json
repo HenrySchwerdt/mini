@@ -1,0 +1,1330 @@
+{
+ "date": "2026-10-30",
+ "host": {
+  "name": "vm",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+  "cores": 4,
+  "os": "Linux 6.18.44-fc-v185"
+ },
+ "reps": 5,
+ "tools": {
+  "cc": "Ubuntu clang version 18.1.3 (1ubuntu1)",
+  "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+  "go": "go version go1.24.7 linux/amd64",
+  "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+  "kotlinc": "info: kotlinc-jvm 2.1.20 (JRE 21.0.12.1+1-1-24.04.4-Ubuntu)",
+  "kotlinc-native": "info: kotlinc-native 2.1.20 (JRE 21.0.12.1+1-1-24.04.4-Ubuntu)"
+ },
+ "minic_commit": "e65efa9",
+ "flags": {
+  "c": "clang -O2",
+  "rust": "rustc -C opt-level=3 -C codegen-units=1",
+  "go": "go build (CGO off)",
+  "kotlin-jvm": "kotlinc; java (default JVM flags)",
+  "kotlin-native": "kotlinc-native -opt",
+  "mini": "minic build --cflag -O2 [--backend=llvm]"
+ },
+ "results": [
+  {
+   "bench": "binarytrees",
+   "lang": "c",
+   "source": "bench/binarytrees/binarytrees.c",
+   "build_seconds": 0.08,
+   "status": "ok",
+   "time_best_s": 0.9475,
+   "times_s": [
+    0.9836,
+    0.9475,
+    0.9829,
+    1.0309,
+    1.0038
+   ],
+   "rss_kb": 34800,
+   "size_bytes": 16208,
+   "size_stripped_bytes": 14536
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "rust",
+   "source": "bench/binarytrees/binarytrees.rs",
+   "build_seconds": 0.12,
+   "status": "ok",
+   "time_best_s": 1.0955,
+   "times_s": [
+    1.1037,
+    1.1662,
+    1.0955,
+    1.1737,
+    1.1508
+   ],
+   "rss_kb": 34984,
+   "size_bytes": 4361064,
+   "size_stripped_bytes": 344264
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "go",
+   "source": "bench/binarytrees/binarytrees.go",
+   "build_seconds": 0.15,
+   "status": "ok",
+   "time_best_s": 1.5675,
+   "times_s": [
+    1.6245,
+    1.5675,
+    1.5849,
+    1.8533,
+    1.751
+   ],
+   "rss_kb": 46896,
+   "size_bytes": 2230640,
+   "size_stripped_bytes": 1447384
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "kotlin-jvm",
+   "source": "bench/binarytrees/binarytrees.kt",
+   "build_seconds": 3.7,
+   "status": "ok",
+   "time_best_s": 0.7136,
+   "times_s": [
+    0.7516,
+    0.7767,
+    0.7136,
+    0.7387,
+    0.7198
+   ],
+   "rss_kb": 513112,
+   "size_bytes": 3130,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "kotlin-native",
+   "source": "bench/binarytrees/binarytrees.kt",
+   "build_seconds": 12.92,
+   "status": "ok",
+   "time_best_s": 2.4721,
+   "times_s": [
+    2.6125,
+    2.6309,
+    2.8853,
+    2.5587,
+    2.4721
+   ],
+   "rss_kb": 144660,
+   "size_bytes": 492352,
+   "size_stripped_bytes": 354936
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "mini-managed",
+   "source": "bench/binarytrees/binarytrees.kt",
+   "build_seconds": 1.97,
+   "status": "ok",
+   "time_best_s": 1.6852,
+   "times_s": [
+    1.7399,
+    1.7487,
+    1.6981,
+    1.7789,
+    1.6852
+   ],
+   "rss_kb": 133280,
+   "size_bytes": 88536,
+   "size_stripped_bytes": 68216,
+   "stats": {
+    "allocs": 68332273,
+    "frees": 68332272,
+    "live_at_exit": 1,
+    "peak_live": 2097155,
+    "bytes_total": 3279951020,
+    "bytes_live_at_exit": 40,
+    "bytes_peak": 100663604,
+    "retains": 0,
+    "retains_nonatomic": 0,
+    "retains_atomic": 0,
+    "retains_noop": 0,
+    "releases": 205346206,
+    "releases_nonatomic": 68332272,
+    "releases_atomic": 0,
+    "releases_noop": 137013934,
+    "raw": [
+     "mk-stats: allocs=68332273 frees=68332272 live_at_exit=1 peak_live=2097155",
+     "mk-stats: bytes_total=3279951020 bytes_live_at_exit=40 bytes_peak=100663604",
+     "mk-stats: retains=0 retains_nonatomic=0 retains_atomic=0 retains_noop=0",
+     "mk-stats: releases=205346206 releases_nonatomic=68332272 releases_atomic=0 releases_noop=137013934"
+    ]
+   }
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "mini-managed-llvm",
+   "source": "bench/binarytrees/binarytrees.kt",
+   "build_seconds": 1.79,
+   "status": "ok",
+   "time_best_s": 1.6536,
+   "times_s": [
+    1.656,
+    1.7709,
+    1.6536,
+    1.6782,
+    1.7211
+   ],
+   "rss_kb": 133276,
+   "size_bytes": 89248,
+   "size_stripped_bytes": 68224
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "mini-arena",
+   "source": "bench/binarytrees/binarytrees.arena.kt",
+   "build_seconds": 1.9,
+   "status": "ok",
+   "time_best_s": 1.6696,
+   "times_s": [
+    1.7803,
+    1.8077,
+    1.6696,
+    1.8559,
+    1.7295
+   ],
+   "rss_kb": 67748,
+   "size_bytes": 94280,
+   "size_stripped_bytes": 72312
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "mini-arena-llvm",
+   "source": "bench/binarytrees/binarytrees.arena.kt",
+   "build_seconds": 1.98,
+   "status": "ok",
+   "time_best_s": 1.6246,
+   "times_s": [
+    1.74,
+    1.7579,
+    1.6246,
+    1.6514,
+    1.6533
+   ],
+   "rss_kb": 67688,
+   "size_bytes": 95120,
+   "size_stripped_bytes": 72320
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "mini-strict",
+   "source": "bench/binarytrees/binarytrees.strict.kt",
+   "build_seconds": 1.93,
+   "status": "ok",
+   "time_best_s": 1.9087,
+   "times_s": [
+    1.996,
+    2.0387,
+    1.9215,
+    1.9851,
+    1.9087
+   ],
+   "rss_kb": 67744,
+   "size_bytes": 89944,
+   "size_stripped_bytes": 68216
+  },
+  {
+   "bench": "binarytrees",
+   "lang": "mini-strict-llvm",
+   "source": "bench/binarytrees/binarytrees.strict.kt",
+   "build_seconds": 2.06,
+   "status": "ok",
+   "time_best_s": 1.7714,
+   "times_s": [
+    1.8727,
+    1.8557,
+    1.7714,
+    1.8701,
+    1.7725
+   ],
+   "rss_kb": 67676,
+   "size_bytes": 94944,
+   "size_stripped_bytes": 72320
+  },
+  {
+   "bench": "nbody",
+   "lang": "c",
+   "source": "bench/nbody/nbody.c",
+   "build_seconds": 0.1,
+   "status": "ok",
+   "time_best_s": 0.9924,
+   "times_s": [
+    0.9924,
+    1.059,
+    1.0989,
+    1.085,
+    1.0321
+   ],
+   "rss_kb": 2032,
+   "size_bytes": 16328,
+   "size_stripped_bytes": 14808
+  },
+  {
+   "bench": "nbody",
+   "lang": "rust",
+   "source": "bench/nbody/nbody.rs",
+   "build_seconds": 0.33,
+   "status": "ok",
+   "time_best_s": 0.7535,
+   "times_s": [
+    0.7535,
+    0.7605,
+    0.7692,
+    0.7641,
+    0.7984
+   ],
+   "rss_kb": 2260,
+   "size_bytes": 4363784,
+   "size_stripped_bytes": 347320
+  },
+  {
+   "bench": "nbody",
+   "lang": "go",
+   "source": "bench/nbody/nbody.go",
+   "build_seconds": 0.15,
+   "status": "ok",
+   "time_best_s": 1.581,
+   "times_s": [
+    1.6155,
+    1.581,
+    1.5926,
+    1.6222,
+    1.6644
+   ],
+   "rss_kb": 1896,
+   "size_bytes": 2214073,
+   "size_stripped_bytes": 1435384
+  },
+  {
+   "bench": "nbody",
+   "lang": "kotlin-jvm",
+   "source": "bench/nbody/nbody.kt",
+   "build_seconds": 3.54,
+   "status": "ok",
+   "time_best_s": 1.2031,
+   "times_s": [
+    1.2581,
+    1.2131,
+    1.2031,
+    1.2226,
+    1.2713
+   ],
+   "rss_kb": 43064,
+   "size_bytes": 5761,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "nbody",
+   "lang": "kotlin-native",
+   "source": "bench/nbody/nbody.kt",
+   "build_seconds": 12.77,
+   "status": "ok",
+   "time_best_s": 1.2099,
+   "times_s": [
+    1.2231,
+    1.2099,
+    1.2142,
+    1.3163,
+    1.2332
+   ],
+   "rss_kb": 2972,
+   "size_bytes": 504152,
+   "size_stripped_bytes": 366368
+  },
+  {
+   "bench": "nbody",
+   "lang": "mini-managed",
+   "source": "bench/nbody/nbody.kt",
+   "build_seconds": 2.06,
+   "status": "ok",
+   "time_best_s": 1.8001,
+   "times_s": [
+    1.8001,
+    1.8656,
+    1.8553,
+    1.8742,
+    1.8307
+   ],
+   "rss_kb": 2152,
+   "size_bytes": 89280,
+   "size_stripped_bytes": 68216,
+   "stats": {
+    "allocs": 7,
+    "frees": 6,
+    "live_at_exit": 1,
+    "peak_live": 7,
+    "bytes_total": 584,
+    "bytes_live_at_exit": 64,
+    "bytes_peak": 584,
+    "retains": 500000069,
+    "retains_nonatomic": 500000069,
+    "retains_atomic": 0,
+    "retains_noop": 0,
+    "releases": 500000080,
+    "releases_nonatomic": 500000075,
+    "releases_atomic": 0,
+    "releases_noop": 5,
+    "raw": [
+     "mk-stats: allocs=7 frees=6 live_at_exit=1 peak_live=7",
+     "mk-stats: bytes_total=584 bytes_live_at_exit=64 bytes_peak=584",
+     "mk-stats: retains=500000069 retains_nonatomic=500000069 retains_atomic=0 retains_noop=0",
+     "mk-stats: releases=500000080 releases_nonatomic=500000075 releases_atomic=0 releases_noop=5"
+    ]
+   }
+  },
+  {
+   "bench": "nbody",
+   "lang": "mini-managed-llvm",
+   "source": "bench/nbody/nbody.kt",
+   "build_seconds": 2.35,
+   "status": "ok",
+   "time_best_s": 1.9799,
+   "times_s": [
+    2.1315,
+    1.9799,
+    2.0251,
+    2.0251,
+    1.9899
+   ],
+   "rss_kb": 2084,
+   "size_bytes": 94064,
+   "size_stripped_bytes": 72320
+  },
+  {
+   "bench": "fannkuch",
+   "lang": "c",
+   "source": "bench/fannkuch/fannkuch.c",
+   "build_seconds": 0.08,
+   "status": "ok",
+   "time_best_s": 2.1347,
+   "times_s": [
+    2.1347,
+    2.187,
+    2.2895,
+    2.2781,
+    2.2182
+   ],
+   "rss_kb": 2032,
+   "size_bytes": 16064,
+   "size_stripped_bytes": 14528
+  },
+  {
+   "bench": "fannkuch",
+   "lang": "rust",
+   "source": "bench/fannkuch/fannkuch.rs",
+   "build_seconds": 0.12,
+   "status": "ok",
+   "time_best_s": 1.8292,
+   "times_s": [
+    1.9939,
+    1.8292,
+    1.8292,
+    1.895,
+    1.9458
+   ],
+   "rss_kb": 2264,
+   "size_bytes": 4360712,
+   "size_stripped_bytes": 344472
+  },
+  {
+   "bench": "fannkuch",
+   "lang": "go",
+   "source": "bench/fannkuch/fannkuch.go",
+   "build_seconds": 0.17,
+   "status": "ok",
+   "time_best_s": 2.0564,
+   "times_s": [
+    2.1058,
+    2.0631,
+    2.1132,
+    2.1341,
+    2.0564
+   ],
+   "rss_kb": 1812,
+   "size_bytes": 2230599,
+   "size_stripped_bytes": 1447384
+  },
+  {
+   "bench": "fannkuch",
+   "lang": "kotlin-jvm",
+   "source": "bench/fannkuch/fannkuch.kt",
+   "build_seconds": 3.62,
+   "status": "ok",
+   "time_best_s": 2.138,
+   "times_s": [
+    2.2483,
+    2.6663,
+    2.1724,
+    2.2284,
+    2.138
+   ],
+   "rss_kb": 42984,
+   "size_bytes": 1784,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "fannkuch",
+   "lang": "kotlin-native",
+   "source": "bench/fannkuch/fannkuch.kt",
+   "build_seconds": 12.88,
+   "status": "ok",
+   "time_best_s": 2.3025,
+   "times_s": [
+    2.3789,
+    2.34,
+    2.3194,
+    2.3105,
+    2.3025
+   ],
+   "rss_kb": 3180,
+   "size_bytes": 495144,
+   "size_stripped_bytes": 358072
+  },
+  {
+   "bench": "fannkuch",
+   "lang": "mini-managed",
+   "source": "bench/fannkuch/fannkuch.kt",
+   "build_seconds": 2.2,
+   "status": "ok",
+   "time_best_s": 6.807,
+   "times_s": [
+    7.2002,
+    7.1253,
+    7.3264,
+    7.0084,
+    6.807
+   ],
+   "rss_kb": 2124,
+   "size_bytes": 83984,
+   "size_stripped_bytes": 64120,
+   "stats": {
+    "allocs": 9,
+    "frees": 8,
+    "live_at_exit": 1,
+    "peak_live": 9,
+    "bytes_total": 604,
+    "bytes_live_at_exit": 40,
+    "bytes_peak": 604,
+    "retains": 0,
+    "retains_nonatomic": 0,
+    "retains_atomic": 0,
+    "retains_noop": 0,
+    "releases": 8,
+    "releases_nonatomic": 8,
+    "releases_atomic": 0,
+    "releases_noop": 0,
+    "raw": [
+     "mk-stats: allocs=9 frees=8 live_at_exit=1 peak_live=9",
+     "mk-stats: bytes_total=604 bytes_live_at_exit=40 bytes_peak=604",
+     "mk-stats: retains=0 retains_nonatomic=0 retains_atomic=0 retains_noop=0",
+     "mk-stats: releases=8 releases_nonatomic=8 releases_atomic=0 releases_noop=0"
+    ]
+   }
+  },
+  {
+   "bench": "fannkuch",
+   "lang": "mini-managed-llvm",
+   "source": "bench/fannkuch/fannkuch.kt",
+   "build_seconds": 2.15,
+   "status": "ok",
+   "time_best_s": 7.3457,
+   "times_s": [
+    7.5182,
+    7.4806,
+    7.5676,
+    7.5167,
+    7.3457
+   ],
+   "rss_kb": 2204,
+   "size_bytes": 88728,
+   "size_stripped_bytes": 68224
+  },
+  {
+   "bench": "spectralnorm",
+   "lang": "c",
+   "source": "bench/spectralnorm/spectralnorm.c",
+   "build_seconds": 0.1,
+   "status": "ok",
+   "time_best_s": 1.0098,
+   "times_s": [
+    1.0098,
+    1.0448,
+    1.028,
+    1.0387,
+    1.0102
+   ],
+   "rss_kb": 2160,
+   "size_bytes": 16168,
+   "size_stripped_bytes": 14544
+  },
+  {
+   "bench": "spectralnorm",
+   "lang": "rust",
+   "source": "bench/spectralnorm/spectralnorm.rs",
+   "build_seconds": 0.14,
+   "status": "ok",
+   "time_best_s": 0.999,
+   "times_s": [
+    1.0109,
+    1.0386,
+    0.999,
+    1.0053,
+    1.062
+   ],
+   "rss_kb": 2156,
+   "size_bytes": 4360992,
+   "size_stripped_bytes": 344440
+  },
+  {
+   "bench": "spectralnorm",
+   "lang": "go",
+   "source": "bench/spectralnorm/spectralnorm.go",
+   "build_seconds": 0.16,
+   "status": "ok",
+   "time_best_s": 0.9998,
+   "times_s": [
+    1.0017,
+    1.0041,
+    0.9998,
+    1.0682,
+    1.0022
+   ],
+   "rss_kb": 1944,
+   "size_bytes": 2213783,
+   "size_stripped_bytes": 1435096
+  },
+  {
+   "bench": "spectralnorm",
+   "lang": "kotlin-jvm",
+   "source": "bench/spectralnorm/spectralnorm.kt",
+   "build_seconds": 3.59,
+   "status": "ok",
+   "time_best_s": 1.7765,
+   "times_s": [
+    1.8273,
+    1.7867,
+    1.7765,
+    1.8028,
+    1.8227
+   ],
+   "rss_kb": 42628,
+   "size_bytes": 2306,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "spectralnorm",
+   "lang": "kotlin-native",
+   "source": "bench/spectralnorm/spectralnorm.kt",
+   "build_seconds": 12.33,
+   "status": "ok",
+   "time_best_s": 1.0375,
+   "times_s": [
+    1.141,
+    1.0634,
+    1.0619,
+    1.0624,
+    1.0375
+   ],
+   "rss_kb": 3160,
+   "size_bytes": 496336,
+   "size_stripped_bytes": 358472
+  },
+  {
+   "bench": "spectralnorm",
+   "lang": "mini-managed",
+   "source": "bench/spectralnorm/spectralnorm.kt",
+   "build_seconds": 1.9,
+   "status": "ok",
+   "time_best_s": 1.9894,
+   "times_s": [
+    1.9894,
+    2.011,
+    2.0051,
+    2.0186,
+    2.028
+   ],
+   "rss_kb": 2204,
+   "size_bytes": 84240,
+   "size_stripped_bytes": 64128,
+   "stats": {
+    "allocs": 4,
+    "frees": 3,
+    "live_at_exit": 1,
+    "peak_live": 4,
+    "bytes_total": 120160,
+    "bytes_live_at_exit": 40,
+    "bytes_peak": 120160,
+    "retains": 0,
+    "retains_nonatomic": 0,
+    "retains_atomic": 0,
+    "retains_noop": 0,
+    "releases": 3,
+    "releases_nonatomic": 3,
+    "releases_atomic": 0,
+    "releases_noop": 0,
+    "raw": [
+     "mk-stats: allocs=4 frees=3 live_at_exit=1 peak_live=4",
+     "mk-stats: bytes_total=120160 bytes_live_at_exit=40 bytes_peak=120160",
+     "mk-stats: retains=0 retains_nonatomic=0 retains_atomic=0 retains_noop=0",
+     "mk-stats: releases=3 releases_nonatomic=3 releases_atomic=0 releases_noop=0"
+    ]
+   }
+  },
+  {
+   "bench": "spectralnorm",
+   "lang": "mini-managed-llvm",
+   "source": "bench/spectralnorm/spectralnorm.kt",
+   "build_seconds": 2.1,
+   "status": "ok",
+   "time_best_s": 2.0127,
+   "times_s": [
+    2.0127,
+    2.1245,
+    2.0505,
+    2.2408,
+    2.2664
+   ],
+   "rss_kb": 2196,
+   "size_bytes": 93088,
+   "size_stripped_bytes": 72328
+  },
+  {
+   "bench": "mandelbrot",
+   "lang": "c",
+   "source": "bench/mandelbrot/mandelbrot.c",
+   "build_seconds": 0.07,
+   "status": "ok",
+   "time_best_s": 0.8715,
+   "times_s": [
+    0.8715,
+    0.8734,
+    0.8745,
+    0.8839,
+    0.8763
+   ],
+   "rss_kb": 2032,
+   "size_bytes": 16016,
+   "size_stripped_bytes": 14520
+  },
+  {
+   "bench": "mandelbrot",
+   "lang": "rust",
+   "source": "bench/mandelbrot/mandelbrot.rs",
+   "build_seconds": 0.15,
+   "status": "ok",
+   "time_best_s": 0.8243,
+   "times_s": [
+    0.8414,
+    0.8595,
+    0.8243,
+    0.8244,
+    0.8283
+   ],
+   "rss_kb": 2268,
+   "size_bytes": 4361016,
+   "size_stripped_bytes": 344584
+  },
+  {
+   "bench": "mandelbrot",
+   "lang": "go",
+   "source": "bench/mandelbrot/mandelbrot.go",
+   "build_seconds": 0.22,
+   "status": "ok",
+   "time_best_s": 0.846,
+   "times_s": [
+    0.8749,
+    0.8575,
+    0.8713,
+    0.846,
+    0.8717
+   ],
+   "rss_kb": 1896,
+   "size_bytes": 2213878,
+   "size_stripped_bytes": 1435096
+  },
+  {
+   "bench": "mandelbrot",
+   "lang": "kotlin-jvm",
+   "source": "bench/mandelbrot/mandelbrot.kt",
+   "build_seconds": 4.38,
+   "status": "ok",
+   "time_best_s": 0.8337,
+   "times_s": [
+    0.8417,
+    0.8337,
+    1.0523,
+    0.8702,
+    1.0425
+   ],
+   "rss_kb": 41264,
+   "size_bytes": 1418,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "mandelbrot",
+   "lang": "kotlin-native",
+   "source": "bench/mandelbrot/mandelbrot.kt",
+   "build_seconds": 12.04,
+   "status": "ok",
+   "time_best_s": 0.8436,
+   "times_s": [
+    0.8452,
+    0.8436,
+    0.8689,
+    0.8506,
+    0.8567
+   ],
+   "rss_kb": 2960,
+   "size_bytes": 496320,
+   "size_stripped_bytes": 358808
+  },
+  {
+   "bench": "mandelbrot",
+   "lang": "mini-managed",
+   "source": "bench/mandelbrot/mandelbrot.kt",
+   "build_seconds": 2.0,
+   "status": "ok",
+   "time_best_s": 0.8522,
+   "times_s": [
+    0.882,
+    0.8888,
+    0.8522,
+    0.8741,
+    0.8795
+   ],
+   "rss_kb": 2204,
+   "size_bytes": 83976,
+   "size_stripped_bytes": 64120,
+   "stats": {
+    "allocs": 1,
+    "frees": 0,
+    "live_at_exit": 1,
+    "peak_live": 1,
+    "bytes_total": 48,
+    "bytes_live_at_exit": 48,
+    "bytes_peak": 48,
+    "retains": 0,
+    "retains_nonatomic": 0,
+    "retains_atomic": 0,
+    "retains_noop": 0,
+    "releases": 0,
+    "releases_nonatomic": 0,
+    "releases_atomic": 0,
+    "releases_noop": 0,
+    "raw": [
+     "mk-stats: allocs=1 frees=0 live_at_exit=1 peak_live=1",
+     "mk-stats: bytes_total=48 bytes_live_at_exit=48 bytes_peak=48",
+     "mk-stats: retains=0 retains_nonatomic=0 retains_atomic=0 retains_noop=0",
+     "mk-stats: releases=0 releases_nonatomic=0 releases_atomic=0 releases_noop=0"
+    ]
+   }
+  },
+  {
+   "bench": "mandelbrot",
+   "lang": "mini-managed-llvm",
+   "source": "bench/mandelbrot/mandelbrot.kt",
+   "build_seconds": 2.15,
+   "status": "ok",
+   "time_best_s": 0.8059,
+   "times_s": [
+    0.8072,
+    0.8059,
+    0.8104,
+    0.8096,
+    0.8104
+   ],
+   "rss_kb": 2204,
+   "size_bytes": 88728,
+   "size_stripped_bytes": 68224
+  },
+  {
+   "bench": "wordcount",
+   "lang": "c",
+   "source": "bench/wordcount/wordcount.c",
+   "build_seconds": 0.1,
+   "status": "ok",
+   "time_best_s": 0.5349,
+   "times_s": [
+    0.551,
+    0.5349,
+    0.5424,
+    0.5453,
+    0.5713
+   ],
+   "rss_kb": 89692,
+   "size_bytes": 16304,
+   "size_stripped_bytes": 14568
+  },
+  {
+   "bench": "wordcount",
+   "lang": "rust",
+   "source": "bench/wordcount/wordcount.rs",
+   "build_seconds": 0.25,
+   "status": "ok",
+   "time_best_s": 0.9125,
+   "times_s": [
+    0.9125,
+    0.9273,
+    0.9321,
+    0.9513,
+    0.9477
+   ],
+   "rss_kb": 88156,
+   "size_bytes": 4384128,
+   "size_stripped_bytes": 357456
+  },
+  {
+   "bench": "wordcount",
+   "lang": "go",
+   "source": "bench/wordcount/wordcount.go",
+   "build_seconds": 0.07,
+   "status": "ok",
+   "time_best_s": 1.2713,
+   "times_s": [
+    1.6732,
+    1.7694,
+    1.313,
+    1.2713,
+    1.5159
+   ],
+   "rss_kb": 296304,
+   "size_bytes": 2221683,
+   "size_stripped_bytes": 1443288
+  },
+  {
+   "bench": "wordcount",
+   "lang": "kotlin-jvm",
+   "source": "bench/wordcount/wordcount.kt",
+   "build_seconds": 3.71,
+   "status": "ok",
+   "time_best_s": 3.2918,
+   "times_s": [
+    3.5292,
+    3.2918,
+    3.3558,
+    3.3486,
+    3.3738
+   ],
+   "rss_kb": 423792,
+   "size_bytes": 4463,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "wordcount",
+   "lang": "kotlin-native",
+   "source": "bench/wordcount/wordcount.kt",
+   "build_seconds": 12.28,
+   "status": "ok",
+   "time_best_s": 3.9094,
+   "times_s": [
+    4.0875,
+    3.9094,
+    3.9903,
+    4.1334,
+    3.9415
+   ],
+   "rss_kb": 375484,
+   "size_bytes": 497336,
+   "size_stripped_bytes": 360152
+  },
+  {
+   "bench": "wordcount",
+   "lang": "mini-managed",
+   "source": "bench/wordcount/wordcount.kt",
+   "build_seconds": 3.89,
+   "status": "ok",
+   "time_best_s": 4.3897,
+   "times_s": [
+    4.5046,
+    4.459,
+    4.426,
+    4.3897,
+    4.7446
+   ],
+   "rss_kb": 336124,
+   "size_bytes": 215000,
+   "size_stripped_bytes": 162424,
+   "stats": {
+    "allocs": 40049910,
+    "frees": 39900278,
+    "live_at_exit": 149632,
+    "peak_live": 149645,
+    "bytes_total": 1906400116,
+    "bytes_live_at_exit": 8344248,
+    "bytes_peak": 179549158,
+    "retains": 207869569,
+    "retains_nonatomic": 207499854,
+    "retains_atomic": 0,
+    "retains_noop": 369715,
+    "releases": 288686925,
+    "releases_nonatomic": 247400132,
+    "releases_atomic": 0,
+    "releases_noop": 41286793,
+    "raw": [
+     "mk-stats: allocs=40049910 frees=39900278 live_at_exit=149632 peak_live=149645",
+     "mk-stats: bytes_total=1906400116 bytes_live_at_exit=8344248 bytes_peak=179549158",
+     "mk-stats: retains=207869569 retains_nonatomic=207499854 retains_atomic=0 retains_noop=369715",
+     "mk-stats: releases=288686925 releases_nonatomic=247400132 releases_atomic=0 releases_noop=41286793"
+    ]
+   }
+  },
+  {
+   "bench": "wordcount",
+   "lang": "mini-managed-llvm",
+   "source": "bench/wordcount/wordcount.kt",
+   "build_seconds": 3.54,
+   "status": "ok",
+   "time_best_s": 4.3687,
+   "times_s": [
+    4.3687,
+    4.5278,
+    4.5784,
+    4.7986,
+    4.5957
+   ],
+   "rss_kb": 336148,
+   "size_bytes": 210432,
+   "size_stripped_bytes": 154240
+  },
+  {
+   "bench": "strbuild",
+   "lang": "c",
+   "source": "bench/strbuild/strbuild.c",
+   "build_seconds": 0.09,
+   "status": "ok",
+   "time_best_s": 0.5783,
+   "times_s": [
+    0.5891,
+    0.584,
+    0.591,
+    0.5783,
+    0.594
+   ],
+   "rss_kb": 106080,
+   "size_bytes": 16200,
+   "size_stripped_bytes": 14552
+  },
+  {
+   "bench": "strbuild",
+   "lang": "rust",
+   "source": "bench/strbuild/strbuild.rs",
+   "build_seconds": 0.19,
+   "status": "ok",
+   "time_best_s": 0.511,
+   "times_s": [
+    0.5257,
+    0.5124,
+    0.5541,
+    0.5217,
+    0.511
+   ],
+   "rss_kb": 106140,
+   "size_bytes": 4365016,
+   "size_stripped_bytes": 347072
+  },
+  {
+   "bench": "strbuild",
+   "lang": "go",
+   "source": "bench/strbuild/strbuild.go",
+   "build_seconds": 0.17,
+   "status": "ok",
+   "time_best_s": 0.9862,
+   "times_s": [
+    1.2398,
+    1.0034,
+    1.1049,
+    0.9862,
+    1.1641
+   ],
+   "rss_kb": 457760,
+   "size_bytes": 2218308,
+   "size_stripped_bytes": 1439192
+  },
+  {
+   "bench": "strbuild",
+   "lang": "kotlin-jvm",
+   "source": "bench/strbuild/strbuild.kt",
+   "build_seconds": 4.33,
+   "status": "ok",
+   "time_best_s": 0.523,
+   "times_s": [
+    0.5624,
+    0.5632,
+    0.5506,
+    0.544,
+    0.523
+   ],
+   "rss_kb": 406504,
+   "size_bytes": 1798,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "strbuild",
+   "lang": "kotlin-native",
+   "source": "bench/strbuild/strbuild.kt",
+   "build_seconds": 13.89,
+   "status": "ok",
+   "time_best_s": 1.842,
+   "times_s": [
+    2.0461,
+    1.8557,
+    1.8577,
+    1.8812,
+    1.842
+   ],
+   "rss_kb": 625276,
+   "size_bytes": 491760,
+   "size_stripped_bytes": 354712
+  },
+  {
+   "bench": "strbuild",
+   "lang": "mini-managed",
+   "source": "bench/strbuild/strbuild.kt",
+   "build_seconds": 2.33,
+   "status": "ok",
+   "time_best_s": 1.6446,
+   "times_s": [
+    1.7187,
+    1.6446,
+    1.6602,
+    1.7049,
+    1.6949
+   ],
+   "rss_kb": 210060,
+   "size_bytes": 89264,
+   "size_stripped_bytes": 68216,
+   "stats": {
+    "allocs": 42000013,
+    "frees": 42000012,
+    "live_at_exit": 1,
+    "peak_live": 13,
+    "bytes_total": 2566540578,
+    "bytes_live_at_exit": 48,
+    "bytes_peak": 898,
+    "retains": 26400000,
+    "retains_nonatomic": 26400000,
+    "retains_atomic": 0,
+    "retains_noop": 0,
+    "releases": 68400012,
+    "releases_nonatomic": 68400012,
+    "releases_atomic": 0,
+    "releases_noop": 0,
+    "raw": [
+     "mk-stats: allocs=42000013 frees=42000012 live_at_exit=1 peak_live=13",
+     "mk-stats: bytes_total=2566540578 bytes_live_at_exit=48 bytes_peak=898",
+     "mk-stats: retains=26400000 retains_nonatomic=26400000 retains_atomic=0 retains_noop=0",
+     "mk-stats: releases=68400012 releases_nonatomic=68400012 releases_atomic=0 releases_noop=0"
+    ]
+   }
+  },
+  {
+   "bench": "strbuild",
+   "lang": "mini-managed-llvm",
+   "source": "bench/strbuild/strbuild.kt",
+   "build_seconds": 1.83,
+   "status": "ok",
+   "time_best_s": 1.6535,
+   "times_s": [
+    1.6786,
+    1.6535,
+    1.7518,
+    1.6751,
+    1.8175
+   ],
+   "rss_kb": 210044,
+   "size_bytes": 94200,
+   "size_stripped_bytes": 72320
+  },
+  {
+   "bench": "json",
+   "lang": "c",
+   "source": "bench/json/json.c",
+   "build_seconds": 0.15,
+   "status": "ok",
+   "time_best_s": 0.8226,
+   "times_s": [
+    0.8496,
+    0.8226,
+    0.8527,
+    0.8278,
+    0.8494
+   ],
+   "rss_kb": 105396,
+   "size_bytes": 20640,
+   "size_stripped_bytes": 18672
+  },
+  {
+   "bench": "json",
+   "lang": "rust",
+   "source": "bench/json/json.rs",
+   "build_seconds": 0.21,
+   "status": "ok",
+   "time_best_s": 0.4998,
+   "times_s": [
+    0.5262,
+    0.5063,
+    0.5041,
+    0.5039,
+    0.4998
+   ],
+   "rss_kb": 76696,
+   "size_bytes": 4372152,
+   "size_stripped_bytes": 353176
+  },
+  {
+   "bench": "json",
+   "lang": "go",
+   "source": "bench/json/json.go",
+   "build_seconds": 0.06,
+   "status": "ok",
+   "time_best_s": 0.6124,
+   "times_s": [
+    0.6837,
+    0.6669,
+    0.6124,
+    0.6405,
+    0.6625
+   ],
+   "rss_kb": 172140,
+   "size_bytes": 2229960,
+   "size_stripped_bytes": 1447384
+  },
+  {
+   "bench": "json",
+   "lang": "kotlin-jvm",
+   "source": "bench/json/json.kt",
+   "build_seconds": 4.29,
+   "status": "ok",
+   "time_best_s": 0.7634,
+   "times_s": [
+    0.8265,
+    0.8141,
+    0.7634,
+    0.8421,
+    0.8381
+   ],
+   "rss_kb": 490936,
+   "size_bytes": 16566,
+   "size_stripped_bytes": null
+  },
+  {
+   "bench": "json",
+   "lang": "kotlin-native",
+   "source": "bench/json/json.kt",
+   "build_seconds": 13.3,
+   "status": "ok",
+   "time_best_s": 0.7931,
+   "times_s": [
+    0.8057,
+    0.8833,
+    0.9714,
+    0.8243,
+    0.7931
+   ],
+   "rss_kb": 373156,
+   "size_bytes": 523816,
+   "size_stripped_bytes": 379768
+  },
+  {
+   "bench": "json",
+   "lang": "mini-managed",
+   "source": "bench/json/json.kt",
+   "build_seconds": 2.7,
+   "status": "ok",
+   "time_best_s": 1.4273,
+   "times_s": [
+    1.6352,
+    1.5242,
+    1.4273,
+    1.5236,
+    1.6338
+   ],
+   "rss_kb": 177228,
+   "size_bytes": 148128,
+   "size_stripped_bytes": 113272,
+   "stats": {
+    "allocs": 11772967,
+    "frees": 11772965,
+    "live_at_exit": 2,
+    "peak_live": 2027260,
+    "bytes_total": 564972596,
+    "bytes_live_at_exit": 80,
+    "bytes_peak": 107997794,
+    "retains": 7528107,
+    "retains_nonatomic": 7528107,
+    "retains_atomic": 0,
+    "retains_noop": 0,
+    "releases": 47464263,
+    "releases_nonatomic": 19301072,
+    "releases_atomic": 0,
+    "releases_noop": 28163191,
+    "raw": [
+     "mk-stats: allocs=11772967 frees=11772965 live_at_exit=2 peak_live=2027260",
+     "mk-stats: bytes_total=564972596 bytes_live_at_exit=80 bytes_peak=107997794",
+     "mk-stats: retains=7528107 retains_nonatomic=7528107 retains_atomic=0 retains_noop=0",
+     "mk-stats: releases=47464263 releases_nonatomic=19301072 releases_atomic=0 releases_noop=28163191"
+    ]
+   }
+  },
+  {
+   "bench": "json",
+   "lang": "mini-managed-llvm",
+   "source": "bench/json/json.kt",
+   "build_seconds": 2.82,
+   "status": "ok",
+   "time_best_s": 1.7861,
+   "times_s": [
+    1.8929,
+    1.7861,
+    1.9593,
+    1.9423,
+    1.9791
+   ],
+   "rss_kb": 177192,
+   "size_bytes": 145992,
+   "size_stripped_bytes": 109184
+  }
+ ],
+ "startup": {
+  "c": {
+   "status": "ok",
+   "startup_best_ms": 1.06,
+   "startup_median_ms": 1.16
+  },
+  "rust": {
+   "status": "ok",
+   "startup_best_ms": 1.22,
+   "startup_median_ms": 1.34
+  },
+  "go": {
+   "status": "ok",
+   "startup_best_ms": 1.07,
+   "startup_median_ms": 1.22
+  },
+  "kotlin-jvm": {
+   "status": "ok",
+   "startup_best_ms": 31.4,
+   "startup_median_ms": 34.18
+  },
+  "kotlin-native": {
+   "status": "ok",
+   "startup_best_ms": 1.53,
+   "startup_median_ms": 1.72
+  },
+  "mini-managed": {
+   "status": "ok",
+   "startup_best_ms": 1.01,
+   "startup_median_ms": 1.13
+  },
+  "mini-managed-llvm": {
+   "status": "ok",
+   "startup_best_ms": 0.99,
+   "startup_median_ms": 1.09
+  }
+ }
+}
