@@ -127,8 +127,6 @@ def build(tools, prog, lang_id, src, outdir, stats=False):
     else:  # mini-*
         backend = ["--backend=llvm"] if lang_id.endswith("-llvm") else []
         srcs = [src]
-        if "kotlin.math.sqrt" in open(src).read():
-            srcs.append(os.path.join(BENCH, "mini", "sqrt.kt"))
         cmd = [tools.minic, "build"] + srcs + ["-o", exe, "--cflag", "-O2"] + backend
         if stats: cmd.append("--stats")
         rc, out = sh(cmd, timeout=1800)
