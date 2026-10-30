@@ -95,7 +95,7 @@ In Strict mode a separate checker runs before code generation.
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. |
 | **Full bootstrap, stage 2 == stage 3 (B3)** | **Done.** `compiler/bootstrap.sh`: stage1 builds stage2, stage2 builds stage3, and the C and MIR of stage 2 and stage 3 are byte-identical. Checked in CI. |
 | Project tool `mini` (`mini new/build/run/test`, `mini.toml`, path and git dependencies; JVM-hosted v0) | **v0 done**, see [docs/mini-tool.md](docs/mini-tool.md). A native `mini` and a repository without Gradle are next. |
-| Reflection (static metadata, ownership-aware), JSON (kotlinx.serialization API), compile-time DI and a web framework with one arena per request | Planned after B3. |
+| Reflection (static metadata, ownership-aware) and a compiler-plugin API in the toolchain; JSON (`mini-serialization`) and a web framework with compile-time DI and one arena per request (`mini-web`) as separate libraries | Planned after B3. |
 | LLVM as the primary backend (in-process via its C API, embedded lld, single binary, no clang), statically bundled libuv, `.kts` scripts and a REPL on the LLVM ORC JIT | Planned after B3. |
 | Coroutines and async IO on libuv, runtime written in Kotlin, Windows | Later. |
 

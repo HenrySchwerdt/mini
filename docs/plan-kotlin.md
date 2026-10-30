@@ -493,6 +493,14 @@ model. Principle: **pay only for what is used**, and prefer work at compile time
 run time. Mini compiles the whole program at once, so the compiler knows which classes are
 reflected on.
 
+**Where it lives.** Only reflection (R1, R2) and the compiler-plugin API (R3) are part of the
+compiler and the standard library. Everything built on them is a **separate library** with its
+own `mini.toml`, versioned and released on its own, as in Kotlin:
+- `mini-serialization` (JSON, like kotlinx.serialization): plugin plus runtime library.
+- `mini-web` (the web framework): depends on `mini-serialization` and `mini.io`.
+This needs dependency management in the `mini` tool first (§10f: dependencies by git URL or path,
+lockfile, later precompiled `.mlib` packages and a registry).
+
 Three levels:
 
 | Level | What | Cost |
@@ -534,8 +542,8 @@ routing are resolved **at compile time** (R3), not by scanning the classpath at 
 run time. Like Kotlin/Native, the closed world is the price of native code. Proxies for DI
 are generated at compile time instead.
 
-Order: R2 core (`members`, `get/set`, `call`) after B3 → R3 plugin API → serialization → the
-web framework (needs coroutines and async IO on libuv first).
+Order: R2 core (`members`, `get/set`, `call`) after B3 → R3 plugin API → dependency management in
+`mini` → `mini-serialization` → `mini-web` (needs coroutines and async IO on libuv first).
 
 ### 10f. Project tool `mini`
 
