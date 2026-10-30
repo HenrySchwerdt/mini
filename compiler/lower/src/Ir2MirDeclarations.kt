@@ -10,6 +10,36 @@ import mini.frontend.sema.*
 // ---- functions --------------------------------------------------------------------
 
 internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName: String, ctorOf: String?): MirFunction {
+    val failures = libFailures ?: return convertFunctionOrThrow(f, cName, qualifiedName, ctorOf)
+    // building a library: a function the backend cannot lower is recorded and replaced by a stub that panics; the link reports the
+    // recorded error when a program reaches the function (docs/mlib.md)
+    try {
+        return convertFunctionOrThrow(f, cName, qualifiedName, ctorOf)
+    } catch (e: UnsupportedConstruct) {
+        locals = HashMap()
+        localCounter = 0
+        currentFunction = f
+        val params = ArrayList<MirLocal>()
+        val ret: MirType
+        try {
+            if (f is IrConstructor) {
+                params += MirLocal(localCounter++, "this", typeOf(f.parent as IrClass))
+                if ((f.parent as IrClass).kind == IrClassKind.ENUM_CLASS) {
+                    params += MirLocal(localCounter++, "\$name", TString)
+                    params += MirLocal(localCounter++, "\$ordinal", TInt)
+                }
+            }
+            for (p in f.parameters) params += MirLocal(localCounter++, if (p.kind == IrParameterKind.DispatchReceiver) "this" else p.name, mirType(p.type, p))
+            ret = if (f is IrConstructor) TUnit else mirType(f.returnType, f)
+        } catch (e2: UnsupportedConstruct) {
+            throw e
+        }
+        failures[cName] = (e.message ?: "unsupported construct").replace('\n', ' ')
+        return MirFunction(qualifiedName, cName, params, ret, listOf(MirStmt.Panic("unsupported construct in library code")), ctorOf)
+    }
+}
+
+private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifiedName: String, ctorOf: String?): MirFunction {
     locals = HashMap()
     localCounter = 0
     currentFunction = f
@@ -54,6 +84,11 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$name", TString, MirExpr.Local(params[1]))
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$ordinal", TInt, MirExpr.Local(params[2]))
     }
+    convertBody(f, ret, out)
+    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
+}
+
+private fun Ir2Mir.convertBody(f: IrFunction, ret: MirType, out: ArrayList<MirStmt>) {
     when (val body = f.body) {
         is IrBlockBody -> for (s in body.statements) stmt(s, out)
         is IrExpressionBody -> {
@@ -62,7 +97,6 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
         }
         else -> unsupported(f, "function body")
     }
-    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
 }
 
 internal fun Ir2Mir.newTemp(type: MirType, name: String = "tmp"): MirLocal = MirLocal(localCounter++, name, type)

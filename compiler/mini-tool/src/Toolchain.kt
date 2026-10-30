@@ -22,6 +22,40 @@ class Toolchain(
     val stdlib: String get() = Paths.join(root, "stdlib")
     val include: String get() = Paths.join(root, "include")
     val runtimeLib: String get() = Paths.join(root, "lib/libminirt.a")
+    /** The precompiled standard library (docs/mlib.md); packages are built against it unless the installation has none. */
+    val stdlibMlib: String get() = Paths.join(root, "lib/stdlib.mlib")
+
+    /** Is the standard library precompiled (and not switched off with `MINI_STDLIB=source`)? Then dependencies are libraries too. */
+    fun usesMlib(p: Platform): Boolean = p.env("MINI_STDLIB") != "source" && p.isFile(stdlibMlib)
+
+    /** The compiler id libraries are tagged with: the version of the installation. */
+    fun compilerId(p: Platform): String = Mini.version(p)
+
+    /** The standard library part of a minic-native command line: its `.mlib` plus [libs], or (without one) its sources. */
+    private fun stdlibArgs(p: Platform, libs: List<String>, declarationOnly: List<String>): List<String> {
+        val out = ArrayList<String>()
+        if (usesMlib(p)) {
+            out += "--lib"; out += stdlibMlib
+            for (l in libs) { out += "--lib"; out += l }
+            out += "--compiler-id"; out += compilerId(p)
+            if (declarationOnly.isNotEmpty()) { out += "--stdlib"; out += declarationOnly }
+        } else {
+            out += "--stdlib"
+            out += stdlibFiles(p)
+            out += declarationOnly
+        }
+        return out
+    }
+
+    /** Builds the library [name] from [sources] against [libs] (the `.mlib` files it needs, dependencies first) into [out]. */
+    fun emitLib(p: Platform, sources: List<String>, libs: List<String>, out: String, name: String, version: String, werror: Boolean): ExecResult {
+        val args = ArrayList<String>()
+        args += listOf("--emit-mlib", out, "--name", name, "--lib-version", version, "--compiler-id", compilerId(p))
+        for (l in listOf(stdlibMlib) + libs) { args += "--lib"; args += l }
+        if (werror) args += "-Werror"
+        args += sources
+        return runMinic(p, args)
+    }
 
     companion object {
         const val MINIC_RELATIVE = "bin/minic-native"
@@ -95,15 +129,13 @@ class Toolchain(
      * [sources] are the program (the first one names the module), [declarationOnly] files only declare (annotation classes,
      * other packages' APIs), [cSources] are compiled together with the generated C. The result merges the output of both steps; a non-zero exit code names the failing one.
      */
-    fun compile(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean, cSources: List<String> = emptyList()): ExecResult {
+    fun compile(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean, cSources: List<String> = emptyList(), libs: List<String> = emptyList()): ExecResult {
         val cFile = "$out.c"
         val args = ArrayList<String>()
         args += listOf("-o", cFile)
         if (werror) args += "-Werror"
         args += sources
-        args += "--stdlib"
-        args += stdlibFiles(p)
-        args += declarationOnly
+        args += stdlibArgs(p, libs, declarationOnly)
         val r = runMinic(p, args)
         if (r.exitCode != 0 || r.startError != null) return r
         val links = ArrayList<String>()
@@ -138,22 +170,20 @@ class Toolchain(
         return ExecResult(0, r.stdout + cr.stdout, r.stderr + cr.stderr, r.millis + cr.millis)
     }
 
-    /** The frontend and the memory checker for [file] only; [declarationOnly] files (the rest of the package) provide declarations. */
-    fun check(p: Platform, file: String, declarationOnly: List<String>, werror: Boolean): ExecResult {
+    /** The frontend and the memory checker for [files] (all of them are checked); [declarationOnly] files only provide declarations. */
+    fun check(p: Platform, files: List<String>, declarationOnly: List<String>, werror: Boolean, libs: List<String> = emptyList()): ExecResult {
         val args = ArrayList<String>()
         args += "--check"
         if (werror) args += "-Werror"
-        args += file
-        args += "--stdlib"
-        args += stdlibFiles(p)
-        args += declarationOnly
+        args += files
+        args += stdlibArgs(p, libs, declarationOnly)
         return runMinic(p, args)
     }
 
     /** A cheap stamp of the compiler installation, so that a new compiler or runtime rebuilds everything. */
     fun stamp(p: Platform): String {
         val h = Hasher()
-        for (f in listOf(minic, runtimeLib, Paths.join(include, "minirt.h"))) {
+        for (f in listOf(minic, runtimeLib, Paths.join(include, "minirt.h"), stdlibMlib)) {
             val s = p.stat(f)
             h.add(f).add(s?.size ?: -1L).add(s?.modifiedMillis ?: -1L)
         }

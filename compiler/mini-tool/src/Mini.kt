@@ -2,7 +2,14 @@ package mini.tool
 
 /** Entry point of the core: `Mini.run(args, platform)` returns the process exit code. */
 object Mini {
-    const val VERSION = "0.1.0"
+    /** Shown when the installation has no `VERSION` file (a bare compiler binary). */
+    const val UNKNOWN_VERSION = "unknown"
+
+    /** The toolchain version: the `VERSION` file of the installation (a release archive, or `build/native` of a checkout). */
+    fun version(p: Platform): String {
+        val root = Toolchain.findRoot(p) ?: return UNKNOWN_VERSION
+        return p.readText(Paths.join(root, "VERSION"))?.trim()?.takeIf { it.isNotEmpty() } ?: UNKNOWN_VERSION
+    }
 
     fun run(args: List<String>, p: Platform): Int {
         // Colour and verbosity must be known before the full parse so that usage errors are coloured too.
@@ -51,7 +58,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
     private val loader = ProjectLoader(p, c)
 
     fun dispatch(): Int {
-        if (a.has("version")) { c.println("mini ${Mini.VERSION}"); return 0 }
+        if (a.has("version")) { c.println("mini ${Mini.version(p)}"); return 0 }
         if (a.has("help") && a.command.name != "help") { c.print(CommandLine.commandHelp(a.command, c.out)); return 0 }
         return when (a.command.name) {
             "help" -> help()
@@ -60,6 +67,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
             "build" -> build()
             "run" -> runApp()
             "check" -> check()
+            "package" -> packageLibrary()
             "test" -> test()
             "clean" -> clean()
             "add" -> add()
@@ -77,7 +85,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
 
     private fun help(): Int {
         if (a.has("help") && a.positionals.isEmpty() || a.positionals.isEmpty()) {
-            c.print(CommandLine.topHelp(c.out, Mini.VERSION))
+            c.print(CommandLine.topHelp(c.out, Mini.version(p)))
             return 0
         }
         val name = a.positionals[0]
@@ -248,6 +256,23 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
             if (!r.success) return 1
         }
         c.status("Finished", "checking in ${formatDuration(p.nowMillis() - start)}, no errors")
+        return 0
+    }
+
+    private fun packageLibrary(): Int {
+        val project = loader.load(loadOptions())
+        val b = builder(project)
+        if (!b.useLibs) throw MiniError("`mini package` needs a toolchain with a precompiled standard library (lib/stdlib.mlib)", "install a release, or run scripts/build-mini.sh in a source checkout")
+        for (pkg in project.selected) {
+            if (pkg.info.kind != Kind.Lib) throw MiniError("`${pkg.name}` is an app: only libraries can be packaged", "set `kind = \"lib\"` in its mini.toml")
+            val built = b.libraryFile(pkg) ?: return 1
+            val out = Paths.join(project.buildDir, "package", "${pkg.name}-${pkg.info.version}.mlib")
+            p.mkdirs(Paths.parent(out)!!)
+            val text = p.readText(built) ?: throw MiniError("cannot read the built library $built")
+            p.writeText(out, text)
+            val hash = text.take(600).lines().firstOrNull { it.startsWith("hash ") }?.substring(5) ?: "?"
+            c.status("Packaged", "${pkg.id} -> ${b.display(out)} (hash $hash)")
+        }
         return 0
     }
 

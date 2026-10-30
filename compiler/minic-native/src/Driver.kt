@@ -16,6 +16,12 @@ import mini.backend.memory.Severity
 import mini.internal.exitProcess
 import mini.internal.stderrWrite
 import mini.lower.LowerInput
+import mini.lower.Mlib
+import mini.lower.MlibError
+import mini.lower.MlibFormat
+import mini.lower.buildMlib
+import mini.lower.libInputs
+import mini.lower.lowerToMirWithLibs
 import mini.lower.checkMemory
 import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
@@ -25,6 +31,8 @@ import mini.lower.lowerToMir
  *   minic-native --backend=llvm-api -o out.o [--exe prog [--link-arg a]...] [--opt=O1] ...       (LLVM C API build only)
  *   minic-native --backend=llvm-api --run [--opt=O1] <user.kt>... --stdlib <std.kt>... [-- program args]
  *   minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   libraries:   [--lib <x.mlib>]...   declarations from the stubs and code from the MIR of precompiled libraries (docs/mlib.md)
+ *                --emit-mlib <out.mlib> [--name <n>] [--lib-version <v>] [--compiler-id <id>] [--no-memory-check] <user.kt>...   builds a library from the files
  *   diagnostics: [--color=auto|always|never] [--error-format=human|json] [--error-limit=N]
  *   debugging:   [--line-directives]   `#line` directives in the C file, so debuggers and crash reports point to the .kt source
  *
@@ -81,6 +89,9 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
     } catch (e: UnsupportedConstruct) {
         printGeneral(diag, e.message ?: "unsupported construct")
         status = 1
+    } catch (e: MlibError) {
+        printGeneral(diag, e.message ?: "library error")
+        status = 1
     } catch (e: Throwable) {
         printGeneral(diag, "internal compiler error: " + e.toString())
         if (!diag.json) {
@@ -117,6 +128,12 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     val programArgs = ArrayList<String>()
     val inputs = ArrayList<LowerInput>()
     var stdlib = false
+    var mlibOut: String? = null
+    var noMemCheck = false
+    var libName: String? = null
+    var libVersion = "0.0.0"
+    var compilerId = ""
+    val libPaths = ArrayList<String>()
     var firstName: String? = null
     var i = 0
     while (i < args.size) {
@@ -206,6 +223,18 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         } else if (a == "-Werror") {
             werror = true
             i += 1
+        } else if (a == "--lib" || a == "--emit-mlib" || a == "--name" || a == "--lib-version" || a == "--compiler-id") {
+            if (i + 1 >= args.size) throw UsageError("missing value for " + a + "\n" + USAGE)
+            val v = args[i + 1]
+            if (a == "--lib") libPaths.add(v)
+            else if (a == "--emit-mlib") mlibOut = v
+            else if (a == "--name") libName = v
+            else if (a == "--lib-version") libVersion = v
+            else compilerId = v
+            i += 2
+        } else if (a == "--no-memory-check") {
+            noMemCheck = true
+            i += 1
         } else if (a == "--stdlib") {
             stdlib = true
             i += 1
@@ -229,11 +258,34 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     if (api && llvm == null) throw UsageError("--backend=llvm-api needs the build of minic-native with the LLVM C API (compiler/llvm-c)")
     if ((run || exe != null) && !api) throw UsageError("--run and --exe need --backend=llvm-api\n" + USAGE)
     if (firstName == null && args.size > 0 && inputs.isEmpty()) throw UsageError("no input files\n" + USAGE)
-    if (firstName == null || (!check && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run)) throw UsageError(USAGE)
+    if (firstName == null || (!check && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null)) throw UsageError(USAGE)
     val name: String = firstName
+    val libs = ArrayList<Mlib>()
+    for (lp in libPaths) {
+        val text = try {
+            readTextFile(lp)
+        } catch (e: IllegalStateException) {
+            throw MlibError("cannot read library " + lp + ": no such file or not readable")
+        }
+        libs.add(MlibFormat.read(text, lp))
+    }
+    val ordered = MlibFormat.order(libs, compilerId)
+    if (mlibOut != null) {
+        for (inp in inputs) if (inp.isStdlib) throw UsageError("--emit-mlib compiles all given files into the library; pass the sources of the library without --stdlib\n" + USAGE)
+        val libNameOf = libName ?: name.removeSuffix(".kt")
+        val mlib = try {
+            buildMlib(inputs, ordered, libNameOf, libVersion, compilerId, if (noMemCheck) null else { report -> reportMemory(report, name, werror, false, diag) })
+        } catch (e: LowerDiagnostics) {
+            reportFrontend(e, name, diag)
+            throw DriverExit(1)
+        }
+        writeTextFile(mlibOut, MlibFormat.write(mlib))
+        return
+    }
+
     if (check) {
         val report = try {
-            checkMemory(inputs)
+            checkMemory(if (ordered.isEmpty()) inputs else inputs + libInputs(ordered))
         } catch (e: LowerDiagnostics) {
             reportFrontend(e, name, diag)
             throw DriverExit(1)
@@ -242,7 +294,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         return
     }
     val module = try {
-        lowerToMir(inputs, name, lineDirs) { report -> reportMemory(report, name, werror, false, diag) }
+        lowerToMirWithLibs(inputs, ordered, name, lineDirs) { report -> reportMemory(report, name, werror, false, diag) }
     } catch (e: LowerDiagnostics) {
         reportFrontend(e, name, diag)
         throw DriverExit(1)

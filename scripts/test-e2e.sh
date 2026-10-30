@@ -3,7 +3,7 @@
 #
 #   scripts/test-e2e.sh [-j N] [--suite NAME]... [--list] [filter]
 #
-# Suites (default: c leak memcheck memrun multifile):
+# Suites (default: c leak memcheck memrun multifile mlib):
 #   c          build every compiler/testdata/*.kt through the C backend (cc -std=c17 -Wall -Werror), run it, compare
 #                <name>.out (stdout), <name>.err (substrings of stderr; the program must then exit non-zero),
 #                <name>.cerr (the build must fail with exit 1 and the output must contain each line)
@@ -19,8 +19,9 @@
 #   memrun     the accepted programs of testdata/memory (.out) built and run (programs using constructs the C backend cannot
 #                lower yet, or threads, are skipped and counted)
 #   multifile  several input files, reachability pruning, all user files are memory-checked
+#   mlib       precompiled libraries (docs/mlib.md): a chain of two libraries, error messages for damaged and mismatching ones
 #
-# Environment: MINI_ROOT (default <repo>/build/native: bin/minic-native, lib/libminirt.a, include/), MINIC_NATIVE, CC,
+# Environment: E2E_STDLIB=source compiles the stdlib sources with every program (default: lib/stdlib.mlib), MINI_ROOT (default <repo>/build/native: bin/minic-native, lib/libminirt.a, include/), MINIC_NATIVE, CC,
 #              NATIVE_DRIVER, MINIC_API, E2E_KEEP=1 keeps the work directory.
 # Exit status 0 when every test passed (skips are reported, not failures).
 set -uo pipefail
@@ -46,7 +47,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun multifile)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun multifile mlib)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -54,7 +55,15 @@ done
 W="$(mktemp -d "${TMPDIR:-/tmp}/mini-e2e.XXXXXX")"
 [ "${E2E_KEEP:-0}" = 1 ] || trap 'rm -rf "$W"' EXIT
 STD="$(find "$ROOT/stdlib" -name '*.kt' | LC_ALL=C sort | tr '\n' ' ')"
-echo "$STD" > "$W/stdlib.txt"
+# the standard library of the compiler under test: the precompiled lib/stdlib.mlib (default when there is one), or its sources
+# (E2E_STDLIB=source: the mode of the bootstrap)
+if [ "${E2E_STDLIB:-mlib}" = mlib ] && [ -f "$NATIVE/lib/stdlib.mlib" ]; then
+    STDMODE=mlib
+    echo "--lib $NATIVE/lib/stdlib.mlib --compiler-id $(cat "$NATIVE/VERSION" 2>/dev/null || echo unknown)" > "$W/stdlib.txt"
+else
+    STDMODE=source
+    echo "--stdlib $STD" > "$W/stdlib.txt"
+fi
 mkdir -p "$W/res"
 
 # a C compiler driver that can link the sanitizer runtimes (clang here often cannot; gcc is the fallback), or empty
@@ -114,7 +123,7 @@ run_and_compare() { # <name> <src> <exe> <label>: run, compare stdout with .out,
 }
 
 compile_to_c() { # <src> <out.c> <log>: native compiler, C backend
-    "$MINIC" -o "$2" "$1" --stdlib $(cat "$W/stdlib.txt") > "$3" 2>&1
+    "$MINIC" -o "$2" "$1" $(cat "$W/stdlib.txt") > "$3" 2>&1
 }
 
 t_c() { # <src> [asan]
@@ -145,7 +154,7 @@ t_c() { # <src> [asan]
 t_llvm() { # <src> [asan]
     local src="$1" mode="${2:-plain}" name; name="$(basename "$src" .kt)"; [ "$mode" = asan ] && name="$name.asan"
     local ll="$W/$name.ll" log="$W/$name.log" exe="$W/$name.exe" extra; extra="$(c_extra "$src")"
-    "$MINIC" --emit-ll "$ll" "$src" --stdlib $(cat "$W/stdlib.txt") > "$log" 2>&1; local rc=$?
+    "$MINIC" --emit-ll "$ll" "$src" $(cat "$W/stdlib.txt") > "$log" 2>&1; local rc=$?
     if [ "$mode" = plain ] && [ -f "$(sib "$src" cerr)" ]; then
         [ $rc -eq 1 ] || { echo "expected a compile error (exit 1), got $rc"; head -5 "$log"; return 1; }
         has_lines_in "$(sib "$src" cerr)" "$log" > "$W/$name.m" || { echo "compile output lacks:"; cat "$W/$name.m"; return 1; }
@@ -173,7 +182,7 @@ t_llvm_variant() { # <flag>: rc_stress through native-driver with the flag
     local flag="$1" src="$TESTDATA/rc_stress.kt" name="rc_stress_v${1//-/_}"
     local drv="${NATIVE_DRIVER:-}"
     [ -x "$drv" ] || { echo "NATIVE_DRIVER not set"; return 77; }
-    "$MINIC" --emit-mir "$W/$name.mir" "$src" --stdlib $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1 || { head "$W/$name.log"; return 1; }
+    "$MINIC" --emit-mir "$W/$name.mir" "$src" $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1 || { head "$W/$name.log"; return 1; }
     "$drv" "$W/$name.mir" --backend=llvm "$flag" -o "$W/$name.ll" > "$W/$name.drv" 2>&1 || { echo "native-driver failed:"; head "$W/$name.drv"; return 1; }
     local rt="$RTLIB"
     [ "$flag" = --stats ] && rt="$W/rt-stats/*.o"
@@ -189,7 +198,7 @@ t_llvm_api() { # <src>
     local src="$1" name; name="$(basename "$src" .kt)"
     local api="${MINIC_API:-}" extra; extra="$(c_extra "$src")"
     [ -x "$api" ] || { echo "MINIC_API not set"; return 77; }
-    "$api" "$src" --backend=llvm-api -o "$W/$name.o" --stdlib $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1; local rc=$?
+    "$api" "$src" --backend=llvm-api -o "$W/$name.o" $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1; local rc=$?
     if [ -f "$(sib "$src" cerr)" ]; then
         [ $rc -ne 0 ] || { echo "expected a compile error"; return 1; }
         has_lines_in "$(sib "$src" cerr)" "$W/$name.log" > "$W/$name.m" || { echo "output lacks:"; cat "$W/$name.m"; return 1; }
@@ -204,7 +213,7 @@ t_llvm_api() { # <src>
 
 t_memcheck() { # <src>
     local src="$1" name; name="$(basename "$src" .kt)-$$-$RANDOM"
-    "$MINIC" --check --brief "$src" --stdlib $(cat "$W/stdlib.txt") > "$W/$name.out" 2> "$W/$name.err"
+    "$MINIC" --check --brief "$src" $(cat "$W/stdlib.txt") > "$W/$name.out" 2> "$W/$name.err"
     local want="$W/$name.want"
     if [ -f "$(sib "$src" diag)" ]; then sed 's/^[[:space:]]*//;s/[[:space:]]*$//' "$(sib "$src" diag)" | grep -v '^$' | LC_ALL=C sort > "$want"; else : > "$want"; fi
     LC_ALL=C sort "$W/$name.out" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > "$W/$name.got" || true
@@ -213,7 +222,7 @@ t_memcheck() { # <src>
 
 t_memrun() { # <src>
     local src="$1" name; name="mr_$(basename "$src" .kt)"
-    "$MINIC" -o "$W/$name.c" "$src" --stdlib $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1; local rc=$?
+    "$MINIC" -o "$W/$name.c" "$src" $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1; local rc=$?
     if [ $rc -ne 0 ]; then
         grep -q "unsupported construct" "$W/$name.log" && return 77
         echo "build failed:"; head -10 "$W/$name.log"; return 1
@@ -228,7 +237,7 @@ t_multifile() {
     local d="$W/multi"; mkdir -p "$d"
     printf 'fun main() {\n    println(greet("mini"))\n    println(Counter().next() + Counter().next())\n}\n' > "$d/a.kt"
     printf 'fun greet(name: String): String = "Hello, " + name.uppercase().padEnd(6, '"'"'!'"'"')\nclass Counter {\n    private var n = 0\n    fun next(): Int { n++; return n }\n}\n' > "$d/b.kt"
-    "$MINIC" -o "$d/out.c" "$d/a.kt" "$d/b.kt" --stdlib $(cat "$W/stdlib.txt") > "$d/log" 2>&1 || { echo "build failed:"; head "$d/log"; return 1; }
+    "$MINIC" -o "$d/out.c" "$d/a.kt" "$d/b.kt" $(cat "$W/stdlib.txt") > "$d/log" 2>&1 || { echo "build failed:"; head "$d/log"; return 1; }
     "$CC" -std=c17 -O1 -Wall $WNO -Werror -I "$INCLUDE" "$d/out.c" "$RTLIB" -o "$d/out" -lm > "$d/cc" 2>&1 || { echo "C compiler failed:"; head "$d/cc"; return 1; }
     [ "$("$d/out")" = "$(printf 'Hello, MINI!!\n2')" ] || { echo "wrong output"; return 1; }
     grep -q "ArrayList" "$d/out.c" && { echo "unreachable stdlib code was emitted"; return 1; }
@@ -240,21 +249,76 @@ t_allfiles() { # the memory checker looks at every user file, not only the first
     local d="$W/allfiles"; mkdir -p "$d"
     printf '@file:MemoryMode(Mode.Strict)\nimport mini.memory.*\n\n@AllocatedBy(Heap::class)\nclass Box(val v: Int)\n\nfun main() {\n    val b = Box(1)\n    b.free()\n    leak()\n}\n' > "$d/a.kt"
     printf '@file:MemoryMode(Mode.Strict)\nimport mini.memory.*\n\nfun leak() {\n    val c = Box(2)\n    println(c.v)\n}\n' > "$d/b.kt"
-    "$MINIC" --check "$d/a.kt" "$d/b.kt" --stdlib $(cat "$W/stdlib.txt") > "$d/chk" 2>&1; local rc=$?
+    "$MINIC" --check "$d/a.kt" "$d/b.kt" $(cat "$W/stdlib.txt") > "$d/chk" 2>&1; local rc=$?
     [ $rc -eq 1 ] || { echo "the leak in the second file must be reported (exit $rc)"; head "$d/chk"; return 1; }
     grep -q "M0102" "$d/chk" && grep -q "b.kt:" "$d/chk" || { echo "diagnostic of b.kt expected"; head "$d/chk"; return 1; }
-    "$MINIC" -o "$d/prog.c" "$d/a.kt" "$d/b.kt" --stdlib $(cat "$W/stdlib.txt") > "$d/bld" 2>&1; rc=$?
+    "$MINIC" -o "$d/prog.c" "$d/a.kt" "$d/b.kt" $(cat "$W/stdlib.txt") > "$d/bld" 2>&1; rc=$?
     [ $rc -eq 1 ] && grep -q "M0102" "$d/bld" || { echo "build must fail on the memory error in b.kt (exit $rc)"; head "$d/bld"; return 1; }
     # the checker rejects and accepts
-    "$MINIC" --check "$TESTDATA/memory/uaf_simple.kt" --stdlib $(cat "$W/stdlib.txt") > /dev/null 2>&1 && { echo "uaf_simple.kt must be rejected"; return 1; }
-    "$MINIC" --check "$TESTDATA/memory/ok_heap_basic.kt" --stdlib $(cat "$W/stdlib.txt") > /dev/null 2>&1 || { echo "ok_heap_basic.kt must be accepted"; return 1; }
+    "$MINIC" --check "$TESTDATA/memory/uaf_simple.kt" $(cat "$W/stdlib.txt") > /dev/null 2>&1 && { echo "uaf_simple.kt must be rejected"; return 1; }
+    "$MINIC" --check "$TESTDATA/memory/ok_heap_basic.kt" $(cat "$W/stdlib.txt") > /dev/null 2>&1 || { echo "ok_heap_basic.kt must be accepted"; return 1; }
+    return 0
+}
+
+# ---- precompiled libraries (docs/mlib.md) -------------------------------------------------------------------------------------
+
+# two libraries (b depends on a, both with lambdas and an object), a program that uses b: the output must be right and the generated
+# names of the two libraries must not collide
+t_mlib_chain() {
+    [ "$STDMODE" = mlib ] || return 77
+    local d="$W/mlib-chain"; mkdir -p "$d"
+    local S="$NATIVE/lib/stdlib.mlib" V; V="$(cat "$NATIVE/VERSION" 2>/dev/null || echo unknown)"
+    printf 'package a\n\nfun twice(f: (Int) -> Int, x: Int): Int = f(f(x))\nfun addAll(xs: List<Int>): Int { var s = 0; xs.forEach { s += it }; return s }\nobject Registry { val names = mutableListOf<String>() }\nval greeting = "hi " + "there"\n' > "$d/a.kt"
+    printf 'package b\n\nimport a.*\n\nfun total(n: Int): Int = addAll((1..n).map { twice({ v -> v * 2 }, it) })\nfun hello(): String { Registry.names.add("x"); return greeting + Registry.names.size }\ninline fun <T> run2(f: () -> T): T = f()\n' > "$d/b.kt"
+    printf 'import b.*\n\nfun main() {\n    println(total(4))\n    println(hello())\n    println(run2 { 7 })\n}\n' > "$d/main.kt"
+    "$MINIC" --emit-mlib "$d/a.mlib" --name a --lib-version 1.0.0 --compiler-id "$V" --lib "$S" "$d/a.kt" > "$d/log" 2>&1 || { echo "a.mlib failed:"; head "$d/log"; return 1; }
+    "$MINIC" --emit-mlib "$d/b.mlib" --name b --compiler-id "$V" --lib "$S" --lib "$d/a.mlib" "$d/b.kt" > "$d/log" 2>&1 || { echo "b.mlib failed:"; head "$d/log"; return 1; }
+    "$MINIC" -o "$d/out.c" "$d/main.kt" --lib "$S" --lib "$d/b.mlib" --lib "$d/a.mlib" --compiler-id "$V" > "$d/log" 2>&1 || { echo "program failed:"; head "$d/log"; return 1; }
+    "$CC" -std=c17 -O1 -w -I "$INCLUDE" "$d/out.c" "$RTLIB" -o "$d/out" -lm > "$d/cc" 2>&1 || { echo "C compiler failed:"; head "$d/cc"; return 1; }
+    [ "$("$d/out")" = "$(printf '40\nhi there1\n7')" ] || { echo "wrong output: $("$d/out")"; return 1; }
+    # the same program in source mode agrees
+    "$MINIC" -o "$d/src.c" "$d/main.kt" "$d/a.kt" "$d/b.kt" --stdlib $STD > "$d/log" 2>&1 || { echo "source mode failed:"; head "$d/log"; return 1; }
+    "$CC" -std=c17 -O1 -w -I "$INCLUDE" "$d/src.c" "$RTLIB" -o "$d/src" -lm > "$d/cc" 2>&1 || { echo "C compiler failed:"; head "$d/cc"; return 1; }
+    [ "$("$d/src")" = "$("$d/out")" ] || { echo "source mode and library mode differ"; return 1; }
+    # the dependency is needed, and it must be the one b was built against
+    "$MINIC" --check "$d/main.kt" --lib "$S" --lib "$d/b.mlib" > "$d/log" 2>&1 && { echo "missing dependency a was not reported"; return 1; }
+    grep -q "needs library 'a'" "$d/log" || { echo "wrong message for a missing dependency:"; head "$d/log"; return 1; }
+    printf 'package a\n\nfun twice(f: (Int) -> Int, x: Int): Int = f(x)\n' > "$d/a2.kt"
+    "$MINIC" --emit-mlib "$d/a2.mlib" --name a --compiler-id "$V" --lib "$S" "$d/a2.kt" > "$d/log" 2>&1 || { echo "a2.mlib failed:"; head "$d/log"; return 1; }
+    "$MINIC" --check "$d/main.kt" --lib "$S" --lib "$d/b.mlib" --lib "$d/a2.mlib" > "$d/log" 2>&1 && { echo "wrong dependency hash was not reported"; return 1; }
+    grep -q "was built against 'a'" "$d/log" || { echo "wrong message for a wrong dependency:"; head "$d/log"; return 1; }
+    return 0
+}
+
+# clear errors for a library that is not one, is damaged, has another format version or comes from another compiler
+t_mlib_errors() {
+    [ "$STDMODE" = mlib ] || return 77
+    local d="$W/mlib-errors"; mkdir -p "$d"
+    local S="$NATIVE/lib/stdlib.mlib" V; V="$(cat "$NATIVE/VERSION" 2>/dev/null || echo unknown)"
+    printf 'fun main() { println(1) }\n' > "$d/m.kt"
+    echo "not a library" > "$d/junk.mlib"
+    "$MINIC" --check "$d/m.kt" --lib "$d/junk.mlib" > "$d/log" 2>&1 && { echo "junk accepted"; return 1; }
+    grep -q "not a Mini library" "$d/log" || { echo "junk: wrong message"; head "$d/log"; return 1; }
+    sed '1s/.*/mini-mlib 99/' "$S" > "$d/future.mlib"
+    "$MINIC" --check "$d/m.kt" --lib "$d/future.mlib" > "$d/log" 2>&1 && { echo "another format version accepted"; return 1; }
+    grep -q "format version 99" "$d/log" || { echo "version: wrong message"; head "$d/log"; return 1; }
+    sed 's/^name stdlib$/name stdlibx/' "$S" > "$d/edited.mlib"
+    "$MINIC" --check "$d/m.kt" --lib "$d/edited.mlib" > "$d/log" 2>&1 && { echo "an edited library was accepted"; return 1; }
+    grep -q "content hash mismatch" "$d/log" || { echo "hash: wrong message"; head "$d/log"; return 1; }
+    head -c 3000 "$S" > "$d/cut.mlib"
+    "$MINIC" --check "$d/m.kt" --lib "$d/cut.mlib" > "$d/log" 2>&1 && { echo "a truncated library was accepted"; return 1; }
+    grep -q "truncated" "$d/log" || { echo "truncated: wrong message"; head "$d/log"; return 1; }
+    "$MINIC" --check "$d/m.kt" --lib "$S" --compiler-id some-other-compiler > "$d/log" 2>&1 && { echo "a library of another compiler was accepted"; return 1; }
+    grep -q "was built by compiler" "$d/log" || { echo "compiler id: wrong message"; head "$d/log"; return 1; }
+    "$MINIC" --check "$d/m.kt" --lib "$S" --compiler-id "$V" > "$d/log" 2>&1 || { echo "the right library was refused:"; head "$d/log"; return 1; }
     return 0
 }
 
 # ---- driver -----------------------------------------------------------------------------------------------------------------------
 
+export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_multifile t_allfiles
+export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_multifile t_allfiles t_mlib_chain t_mlib_errors
 
 # a test list: "<suite> <id> <function and arguments>" per line
 LISTFILE="$W/tests.txt"
@@ -278,6 +342,7 @@ want_suite llvm-variants && for v in --stats --no-rc-opt --no-strict --no-conv; 
 want_suite llvm-api && for f in $(progs); do add llvm-api "$(basename "$f" .kt)" "t_llvm_api $f"; done
 want_suite memcheck && for f in $(find "$TESTDATA/memory" "$TESTDATA/memory-extra" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do add memcheck "${f#"$TESTDATA"/}" "t_memcheck $f"; done
 want_suite memrun && for f in $(find "$TESTDATA/memory" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do [ -f "${f%.kt}.out" ] && add memrun "$(basename "$f" .kt)" "t_memrun $f"; done
+want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; }
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; }
 
 if [ -n "$FILTER" ]; then grep -F -- "$FILTER" "$LISTFILE" > "$LISTFILE.f" || true; mv "$LISTFILE.f" "$LISTFILE"; fi

@@ -374,9 +374,15 @@ frontend() { # <mode: check|build> [<c file>]
 $2
 "
     fi
-    STDFILES="$(find -L "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
-    # shellcheck disable=SC2086
-    set -- $NATIVE_ARGS $SRCLIST --stdlib $STDFILES
+    # the standard library: the precompiled lib/stdlib.mlib (docs/mlib.md), or its sources (MINIC_STDLIB=source, or no .mlib)
+    if [ -f "$HOME_DIR/lib/stdlib.mlib" ] && [ "${MINIC_STDLIB:-}" != source ]; then
+        # shellcheck disable=SC2086
+        set -- $NATIVE_ARGS $SRCLIST --lib "$HOME_DIR/lib/stdlib.mlib" --compiler-id "$VERSION"
+    else
+        STDFILES="$(find -L "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
+        # shellcheck disable=SC2086
+        set -- $NATIVE_ARGS $SRCLIST --stdlib $STDFILES
+    fi
     show "$NATIVE" "$@"
     "$NATIVE" "$@"
     st=$?

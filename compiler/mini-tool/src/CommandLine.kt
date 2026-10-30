@@ -103,6 +103,14 @@ object CommandLine {
             listOf("mini check", "mini check --strict -Werror"),
         ),
         Command(
+            "package", "Build the distributable library file (.mlib) of a library", "",
+            listOf(pkgFlag, memFlag, werrorFlag, offlineFlag, lockedFlag, formatFlag, manifestFlag),
+            "Builds the library (and the libraries it depends on) and writes build/package/<name>-<version>.mlib: the API stubs and the\n" +
+                "target-independent code of the library in one file (docs/mlib.md). The file works natively, in the JIT and in the browser;\n" +
+                "a program that uses it needs the libraries it was built against (listed in its header) next to it.",
+            listOf("mini package", "mini package -p geometry"),
+        ),
+        Command(
             "test", "Run the @Test functions of the project", "[FILTER]",
             listOf(
                 pkgFlag, memFlag, werrorFlag, offlineFlag, lockedFlag, manifestFlag,

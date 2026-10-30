@@ -38,6 +38,24 @@ object Reachability {
         return null
     }
 
+    /** Only steps 1 and 2 of [prune]: everything else is kept (building a precompiled library, docs/mlib.md). */
+    fun pruneBuiltins(module: IrModule) {
+        val keepFiles = ArrayList<IrFile>()
+        for (f in module.files) if (!isBuiltinFile(f)) keepFiles.add(f)
+        module.files.clear()
+        module.files.addAll(keepFiles)
+        for (f in module.files) {
+            val keep = ArrayList<IrDeclaration>()
+            for (d in f.declarations) {
+                if (d is IrFunction && (d.isExternal || cSymbol(d) != null)) continue
+                if (d is IrClass && d.kind == IrClassKind.ANNOTATION_CLASS) continue   // no code, no MIR
+                keep.add(d)
+            }
+            f.declarations.clear()
+            f.declarations.addAll(keep)
+        }
+    }
+
     fun prune(module: IrModule) {
         val marker = Marker()
         for (f in module.files) {
