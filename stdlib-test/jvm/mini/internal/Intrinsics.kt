@@ -23,6 +23,14 @@ fun sbAppendString(sb: Any, s: String) {
     (sb as java.lang.StringBuilder).append(s)
 }
 
+fun sbAppendInt(sb: Any, value: Int) {
+    (sb as java.lang.StringBuilder).append(value)
+}
+
+fun sbAppendLong(sb: Any, value: Long) {
+    (sb as java.lang.StringBuilder).append(value)
+}
+
 fun sbAppendChar(sb: Any, c: Char) {
     (sb as java.lang.StringBuilder).append(c)
 }

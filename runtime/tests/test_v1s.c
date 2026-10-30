@@ -73,6 +73,27 @@ int main(void) {
     CHECK_EQ_INT(mk_sb_char_at(sb, 6), 0);
     mk_release(sb);
 
+    /* StringBuilder.append(Int / Long) writes the digits into the buffer */
+    MkObject *nb = mk_sb_new();
+    mk_sb_append_int(nb, 0);
+    mk_sb_append_char(nb, ',');
+    mk_sb_append_int(nb, -42);
+    mk_sb_append_char(nb, ',');
+    mk_sb_append_int(nb, INT32_MIN);
+    mk_sb_append_char(nb, ',');
+    mk_sb_append_int(nb, INT32_MAX);
+    mk_sb_append_char(nb, ',');
+    mk_sb_append_long(nb, INT64_MIN);
+    mk_sb_append_char(nb, ',');
+    mk_sb_append_long(nb, INT64_MAX);
+    for (int i = 0; i < 100; i++) mk_sb_append_long(nb, (MkLong)i * 1000003);
+    MkString *ns = mk_sb_to_string(nb);
+    char expect[4096];
+    size_t en = (size_t)snprintf(expect, sizeof expect, "0,-42,-2147483648,2147483647,-9223372036854775808,9223372036854775807");
+    for (int i = 0; i < 100; i++) en += (size_t)snprintf(expect + en, sizeof expect - en, "%lld", (long long)i * 1000003);
+    CHECK_STR(ns, expect);
+    mk_release(nb);
+
     /* reference arrays */
     MkObject *arr = mk_ref_array_new(3);
     CHECK_EQ_INT(mk_ref_array_length(arr), 3);

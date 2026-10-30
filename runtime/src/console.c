@@ -45,13 +45,13 @@ static void put(const char *text, size_t n) {
 }
 
 void mk_print_int(MkInt v) {
-    char buf[16];
-    put(buf, (size_t)snprintf(buf, sizeof buf, "%" PRId32, v));
+    char buf[MK_ITOA_MAX];
+    put(buf, mk_itoa(v, buf));
 }
 
 void mk_print_long(MkLong v) {
-    char buf[32];
-    put(buf, (size_t)snprintf(buf, sizeof buf, "%" PRId64, v));
+    char buf[MK_ITOA_MAX];
+    put(buf, mk_itoa(v, buf));
 }
 
 void mk_print_float(MkFloat v) {

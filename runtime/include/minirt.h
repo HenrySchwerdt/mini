@@ -375,6 +375,8 @@ MkDouble mk_string_parse_double(const MkString *s);
 MkObject *mk_sb_new(void);
 void mk_sb_append_string(MkObject *sb, const MkString *s);
 void mk_sb_append_char(MkObject *sb, MkChar c);
+void mk_sb_append_int(MkObject *sb, MkInt value);   /* decimal digits, written straight into the buffer */
+void mk_sb_append_long(MkObject *sb, MkLong value);
 MkInt mk_sb_length(MkObject *sb);
 MkChar mk_sb_char_at(MkObject *sb, MkInt index);
 void mk_sb_set_char_at(MkObject *sb, MkInt index, MkChar c);

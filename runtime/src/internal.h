@@ -139,6 +139,9 @@ void mk_runtime_flush(void); /* flushes stdout */
 
 /* Format like Kotlin/JVM Double.toString / Float.toString into buf (capacity >= 48). */
 size_t mk_format_double(MkDouble value, char *buf, size_t capacity);
+/* Decimal digits of a 64-bit integer (with a leading '-'), no terminator; `buf` holds at least MK_ITOA_MAX characters. Returns the length. */
+#define MK_ITOA_MAX 20
+size_t mk_itoa(int64_t value, char *buf);
 size_t mk_format_float(MkFloat value, char *buf, size_t capacity);
 
 #endif
