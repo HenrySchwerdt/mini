@@ -58,7 +58,7 @@ class GitCache(val p: Platform, val c: Console, val home: String, val offline: B
     private val root = Paths.join(home, "git")
 
     private fun slug(url: String): String {
-        val last = url.trimEnd('/').substringAfterLast('/').substringAfterLast(':').removeSuffix(".git")
+        val last = url.trimEndChars('/').substringAfterLast('/').substringAfterLast(':').removeSuffix(".git")
         return ManifestParser.sanitizeName(last) + "-" + Hasher.of(url).substring(0, 12)
     }
 

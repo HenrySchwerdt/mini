@@ -69,7 +69,7 @@ object ManifestParser {
         n.isNotEmpty() && n[0] in 'a'..'z' && n.all { it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '-' }
 
     fun isValidVersion(v: String): Boolean =
-        Regex("""\d+\.\d+\.\d+([-+][0-9A-Za-z.\-+]+)?""").matches(v)
+        isSemanticVersion(v)
 
     private fun unknown(kind: String, e: TEntry, known: List<String>, where: String): Nothing {
         val s = suggest(e.key, known)
@@ -195,9 +195,9 @@ object ManifestParser {
     fun sanitizeName(s: String): String {
         val sb = StringBuilder()
         for (c in s.lowercase()) sb.append(if (c in 'a'..'z' || c in '0'..'9' || c == '_' || c == '-') c else '-')
-        var r = sb.toString().trim('-', '_')
+        var r = sb.toString().trimChars('-', '_')
         while (r.isNotEmpty() && r[0] in '0'..'9') r = r.substring(1)
-        return r.replace(Regex("-+"), "-").ifEmpty { "app" }
+        return r.collapseRuns('-').ifEmpty { "app" }
     }
 }
 

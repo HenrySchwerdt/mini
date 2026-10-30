@@ -13,18 +13,27 @@ class Diag(
 class DiagSpan(val file: String, val line: Int, val column: Int, val label: String, val primary: Boolean)
 
 object Diagnostics {
-    private val miniHeader = Regex("""^(error|warning|info)\[(M\d{4})\]: (.*)$""")
-    private val miniSpan = Regex("""^\s+--> (.+?):(\d+):(\d+)(?:\s{2,}(.*))?$""")
-    private val kotlinDiag = Regex("""^([^\s:][^:]*\.kt):(\d+):(\d+): (error|warning): (.*)$""")
-    private val help = Regex("""^\s+help: (.*)$""")
+    private val miniHeader = MiniHeaderPattern
+    private val miniSpan = MiniSpanPattern
+    private val kotlinDiag = KotlinDiagPattern(allowSlash = true)
+    private val help = HelpPattern
 
     /** Lines that are environment noise, not compiler output. */
     fun isNoise(line: String): Boolean =
         line.startsWith("Picked up JAVA_TOOL_OPTIONS") || line.startsWith("Picked up _JAVA_OPTIONS") || line.startsWith("Picked up JDK_JAVA_OPTIONS")
 
+    /** minic-native reports a failed compilation as an uncaught exception: `Exception in thread "main" java.lang.IllegalStateException: <message>`. */
+    fun stripUncaught(line: String): String {
+        val head = "Exception in thread \"main\" "
+        if (!line.startsWith(head)) return line
+        val rest = line.substring(head.length)
+        val colon = rest.indexOf(": ")
+        return if (colon > 0 && rest.substring(0, colon).endsWith("Exception")) rest.substring(colon + 2) else rest
+    }
+
     /** Drops JVM noise and the `minic: could not compile ...` summary (mini prints its own). */
     fun clean(text: String): String =
-        text.lines().filter { !isNoise(it) && !it.startsWith("minic: could not compile") }.joinToString("\n").trimEnd('\n')
+        text.lines().map { stripUncaught(it) }.filter { !isNoise(it) && !it.startsWith("minic: could not compile") && !it.startsWith("could not compile ") }.joinToString("\n").trimEndChars('\n')
 
     /** Rewrites absolute paths in compiler output: [mappings] are (absolute prefix, replacement). Longest prefix first. */
     fun remap(text: String, mappings: List<Pair<String, String>>): String {
@@ -79,9 +88,8 @@ object Diagnostics {
                 }
                 k != null -> l.substringBefore(": ${k.groupValues[4]}: ") + ": " +
                     (if (k.groupValues[4] == "error") s.red("error:", true) else s.yellow("warning:", true)) + " " + s.bold(k.groupValues[5])
-                miniSpan.matches(l) -> l.replaceFirst("-->", s.blue("-->"))
-                help.matches(l) -> l.replaceFirst("help:", s.cyan("help:", true))
-                l.trimStart().matches(Regex("""\d+ \|.*""")) || l.trim().startsWith("|") -> l
+                miniSpan.matches(l) -> replaceFirstText(l, "-->", s.blue("-->"))
+                help.matches(l) -> replaceFirstText(l, "help:", s.cyan("help:", true))
                 else -> l
             }
         }
