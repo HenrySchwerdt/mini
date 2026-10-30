@@ -155,3 +155,257 @@ Stdlib annotations needed: 10 `@ReturnsBorrowed`, 10 `@TakesOwnership` (collecti
 5 `@NativeSymbol` (allocator handles); user programs need none. Step 3 (Strict internals for the collections) was not
 done: buffers are runtime `Any` objects (little counting to gain) and iterators/views hold counted references to the
 map, so only `HashNode`/`HashMap` as `@AllocatedBy(Rc)` Strict classes would be a candidate.
+
+## Cross-language baseline
+
+The same eight programs written in C, Rust, Go, Kotlin/JVM, Kotlin/Native and Mini, so that Mini's speed and memory use can
+be compared with other languages and so that regressions show up. The programs are in `bench/<name>/`, the runner is
+`bench/run.py` (`bench/run.sh`), results are written to `bench/results/<date>-<host>.{json,md}`, and the CI workflow
+`.github/workflows/bench.yml` runs the suite. Kotlin/JVM and Mini compile the very same `.kt` file (Mini Arena and Strict
+have their own variants of `binarytrees`).
+
+**Host and tools.** Intel Xeon @ 2.30 GHz VM, 4 cores, Linux 6.18; clang 18.1.3, rustc 1.97.0 (`-C opt-level=3
+-C codegen-units=1`), Go 1.24.7, OpenJDK 21.0.12 (default flags), Kotlin 2.1.20 (`kotlinc`, `kotlinc-native -opt`). C uses
+`clang -O2`. Mini is built with `minic build --cflag -O2` (C backend) and with `--backend=llvm`. Every number is the best of
+5 runs; the output of every run is checked against `bench/<name>/expected.txt`. Mini columns: `M` = Managed, `A` = Arena,
+`S` = Strict (only `binarytrees` has Arena and Strict variants), `-ll` = LLVM backend. Raw data:
+`bench/results/2026-10-30-vm.json` and `.md` (the `.md` also has binary sizes, cold start and the `--stats` counters).
+
+**Measured before the allocator change.** This run used the runtime at `dedfbcd`, before the thread-local size-class
+allocator (see "Allocator: size-class free lists and a real bump arena"). The section "After the allocator" below
+re-times the Mini builds with the new runtime. It is a VM, so differences below about 5 percent are noise.
+
+### Wall time (seconds, best of 5)
+
+| benchmark | C | Rust | Go | JVM | K/N | Mini-M | Mini-M-ll | Mini-A | Mini-A-ll | Mini-S | Mini-S-ll |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| binarytrees | 0.95 | 1.10 | 1.57 | 0.71 | 2.47 | 1.69 | 1.65 | 1.67 | 1.62 | 1.91 | 1.77 |
+| nbody | 0.99 | 0.75 | 1.58 | 1.20 | 1.21 | 1.80 | 1.98 | n/a | n/a | n/a | n/a |
+| fannkuch | 2.13 | 1.83 | 2.06 | 2.14 | 2.30 | 6.81 | 7.35 | n/a | n/a | n/a | n/a |
+| spectralnorm | 1.01 | 1.00 | 1.00 | 1.78 | 1.04 | 1.99 | 2.01 | n/a | n/a | n/a | n/a |
+| mandelbrot | 0.87 | 0.82 | 0.85 | 0.83 | 0.84 | 0.85 | 0.81 | n/a | n/a | n/a | n/a |
+| wordcount | 0.53 | 0.91 | 1.27 | 3.29 | 3.91 | 4.39 | 4.37 | n/a | n/a | n/a | n/a |
+| strbuild | 0.58 | 0.51 | 0.99 | 0.52 | 1.84 | 1.64 | 1.65 | n/a | n/a | n/a | n/a |
+| json | 0.82 | 0.50 | 0.61 | 0.76 | 0.79 | 1.43 | 1.79 | n/a | n/a | n/a | n/a |
+
+### Time relative to C (1.00 = C at -O2; higher is slower)
+
+| benchmark | C | Rust | Go | JVM | K/N | Mini-M | Mini-M-ll | Mini-A | Mini-A-ll | Mini-S | Mini-S-ll |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| binarytrees | 1.00 | 1.16 | 1.65 | 0.75 | 2.61 | 1.78 | 1.75 | 1.76 | 1.71 | 2.01 | 1.87 |
+| nbody | 1.00 | 0.76 | 1.59 | 1.21 | 1.22 | 1.81 | 2.00 | n/a | n/a | n/a | n/a |
+| fannkuch | 1.00 | 0.86 | 0.96 | 1.00 | 1.08 | 3.19 | 3.44 | n/a | n/a | n/a | n/a |
+| spectralnorm | 1.00 | 0.99 | 0.99 | 1.76 | 1.03 | 1.97 | 1.99 | n/a | n/a | n/a | n/a |
+| mandelbrot | 1.00 | 0.95 | 0.97 | 0.96 | 0.97 | 0.98 | 0.92 | n/a | n/a | n/a | n/a |
+| wordcount | 1.00 | 1.71 | 2.38 | 6.15 | 7.31 | 8.21 | 8.17 | n/a | n/a | n/a | n/a |
+| strbuild | 1.00 | 0.88 | 1.71 | 0.90 | 3.19 | 2.84 | 2.86 | n/a | n/a | n/a | n/a |
+| json | 1.00 | 0.61 | 0.74 | 0.93 | 0.96 | 1.74 | 2.17 | n/a | n/a | n/a | n/a |
+
+### Peak RSS (MiB)
+
+| benchmark | C | Rust | Go | JVM | K/N | Mini-M | Mini-M-ll | Mini-A | Mini-A-ll | Mini-S | Mini-S-ll |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| binarytrees | 34 | 34 | 46 | 501 | 141 | 130 | 130 | 66 | 66 | 66 | 66 |
+| nbody | 2 | 2 | 2 | 42 | 3 | 2 | 2 | n/a | n/a | n/a | n/a |
+| fannkuch | 2 | 2 | 2 | 42 | 3 | 2 | 2 | n/a | n/a | n/a | n/a |
+| spectralnorm | 2 | 2 | 2 | 42 | 3 | 2 | 2 | n/a | n/a | n/a | n/a |
+| mandelbrot | 2 | 2 | 2 | 40 | 3 | 2 | 2 | n/a | n/a | n/a | n/a |
+| wordcount | 88 | 86 | 289 | 414 | 367 | 328 | 328 | n/a | n/a | n/a | n/a |
+| strbuild | 104 | 104 | 447 | 397 | 611 | 205 | 205 | n/a | n/a | n/a | n/a |
+| json | 103 | 75 | 168 | 479 | 364 | 173 | 173 | n/a | n/a | n/a | n/a |
+
+Cold start of `hello`: C 1.1 ms, Rust 1.2, Go 1.1, K/N 1.5, Mini 1.0, JVM 31.4 ms. Binary size (KiB, `binarytrees`): C 16,
+Mini 86 to 93, K/N 481, Go 2178, Rust 4259 (JVM: 3 KiB of class files, without the JVM itself).
+
+### Reproducing
+
+```sh
+cd compiler && ./gradlew installDist && cd ..     # builds ./minic
+bench/run.sh --reps 5 --stats                     # all languages that are installed (the JVM and Native compiles are slow)
+bench/run.sh --only json,wordcount --langs c,mini-managed --out /tmp/bench   # a subset
+```
+
+Tools are taken from `PATH` (`clang`, `rustc`, `go`, `java`, `kotlinc`, `kotlinc-native`) or from `CC`, `RUSTC`, `GO`, `JAVA`,
+`KOTLINC`, `KOTLINC_NATIVE`. A tool that is missing is reported as "not measured". `--stats` adds a Mini Managed build with the
+`MK_STATS` counters.
+
+### Summary
+
+* **On par with C: `mandelbrot`** (0.98x). Pure floating-point loops over locals compile to the same code.
+* **About 1.7 to 2x C: `binarytrees` (1.8x), `nbody` (1.8x), `spectralnorm` (2.0x), `json` (1.7x).** Allocation- and
+  object-heavy code, and code that goes through runtime accessors.
+* **Far behind: `fannkuch` (3.2x), `strbuild` (2.8x), `wordcount` (8.2x).** All three are dominated by things that are
+  out-of-line calls in the runtime (array access, number formatting, a generic `HashMap`).
+* Against the other languages: Mini is faster than Kotlin/Native on `binarytrees` and `strbuild` only; Kotlin/Native is
+  clearly faster on `fannkuch`, `spectralnorm`, `nbody`, `json` and `wordcount`. Go, Rust and the JVM beat Mini on
+  `wordcount`, `json` and `binarytrees`.
+* Memory: Mini's peak RSS is mostly below the JVM and Kotlin/Native (`binarytrees` 130 MiB against JVM 501, K/N 141;
+  `strbuild` 205 against Go 447, JVM 397, C 104), but not always (`wordcount` 328 MiB against Go 289, C 88). Start-up
+  (1.0 ms) and binary size (80 to 210 KiB) are small; only C is smaller.
+* The LLVM backend is within about 10 percent of the C backend, except `json` (1.25x slower); the cause was not investigated.
+* Caveat: the `json` row of the recorded run (Mini 1.43 s) is not reproducible on the old runtime. Re-building the same
+  program against the old runtime gave 1.94 s to 1.99 s in three further runs (C 0.82 to 1.00 s). The recorded row is kept
+  as measured; the re-measured value is in the table below.
+
+### After the allocator
+
+The runtime of PR #18 (`a809207`: thread-local size-class allocator for objects up to 256 bytes, faster arenas) was
+compiled into the same programs with `minic build --cflag -O2 --runtime-src <rt>/runtime/src --runtime-include
+<rt>/runtime/include` (C backend, Managed unless noted). "Re-measured" is the old runtime built and timed in the same session as the
+new one; seconds, best of 5, same host. Output checked against `expected.txt`.
+
+| benchmark | C | Mini-M (recorded run) | Mini-M, old runtime, re-measured | Mini-M, new runtime | new / C |
+|---|---:|---:|---:|---:|---:|
+| binarytrees | 0.95 | 1.69 | 1.68 | **1.18** | 1.24 |
+| nbody | 0.99 | 1.80 | 1.76 | 1.74 | 1.76 |
+| fannkuch | 2.13 | 6.81 | 6.84 | 7.07 | 3.32 |
+| spectralnorm | 1.01 | 1.99 | 2.01 | 2.02 | 2.00 |
+| mandelbrot | 0.87 | 0.85 | 0.85 | 0.85 | 0.98 |
+| wordcount | 0.53 | 4.39 | 4.61 | **4.32** | 8.15 |
+| strbuild | 0.58 | 1.64 | 1.63 | **1.50** | 2.59 |
+| json | 0.82 | 1.43 | 1.94 | **1.43** | 1.74 |
+| binarytrees, Arena | 0.95 | 1.67 | 1.66 | **1.20** | 1.26 |
+| binarytrees, Strict | 0.95 | 1.91 | 1.81 | **1.27** | 1.34 |
+
+The allocator helps exactly where objects are allocated and freed in large numbers: `binarytrees` -30 percent in all three
+memory modes, `json` -26 percent against the re-measured baseline. `wordcount` (-6 percent) and `strbuild` (-8 percent)
+allocate 40 and 42 million objects too, but their time is not in the allocator (see below). `nbody`, `fannkuch`,
+`spectralnorm` and `mandelbrot` do not allocate in their hot loops and do not change.
+
+## Where the time goes
+
+Profiles of the Mini Managed builds against the runtime of `a809207` (so the analysis is current after the allocator).
+Method: `minic build ... --cflag -O2 --cflag -g`, programs with reduced sizes (for example `WORDS = 1000000`, `N = 9`),
+`valgrind --tool=callgrind` (instruction counts, `callgrind_annotate`), the generated C from `--emit-c`, and the counters of
+a `--stats` build. Where a fix could be tried without touching the compiler, it was tried on a scratch copy of the generated C
+or of the runtime and re-timed at full size (best of 5); these experiments are not committed. They tell how much a fix is
+worth; the real fix has to be done in the backend or the runtime. Instruction counts are reported as "Ir".
+
+### Common cause 1: the runtime is a separate translation unit
+
+`minic` compiles the generated C and all `runtime/src/*.c` files in one `clang` command but as separate translation units
+without LTO. Array element access (`mk_array_get_int`, `mk_array_set_int`, `mk_array_get_obj`, `mk_array_get_double`),
+`mk_string_char_at`, `mk_sb_append_char` and the `HashMap` helpers are therefore real calls, and after each call that can
+raise the generated code tests the thread-local `mk_pending_exception`. An array access that is one `mov` in C is a call, a
+range check, a load and a TLS test. The C backend already inlines the retain/release fast paths (`MKH_RETAIN` and `MKH_REL`),
+but not these accessors. `-flto` alone is not enough: clang did not inline the accessors into the large `main` functions
+(`fannkuch` 7.03 s to 7.30 s) although it helped others (below).
+
+### Common cause 2: retain/release around array and field reads that are borrows
+
+`val a = bodies[i]` calls `mk_array_get_obj`, which retains the element, and the generated code releases it again at the end of
+the scope (`MKH_REL(v_tmp_3)`). The array is alive during the whole loop, so the pair is not needed (RcOpt borrows field reads
+already; it does not borrow array element reads).
+
+### fannkuch (3.3x C)
+
+Evidence: callgrind at `N = 9`: 697 M Ir, of which `mk_array_get_int` 42.6 percent and `mk_array_set_int` 19.1 percent, the
+remaining 38.2 percent in `main` itself. 62 percent of the instructions are spent in out-of-line accessors. `--stats` shows
+0 allocations in the loop and 0 retains: it is only array access. The generated code for `perm[i] = perm[k - i]` is two
+calls and two TLS tests.
+
+Experiment: the generated C with `mk_array_get_int` and `mk_array_set_int` replaced by `static inline` functions with the
+same bounds check and `mk_raise_index` on the cold path: **7.2 s to 2.65 s**; without the check 2.35 s (C: 2.13 s).
+
+Fix: define the primitive array accessors as `static inline` functions in `minirt.h` (the `MkArray` layout is already
+public), with `__builtin_expect` on the range check; the pending-exception test after the access can stay (the experiment kept it
+and it is cheap once the call is gone). Expected: fannkuch
+to about 1.25x C (2.7 s), spectralnorm and the Int/Double loops of every program similarly. Second step: hoist the
+length load and drop the range check when the loop bound is the array length (`for (i in 0 until n)` with `n <= size`),
+expected another 10 percent.
+
+### nbody (1.76x C)
+
+Evidence: callgrind at 500 k steps: 821 M Ir, `kt_advance` 58 percent self, `mk_array_get_obj` 23 percent self,
+`mk_retain` 18 percent self (every inner-loop iteration reads one body through `mk_array_get_obj`, which calls `mk_retain`). The `--stats` build reports
+500 M retains and 500 M releases for 25 M steps, all on borrowed array elements. `sqrt` is not a problem: the binary contains
+`sqrtsd` and no call to `sqrt` (the `external fun sqrt` shim is inlined by clang).
+
+Experiments (full size): inline `mk_array_get_obj` with the check and the inline retain: **1.76 s to 1.20 s**; additionally
+no retain and no release for the elements (borrowed): **0.99 s**, equal to C. `-flto` alone: 1.85 s to 1.40 s.
+
+Fix: (1) inline `mk_array_get_obj` as above; (2) in RcOpt treat an element read from an array that is not written
+in the scope as a borrow (like a field read): the retain and the release disappear. Expected: 1.76x to 1.0x.
+
+### binarytrees (1.24x C after the allocator, 1.78x before)
+
+Evidence: after the allocator, callgrind at depth 14: `mk_release` 19.8 percent self, `mk_alloc_sized_site` 19.5 percent
+plus its inline part 7.2 percent, `mk_free_object_memory` 5.7 percent plus 7.1 percent, `memset` 5.7 percent (zeroing in
+`mk_alloc`), `Node.dispose` 8.9 percent. The `--stats` build (old runtime) counts 68.3 M allocations, 205 M releases of which
+137 M are no-ops (`NULL` children and the like) and 0 retains: construction and recursive destruction are the whole program. 
+`-flto`: 1.15 s to 1.08 s.
+
+Fix: (1) skip the `memset` for objects whose constructor writes every field (the emitter knows this), expected 3 to 5 percent;
+(2) emit an inline `NULL` test before the call to `mk_release` for the `left` and `right` children in `dispose` (137 M of the
+205 M releases do nothing), expected 5 percent; (3) inline the free-list pop of the small allocator into the generated code.
+Together expected 1.24x to about 1.1x.
+
+### strbuild (2.6x C after the allocator)
+
+Evidence: callgrind at 1/20 size: `mk_string_from_int` is **62.7 percent inclusive**, `snprintf` 50.3 percent and
+`__printf_buffer`/`_itoa_word` among the top self entries; `StringBuilder.append(Int)` first formats the number into a new
+heap string (one allocation, one release) and then copies it. `--stats`: 42 M allocations for 18 M loop iterations, 26.4 M retains.
+
+Experiment: hand-written decimal conversion in `mk_string_from_int` (4 lines, scratch runtime copy): **1.48 s to 0.93 s**
+(C: 0.58 s).
+
+Fix: (1) replace `snprintf` by an inline integer-to-digits loop in `mk_string_from_int` and `mk_string_from_long`
+(and in `console.c` for `println(Int)`); (2) `mk_sb_append_int` writes the digits straight into the builder with no temporary
+string; (3) string templates `"item-" + i + ":" + (i * 7)` should become one allocation of the final size
+(`mk_string_concat_n`) instead of a chain of three concatenations. Expected: 1.50 s to about 0.75 s for (1) and (2) together
+(1.3x C), a further 10 percent for (3).
+
+### wordcount (8x C)
+
+Evidence: the generation of the text takes only 0.5 s of 4.3 s (measured separately). The rest is 20 M iterations of
+`indexOf`, `substring`, `counts[w]` and `counts[w] = c + 1`, at about 1,300 instructions per word. Callgrind inclusive:
+`HashMap.put` 28.5 percent, `HashMap.get` 16.7 percent, `findNode` 14.8 percent (it runs twice per word, once for the `get`
+and once for the `put`), `substring` 10.3 percent. Per call inside `findNode` and `put`: `mk_hash_code` (virtual dispatch,
+then `mk_string_hash`, which hashes the whole word again every time, 5.2 percent self), `mk_equals` (3.2 percent, via
+`mk_itable`, 1.8 percent), `mk_checked_cast` (1.6 percent), `HashNode.get-key`/`get-value`/`set-value` as separate calls
+(1.8 percent each), `mk_ref_array_get_b` for the bucket and `mk_release` (4.7 percent). `--stats` (old runtime): 40 M
+allocations, i.e. two objects per word (the substring and the boxed `Int` value that `counts[w] = c + 1` allocates), 208 M
+retains and 289 M releases. The program is instruction-bound, not memory-bound (about 1,600 Ir per word including the generation, which at 4.3 s implies an IPC of about 3).
+Peak RSS is 328 MiB against 88 MiB for C because the text is UTF-16 (2 bytes per character, 171 MB for 85.6 M characters).
+
+Fix, in order of benefit: (1) a one-lookup read-modify-write on `HashMap` (`merge`, `getOrPut`, or `compute` in the stdlib; the
+compiler can also fuse `m[k] = (m[k] ?: 0) + 1` into it): halves the lookups, expected -25 to -30 percent; (2) cache the
+hash in `MkString` (one `int` next to the length, computed on first use): removes the second hash and the hashing of
+every key during `resize`, expected -5 percent; (3) make the `HashNode` field accessors and `mk_ref_array_get_b` inline
+(common cause 1) and avoid `mk_checked_cast` for the key (the key type is known after monomorphisation), expected -10 to
+-15 percent; (4) a small-integer cache or an in-place update of the boxed value when the box is unshared (refcount 1),
+expected -10 percent; (5) a specialised `substring` that allocates the final string in one step (it is 165 Ir per call
+today). All five together: expected 4.3 s to about 2 s, which is still about 4x C but level with the JVM (3.3 s) and K/N
+(3.9 s).
+
+### json (1.74x C after the allocator, 2.2x before)
+
+Evidence: callgrind at `TOP = 6000`: `mk_string_char_at` 8.5 percent self (one out-of-line call per character, with the
+null and range check), `mk_release` 7.6 percent, `type_is` 6.3 percent (`is` and `when (x) { is ... }` on the value
+classes walk the supertype chain and the interface lists recursively on every test), `mk_alloc_sized_site` 6.1 percent
+plus 2.5 percent inline, `parseString` and `parseValue` 4.9 and 5.4 percent self. `--stats` (old runtime): 11.8 M allocations,
+47 M releases of which 28 M are no-ops, 7.5 M retains. `-flto`: 1.36 s to 1.20 s.
+
+Fix: (1) inline `mk_string_char_at` (common cause 1), expected -5 percent; (2) `is` for a final class (or a class
+without subclasses in the program, known at link time) as a single pointer comparison, and a one-entry cache or a
+precomputed display of ancestors for open classes, expected -5 to -8 percent; (3) the `NULL`-test before `mk_release`
+as for binarytrees; (4) build with `-flto`, which gave -12 percent here and -24 percent on `nbody`. Expected overall
+1.43 s to about 1.1 s (1.3x C).
+
+### spectralnorm (2.0x C, not profiled in detail)
+
+The inner loop reads `DoubleArray` elements through `mk_array_get_double`, the same out-of-line accessor as `fannkuch`; the
+instruction count was not profiled, but the fix of common cause 1 is expected to bring it to 1.2x C or better.
+
+### Summary of the proposed fixes, ranked by expected gain
+
+| fix | affects | measured or expected |
+|---|---|---|
+| Inline primitive array accessors with a cold-path range check | fannkuch, spectralnorm, json, wordcount | fannkuch 7.2 s to 2.65 s (measured) |
+| Borrow array element reads (no retain/release) and inline `mk_array_get_obj` | nbody, tree walkers | nbody 1.76 s to 0.99 s (measured) |
+| `mk_string_from_int` without `snprintf`, `append(Int)` without temporary | strbuild | 1.48 s to 0.93 s (measured), about 0.75 s with the builder path |
+| One-lookup `HashMap` update, cached string hash, inline node accessors | wordcount | 4.3 s to about 2 s (estimate) |
+| Skip `memset` for fully initialised objects, `NULL` test before `mk_release` | binarytrees, json | 5 to 10 percent (estimate) |
+| `-flto` in `minic build` (or a unity build of runtime and program) | nbody, json, binarytrees | nbody -24 %, json -12 %, binarytrees -6 % (measured); no effect on fannkuch and wordcount |
+| Cheaper `is` checks | json | 5 to 8 percent (estimate) |
+| `minic build` defaults to `-O1` (the benchmarks pass `-O2`) | every user program | not measured here |
