@@ -86,7 +86,7 @@ stdlib/kotlin/math/Math.kt 81 81
 stdlib/kotlin/ranges/Coerce.kt 138 138
 stdlib/kotlin/reflect/KClass.kt 43 43
 stdlib/kotlin/text/Char.kt 314 314
-stdlib/kotlin/text/StringBuilder.kt 357 357
+stdlib/kotlin/text/StringBuilder.kt 355 355
 stdlib/kotlin/text/StringNumberConversions.kt 308 308
 stdlib/kotlin/text/Strings.kt 1354 1354
 stdlib/kotlin/text/StringsMore.kt 553 553

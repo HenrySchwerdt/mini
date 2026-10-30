@@ -771,7 +771,7 @@ object CEmitter {
                     val owns = NativeConventions.ownedArgs(e.cName)
                     if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)"
                     else if (owns != null) ownedCall(e.cName, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0)
-                    else "${e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                    else "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${e.args.joinToString(", ") { expr(it) }})"
                 }
                 is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
                 is MirExpr.Load -> { usesMemory = true; "MKH_LOAD(${cType(e.type)}, ${expr(e.ptr)})" }

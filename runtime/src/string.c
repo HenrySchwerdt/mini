@@ -70,14 +70,35 @@ static MkString *from_ascii(const char *text, size_t n) {
     return s;
 }
 
+size_t mk_itoa(int64_t value, char *buf) {
+    char tmp[MK_ITOA_MAX];
+    size_t i = MK_ITOA_MAX;
+    uint64_t u = value < 0 ? 0u - (uint64_t)value : (uint64_t)value; /* exact for INT64_MIN */
+    do {
+        tmp[--i] = (char)('0' + (int)(u % 10u));
+        u /= 10u;
+    } while (u != 0u);
+    size_t n = 0;
+    if (value < 0) buf[n++] = '-';
+    size_t digits = MK_ITOA_MAX - i;
+    memcpy(buf + n, tmp + i, digits);
+    return n + digits;
+}
+
 MkString *mk_string_from_int(MkInt value) {
-    char buf[16];
-    return from_ascii(buf, (size_t)snprintf(buf, sizeof buf, "%" PRId32, value));
+    char buf[MK_ITOA_MAX];
+    size_t n = mk_itoa(value, buf);
+    MkString *s = string_alloc(n);
+    for (size_t i = 0; i < n; i++) s->chars[i] = (MkChar)(unsigned char)buf[i];
+    return s;
 }
 
 MkString *mk_string_from_long(MkLong value) {
-    char buf[32];
-    return from_ascii(buf, (size_t)snprintf(buf, sizeof buf, "%" PRId64, value));
+    char buf[MK_ITOA_MAX];
+    size_t n = mk_itoa(value, buf);
+    MkString *s = string_alloc(n);
+    for (size_t i = 0; i < n; i++) s->chars[i] = (MkChar)(unsigned char)buf[i];
+    return s;
 }
 
 MkString *mk_string_from_float(MkFloat value) {

@@ -325,46 +325,7 @@ MkObject *mk_array_new_double(MkInt n) { return array_new(&MkDoubleArray_ti, n, 
 MkObject *mk_array_new_boolean(MkInt n) { return array_new(&MkBooleanArray_ti, n, sizeof(MkBoolean)); }
 MkObject *mk_array_new_char(MkInt n) { return array_new(&MkCharArray_ti, n, sizeof(MkChar)); }
 
-MkInt mk_array_length(const MkObject *array) { return ((const MkArray *)array)->length; }
-
-static bool in_range(const MkObject *array, MkInt i) {
-    MkInt n = ((const MkArray *)array)->length;
-    if (i < 0 || i >= n) {
-        mk_raise_index(i, n);
-        return false;
-    }
-    return true;
-}
-
-#define ELEMS(type, array) ((type *)(((MkArray *)(array)) + 1))
-
-MkObject *mk_array_get_obj(const MkObject *a, MkInt i) {
-    if (!in_range(a, i)) return NULL;
-    MkObject *v = ELEMS(MkObject *, a)[i];
-    mk_retain(v);
-    return v;
-}
-void mk_array_set_obj(MkObject *a, MkInt i, MkObject *v) {
-    if (!in_range(a, i)) return;
-    MkObject **p = &ELEMS(MkObject *, a)[i];
-    mk_retain(v);
-    MkObject *old = *p;
-    *p = v;
-    mk_release(old);
-}
-
-#define PRIM_ACCESS(suffix, type, zero)                                                        \
-    type mk_array_get_##suffix(const MkObject *a, MkInt i) {                                   \
-        return in_range(a, i) ? ELEMS(type, a)[i] : (zero);                                    \
-    }                                                                                          \
-    void mk_array_set_##suffix(MkObject *a, MkInt i, type v) {                                 \
-        if (in_range(a, i)) ELEMS(type, a)[i] = v;                                             \
-    }
-PRIM_ACCESS(int, MkInt, 0)
-PRIM_ACCESS(long, MkLong, 0)
-PRIM_ACCESS(double, MkDouble, 0.0)
-PRIM_ACCESS(boolean, MkBoolean, false)
-PRIM_ACCESS(char, MkChar, 0)
+#define ELEMS(type, array) MK_ARRAY_ELEMS(type, array)
 
 void mk_array_copy_into(MkObject *dst, MkInt index, const MkObject *src) {
     const MkArray *s = (const MkArray *)src;

@@ -38,6 +38,12 @@ public external fun sbNew(): Any
 @CSymbol("mk_sb_append_string")
 public external fun sbAppendString(sb: Any, s: String)
 
+@CSymbol("mk_sb_append_int")
+public external fun sbAppendInt(sb: Any, value: Int)
+
+@CSymbol("mk_sb_append_long")
+public external fun sbAppendLong(sb: Any, value: Long)
+
 @CSymbol("mk_sb_append_char")
 public external fun sbAppendChar(sb: Any, c: Char)
 
