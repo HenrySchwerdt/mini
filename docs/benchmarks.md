@@ -188,14 +188,14 @@ Reading: the three `arena_*` programs now cost the same, about 41 ms, wherever t
 instructions in all three (the 25 % of instructions the old path spent in `arena_allocate`, `mk_alloc_with` and `memset`
 for `arena_arena` is down to the bump). `hashmap` and `arraylist` allocate mostly buffers above 256 bytes (still
 `malloc`), so they barely move. Two details mattered more than the free lists themselves: handing batches between a thread
-and the central pool in O(1) (the first version walked cold chains and made `hashmap` 25 % slower than `malloc`), and
+and the central pool in O(1) (the first version walked cold chains and made `hashmap` about 20 % slower than `malloc`), and
 keeping freed arena chunks warm (an arena per round otherwise page-faults fresh memory every round: `arena_arena` was
 10 % slower than before until the chunk cache).
 
 Allocator counters (`MK_STATS`, new `mk-stats:` lines): `selfhost-large` serves 8 509 608 objects from size classes and
 130 220 from `malloc`, carves 488 chunks (127 MB for a 107 MB peak), and needs 451 central-pool refills for
 9 588 hand-offs; `arena_arena` makes 1 966 020 arena allocations, 600 of them on the slow path (new or cached chunk),
-10 fresh chunks (4.2 MB) for 60 arenas, 60 `Heap`-class objects (the arena handles).
+10 fresh chunks (4.2 MB) for 60 arenas.
 
 ## D2: annotation and diagnostic experience
 
