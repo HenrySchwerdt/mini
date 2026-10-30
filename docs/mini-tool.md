@@ -54,8 +54,9 @@ Environment variables:
 
 | Variable | Meaning |
 |---|---|
-| `MINI_ROOT` | Repository root (stdlib, runtime). Set by the `./mini` wrapper. |
-| `MINIC` | The `minic` launcher to use. Set by the wrapper. |
+| `MINI_ROOT` | The installation: a directory with `bin/minic-native`, `lib/libminirt.a`, `include/` and `stdlib/`. Default: the directory above the running `mini`; the `./mini` wrapper sets it to `build/native`. |
+| `MINIC_NATIVE` | The `minic-native` binary to use instead of `$MINI_ROOT/bin/minic-native`. |
+| `MINI_STAGE0` | Used by `./mini` / `scripts/build-mini.sh`: a native compiler to build the current compiler with. |
 | `MINI_HOME` | Cache of git dependencies (default `~/.mini`). |
 | `MINI_CC` / `CC` | C compiler (default: clang, then gcc). |
 | `NO_COLOR`, `CLICOLOR_FORCE` | Colour control, see [Output](#output). |
