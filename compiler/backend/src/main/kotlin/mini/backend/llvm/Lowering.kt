@@ -1331,6 +1331,7 @@ private class Lowering<V : Any, B : Any>(
             is MirExpr.RuntimeCall -> {
                 val owns = NativeConventions.ownedArgs(e.cName)
                 if (e.cName == "mk_free_dealloc" && !tr.enabled) b.none
+                else if (arrayAccessKind(e.cName) != null) arrayAccess(e)
                 else if (owns != null) {
                     declare(e.cName, e.type, e.args.map { it.type })
                     ownedCall(e.cName, e.type, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0, null)
@@ -1460,6 +1461,74 @@ private class Lowering<V : Any, B : Any>(
     fun ownsIndex(owns: IntArray, k: Int): Boolean {
         for (x in owns) if (x == k) return true
         return false
+    }
+
+    /** The element kind of an inlined array accessor (`mk_array_get_int`, `mk_array_set_obj`, ...), or null for any other runtime call. */
+    fun arrayAccessKind(cName: String): String? {
+        if (cName == "mk_array_length") return "length"
+        val k = if (cName.startsWith("mk_array_get_")) cName.substring(13) else if (cName.startsWith("mk_array_set_")) cName.substring(13) else return null
+        return if (k == "int" || k == "long" || k == "double" || k == "boolean" || k == "char" || k == "obj") k else null
+    }
+
+    /**
+     * The inline form of the accessors of minirt.h: the length is loaded, an unsigned compare covers both bounds, the failing path
+     * is a cold call of `mk_raise_index` (the pending exception is tested by the caller as for the runtime function) and the access
+     * yields zero / NULL. `get_obj` retains the element, `set_obj` retains the new and releases the old element.
+     */
+    fun arrayAccess(e: MirExpr.RuntimeCall): V {
+        val kind = arrayAccessKind(e.cName)!!
+        val arr = expr(e.args[0])
+        if (kind == "length") return load(TInt, gep(arr, layouts.headerSize))
+        val isGet = e.cName.startsWith("mk_array_get_")
+        val idx = expr(e.args[1])
+        val value = if (isGet) null else expr(e.args[2])
+        val elemSize = when (kind) { "int" -> 4; "long" -> 8; "double" -> 8; "boolean" -> 1; "char" -> 2; else -> pb }
+        val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
+        val len = load(TInt, gep(arr, layouts.headerSize))
+        val bad = icmp(IrCmp.UGE, idx, len)
+        val badL = newLabel("oob")
+        val okL = newLabel("aok")
+        val endL = newLabel("aend")
+        condBr(bad, badL, okL, true)
+        startBlock(badL)
+        rt("mk_raise_index", TUnit, listOf(TInt, TInt), listOf(idx, len))
+        val badEnd = curBlock
+        br(endL)
+        startBlock(okL)
+        openBlock()
+        val off = b.bin(IrOp.ADD, b.bin(IrOp.MUL, b.cast(IrCast.SEXT, idx, IrType.I64, ""), c64(elemSize), ""), c64(elemOff), "")
+        val p = b.gep(arr, off, true, "")
+        var result: V = b.none
+        if (isGet) {
+            result = when (kind) {
+                "boolean" -> b.cmp(IrCmp.INE, b.load(IrType.I8, p, 0, ""), b.constInt(IrType.I8, 0L), "")
+                "int" -> b.load(IrType.I32, p, 0, "")
+                "long" -> b.load(IrType.I64, p, 0, "")
+                "double" -> b.load(IrType.DOUBLE, p, 0, "")
+                "char" -> b.load(IrType.I16, p, 0, "")
+                else -> b.load(IrType.PTR, p, 0, "")
+            }
+            if (kind == "obj") retain(result)
+        } else {
+            when (kind) {
+                "boolean" -> b.store(b.cast(IrCast.ZEXT, value!!, IrType.I8, ""), p, 0)
+                "obj" -> {
+                    retain(value!!)
+                    val old = b.load(IrType.PTR, p, 0, "")
+                    b.store(value, p, 0)
+                    rel(old)
+                }
+                else -> b.store(value!!, p, 0)
+            }
+        }
+        val okEnd = curBlock
+        br(endL)
+        startBlock(endL)
+        if (!isGet) return b.none
+        openBlock()
+        val z = when (kind) { "int" -> c32(0); "long" -> b.constInt(IrType.I64, 0L); "double" -> b.constFloat(IrType.DOUBLE, 0.0)
+            "boolean" -> b.constInt(IrType.I1, 0L); "char" -> b.constInt(IrType.I16, 0L); else -> b.constNull() }
+        return b.phi(ity(e.type), result, okEnd, z, badEnd)
     }
 
     fun conditional(e: MirExpr.Conditional): V {
