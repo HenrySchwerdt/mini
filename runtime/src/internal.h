@@ -70,10 +70,6 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
  * Marks the object MK_FLAG_FREED with refcount 0 first. */
 void mk_free_object_memory(MkObject *object);
 
-/* alloc_arena.c: is `a` an arena? / zeroed MK_MAX_ALIGN-aligned block of `size` bytes from an arena (NULL on OOM) */
-int mk_arena_is(const MkAllocator *a);
-void *mk_arena_alloc_zeroed(MkAllocator *arena, size_t size);
-
 /* The prefix in front of every heap object (see alloc.c). */
 #define MK_PREFIX_SIZE MK_MAX_ALIGN
 
@@ -85,7 +81,7 @@ void mk_stats_on_free_n(size_t objects, size_t bytes); /* an arena dies: all its
 void mk_arena_stat_alloc(MkAllocator *a, size_t bytes); /* an object of `bytes` (prefix included) was allocated in the arena */
 /* allocator-level counters (allocator line of the summary): kinds below, `n` is a count or a byte amount */
 enum { MK_SMALL_STAT_SMALL, MK_SMALL_STAT_LARGE, MK_SMALL_STAT_CHUNK, MK_SMALL_STAT_CENTRAL, MK_SMALL_STAT_OVERFLOW,
-       MK_SMALL_STAT_ARENA_ALLOC, MK_SMALL_STAT_ARENA_CHUNK };
+       MK_SMALL_STAT_ARENA_ALLOC, MK_SMALL_STAT_ARENA_SLOW, MK_SMALL_STAT_ARENA_CHUNK };
 void mk_stats_on_small(int kind, size_t n);
 void mk_stats_on_retain(int kind);  /* 0 = no-op (NULL / static / stack), 1 = plain, 2 = atomic */
 void mk_stats_on_release(int kind);

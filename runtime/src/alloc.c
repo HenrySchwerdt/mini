@@ -17,6 +17,7 @@
  * free-list link at block+sizeof(void*); the DebugAllocator quarantines the
  * block), which is what
  * lets mk_free diagnose double frees (MK_FLAG_FREED). */
+#include "alloc_arena.h"
 #include "alloc_small.h"
 #include "internal.h"
 
@@ -82,7 +83,8 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
         goto have_block;
     }
 #endif
-    if (mk_arena_is(allocator)) {
+    if (mk_arena_is_fast(allocator)) {
+        MK_STAT_SMALL(MK_SMALL_STAT_ARENA_ALLOC, 0);
         block = mk_arena_alloc_zeroed(allocator, total);
         zeroed = true;
     } else {
@@ -102,7 +104,7 @@ have_block:
     *(size_t *)(void *)(block + sizeof(void *)) = total;
     MK_STAT_ALLOC(total);
 #ifdef MK_STATS
-    if (mk_arena_is(allocator)) mk_arena_stat_alloc(allocator, total);
+    if (mk_arena_is_fast(allocator)) mk_arena_stat_alloc(allocator, total);
 #endif
     MkObject *object = (MkObject *)(void *)(block + MK_PREFIX_SIZE);
     object->type = type;
@@ -137,7 +139,7 @@ void mk_free_object_memory(MkObject *object) {
     size_t total = *(size_t *)(void *)(block + sizeof(void *));
     (void)total;
 #ifdef MK_STATS
-    if (!mk_arena_is(owner)) MK_STAT_FREE(total); /* an arena counts its objects when it dies */
+    if (!mk_arena_is_fast(owner)) MK_STAT_FREE(total); /* an arena counts its objects when it dies */
 #endif
     object->refcount = 0;
     object->flags |= MK_FLAG_FREED;

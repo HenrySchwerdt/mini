@@ -21,8 +21,8 @@
 #endif
 
 static MkStats stats;
-static uint64_t small_bytes[7];
-static uint64_t small_stats[7]; /* indexed by the MK_SMALL_STAT_* kinds (internal.h) */
+static uint64_t small_bytes[8];
+static uint64_t small_stats[8]; /* indexed by the MK_SMALL_STAT_* kinds (internal.h) */
 static int registered;
 
 static void raise_peak(uint64_t *peak, uint64_t value) {
@@ -146,8 +146,8 @@ void mk_stats_dump(void) {
     fprintf(stderr, "mk-stats: heap_small=%llu heap_large=%llu small_chunks=%llu small_chunk_bytes=%llu central_refills=%llu overflows=%llu\n",
             SS(MK_SMALL_STAT_SMALL), SS(MK_SMALL_STAT_LARGE), SS(MK_SMALL_STAT_CHUNK), SB(MK_SMALL_STAT_CHUNK),
             SS(MK_SMALL_STAT_CENTRAL), SS(MK_SMALL_STAT_OVERFLOW));
-    fprintf(stderr, "mk-stats: arena_allocs=%llu arena_chunks=%llu arena_chunk_bytes=%llu\n",
-            SS(MK_SMALL_STAT_ARENA_ALLOC), SS(MK_SMALL_STAT_ARENA_CHUNK), SB(MK_SMALL_STAT_ARENA_CHUNK));
+    fprintf(stderr, "mk-stats: arena_allocs=%llu arena_slow_allocs=%llu arena_chunks=%llu arena_chunk_bytes=%llu\n",
+            SS(MK_SMALL_STAT_ARENA_ALLOC), SS(MK_SMALL_STAT_ARENA_SLOW), SS(MK_SMALL_STAT_ARENA_CHUNK), SB(MK_SMALL_STAT_ARENA_CHUNK));
 }
 
 #endif /* MK_STATS */

@@ -164,6 +164,7 @@ static void check_threads(void) {
 /* arena objects are zeroed on every allocation, also in chunk memory reused after a reset (the chunks come zeroed from
  * calloc and track a high-water mark, so only reused memory is cleared) */
 static void check_arena_zeroing(void) {
+  for (int life = 0; life < 3; life++) { /* a new arena takes the dirty chunks of the destroyed one from the cache */
     MkAllocator *arena = mk_arena_create(256);
     for (int round = 0; round < 4; round++) {
         enum { N = 600 };
@@ -181,6 +182,7 @@ static void check_arena_zeroing(void) {
         CHECK_EQ_INT(mk_arena_used(arena), 0);
     }
     mk_arena_destroy(arena);
+  }
 }
 
 int main(void) {
