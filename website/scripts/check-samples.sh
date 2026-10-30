@@ -47,8 +47,11 @@ lib_sources() {
         [ -d "$lib/src" ] || continue
         while IFS= read -r pkg; do
             if grep -qE "(^|[^.[:alnum:]_])${pkg//./\\.}([^[:alnum:]_]|$)" "$1"; then
-                find "$lib/src" -name '*.kt' | LC_ALL=C sort
-                return
+                # no C sources here (like in the browser): alt/<File>.kt replaces src/<File>.kt
+                find "$lib/src" -name '*.kt' | LC_ALL=C sort | while IFS= read -r f; do
+                    if [ -f "$lib/alt/${f#"$lib/src/"}" ]; then echo "$lib/alt/${f#"$lib/src/"}"; else echo "$f"; fi
+                done
+                break
             fi
         done < <(grep -rh '^package ' "$lib/src" | sed 's/^package //' | sort -u)
     done

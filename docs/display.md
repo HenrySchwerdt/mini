@@ -37,7 +37,7 @@ ESC ] 5379 ; mini-display ; <mime> ; <base64> BEL
 ## Native programs
 
 `mini run` does not interpret bundles: the sequence goes to stdout and the terminal ignores it. Libraries that produce
-files offer them directly (`Plot.save("plot.svg")`). To extract bundles from a captured stdout, use the regex above.
+files offer them directly (`plt.savefig("plot.svg")`). To extract bundles from a captured stdout, use the regex above.
 
 ## In CI
 

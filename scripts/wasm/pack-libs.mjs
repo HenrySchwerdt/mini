@@ -30,7 +30,12 @@ for (const name of readdirSync(dir).sort()) {
     const manifest = readFileSync(join(root, 'mini.toml'), 'utf8')
     if (/^\s*kind\s*=\s*"app"/m.test(manifest)) continue
     const src = join(root, 'src')
-    const files = walk(src).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map(p => ({ path: p.slice(src.length + 1), text: readFileSync(p, 'utf8') }))
+    // no C interop in the browser: alt/<File>.kt replaces src/<File>.kt (e.g. the pure Kotlin kernels of mini.tensor)
+    const alt = join(root, 'alt')
+    const alts = existsSync(alt) ? walk(alt).map(p => p.slice(alt.length + 1)) : []
+    const files = walk(src).map(p => p.slice(src.length + 1)).filter(rel => !alts.includes(rel)).concat(alts)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(rel => ({ path: rel, text: readFileSync(join(alts.includes(rel) ? alt : src, rel), 'utf8') }))
     const packages = [...new Set(files.map(f => /^package\s+([\w.]+)/m.exec(f.text)?.[1]).filter(Boolean))].sort()
     libs.push({ name: manifest.match(/^\s*name\s*=\s*"([^"]+)"/m)?.[1] ?? name, packages, files })
 }

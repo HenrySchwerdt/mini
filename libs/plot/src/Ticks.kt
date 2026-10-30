@@ -2,8 +2,8 @@ package mini.plot
 
 import kotlin.math.abs
 
-// Tick computation and number formatting. Everything here is local on purpose: mini.plot needs nothing but
-// `abs`/`min`/`max` of the standard library (no kotlin.math: floor, ceil, pow and log10 are a few lines each).
+// Tick computation and number formatting. The helpers (pow10, floorOf, floorLog10, ...) predate kotlin.math and stay local so that
+// tick values are exactly reproducible (decimal rounding of 0.1 * 3 and the like).
 
 /** `10^e` for an integer exponent. */
 internal fun pow10(e: Int): Double {
