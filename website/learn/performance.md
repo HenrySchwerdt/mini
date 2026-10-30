@@ -42,11 +42,11 @@ In the browser this runs as WebAssembly. Compiled natively with `minic build -O2
 
 ## What the compiler gives you
 
-- **`-O0`, `-O1` (default), `-O2`, `-O3`, `-Os`.** The optimization level of the C compiler.
+- **`-O0`, `-O1`, `-O2`, `-O3`.** The native driver defaults to `-O2` for `minic build` and `-O1` for the temporary build in `minic run`. `-g` selects a debug build. These are C compiler settings; the project tool has its own `mini build --release` option.
 - **RcOpt, reference-count elision.** The pass that removes most retain and release calls from Managed code. On the project's micro benchmarks the time of `arraylist`, `mapfilter` and `tree` drops by 35 to 40 percent, and `tree` goes from 8.3 million retains to none. `--no-rc-opt` turns it off for comparison.
-- **`--stats`.** Builds the program so that it prints allocation and reference-count counters to stderr at exit: allocations, frees, live objects at exit and the peak, and retain/release calls split into non-atomic, atomic and no-ops. Use it to find where counting remains.
+- **Runtime counters.** An instrumented runtime built with `MK_STATS` reports allocations, frees and reference-count operations. The native `minic` driver does not expose the old `--stats` option; that flag belongs to the optional JVM/K2 developer tool. See the [compiler reference](/reference/minic#optional-k2-oracle) and [benchmarks](/benchmarks) rather than passing a legacy flag to the installed driver.
 - **`--emit-c file.c`.** Keeps the generated C. It is readable; the [How it works](/internals/) pages walk through it.
-- **Backends.** The default backend writes C. `--backend=llvm` writes textual LLVM IR, and a build of the compiler with the LLVM C API bound in has `--backend=llvm-api`, which emits object files directly and can **run a program in memory with a JIT** (`--run`). See the [command line reference](/reference/minic).
+- **Backends.** The `minic` driver uses C. Call `minic-native` directly for MIR or textual LLVM output (`--emit-mir`, `--emit-ll`); a special build with the LLVM C API bound in supports `--backend=llvm-api` and an in-memory JIT (`--run`). These are compiler-engine options, not flags forwarded by the ordinary shell driver. See the [command line reference](/reference/minic).
 - **Allocators.** Arenas allocate by bumping a pointer and free everything at once, with no per-object counting. For a workload with many small objects of one lifetime (a request, a compiler phase, a frame) that is the biggest single lever. [The allocator chapter](./memory-allocators) shows the syntax.
 
 ## Numbers

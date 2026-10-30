@@ -45,7 +45,7 @@ println(a.value)
 
 ## What you do not have to think about
 
-Naive reference counting would update counters all the time. Mini's `RcOpt` pass removes most of that: reads of fields become borrows, the last use of a local moves the reference instead of retaining it again, and a loop variable that walks a list does not retain each node. On the project's benchmarks 60 to 100 percent of the retains disappear. You can see the counters yourself on your machine with `minic build --stats` (see [Performance](./performance)).
+Naive reference counting would update counters all the time. Mini's `RcOpt` pass removes most of that: reads of fields become borrows, the last use of a local moves the reference instead of retaining it again, and a loop variable that walks a list does not retain each node. On the project's benchmarks 60 to 100 percent of the retains disappear. Instrumented native builds can expose those counters; the current native driver does not accept the legacy `--stats` flag (see [Performance](./performance)).
 
 ## The one thing to know: cycles
 

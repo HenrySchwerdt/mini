@@ -21,7 +21,7 @@ async function copy() {
   <section class="qi" aria-label="Install">
     <div class="qi-inner">
       <div class="qi-text">
-        <strong>Install</strong>
+        <strong>Install mini + minic</strong>
         <span>Linux x64 and arm64, macOS on Apple silicon. Needs a C compiler, no JDK.</span>
       </div>
       <div class="qi-cmd">

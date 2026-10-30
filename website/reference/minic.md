@@ -4,13 +4,13 @@ title: "minic: the compiler"
 
 # `minic`: the compiler
 
-There are three programs with similar names. Which one you have depends on how you got Mini:
+Use `mini` for a project and `minic` for explicit source files. A release installs both, together with the compiler engine. The same native driver is also used in a source checkout:
 
 | Program | You have it when | What it is |
 |---|---|---|
 | [`minic`](#minic-the-driver-of-a-release) | you [installed a release](/install) | a small shell driver: `minic run foo.kt`, `minic build foo.kt`, `minic check foo.kt` |
 | [`minic-native`](#minic-native-the-compiler) | the same install (`bin/minic-native`) | the self-hosted compiler: Kotlin to C, the memory checker, MIR and LLVM IR output |
-| [`./minic` of a checkout](#minic-in-a-source-checkout) | you cloned the repository | the JVM build of the same compiler, with a few more commands and options |
+| [`./minic` of a checkout](#minic-in-a-source-checkout) | you cloned the repository | a wrapper that builds the native toolchain if needed, then runs the same driver as a release |
 
 Everything below is what the code implements today.
 
@@ -91,7 +91,7 @@ The input must have a `fun main` unless you only ask for `--check`. At least one
 minic-native --check hello.kt --stdlib $(find ~/.mini/stdlib -name '*.kt' | sort)
 ```
 
-`--check` runs the frontend and the Strict-mode ownership checker and generates no code. Diagnostics are printed in the rustc-like format described in the [diagnostics reference](/reference/diagnostics/). Exit status 1 on an error, 0 otherwise (warnings do not fail unless `-Werror`). Only files with `@file:MemoryMode(Mode.Strict)` can have findings; ordinary files check clean. This is the same checker that runs in the browser for the **Check** buttons on this site.
+`--check` runs the frontend and the Strict-mode ownership checker and generates no code. Diagnostics are printed in the rustc-like format described in the [diagnostics reference](/reference/diagnostics/). Exit status 1 on an error, 0 otherwise (warnings do not fail unless `-Werror`). All files are parsed and type-checked; invalid Kotlin is rejected in any memory mode. Strict files additionally carry tracked ownership obligations. This is the same checker that runs in the browser for the **Check** buttons on this site.
 
 ### Backends
 
@@ -109,54 +109,29 @@ minic-native --check hello.kt --stdlib $(find ~/.mini/stdlib -name '*.kt' | sort
 
 ## `./minic` in a source checkout
 
-In a clone of the repository, `./minic` builds the JVM compiler with Gradle on first use and runs it. It needs JDK 21 and has these commands:
+In a clone of the repository, `./minic` first ensures that the native toolchain in `build/native` exists, then runs `build/native/bin/minic`. It shares the release driver's `build`, `run`, `check` and `emit-c` commands. No JDK or Gradle is needed.
 
-```text
-minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
-            [--runtime-src <dir>] [--runtime-include <dir>] [--cflag <flag>]...
-            [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]... [-Werror]
-            [--stats] [--no-rc-opt] [--no-strict] [--no-conv] [-Wrc] [--frontend=mini|k2]
-            [--backend=c|llvm] [--emit-ll <path>] [--link-cc <compiler>] [--c-src <file.c>]...
-minic check <file.kt>... [--extra-src <file.kt>]... [--brief] [-Werror] [--frontend=k2|mini]
-minic emit-mir <file.kt>... -o <out.mir> [--stdlib <dir> | --no-stdlib] [--extra-src <file.kt>]...
-minic mem-report <file.kt>... [--top <n>] [--user-only] [--no-rc-opt] [--no-strict] [--no-conv]
+```sh
+./mini doctor
+./minic run examples/hello.kt
+./minic check examples/memory_leak.kt
 ```
 
-It finds `runtime/` and `stdlib/` by walking up from the current directory.
+The first invocation builds the tools using an available native compiler or a downloaded release. Later invocations rebuild when toolchain sources change. Use `./minic` to select this checkout explicitly; `minic` without the prefix selects the first installation on `PATH`.
 
-### `minic build`
+For compiler internals, call `build/native/bin/minic-native` directly with the options [above](#minic-native-the-compiler). Advanced engine options are not automatically accepted by the `minic` shell driver; inspect the help for the executable you are actually invoking.
 
-| Option | Meaning |
-|---|---|
-| `-o <out>` | output executable |
-| `--emit-c <path>` | keep the generated C file there (otherwise a temporary file) |
-| `--cc <compiler>` | C compiler to use, default `clang`. The default flags are `-std=c17 -O1 -Wall` |
-| `--cflag <flag>` | extra C compiler flag (repeatable), for example `--cflag -O2` |
-| `--runtime-src <dir>`, `--runtime-include <dir>` | runtime sources and header; the default is `runtime/` of the repository |
-| `--stdlib <dir>` / `--no-stdlib` | use another stdlib source directory, or the JVM kotlin-stdlib JAR (a legacy mode) |
-| `--extra-src <file.kt>` | extra Kotlin sources, compiled only as declarations |
-| `-Werror` | memory-checker warnings fail the build |
-| `--stats` | build with `-DMK_STATS`: the program prints allocation and reference-count counters to stderr at exit |
-| `--no-rc-opt` | skip the RcOpt pass (baseline reference counting) |
-| `--no-strict`, `--no-conv` | no Strict code generation; no borrowed-result conventions for the stdlib hot paths (experiments) |
-| `-Wrc` | M0207 warnings: reference counting remains in a function of your files |
-| `--frontend=mini\|k2` | the own frontend (default) or the Kotlin K2 frontend (the reference implementation) |
-| `--backend=c\|llvm` | C (default) or textual LLVM IR compiled by clang; `--emit-ll <path>` keeps the IR and `--link-cc` selects the compiler that links |
-| `--c-src <file.c>` | a C file compiled and linked into the program ([C interop](/guide/c-interop)); repeatable |
+### Optional K2 oracle
 
-`minic build` runs the Strict-mode checker after the frontend and before code generation: errors stop the build, warnings are printed.
+The JVM reference compiler is a separate developer tool under `tools/k2-oracle`. Only this optional comparison tool needs JDK 21 and Gradle:
 
-### `minic check`
+```sh
+cd tools/k2-oracle
+./gradlew :jvm-bridge:installDist
+./jvm-bridge/build/install/minic/bin/minic --help
+```
 
-Runs the frontend and the Strict-mode ownership checker only: no C is generated and nothing is linked. Diagnostics go to stderr. With `--brief`, only `line:col: CODE` lines are printed on stdout. Exit status 1 on an error, 0 otherwise.
-
-### `minic emit-mir`
-
-Writes the [MIR](/internals/mir) as text.
-
-### `minic mem-report`
-
-Shows where reference counting remains in your program, function by function (`--top <n>` lists that many functions in detail, `--user-only` hides the standard library).
+Its legacy CLI includes experiments and options that are not exposed by the native driver, such as selecting K2, `--stats` and `mem-report`. It is not what `./minic` at the repository root runs. See the [K2 oracle README](https://github.com/HenrySchwerdt/mini/blob/main/tools/k2-oracle/README.md) for the comparison workflow.
 
 ## Exit codes
 
