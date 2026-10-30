@@ -154,6 +154,21 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun dropsTheSummaryOfTheNativeCompiler() {
+        val raw = "$sample\n\nnote: M0102 (Leak): https://example.org/M0102\n\nerror: could not compile main.kt (2 errors, 1 warning)\nwarning: main.kt generated 2 warnings"
+        val t = Diagnostics.clean(raw)
+        assertTrue(!t.contains("could not compile") && !t.contains("generated 2 warnings"), t)
+        assertTrue(t.contains("error[M0102]") && t.contains("main.kt:3:5: error:"), t)
+    }
+
+    @Test
+    fun parsesGeneralErrorsWithoutPosition() {
+        val d = Diagnostics.parse("error: internal compiler error: boom\nnote: this is a bug in minic\n")
+        assertEquals(1, d.size)
+        assertEquals("error", d[0].level); assertEquals("internal compiler error: boom", d[0].message)
+    }
+
+    @Test
     fun remapAndClean() {
         val t = Diagnostics.remap(Diagnostics.clean("Picked up JAVA_TOOL_OPTIONS: x\n$sample\nminic: could not compile main.kt due to 1 memory error"), listOf("/w/app/" to ""))
         assertTrue(t.contains("--> src/main.kt:11:15"))

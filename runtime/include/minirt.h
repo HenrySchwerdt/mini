@@ -605,6 +605,10 @@ MkBoolean mk_b1_delete(const MkString *path);
 void mk_b1_set_args(int argc, char **argv);
 /* `Array<String>` of the command line arguments without the program name (for `fun main(args)`). */
 MkObject *mk_b1_args(void);
+/* Writes `text` (UTF-8) to standard error (standard output is flushed first). */
+void mk_b1_eprint(const MkString *text);
+/* Flushes the output and ends the process with `status`. */
+void mk_b1_exit(MkInt status);
 
 /* ---- end B1 ----------------------------------------------------------------------- */
 

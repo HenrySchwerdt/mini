@@ -32,3 +32,14 @@ fun fileListDir(path: String): String? {
 fun fileMkdirs(path: String): Boolean = java.io.File(path).let { it.mkdirs() || it.isDirectory }
 
 fun fileDelete(path: String): Boolean = java.io.File(path).delete()
+
+fun stderrWrite(text: String) {
+    System.out.flush()
+    System.err.print(text)
+    System.err.flush()
+}
+
+fun exitProcess(status: Int) {
+    System.out.flush()
+    System.exit(status)
+}

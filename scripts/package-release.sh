@@ -10,7 +10,7 @@
 #   --seed    also write mini-<version>-bootstrap-c.tar.gz (see scripts/package-seed.sh)
 #
 # Output: <out>/mini-<version>-<target>.tar.gz containing
-#   bin/minic          shell wrapper: `minic build foo.kt -o foo` (compiler, then cc with the bundled runtime)
+#   bin/minic          shell driver (scripts/minic.sh): build, run, check, emit-c (compiler, then cc with the bundled runtime)
 #   bin/minic-native   the self-hosted native compiler (the C of stage3, built with -O2)
 #   bin/mini           the project tool (new, build, run, test, check, ...): Kotlin compiled by bin/minic-native, no JVM
 #   lib/libminirt.a    the runtime, prebuilt;  include/minirt.h
@@ -65,60 +65,11 @@ cp "$ROOT/runtime/include/"*.h "$STAGE/include/"
 cp -R "$ROOT/stdlib" "$STAGE/stdlib"
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$STAGE/"
 
-cat > "$STAGE/bin/minic" <<'WRAPPER'
-#!/bin/sh
-# minic: Kotlin/Mini to a native binary.  minic build foo.kt [more.kt ...] -o foo [-O0|-O1|-O2|-O3] [--emit-c foo.c] [--cc cc]
-# v0 wrapper: runs minic-native (Kotlin to C), then the C compiler with the bundled libminirt.
-set -e
-self="$0"
-while [ -h "$self" ]; do
-    dir="$(cd "$(dirname "$self")" && pwd)"
-    self="$(readlink "$self")"
-    case "$self" in /*) ;; *) self="$dir/$self" ;; esac
-done
-HOME_DIR="$(cd "$(dirname "$self")/.." && pwd)"
-usage() {
-    cat >&2 <<EOF
-usage: minic build <file.kt>... -o <out> [-O0|-O1|-O2|-O3] [--emit-c <out.c>] [--cc <compiler>]
-       minic emit-c <file.kt>... -o <out.c>
-       minic version
-Environment: CC (default: cc), MINI_HOME (default: the directory above bin/)
-EOF
-    exit 2
-}
-cmd="${1:-}"
-[ -n "$cmd" ] || usage
-shift
-case "$cmd" in
-    version|--version) cat "$HOME_DIR/VERSION" 2>/dev/null || echo unknown; exit 0 ;;
-    build|emit-c) ;;
-    -h|--help|help) usage ;;
-    *) echo "minic: unknown command '$cmd'" >&2; usage ;;
-esac
-out=""; emit=""; opt="-O1"; cc="${CC:-cc}"; srcs=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -o) [ $# -ge 2 ] || usage; out="$2"; shift 2 ;;
-        --emit-c) [ $# -ge 2 ] || usage; emit="$2"; shift 2 ;;
-        --cc) [ $# -ge 2 ] || usage; cc="$2"; shift 2 ;;
-        -O0|-O1|-O2|-O3|-Os) opt="$1"; shift ;;
-        -*) echo "minic: unknown option $1" >&2; usage ;;
-        *) srcs="$srcs $1"; shift ;;
-    esac
-done
-[ -n "$srcs" ] && [ -n "$out" ] || usage
-STD="$(find "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
-if [ "$cmd" = emit-c ]; then
-    # shellcheck disable=SC2086
-    exec "$HOME_DIR/bin/minic-native" -o "$out" $srcs --stdlib $STD
-fi
-if [ -n "$emit" ]; then cfile="$emit"; else cfile="$(mktemp "${TMPDIR:-/tmp}/minic.XXXXXX")"; mv "$cfile" "$cfile.c"; cfile="$cfile.c"; trap 'rm -f "$cfile"' EXIT; fi
-# shellcheck disable=SC2086
-"$HOME_DIR/bin/minic-native" -o "$cfile" $srcs --stdlib $STD
-"$cc" -std=c17 "$opt" -w -I "$HOME_DIR/include" "$cfile" "$HOME_DIR/lib/libminirt.a" -lm -o "$out"
-WRAPPER
+# the driver script lives in scripts/minic.sh (help, run/check/build, diagnostics options, C compiler discovery)
+cp "$ROOT/scripts/minic.sh" "$STAGE/bin/minic"
 chmod +x "$STAGE/bin/minic"
 echo "$VERSION" > "$STAGE/VERSION"
+echo "$TARGET" > "$STAGE/TARGET"
 
 cat > "$STAGE/README.md" <<EOF
 # Mini $VERSION ($TARGET)
@@ -127,10 +78,11 @@ Kotlin compiled to native code. Needs a C compiler (clang or gcc) on the PATH; n
 
     export PATH="\$PWD/bin:\$PATH"
     mini new hello && cd hello && mini run        # a project: mini new, build, run, test, check, ...
-    minic build hello.kt -o hello && ./hello      # or a single file
+    minic run hello.kt                            # or a single file: build and run
+    minic build hello.kt                          # ./hello
 
 * \`bin/mini\`          the project tool, itself compiled by Mini (\`mini help\` lists the commands)
-* \`bin/minic\`         build driver (\`build\`, \`emit-c\`, \`version\`); runs \`bin/minic-native\`, then \`cc\` with \`lib/libminirt.a\`
+* \`bin/minic\`         driver (\`build\`, \`run\`, \`check\`, \`emit-c\`, \`--version\`); runs \`bin/minic-native\`, then \`cc\` with \`lib/libminirt.a\`
 * \`bin/minic-native\`  the self-hosted compiler: \`minic-native [-o out.c] [--emit-mir out.mir] <user.kt>... --stdlib <files>...\`
 * \`lib/libminirt.a\`, \`include/\`  the C runtime
 * \`stdlib/\`           the standard library sources, compiled together with your program

@@ -157,3 +157,20 @@ MkObject *mk_b1_args(void) {
     }
     return array;
 }
+
+/* Writes `text` (UTF-8) to standard error, after flushing the buffered standard output so the two streams stay in order. */
+void mk_b1_eprint(const MkString *text) {
+    if (text == NULL) mk_panic("NullPointerException");
+    mk_runtime_flush();
+    char *u = mk_utf16_to_utf8(text->chars, (size_t)text->length, NULL);
+    fputs(u, stderr);
+    free(u);
+    fflush(stderr);
+}
+
+/* Ends the process with `status` (standard output flushed first). */
+void mk_b1_exit(MkInt status) {
+    mk_runtime_flush();
+    fflush(stderr);
+    exit((int)status);
+}
