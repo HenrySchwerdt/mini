@@ -68,6 +68,7 @@ fun Ast2Ir.compoundAssign(e: BinaryExpr): IrExpression {
         "+=" -> "PLUSEQ"
         "-=" -> "MINUSEQ"
         "*=" -> "MULTEQ"
+        "@=" -> "MATMULEQ"
         "/=" -> "DIVEQ"
         else -> "PERCEQ"
     }

@@ -879,7 +879,16 @@ fun BodyChecker.resolveOperator(name: String, recv0: Type, argTypes: List<Type>,
         a.type = t
         args.add(a)
     }
-    val groups = memberAndExtensionGroups(recv, name, true)
+    var groups = memberAndExtensionGroups(recv, name, true)
+    if (name == "matmul" || name == "matmulAssign") {
+        // Mini's `@` convention: only functions declared `operator` take part (no stdlib type has one)
+        val only = ArrayList<List<Candidate>>()
+        for (g in groups) {
+            val c = g.filter { it.fn.isOperator }
+            if (c.isNotEmpty()) only.add(c)
+        }
+        groups = only
+    }
     val res = resolveCallGroups(BodyDummy.node, groups, args, null, expected, true) ?: return null
     val r = OpResult(res.ret, res.callee, res.calleeText, res.paramTypes)
     r.info = res.info

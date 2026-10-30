@@ -157,8 +157,23 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         return l
     }
 
+    /** `operator fun matmul` / `matmulAssign` (Mini's `@`) takes exactly one parameter, `matmulAssign` returns Unit */
+    private fun checkMatmulOperator(f: FunSym, d: FunDecl) {
+        if (f.name != "matmul" && f.name != "matmulAssign") return
+        if (!f.isOperator) return
+        if (d.params.size != 1) {
+            err(d.start, "operator function '" + f.name + "' must have exactly one parameter")
+        }
+        val rt = f.returnType
+        if (f.name == "matmulAssign" && rt != null && !typeEquals(rt, sema.unitType)) {
+            err(d.start, "operator function 'matmulAssign' must return Unit")
+        }
+    }
+
     fun checkFunBody(f: FunSym) {
         val d = f.decl ?: return
+        sema.ensureSig(f)
+        checkMatmulOperator(f, d)
         val body = d.body ?: return
         sema.ensureSig(f)
         scope = functionScope(f)

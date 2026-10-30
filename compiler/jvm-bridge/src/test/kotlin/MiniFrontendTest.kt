@@ -23,7 +23,7 @@ class MiniFrontendTest {
     private val work = Files.createTempDirectory("minic-mini-").toFile().also { it.deleteOnExit() }
     private val stdlib: List<File> by lazy { Stdlib.sources(Stdlib.findDir(null, repoRoot)!!) }
 
-    private fun sources() = testdata.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+    private fun sources() = testdata.listFiles { f -> f.isFile && f.extension == "kt" && !File(f.parentFile, f.nameWithoutExtension + ".nok2").exists() }!!.sortedBy { it.name }
     private fun sibling(src: File, ext: String) = File(src.parentFile, src.nameWithoutExtension + "." + ext)
 
     /** a short description of how two MIR texts differ */

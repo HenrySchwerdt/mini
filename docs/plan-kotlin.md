@@ -17,6 +17,11 @@ distinguishing feature is an **allocator trait system** with which the compiler 
    (`context(alloc: Allocator)`), `external`, `expect`/`actual`, interfaces. This makes
    IntelliJ/kotlin-lsp, formatters and syntax highlighting work immediately, and the same
    code also compiles on the JVM (with a no-op allocator library).
+   One deliberate exception: the matrix operator `@` (`a @ b` is `a.matmul(b)`, see the
+   website guide "Mini and Kotlin/JVM"). It is a Mini language extension, so programs that use
+   it are not valid Kotlin and the K2 oracle cannot read them; they are marked `NAME.nok2` in
+   `compiler/testdata` and skipped by the K2-based comparisons. The compiler's own sources
+   never use it.
 2. **Files are named `.kt`.** The `.mini` extension is dropped.
 3. **Compatibility before control, but control is available.** Foreign Kotlin code
    assumes a GC exists. It runs in `Managed` mode. Your own code can switch to `Strict`
