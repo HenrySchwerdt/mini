@@ -31,9 +31,14 @@ object Diagnostics {
         return if (colon > 0 && rest.substring(0, colon).endsWith("Exception")) rest.substring(colon + 2) else rest
     }
 
-    /** Drops JVM noise and the `minic: could not compile ...` summary (mini prints its own). */
+    /** minic-native's own summary lines (`error: could not compile x.kt (1 error, 0 warnings)`, `warning: x.kt generated 2 warnings`): mini prints its own. */
+    fun isSummary(line: String): Boolean =
+        line.startsWith("minic: could not compile") || line.startsWith("could not compile ") || line.startsWith("error: could not compile ") ||
+            (line.startsWith("warning: ") && line.contains(" generated ") && (line.endsWith(" warning") || line.endsWith(" warnings")))
+
+    /** Drops JVM noise and minic's summary line (mini prints its own). */
     fun clean(text: String): String =
-        text.lines().map { stripUncaught(it) }.filter { !isNoise(it) && !it.startsWith("minic: could not compile") && !it.startsWith("could not compile ") }.joinToString("\n").trimEndChars('\n')
+        text.lines().map { stripUncaught(it) }.filter { !isNoise(it) && !isSummary(it) }.joinToString("\n").trimEndChars('\n')
 
     /** Rewrites absolute paths in compiler output: [mappings] are (absolute prefix, replacement). Longest prefix first. */
     fun remap(text: String, mappings: List<Pair<String, String>>): String {
@@ -61,6 +66,9 @@ object Diagnostics {
                 }
                 line.startsWith("minic: ") && !line.startsWith("minic: warning") -> {
                     cur = Diag("error", null, line.removePrefix("minic: ")); out += cur; cur.rendered.append(line).append('\n')
+                }
+                line.startsWith("error: ") -> { // a general error without a position (internal compiler error, too many errors, a usage error)
+                    cur = Diag("error", null, line.removePrefix("error: ")); out += cur; cur.rendered.append(line).append('\n')
                 }
                 cur != null -> {
                     val s = miniSpan.find(line)
