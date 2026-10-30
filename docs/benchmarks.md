@@ -320,6 +320,57 @@ memory modes, `json` -26 percent against the re-measured baseline. `wordcount` (
 allocate 40 and 42 million objects too, but their time is not in the allocator (see below). `nbody`, `fannkuch`,
 `spectralnorm` and `mandelbrot` do not allocate in their hot loops and do not change.
 
+## Quick wins
+
+Three of the fixes ranked at the end of "Where the time goes", implemented one commit each. Mini Managed with the C backend
+(`Mini-M`) and the LLVM backend (`Mini-M-ll`), `minic build --cflag -O2`, seconds, best of 5, same host as above (the C
+column is the recorded C time from the baseline). "Before" is `origin/main` (runtime with the allocator), measured in the
+same session. It is a VM: differences below about 5 percent are noise (`binarytrees` moved between 1.11 s and 1.22 s across
+runs without any change to what it executes).
+
+1. **Inline array accessors.** `mk_array_get_*`, `mk_array_set_*` and `mk_array_length` are `static inline` in `minirt.h`
+   (unsigned compare for both bounds, `__builtin_expect`, the failing path is the out-of-line `mk_raise_index`, which leaves
+   the pending exception exactly as before). The LLVM lowering (one implementation behind both the text and the in-process
+   builder) emits the same sequence as IR: length load, `icmp uge`, cold call of `mk_raise_index`, GEP and load or store, a phi
+   for the result.
+2. **Borrowed array element reads.** An `mk_array_get_obj` that defines a local is analysed like a field read: the local is
+   a borrower of the array slot and is validated against reference-array stores, calls that may do one, and the array root
+   being reassigned or dropped between the read and the last use. Where it holds, both backends use the non-retaining read
+   (`mk_array_get_obj_b`) and the release disappears. `compiler/testdata/rcopt_arrayread.kt` covers the hazards (slot
+   overwritten, overwritten in a callee, array dropped or reassigned) under ASan.
+3. **Fast int to string.** `mk_itoa` replaces `snprintf` in `mk_string_from_int`, `mk_string_from_long` and
+   `println(Int/Long)`; `mk_sb_append_int/long` write the digits into the builder buffer, and `StringBuilder.append(Int/Long)`
+   uses them (no temporary string).
+
+| benchmark | C | Mini-M before | Mini-M after | Mini-M-ll before | Mini-M-ll after |
+|---|---:|---:|---:|---:|---:|
+| binarytrees | 0.95 | 1.15 | 1.22 | 1.13 | 1.16 |
+| nbody | 0.99 | 1.72 | **1.03** | 1.88 | 1.25 |
+| fannkuch | 2.13 | 7.06 | **2.68** | 6.85 | 3.43 |
+| spectralnorm | 1.01 | 2.00 | **1.26** | 2.00 | 2.01 |
+| mandelbrot | 0.87 | 0.90 | 0.88 | 0.84 | 0.80 |
+| wordcount | 0.53 | 4.10 | 3.42 | 3.98 | 3.63 |
+| strbuild | 0.58 | 1.46 | **0.81** | 1.49 | 0.82 |
+| json | 0.82 | 1.36 | 1.37 | 1.25 | 1.33 |
+
+Per step (C backend, same session): `fannkuch` 7.06 s to 2.65 s after step 1; `nbody` 1.72 s to 1.48 s after step 1 and to
+1.01 s after step 2; `strbuild` 1.46 s to 0.88 s (0.81 s in the final run) after step 3. The measured experiments above
+predicted 2.65 s, 0.99 s and 0.93 s.
+
+Micro benchmarks (`compiler/bench/run.sh --configs opt`, ms, best of 3): `stringbuilder` 53 to 23, `templates` 97 to 71, `hashmap`
+88 to 72, `tree` 45 to 38, `arraylist` 215 to 201, `mapfilter` 103 to 103; the self-hosted backend on the large MIR
+(`selfhost-large`) 742 to 787 (about 6 percent slower, within the run-to-run spread seen on this host; not investigated).
+
+What did not move, and why. `spectralnorm` with the LLVM backend stays at 2.0 s while the C backend dropped to 1.26 s: the
+emitted loop has the inline accessor, but the optimized IR of the LLVM build keeps something the C build does not lose; the
+cause was not found. The LLVM `fannkuch` and `nbody` are 25 percent above the C backend for the same reason (not investigated).
+`wordcount`, `json` and `binarytrees` are dominated by the causes listed above, not by these three fixes.
+
+Step 4 of the plan, the inline `NULL` test before `mk_release`, was already in place: with RcOpt the generated code uses
+`MKH_REL` (C) and `mkh_rel` (LLVM), which test for `NULL` and do the non-atomic decrement inline, including in the
+`dispose` glue. The 137 M "no-op releases" of `binarytrees` come from the `--stats` build, which routes every release
+through the runtime on purpose so that the counters see it.
+
 ## Where the time goes
 
 Profiles of the Mini Managed builds against the runtime of `a809207` (so the analysis is current after the allocator).
