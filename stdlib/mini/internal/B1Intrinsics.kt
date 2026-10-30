@@ -14,3 +14,11 @@ public external fun fileReadText(path: String): String?
 /** Writes [text] as UTF-8 (create/truncate); false when that fails. */
 @CSymbol("mk_b1_write_file")
 public external fun fileWriteText(path: String, text: String): Boolean
+
+/** Writes [text] to standard error (standard output is flushed first, so the two streams stay in order). */
+@CSymbol("mk_b1_eprint")
+public external fun stderrWrite(text: String)
+
+/** Flushes the output and ends the process with [status]. */
+@CSymbol("mk_b1_exit")
+public external fun exitProcess(status: Int)

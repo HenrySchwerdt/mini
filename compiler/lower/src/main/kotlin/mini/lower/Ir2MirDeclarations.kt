@@ -103,6 +103,15 @@ internal fun Ir2Mir.returnValue(e: IrExpression, out: MutableList<MirStmt>) {
 // ---- statements -------------------------------------------------------------------
 
 internal fun Ir2Mir.stmt(s: IrStatement, out: MutableList<MirStmt>) {
+    val before = out.size
+    stmtBody(s, out)
+    if (lineDirectives && s.startOffset >= 0 && out.size > before && !currentFile.isStdlib && out[before].srcLine == 0) {
+        out[before].srcLine = currentFile.line(s.startOffset)
+        out[before].srcFile = currentFile.path
+    }
+}
+
+private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
     when (s) {
         is IrVariable -> {
             val t = mirType(s.type, s)

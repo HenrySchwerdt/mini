@@ -18,3 +18,14 @@ fun fileWriteText(path: String, text: String): Boolean = try {
 } catch (e: java.io.IOException) {
     false
 }
+
+fun stderrWrite(text: String) {
+    System.out.flush()
+    System.err.print(text)
+    System.err.flush()
+}
+
+fun exitProcess(status: Int) {
+    System.out.flush()
+    System.exit(status)
+}

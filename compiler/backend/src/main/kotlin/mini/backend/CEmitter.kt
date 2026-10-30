@@ -21,14 +21,16 @@ class EmitError(message: String) : Exception(message)
  *  - returns are owned (+1).
  */
 object CEmitter {
+    private const val LINE_RESET = "#mk-line-reset"
+
     /**
      * [rcOpt] runs the reference-count elision pass ([RcOpt]) first; the result is deterministic. [strict] turns on the
      * Strict code generation ([Tracking]: no reference counts for tracked values, allocators, `free`); without it
      * Strict programs run on reference counting alone (the Managed baseline). [conventions] enables the borrowed results
      * and owned parameters of the stdlib hot paths ([Conventions]; needs [rcOpt]).
      */
-    fun emit(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true): String =
-        emitDetailed(module, rcOpt, strict, conventions).c
+    fun emit(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true, lineFile: String? = null): String =
+        emitDetailed(module, rcOpt, strict, conventions, lineFile).c
 
     /** The C text plus the decisions behind it (for `minic mem-report`, tests). */
     class Result(
@@ -39,10 +41,16 @@ object CEmitter {
         val reasons: Map<String, Pair<Map<String, Int>, Map<String, Int>>>,
     )
 
-    fun emitDetailed(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true): Result {
+    /**
+     * [lineFile] (the name the C file is going to have) turns on `#line` directives: statements that know their source
+     * position ([MirStmt.srcLine]) are emitted under `#line <n> "<file.kt>"`, so debuggers, sanitizers and crash reports
+     * point to the Kotlin source, and every function ends with a `#line` back into [lineFile].
+     */
+    fun emitDetailed(module: MirModule, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true, lineFile: String? = null): Result {
         val tr = Tracking(module, strict)
         val plan = if (rcOpt) RcOpt.analyze(module, tr, conventions) else null
         val st = State(module, plan, tr)
+        st.lineFile = lineFile
         val c = st.run()
         return Result(c, plan, tr, st.reasons)
     }
@@ -51,6 +59,8 @@ object CEmitter {
 
     private class State(val module: MirModule, val rcPlan: RcPlan?, val tr: Tracking) {
         var curFn: MirFunction? = null
+        /** Not null: write `#line` directives (see [emitDetailed]). */
+        var lineFile: String? = null
         val newaUsed = LinkedHashSet<String>()
 
         fun rcT(t: MirType) = tr.rc(curFn, t)
@@ -145,7 +155,27 @@ object CEmitter {
             out.append("\n/* classes */\n")
             emitClasses(out)
             out.append("\n").append(bodies)
-            return out.toString()
+            return if (lineFile != null) resolveLineResets(out.toString(), lineFile!!) else out.toString()
+        }
+
+        /** Replaces the [LINE_RESET] markers (end of a function) by `#line` directives that point back into the C file. */
+        fun resolveLineResets(text: String, file: String): String {
+            val sb = StringBuilder()
+            var line = 1
+            var i = 0
+            while (i < text.length) {
+                var e = text.indexOf('\n', i)
+                if (e < 0) e = text.length
+                if (e - i == LINE_RESET.length && text.substring(i, e) == LINE_RESET) {
+                    sb.append("#line ").append(line + 1).append(" \"").append(file.replace("\\", "\\\\").replace("\"", "\\\"")).append("\"\n")
+                } else {
+                    sb.append(text.substring(i, e))
+                    if (e < text.length) sb.append('\n')
+                }
+                line++
+                i = e + 1
+            }
+            return sb.toString()
         }
 
         /**
@@ -325,6 +355,7 @@ object CEmitter {
                 out.append("    mk_panic(\"unreachable: control reached the end of $safe\");\n")
             }
             out.append("}\n\n")
+            if (lineFile != null) out.append(LINE_RESET).append('\n')
             if (retainReasons.isNotEmpty() || releaseReasons.isNotEmpty()) reasons[f.cName] = retainReasons to releaseReasons
         }
 
@@ -387,6 +418,10 @@ object CEmitter {
         // ---- statements --------------------------------------------------------------
 
         fun stmt(s: MirStmt, d: Int, out: StringBuilder) {
+            val srcFile = s.srcFile
+            if (lineFile != null && s.srcLine > 0 && srcFile != null) {
+                out.append("#line ").append(s.srcLine).append(" \"").append(srcFile.replace("\\", "\\\\").replace("\"", "\\\"")).append("\"\n")
+            }
             val saved = curStmt
             curStmt = s
             stmtInner(s, d, out)

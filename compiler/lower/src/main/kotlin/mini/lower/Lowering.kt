@@ -9,7 +9,10 @@ import mini.frontend.sema.*
 class LowerInput(val path: String, val text: String, val isStdlib: Boolean)
 
 /** A problem found while analysing the sources (syntax or type error), as `file:line:col: error: message`. */
-class LowerDiagnostics(val messages: List<String>) : Exception(messages.joinToString("\n"))
+class LowerDiagnostics(val messages: List<String>, val diags: List<FrontDiag> = emptyList()) : Exception(messages.joinToString("\n"))
+
+/** One such problem with its position (1-based line and column) and the text of its source line, for rendering with a caret. */
+class FrontDiag(val path: String, val line: Int, val col: Int, val message: String, val sourceLine: String)
 
 /**
  * The IR of a set of sources: analysis (parser + semantic analysis) and the K2-shaped tree of [Ast2Ir]; throws
@@ -27,13 +30,15 @@ fun buildIr(inputs: List<LowerInput>): IrModule {
     }
     val sema = analyzeSources(srcs)
     val errors = ArrayList<String>()
+    val structured = ArrayList<FrontDiag>()
     for (d in sema.diags) {
         if (!user.contains(d.path)) continue
         var text = ""
         for (i in inputs) if (i.path == d.path) text = i.text
         errors.add(fileName(d.path) + ":" + lineCol(text, d.start) + ": error: " + d.message)
+        structured.add(frontDiag(d.path, text, d.start, d.message))
     }
-    if (errors.isNotEmpty()) throw LowerDiagnostics(errors)
+    if (errors.isNotEmpty()) throw LowerDiagnostics(errors, structured)
     val builder = Ast2Ir(sema, user)
     return builder.build()
 }
@@ -57,11 +62,29 @@ fun checkMemory(inputs: List<LowerInput>): MemoryReport = checkMemory(buildIr(in
  * the stdlib, and lowering to MIR. The result equals what the K2 path produces. [memoryGate] (when given) receives the
  * result of the memory checker before the code generation and may throw to stop the build.
  */
-fun lowerToMir(inputs: List<LowerInput>, sourceName: String, memoryGate: ((MemoryReport) -> Unit)? = null): MirModule {
+fun lowerToMir(inputs: List<LowerInput>, sourceName: String, lineDirectives: Boolean = false, memoryGate: ((MemoryReport) -> Unit)? = null): MirModule {
     val module = buildIr(inputs)
     if (memoryGate != null) memoryGate(checkMemory(module))
     Reachability.prune(module)
-    return Ir2Mir().convert(module, sourceName)
+    val lowering = Ir2Mir()
+    lowering.lineDirectives = lineDirectives
+    return lowering.convert(module, sourceName)
+}
+
+private fun frontDiag(path: String, text: String, offset: Int, message: String): FrontDiag {
+    var line = 1
+    var lineStart = 0
+    var i = 0
+    while (i < offset && i < text.length) {
+        if (text[i] == '\n') {
+            line++
+            lineStart = i + 1
+        }
+        i++
+    }
+    var end = lineStart
+    while (end < text.length && text[end] != '\n' && text[end] != '\r') end++
+    return FrontDiag(path, line, (if (offset < text.length) offset else text.length) - lineStart + 1, message, text.substring(lineStart, end))
 }
 
 fun fileName(path: String): String {
