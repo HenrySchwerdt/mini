@@ -1,0 +1,82 @@
+name: WebAssembly toolchain
+
+# Builds the browser toolchain of docs/plan-kotlin.md section 10i with scripts/build-wasm-toolchain.sh:
+# minic.wasm (the compiler as a WASI module), libminirt-wasm32.a, the stdlib sources, and the website layout
+# (manifest.json, module worker, the pinned prebuilt @yowasp/clang modules). clang and wasm-ld are not built here
+# (scripts/wasm/package.json pins the npm package). The script proves the pipeline before it packs anything:
+# every program of compiler/testdata through the JVM compiler -> clang.wasm -> node:wasi, minic.wasm itself
+# (check + emit LLVM IR -> clang -> run), and the packed worker through the site's message protocol.
+#
+# Time: about 10 minutes cold (JVM build, runtime, minic.wasm with the host's clang in under a minute, the tests);
+# a few seconds when nothing it depends on changed: the finished bundle is cached by the hash of its inputs.
+#
+# Consumers: `uses: ./.github/workflows/wasm-toolchain.yml` (workflow_call), then in a later job of the same run
+# `actions/download-artifact` with name `wasm-toolchain` and untar `wasm-toolchain-site.tar.gz` into website/public
+# (it contains `toolchain/`). On its own it runs for workflow_dispatch and for pull requests that touch the scripts or the runtime.
+on:
+  workflow_dispatch:
+  workflow_call:
+  pull_request:
+    paths:
+      - 'scripts/wasm/**'
+      - 'scripts/build-wasm-toolchain.sh'
+      - 'runtime/**'
+      - '.github/workflows/wasm-toolchain.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # Everything the bundle depends on. Unchanged inputs: the cache hit skips the build and the tests (they ran when it was built).
+      - name: Restore the finished toolchain
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/wasm-toolchain.tar.gz
+            build/wasm-toolchain-site.tar.gz
+          key: wasm-toolchain-${{ hashFiles('compiler/*/src/main/**', 'compiler/*/build.gradle.kts', 'stdlib/**', 'runtime/**', 'compiler/testdata/**', 'scripts/wasm/**', 'scripts/build-wasm-toolchain.sh') }}
+
+      - uses: ./.github/actions/setup
+        if: steps.cache.outputs.cache-hit != 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: scripts/wasm/package-lock.json
+
+      # The host's clang compiles minic's IR for wasm32 in seconds (clang.wasm needs about 30 minutes for it); the build
+      # script falls back to clang.wasm when the host has no wasm32 target or no wasm-ld.
+      - name: Install clang and lld
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+
+      - name: Install the pinned clang/wasm-ld (npm)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: npm ci --prefix scripts/wasm
+
+      - name: Build the compiler (JVM drivers)
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: compiler
+        run: ./gradlew installDist :native-driver:installDist --console=plain
+
+      - name: Build and test the toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: scripts/build-wasm-toolchain.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-toolchain
+          path: |
+            build/wasm-toolchain.tar.gz
+            build/wasm-toolchain-site.tar.gz
+          if-no-files-found: error
+          retention-days: 30
