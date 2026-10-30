@@ -143,4 +143,65 @@ class SemaTest {
             assertEquals(da[f.path], b.dumpText(f), f.path)
         }
     }
+
+    @Test
+    fun matmulOperatorResolvesToOperatorFunMatmul() {
+        val ok = analyze(
+            """
+            class M(val v: Int) {
+                operator fun matmul(o: M): M = M(v * o.v)
+            }
+            operator fun M.matmul(k: Int): M = M(v * k)
+            class A(var v: Int) { operator fun matmulAssign(k: Int) { v += k } }
+            fun main() {
+                val a = M(2)
+                val b = a @ a @ 3
+                var c = a
+                c @= a
+                A(1) @= 2
+            }
+            """.trimIndent(),
+        )
+        assertEquals(emptyList(), ok.diags)
+        assertTrue("M.matmul(" in ok.dump, ok.dump)
+        assertTrue("A.matmulAssign(" in ok.dump, ok.dump)
+    }
+
+    @Test
+    fun matmulNeedsAnOperatorFunction() {
+        val missing = analyze("class P\nfun main() { val x = P() @ P() }\n")
+        assertTrue(missing.diags.any { "no operator matmul for P" in it }, missing.diags.toString())
+        val notOperator = analyze("class P { fun matmul(o: P): P = o }\nfun main() { val x = P() @ P() }\n")
+        assertTrue(notOperator.diags.any { "no operator matmul for P" in it }, notOperator.diags.toString())
+        val noDefault = analyze("fun main() { val x = 1 @ 2 }\n")
+        assertTrue(noDefault.diags.any { "no operator matmul for" in it }, noDefault.diags.toString())
+    }
+
+    @Test
+    fun matmulOperatorChecksArityAndReturnType() {
+        val arity = analyze("class P { operator fun matmul(a: P, b: P): P = a }\n")
+        assertTrue(arity.diags.any { "'matmul' must have exactly one parameter" in it }, arity.diags.toString())
+        val none = analyze("class P { operator fun matmul(): P = this }\n")
+        assertTrue(none.diags.any { "exactly one parameter" in it }, none.diags.toString())
+        val ret = analyze("class P { operator fun matmulAssign(a: P): P = a }\n")
+        assertTrue(ret.diags.any { "'matmulAssign' must return Unit" in it }, ret.diags.toString())
+    }
+
+    @Test
+    fun matmulAssignWithMatmulOnAVarIsAmbiguous() {
+        val code = """
+            class P {
+                operator fun matmul(o: P): P = o
+                operator fun matmulAssign(o: P) {}
+            }
+            fun main() {
+                val v = P()
+                v @= P()
+                var w = P()
+                w @= P()
+            }
+        """.trimIndent()
+        val r = analyze(code)
+        assertEquals(1, r.diags.count { "ambiguous assignment" in it }, r.diags.toString())
+    }
 }
