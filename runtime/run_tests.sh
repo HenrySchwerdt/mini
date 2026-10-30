@@ -38,22 +38,34 @@ compare() { # name actual expected-file
 }
 
 san="address,undefined"
+# ASan builds bypass the small-object allocator (every object is a plain malloc block so ASan sees it), so the
+# whole suite also runs under UBSan alone, which exercises the size-class allocator; test_alloc_small also runs
+# under TSan below and with -DMK_PLAIN_MALLOC.
+for psan in "$san" undefined; do
 for t in "$here"/tests/test_*.c; do
     name="$(basename "$t" .c)"
     case "$name" in
     test_threads) continue ;; # handled below (ASan + TSan)
-    test_entry) build_run "$name" "$san" "$entry_src" ;;
-    test_stats) build_run "$name" "$san" -DMK_STATS ;; # D1: runtime statistics are compile-time opt-in
-    *) build_run "$name" "$san" ;;
+    test_entry) build_run "$name" "$psan" "$entry_src" ;;
+    test_stats) build_run "$name" "$psan" -DMK_STATS ;; # D1: runtime statistics are compile-time opt-in
+    *) build_run "$name" "$psan" ;;
     esac
-    echo "== $name ($san)"
-    "$out/$name.$san" >"$out/$name.stdout" || { echo "FAIL: $name" >&2; fail=1; }
+    echo "== $name ($psan)"
+    "$out/$name.$psan" >"$out/$name.stdout" || { echo "FAIL: $name ($psan)" >&2; fail=1; }
     [ -f "$here/tests/expected/$name.out" ] && compare "$name" "$out/$name.stdout" "$here/tests/expected/$name.out"
 done
+done
+
+echo "== test_alloc_small (thread)"
+build_run test_alloc_small thread
+"$out/test_alloc_small.thread" || { echo "FAIL: test_alloc_small (thread)" >&2; fail=1; }
+echo "== test_alloc_small (MK_PLAIN_MALLOC)"
+build_run test_alloc_small "$san" -DMK_PLAIN_MALLOC
+"$out/test_alloc_small.$san" || { echo "FAIL: test_alloc_small (plain malloc)" >&2; fail=1; }
 
 uv_flags=()
 if [ -n "${LIBUV_ROOT:-}" ]; then uv_flags=(-I"$LIBUV_ROOT/include" -L"$LIBUV_ROOT/lib"); fi
-for s in "$san" thread; do
+for s in "$san" undefined thread; do
     echo "== test_threads ($s)"
     build_run test_threads "$s" "${uv_flags[@]}" -luv
     "$out/test_threads.$s" || { echo "FAIL: test_threads ($s)" >&2; fail=1; }
