@@ -7,8 +7,8 @@ import type { CellSpec } from './snippets.ts'
 const source = `data class Point(val x: Int, val y: Int)
 
 fun main() {
-    val points = listOf(Point(1, 2), Point(3, 4), Point(5, 6))
-    val total = points.sumOf { it.x * it.y }
+    val pts = listOf(Point(1, 2), Point(3, 4), Point(5, 6))
+    val total = pts.sumOf { it.x * it.y }
     println("Hello from native code: $total")
 }
 `

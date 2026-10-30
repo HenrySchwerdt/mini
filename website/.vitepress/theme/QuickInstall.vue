@@ -39,9 +39,9 @@ async function copy() {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; max-width: 1152px; margin: 0 auto; padding: 14px 18px;
   border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg-soft);
 }
-.qi-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--vp-c-text-2); flex: 1 1 220px; }
+.qi-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: 13px; color: var(--vp-c-text-2); flex: 1 1 300px; }
 .qi-text strong { color: var(--vp-c-text-1); font-size: 14px; }
-.qi-cmd { display: flex; align-items: center; gap: 8px; flex: 2 1 380px; min-width: 0; padding: 6px 6px 6px 12px; border-radius: 8px; background: var(--vp-code-block-bg); }
+.qi-cmd { display: flex; align-items: center; gap: 8px; order: 3; flex: 1 1 100%; min-width: 0; padding: 6px 6px 6px 12px; border-radius: 8px; background: var(--vp-code-block-bg); }
 .qi-cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 13px; color: var(--vp-c-text-1); background: none; padding: 0; }
 .qi-cmd button { flex: none; padding: 3px 12px; border: 1px solid var(--vp-c-divider); border-radius: 6px; background: var(--vp-c-bg); color: var(--vp-c-text-1); font: inherit; font-size: 12px; cursor: pointer; }
 .qi-cmd button:hover { border-color: var(--vp-c-brand-1); color: var(--vp-c-brand-1); }

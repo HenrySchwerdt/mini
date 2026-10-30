@@ -6,6 +6,21 @@ import { miniCellsPlugin } from './mini-cells.ts'
 // GitHub Pages serves the site under /mini/ (https://henryschwerdt.github.io/mini/).
 const base = '/mini/'
 
+const guideSidebar = [
+          {
+            text: 'Guide',
+            items: [
+              { text: 'Install', link: '/install' },
+              { text: 'Getting started', link: '/guide/getting-started' },
+              { text: 'Mini and Kotlin/JVM', link: '/guide/mini-vs-kotlin' },
+              { text: 'C interop', link: '/guide/c-interop' },
+              { text: 'Command line', link: '/reference/cli' },
+              { text: 'Playground and notebook', link: '/guide/playground' },
+              { text: 'Learn Mini (tutorial)', link: '/learn/' },
+            ],
+          },
+        ]
+
 export default withMermaid(
   defineConfig({
     title: 'Mini',
@@ -80,20 +95,8 @@ export default withMermaid(
             ],
           },
         ],
-        '/guide/': [
-          {
-            text: 'Guide',
-            items: [
-              { text: 'Install', link: '/install' },
-              { text: 'Getting started', link: '/guide/getting-started' },
-              { text: 'Mini and Kotlin/JVM', link: '/guide/mini-vs-kotlin' },
-              { text: 'C interop', link: '/guide/c-interop' },
-              { text: 'Command line', link: '/reference/cli' },
-              { text: 'Playground and notebook', link: '/guide/playground' },
-              { text: 'Learn Mini (tutorial)', link: '/learn/' },
-            ],
-          },
-        ],
+        '/guide/': guideSidebar,
+        '/install': guideSidebar,
         '/tour/': [
           {
             text: 'Language tour',

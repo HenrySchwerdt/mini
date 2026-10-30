@@ -30,11 +30,16 @@
 }
 @media (max-width: 959px) {
   .VPHero.has-image .image {
-    margin-top: 28px;
-    width: 100%;
+    order: 2 !important;
+    margin: 28px 0 0 !important;
+    width: 100% !important;
   }
   .VPHero .image-container {
+    width: 100% !important;
     height: auto !important;
+    transform: none !important;
+    display: flex;
+    justify-content: center;
   }
 }
 .VPFeature .icon img {

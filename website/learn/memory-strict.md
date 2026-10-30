@@ -21,15 +21,7 @@ This function forgets to release `buf` on the early-return path:
 
 <<< @/samples/memory/leak.kt{kotlin}
 
-Press **Check**:
-
-```text
-error[M0102]: allocation from `Heap` is never released
-  --> 13:15   allocated here; path: early return
-help: call `buf.free()` on every path ...
-```
-
-The checker follows control flow: the path where `fill(buf)` is false returns `null` while `buf` is still owned. The fix releases on that path too. Edit the cell above and add `buf.free()` before `return null` to see the error go away, or check the fixed program:
+Press **Check**. The error names the allocation (`allocated here`), the path that leaks (`early return`) and a suggested fix. The checker follows control flow: the path where `fill(buf)` is false returns `null` while `buf` is still owned. The fix releases on that path too. Edit the cell above and add `buf.free()` before `return null` to see the error go away, or check the fixed program:
 
 <<< @/samples/memory/leak_fixed.kt{kotlin}
 
