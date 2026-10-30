@@ -58,6 +58,7 @@ export default withMermaid(
           ],
         },
         { text: 'Memory', link: '/memory/', activeMatch: '/memory/' },
+        { text: 'Libraries', link: '/libraries/', activeMatch: '/libraries/' },
         { text: 'Playground', link: '/playground' },
         {
           text: 'More',
@@ -130,6 +131,16 @@ export default withMermaid(
             ],
           },
           { text: 'Diagnostics reference', link: '/reference/diagnostics/' },
+        ],
+        '/libraries/': [
+          {
+            text: 'Libraries',
+            items: [
+              { text: 'Overview', link: '/libraries/' },
+              { text: 'mini.plot', link: '/libraries/plot' },
+              { text: 'Rich output (mini.display)', link: '/libraries/display' },
+            ],
+          },
         ],
         '/reference/diagnostics/': [{ text: 'Diagnostics', items: diagnosticsSidebar }],
         '/reference/': [

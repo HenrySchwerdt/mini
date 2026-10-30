@@ -30,6 +30,9 @@ export type Piece = { text: string } | { bundle: DisplayBundle }
 /** The text a display bundle stands for where only text is compared (the expected output of a cell, CI). */
 export const placeholder = (mime: string) => `[display: ${mime}]`
 
+/** A placeholder on a line of its own, after the text `before` (the bundle itself has no newline). */
+export const placeholderLine = (before: string, mime: string) => (before && !before.endsWith('\n') ? '\n' : '') + placeholder(mime) + '\n'
+
 function decodeBase64(b64: string): string | null {
   try {
     const bin = atob(b64)
@@ -130,7 +133,7 @@ export class OutputSink {
         this.stdout += p.text
         this.text('out', p.text)
       } else {
-        this.stdout += placeholder(p.bundle.mime)
+        this.stdout += placeholderLine(this.stdout, p.bundle.mime)
         this.segments.push({ type: 'display', mime: p.bundle.mime, data: p.bundle.data })
       }
     }
@@ -156,7 +159,7 @@ export function splitOutput(raw: string): { text: string; bundles: DisplayBundle
   for (const piece of pieces) {
     if ('text' in piece) text += piece.text
     else {
-      text += placeholder(piece.bundle.mime)
+      text += placeholderLine(text, piece.bundle.mime)
       bundles.push(piece.bundle)
     }
   }

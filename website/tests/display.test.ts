@@ -11,14 +11,14 @@ test('plain text passes through untouched', () => {
 
 test('a bundle between text', () => {
   const r = splitOutput(`before ${bundle('image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"/>')} after\n`)
-  assert.equal(r.text, `before ${placeholder('image/svg+xml')} after\n`)
+  assert.equal(r.text, `before \n${placeholder('image/svg+xml')}\n after\n`)
   assert.deepEqual(r.bundles, [{ mime: 'image/svg+xml', data: '<svg xmlns="http://www.w3.org/2000/svg"/>' }])
 })
 
 test('UTF-8 payloads and the ST terminator', () => {
   const r = splitOutput(bundle('text/markdown', 'héllo ✓ 😀', '\u001b\\'))
   assert.equal(r.bundles[0].data, 'héllo ✓ 😀')
-  assert.equal(r.text, placeholder('text/markdown'))
+  assert.equal(r.text, placeholder('text/markdown') + '\n')
 })
 
 test('a bundle split at every possible position', () => {
@@ -69,7 +69,7 @@ test('the sink merges text of one stream and keeps bundles in order', () => {
     { type: 'display', mime: 'image/svg+xml', data: '<svg/>' },
     { type: 'out', text: 'tail\n' },
   ])
-  assert.equal(sink.stdout, `one two\n${placeholder('image/svg+xml')}tail\n`)
+  assert.equal(sink.stdout, `one two\n${placeholder('image/svg+xml')}\ntail\n`)
 })
 
 test('tables', () => {
