@@ -322,7 +322,7 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
                 name.startsWith("mk_checked_") || name == "mk_is_instance" || name == "mk_ref_array_get" ||
                 name == "mk_ref_array_length" || name == "mk_ref_array_get_b" || name == "mk_ref_array_new" || name.startsWith("mk_array_new") ||
                 name == "mk_array_length" || name.startsWith("mk_array_get_") ||
-                name == "mk_array_set_int" || name == "mk_array_set_long" || name == "mk_array_set_double" ||
+                name == "mk_array_set_int" || name == "mk_array_set_long" || name == "mk_array_set_double" || name == "mk_array_set_float" ||
                 name == "mk_array_set_boolean" || name == "mk_array_set_char" || name.startsWith("mk_sb_") ||
                 name == "mk_type_name" || name == "mk_identity_hash" || name == "mk_any_new" || name.startsWith("mk_any_") ||
                 name.startsWith("mk_b1_") || name.startsWith("mk_raise") || name == "mk_throwable_init" ||

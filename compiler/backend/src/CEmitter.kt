@@ -239,6 +239,7 @@ object CEmitter {
             TLong -> "mk_type_Long"
             TBoolean -> "mk_type_Boolean"
             TDouble -> "mk_type_Double"
+        TFloat -> "mk_type_Float"
             TChar -> "mk_type_Char"
             else -> throw EmitError("no box for $p")
         }
@@ -248,6 +249,7 @@ object CEmitter {
             TLong -> "long"
             TBoolean -> "boolean"
             TDouble -> "double"
+        TFloat -> "float"
             TChar -> "char"
             else -> throw EmitError("no box for $p")
         }

@@ -12,12 +12,14 @@ typedef struct MkBoxInt { MkObject header; MkInt value; } MkBoxInt;
 typedef struct MkBoxLong { MkObject header; MkLong value; } MkBoxLong;
 typedef struct MkBoxBoolean { MkObject header; MkBoolean value; } MkBoxBoolean;
 typedef struct MkBoxDouble { MkObject header; MkDouble value; } MkBoxDouble;
+typedef struct MkBoxFloat { MkObject header; MkFloat value; } MkBoxFloat;
 typedef struct MkBoxChar { MkObject header; MkChar value; } MkBoxChar;
 
 const MkTypeInfo mk_type_Int = {"kotlin.Int", sizeof(MkBoxInt), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Long = {"kotlin.Long", sizeof(MkBoxLong), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Boolean = {"kotlin.Boolean", sizeof(MkBoxBoolean), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Double = {"kotlin.Double", sizeof(MkBoxDouble), &mk_type_Any, NULL, NULL, 0, NULL, 0};
+const MkTypeInfo mk_type_Float = {"kotlin.Float", sizeof(MkBoxFloat), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Char = {"kotlin.Char", sizeof(MkBoxChar), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 
 MkObject *mk_box_int(MkInt value) {
@@ -40,6 +42,11 @@ MkObject *mk_box_double(MkDouble value) {
     b->value = value;
     return &b->header;
 }
+MkObject *mk_box_float(MkFloat value) {
+    MkBoxFloat *b = (MkBoxFloat *)mk_alloc(&mk_type_Float);
+    b->value = value;
+    return &b->header;
+}
 MkObject *mk_box_char(MkChar value) {
     MkBoxChar *b = (MkBoxChar *)mk_alloc(&mk_type_Char);
     b->value = value;
@@ -58,6 +65,9 @@ MkBoolean mk_unbox_boolean(const MkObject *box) {
 }
 MkDouble mk_unbox_double(const MkObject *box) {
     return ((const MkBoxDouble *)unbox_check(box, &mk_type_Double))->value;
+}
+MkFloat mk_unbox_float(const MkObject *box) {
+    return ((const MkBoxFloat *)unbox_check(box, &mk_type_Float))->value;
 }
 MkChar mk_unbox_char(const MkObject *box) { return ((const MkBoxChar *)unbox_check(box, &mk_type_Char))->value; }
 
@@ -130,6 +140,7 @@ MkString *mk_to_string(MkObject *o) {
     if (t == &mk_type_Long) return mk_string_from_long(((MkBoxLong *)o)->value);
     if (t == &mk_type_Boolean) return mk_string_from_boolean(((MkBoxBoolean *)o)->value);
     if (t == &mk_type_Double) return mk_string_from_double(((MkBoxDouble *)o)->value);
+    if (t == &mk_type_Float) return mk_string_from_float(((MkBoxFloat *)o)->value);
     if (t == &mk_type_Char) return mk_string_from_char(((MkBoxChar *)o)->value);
     void *f = slot(o, MK_VSLOT_TO_STRING);
     return (MkString *)(f ? ((ToStringFn)f)(o) : mk_any_to_string(o));
@@ -140,6 +151,13 @@ static MkInt double_bits_hash(MkDouble d) {
     if (d != d) bits = UINT64_C(0x7ff8000000000000);
     else memcpy(&bits, &d, sizeof bits);
     return (MkInt)(uint32_t)(bits ^ (bits >> 32));
+}
+
+static MkInt float_bits_hash(MkFloat f) {
+    uint32_t bits;
+    if (f != f) bits = UINT32_C(0x7fc00000);
+    else memcpy(&bits, &f, sizeof bits);
+    return (MkInt)bits;
 }
 
 MkInt mk_hash_code(MkObject *o) {
@@ -153,6 +171,7 @@ MkInt mk_hash_code(MkObject *o) {
     }
     if (t == &mk_type_Boolean) return ((MkBoxBoolean *)o)->value ? 1231 : 1237;
     if (t == &mk_type_Double) return double_bits_hash(((MkBoxDouble *)o)->value);
+    if (t == &mk_type_Float) return float_bits_hash(((MkBoxFloat *)o)->value);
     if (t == &mk_type_Char) return (MkInt)((MkBoxChar *)o)->value;
     void *f = slot(o, MK_VSLOT_HASH_CODE);
     return f ? ((HashFn)f)(o) : mk_any_hash_code(o);
@@ -172,6 +191,12 @@ bool mk_equals(MkObject *a, MkObject *b) {
         if (b->type != t) return false;
         MkDouble x = ((MkBoxDouble *)a)->value, y = ((MkBoxDouble *)b)->value;
         if (x != x && y != y) return true; /* boxed Double.equals: NaN equals NaN, 0.0 != -0.0 */
+        return memcmp(&x, &y, sizeof x) == 0;
+    }
+    if (t == &mk_type_Float) {
+        if (b->type != t) return false;
+        MkFloat x = ((MkBoxFloat *)a)->value, y = ((MkBoxFloat *)b)->value;
+        if (x != x && y != y) return true; /* boxed Float.equals: NaN equals NaN, 0.0f != -0.0f */
         return memcmp(&x, &y, sizeof x) == 0;
     }
     void *f = slot(a, MK_VSLOT_EQUALS);

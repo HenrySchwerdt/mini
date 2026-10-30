@@ -11,5 +11,6 @@ public val Array<*>.indices: IntRange
 public val IntArray.indices: IntRange
 public val LongArray.indices: IntRange
 public val DoubleArray.indices: IntRange
+public val FloatArray.indices: IntRange
 public val BooleanArray.indices: IntRange
 public val CharArray.indices: IntRange

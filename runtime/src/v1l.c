@@ -218,6 +218,7 @@ typedef struct { MkObject h; MkInt v; } BoxInt;
 typedef struct { MkObject h; MkLong v; } BoxLong;
 typedef struct { MkObject h; MkBoolean v; } BoxBoolean;
 typedef struct { MkObject h; MkDouble v; } BoxDouble;
+typedef struct { MkObject h; MkFloat v; } BoxFloat;
 typedef struct { MkObject h; MkChar v; } BoxChar;
 
 static bool unbox_ok(const MkObject *box, const MkTypeInfo *type) {
@@ -239,6 +240,9 @@ MkBoolean mk_checked_unbox_boolean(const MkObject *b) {
 MkDouble mk_checked_unbox_double(const MkObject *b) {
     return unbox_ok(b, &mk_type_Double) ? ((const BoxDouble *)b)->v : 0.0;
 }
+MkFloat mk_checked_unbox_float(const MkObject *b) {
+    return unbox_ok(b, &mk_type_Float) ? ((const BoxFloat *)b)->v : 0.0f;
+}
 MkChar mk_checked_unbox_char(const MkObject *b) { return unbox_ok(b, &mk_type_Char) ? ((const BoxChar *)b)->v : 0; }
 
 /* ---- Any, compareTo --------------------------------------------------------------------- */
@@ -256,7 +260,7 @@ MkInt mk_compare_to(MkObject *a, MkObject *b, const MkTypeInfo *comparable) {
     }
     const MkTypeInfo *t = a->type;
     if (t == &mk_type_Int || t == &mk_type_Long || t == &mk_type_Char || t == &mk_type_Boolean ||
-        t == &mk_type_Double || t == &mk_type_String) {
+        t == &mk_type_Double || t == &mk_type_Float || t == &mk_type_String) {
         if (b->type != t) {
             mk_raise_class_cast(b, t);
             return 0;
@@ -265,6 +269,16 @@ MkInt mk_compare_to(MkObject *a, MkObject *b, const MkTypeInfo *comparable) {
         if (t == &mk_type_Long) return cmp_ll(((BoxLong *)a)->v, ((BoxLong *)b)->v);
         if (t == &mk_type_Char) return cmp_ll(((BoxChar *)a)->v, ((BoxChar *)b)->v);
         if (t == &mk_type_Boolean) return cmp_ll(((BoxBoolean *)a)->v, ((BoxBoolean *)b)->v);
+        if (t == &mk_type_Float) {
+            float x = ((BoxFloat *)a)->v, y = ((BoxFloat *)b)->v;
+            if (x < y) return -1;
+            if (x > y) return 1;
+            if (x == y && x != 0.0f) return 0;
+            int xn = x != x, yn = y != y;
+            if (xn || yn) return xn == yn ? 0 : (xn ? 1 : -1);
+            int xs = signbit(x) != 0, ys = signbit(y) != 0;
+            return xs == ys ? 0 : (xs ? -1 : 1);
+        }
         if (t == &mk_type_Double) {
             double x = ((BoxDouble *)a)->v, y = ((BoxDouble *)b)->v;
             if (x < y) return -1;
@@ -303,6 +317,7 @@ const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_A
 const MkTypeInfo MkIntArray_ti = {"kotlin.IntArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkLongArray_ti = {"kotlin.LongArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkDoubleArray_ti = {"kotlin.DoubleArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
+const MkTypeInfo MkFloatArray_ti = {"kotlin.FloatArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkBooleanArray_ti = {"kotlin.BooleanArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkCharArray_ti = {"kotlin.CharArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 
@@ -322,6 +337,7 @@ MkObject *mk_array_new_obj(MkInt n) { return array_new(&MkObjectArray_ti, n, siz
 MkObject *mk_array_new_int(MkInt n) { return array_new(&MkIntArray_ti, n, sizeof(MkInt)); }
 MkObject *mk_array_new_long(MkInt n) { return array_new(&MkLongArray_ti, n, sizeof(MkLong)); }
 MkObject *mk_array_new_double(MkInt n) { return array_new(&MkDoubleArray_ti, n, sizeof(MkDouble)); }
+MkObject *mk_array_new_float(MkInt n) { return array_new(&MkFloatArray_ti, n, sizeof(MkFloat)); }
 MkObject *mk_array_new_boolean(MkInt n) { return array_new(&MkBooleanArray_ti, n, sizeof(MkBoolean)); }
 MkObject *mk_array_new_char(MkInt n) { return array_new(&MkCharArray_ti, n, sizeof(MkChar)); }
 
@@ -348,6 +364,7 @@ void mk_array_copy_into(MkObject *dst, MkInt index, const MkObject *src) {
     size_t esz = dst->type == &MkIntArray_ti ? sizeof(MkInt)
                : dst->type == &MkLongArray_ti ? sizeof(MkLong)
                : dst->type == &MkDoubleArray_ti ? sizeof(MkDouble)
+               : dst->type == &MkFloatArray_ti ? sizeof(MkFloat)
                : dst->type == &MkBooleanArray_ti ? sizeof(MkBoolean) : sizeof(MkChar);
     memcpy((char *)(d + 1) + esz * (size_t)index, (const char *)(s + 1), esz * (size_t)s->length);
 }
@@ -380,6 +397,7 @@ const MkString *mk_array_content_to_string(const MkObject *array) {
         else if (array->type == &MkIntArray_ti) e = mk_string_from_int(ELEMS(MkInt, a)[i]);
         else if (array->type == &MkLongArray_ti) e = mk_string_from_long(ELEMS(MkLong, a)[i]);
         else if (array->type == &MkDoubleArray_ti) e = mk_string_from_double(ELEMS(MkDouble, a)[i]);
+        else if (array->type == &MkFloatArray_ti) e = mk_string_from_float(ELEMS(MkFloat, a)[i]);
         else if (array->type == &MkBooleanArray_ti) e = mk_string_from_boolean(ELEMS(MkBoolean, a)[i]);
         else e = mk_string_from_char(ELEMS(MkChar, a)[i]);
         buf_append(&b, e->chars, (size_t)e->length);
