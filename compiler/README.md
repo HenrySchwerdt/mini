@@ -56,8 +56,9 @@ for the C compiler at `-O2` and the link; the default `-O2` costs +2% on the sel
 The option block above is the CLI of the JVM `minic` of `tools/k2-oracle`; the native `minic` is documented in `website/reference/cli.md`.
 
 * Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.
-* The Mini standard library (`stdlib`, found next to `runtime/` or via `--stdlib <dir>`) is compiled from source together
-  with the user files; only the reachable part ends up in the C file. `--no-stdlib` uses the JVM kotlin-stdlib jar instead
+* The Mini standard library is precompiled: `lib/stdlib.mlib` (`--lib`, `docs/mlib.md`: API stubs plus the MIR of the whole library, linked into
+  the program and pruned from `main`; `minic build hello.kt` drops from ~0.37 s to ~0.2 s). `--stdlib <files>` compiles the sources together
+  with the user files (the bootstrap does; only the reachable part ends up in the C file); `minic --emit-mlib` builds a library. `--no-stdlib` uses the JVM kotlin-stdlib jar instead
   (no stdlib functions then have bodies). Details: `docs/stdlib.md`. The `mini.memory` API is part of it.
 * `--extra-src <file.kt>` (repeatable): additional Kotlin sources compiled together with the program, only
   as declarations (they are not translated to C). Files that are already part of the stdlib are ignored.

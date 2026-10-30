@@ -6,7 +6,7 @@ import mini.backend.memory.MemoryReport
 import mini.frontend.sema.*
 
 /** A source file handed to the lowering: user files first, then the standard library files. */
-class LowerInput(val path: String, val text: String, val isStdlib: Boolean)
+class LowerInput(val path: String, val text: String, val isStdlib: Boolean, val isLib: Boolean = false)
 
 /** A problem found while analysing the sources (syntax or type error), as `file:line:col: error: message`. */
 class LowerDiagnostics(val messages: List<String>, val diags: List<FrontDiag> = emptyList()) : Exception(messages.joinToString("\n"))
@@ -21,12 +21,14 @@ class FrontDiag(val path: String, val line: Int, val col: Int, val message: Stri
 fun buildIr(inputs: List<LowerInput>): IrModule {
     val srcs = ArrayList<SourceInput>()
     val user = HashSet<String>()
+    val lib = HashSet<String>()
     // K2 lists all files (program and stdlib) in path order whatever order they were given in
     val sorted = ArrayList<LowerInput>(inputs)
     sorted.sortBy { it.path }
     for (i in sorted) {
-        srcs.add(SourceInput(i.path, i.text))
+        srcs.add(SourceInput(i.path, i.text, i.isLib))
         if (!i.isStdlib) user.add(i.path)
+        if (i.isLib) lib.add(i.path)
     }
     val sema = analyzeSources(srcs)
     val errors = ArrayList<String>()
@@ -39,7 +41,7 @@ fun buildIr(inputs: List<LowerInput>): IrModule {
         structured.add(frontDiag(d.path, text, d.start, d.message))
     }
     if (errors.isNotEmpty()) throw LowerDiagnostics(errors, structured)
-    val builder = Ast2Ir(sema, user)
+    val builder = Ast2Ir(sema, user, lib)
     return builder.build()
 }
 
@@ -62,11 +64,13 @@ fun checkMemory(inputs: List<LowerInput>): MemoryReport = checkMemory(buildIr(in
  * the stdlib, and lowering to MIR. The result equals what the K2 path produces. [memoryGate] (when given) receives the
  * result of the memory checker before the code generation and may throw to stop the build.
  */
-fun lowerToMir(inputs: List<LowerInput>, sourceName: String, lineDirectives: Boolean = false, memoryGate: ((MemoryReport) -> Unit)? = null): MirModule {
+fun lowerToMir(inputs: List<LowerInput>, sourceName: String, lineDirectives: Boolean = false, memoryGate: ((MemoryReport) -> Unit)? = null, nameTag: String = "", keepAll: Boolean = false, failures: MutableMap<String, String>? = null): MirModule {
     val module = buildIr(inputs)
     if (memoryGate != null) memoryGate(checkMemory(module))
-    Reachability.prune(module)
+    if (!keepAll) Reachability.prune(module) else Reachability.pruneBuiltins(module)
     val lowering = Ir2Mir()
+    lowering.nameTag = nameTag
+    lowering.libFailures = failures
     lowering.lineDirectives = lineDirectives
     return lowering.convert(module, sourceName)
 }

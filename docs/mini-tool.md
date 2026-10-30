@@ -165,10 +165,17 @@ overwritten.
 
 ### `mini build [--release] [--strict] [-Werror] [-p <pkg>]...`
 
-Compiles the selected packages: `src/` of the package and of all its dependencies plus the standard library are passed to
-`minic`. Output: `build/debug/<name>` (`-g`) or `build/release/<name>` (`-O2`) for apps. Prints one `Compiling` line per
+Compiles the selected packages: `src/` of the package is compiled against the precompiled standard library and the `.mlib` files
+of its dependencies (`docs/mlib.md`; each dependency is built once and rebuilt only when its sources, its libraries or the toolchain
+change). A library package builds to `build/mlib/<name>-<fingerprint>.mlib` and needs no C compiler. Output: `build/debug/<name>` (`-g`) or `build/release/<name>` (`-O2`) for apps. Prints one `Compiling` line per
 package, then `Finished`. `-Werror` makes memory-checker warnings fail the build; `--strict` makes your own packages
 Strict.
+
+### `mini package [-p <pkg>]...`
+
+Builds a library package (and what it depends on) and writes the distributable `build/package/<name>-<version>.mlib`: API stubs and
+target-independent code in one file (`docs/mlib.md`). The header carries the name, the version, the toolchain version and the hashes
+of the libraries it was built against.
 
 ### `mini run [build options] [-- args...]`
 
@@ -296,10 +303,11 @@ mini (this document)                     minic (compiler)
 * **Strict by default (`memory = "strict"`, `--strict`).** `minic` has no default-mode flag, so for files without an explicit
   `@file:MemoryMode` `mini` compiles a copy in `build/overlay/` that starts with the annotation on the *first line* (line
   numbers do not change) and maps paths in the diagnostics back.
-* **The checker only looks at one file per `minic` invocation** (the first source). `mini` therefore runs one extra
-  `minic check` per further Strict file before building. This is a workaround; see the follow-ups.
-* **Libraries** are source packages: `minic build` receives the sources of the program and of every library in its
-  dependency graph. A library is compiled once with a generated `fun main() {}` stub to verify it.
+* **Every user file is memory-checked** in one `minic-native --check` run (`mini check`); a build still checks each further Strict file
+  separately before compiling.
+* **Libraries** are source packages that `mini` compiles to `.mlib` files (`docs/mlib.md`): every package of the dependency graph
+  except the one being built is passed to `minic-native` as `--lib`. Without a precompiled standard library in the installation
+  (`lib/stdlib.mlib`, or `MINI_STDLIB=source`) `mini` falls back to compiling the sources of the whole graph together.
 
 ### Architecture and self-hosting
 

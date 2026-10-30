@@ -113,7 +113,11 @@ fun Sema.checkProp(p: PropSym) {
     val declared = if (!needsInference) p.type else null
     val init = d.initializer
     val deleg = d.delegate
-    if (init != null) {
+    val stubInit = file.declOnly && !StubRules.keepsInitializer(d)
+    val stubAcc = file.declOnly && !StubRules.keepsAccessors(d)
+    if (init != null && stubInit) {
+        // a stub does not keep the initializer: nothing to check
+    } else if (init != null) {
         val t = bc.expr(init, declared)
         if (needsInference) p.type = bc.fin(t) else bc.expectCompatible(init, t, declared)
     } else if (deleg != null) {
@@ -122,7 +126,7 @@ fun Sema.checkProp(p: PropSym) {
     }
     // accessors
     val g = d.getter
-    if (g != null && g.body != null) {
+    if (g != null && g.body != null && !stubAcc) {
         val gc = BodyChecker(this, file)
         val ls = LocalScope(accBase)
         val gt = if (g.returnType != null) resolveType(g.returnType, accBase) else p.type
@@ -155,7 +159,7 @@ fun Sema.checkProp(p: PropSym) {
     if (p.type == null) p.type = ErrType("untyped property " + p.name)
     p.typeState = 2
     val s = d.setter
-    if (s != null && s.body != null) {
+    if (s != null && s.body != null && !stubAcc) {
         val sc = BodyChecker(this, file)
         val ls = LocalScope(accBase)
         val fv2 = VarSym("field", p.type ?: ErrType("field"), true, false, s.start)
@@ -244,7 +248,7 @@ fun Sema.checkClass(c: ClassSym) {
             }
             is InitDecl -> {
                 val b = m.body
-                if (b != null) {
+                if (b != null && !file.declOnly) {
                     val ic = BodyChecker(this, file)
                     ic.scope = initScope
                     ic.targets.add(ReturnTarget(null, unitType, null, false))
@@ -290,7 +294,7 @@ fun Sema.checkSecondary(c: ClassSym, f: FunSym, m: SecondaryCtor) {
     val del = m.delegation
     if (del != null) bc.delegationCall(c, del)
     val b = m.body
-    if (b != null) {
+    if (b != null && !file.declOnly) {
         bc.targets.add(ReturnTarget(null, unitType, null, false))
         val names = HashSet<String>()
         AstWalk.capturedAssigned(b, names)
