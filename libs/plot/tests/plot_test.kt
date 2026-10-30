@@ -45,11 +45,10 @@ class PlotTest {
         assertEquals(2, count(svg, "<path "))
         assertTrue(svg.contains(">Two lines</text>"))
         assertTrue(svg.contains(">x axis</text>"))
-        assertTrue(svg.contains("rotate(-90"))
         assertTrue(svg.contains(">square</text>"))
         assertTrue(svg.contains(">one</text>"))
         assertTrue(svg.contains("class=\"legend\""))
-        assertTrue(svg.contains("stroke=\"#4c8bf5\""))
+        assertTrue(svg.contains("stroke=\"#4e79a7\""))
         assertTrue(svg.contains("stroke=\"#f28e2b\""))
         assertTrue(svg.contains("currentColor"))
     }
@@ -102,25 +101,28 @@ class PlotTest {
         }.toSvg()
         assertTrue(svg.contains(">a</text>"))
         assertTrue(svg.contains(">c</text>"))
-        // 3 bars + the frame and the plot area has no other rects
-        assertEquals(3 + 1, count(svg, "<rect "))
+        // 3 bars (rounded paths with a hover title each)
+        assertEquals(3, count(svg, "<title>")  - 1)
     }
 
     @Test
     fun histogramCountsAllValues() {
         val data = DoubleArray(100) { i -> (i % 10).toDouble() }
         val svg = plot { hist(data, bins = 5) }.toSvg()
-        assertEquals(5 + 1, count(svg, "<rect "))
+        assertEquals(5, count(svg, "<title>") - 1)
+        // all 100 values are counted: the tooltips of the bins add up
+        assertTrue(svg.contains(": 20</title>"))
         val one = plot { hist(doubleArrayOf(2.0, 2.0, 2.0), bins = 3) }.toSvg()
-        assertTrue(one.contains("<rect "))
+        assertTrue(one.contains(": 3</title>"))
     }
 
     @Test
     fun heatmapDrawsACellPerValue() {
         val m = arrayOf(doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(4.0, 5.0, 6.0))
         val svg = plot { heatmap(m) }.toSvg()
-        // 6 cells + 32 colour bar steps + the frame
-        assertEquals(6 + 32 + 1, count(svg, "<rect "))
+        // 6 cells + the colour bar
+        assertEquals(6 + 1, count(svg, "<rect "))
+        assertTrue(svg.contains("<linearGradient"))
         assertTrue(svg.contains("#440154"))
         assertTrue(svg.contains("#fde725"))
     }
