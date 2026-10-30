@@ -27,11 +27,19 @@ CC="${CC:-clang}"
 mkdir -p "$out"
 
 if [ -z "${BENCH_NO_BUILD:-}" ]; then
-    echo "== building minic and native-driver" >&2
-    (cd "$root/compiler" && ./gradlew -q installDist) >&2 || exit 1
+    echo "== building the native compiler and native-driver" >&2
+    "$root/mini" --version >/dev/null
+    (cd "$root/compiler" && "$root/build/native/bin/mini" build --release -p native-driver) >&2 || exit 1
 fi
-minic="$root/compiler/jvm-bridge/build/install/minic/bin/minic"
-driver="$root/compiler/native-driver/build/install/native-driver/bin/native-driver"
+minic="$root/build/native/bin/minic-native"
+driver="$root/compiler/build/release/native-driver"
+stdlib_files=$(find "$root/stdlib" -name '*.kt' | LC_ALL=C sort)
+# emit_mir <out.mir> <src.kt>...: the Kotlin program as MIR (the native compiler writes it with --emit-mir)
+emit_mir() {
+    local mir="$1"; shift
+    # shellcheck disable=SC2086
+    "$minic" --emit-mir "$mir" "$@" --stdlib $stdlib_files
+}
 
 lib="$out/libminirt_plain.a"
 if [ ! -f "$lib" ] || [ -n "$(find "$root/runtime" -name '*.[ch]' -newer "$lib" -print -quit)" ]; then
@@ -94,16 +102,16 @@ for src in "$here"/micro/*.kt; do
     name="$(basename "$src" .kt)"
     want "$name" || continue
     echo "== $name" >&2
-    [ -f "$out/$name.mir" ] || "$minic" emit-mir "$src" -o "$out/$name.mir" >&2
+    [ -f "$out/$name.mir" ] || emit_mir "$out/$name.mir" "$src" >&2
     bench "$name" "$out/$name.mir"
 done
 
 if want selfhost; then
     echo "== selfhost" >&2
-    backend_srcs=$(find "$root/compiler/backend/src/main/kotlin" -name '*.kt' | sort)
-    driver_srcs=$(find "$root/compiler/native-driver/src/main/kotlin" -name '*.kt' | sort)
+    backend_srcs=$(find "$root/compiler/backend/src" -name '*.kt' | sort)
+    driver_srcs=$(find "$root/compiler/native-driver/src" -name '*.kt' | sort)
     # shellcheck disable=SC2086
-    [ -f "$out/selfhost.mir" ] || "$minic" emit-mir $driver_srcs $backend_srcs -o "$out/selfhost.mir" >&2
+    [ -f "$out/selfhost.mir" ] || emit_mir "$out/selfhost.mir" $driver_srcs $backend_srcs >&2
     # the program under test is minic-backend (C backend and LLVM backend builds of it); its job: the large MIR to C
     bench selfhost "$out/selfhost.mir" "$out/selfhost.mir" -o "$out/selfhost.result.c"
 fi

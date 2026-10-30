@@ -994,7 +994,7 @@ along with them, item 9 **changed** (see there); string literals are static (ite
 
 ## 11. The Test Corpus
 
-Directory `compiler/testdata/memory/`. The Gradle test `:memory-spec:test`
+Directory `compiler/testdata/memory/`. The test `:memory-spec:test` of `tools/k2-oracle`
 (`MemoryCorpusTest`) checks:
 
 1. All programs and `stdlib/mini/memory/*.kt` compile together with the

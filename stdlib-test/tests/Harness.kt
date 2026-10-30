@@ -2,7 +2,7 @@ package mkt.test
 
 /*
  * Test helpers of the stdlib unit tests. The tests are plain Kotlin: every top-level function whose name
- * starts with `test` is run by compiler/jvm-bridge StdlibJvmTest. The same sources are also compiled against
+ * starts with `test` is run by tools/k2-oracle StdlibJvmTest. The same sources are also compiled against
  * the real kotlin-stdlib (`import mkt.X` -> `import kotlin.X`) to prove the expectations are real Kotlin behaviour.
  */
 

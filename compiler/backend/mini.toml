@@ -1,0 +1,4 @@
+# MIR data model, name mangling, the C and LLVM emitters, RcOpt and the memory checker. Pure Kotlin (scripts/check-purity.sh).
+[package]
+name = "backend"
+kind = "lib"

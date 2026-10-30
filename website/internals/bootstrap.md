@@ -20,12 +20,12 @@ The v1 milestone is that `minic` compiles its own backend (pure Kotlin) and that
 - `minic emit-mir file.kt -o out.mir` runs the frontend and writes the [MIR](./mir) as text.
 - `compiler/native-driver` is a `fun main(args)` that reads a `.mir` file and runs `CEmitter`. Its file access is the Mini stdlib API `mini.io.readTextFile` and `writeTextFile`.
 - `minic` builds `native-driver` plus `backend` natively into `minic-backend`.
-- `SelfHostTest` (part of `gradle test`) checks it three ways: the driver on the JVM versus natively, byte-identical; the native build under ASan and UBSan (no memory error, no undefined behavior, no direct leak; reference cycles in `LinkedHashMap` show up as indirect leaks and are tolerated); and the B1 acceptance test, where for every `compiler/testdata` program `emit-mir`, then native `minic-backend`, gives C identical to the JVM `CEmitter`.
+- `SelfHostTest` (part of the K2 oracle, `tools/k2-oracle`) checks it three ways: the driver on the JVM versus natively, byte-identical; the native build under ASan and UBSan (no memory error, no undefined behavior, no direct leak; reference cycles in `LinkedHashMap` show up as indirect leaks and are tolerated); and the B1 acceptance test, where for every `compiler/testdata` program `emit-mir`, then native `minic-backend`, gives C identical to the JVM `CEmitter`.
 
 You can reproduce the first half yourself, as in the README:
 
 ```sh
-./minic build $(find compiler/native-driver/src/main/kotlin compiler/backend/src/main/kotlin -name '*.kt') -o build/minic-backend
+./minic build $(find compiler/native-driver/src compiler/backend/src -name '*.kt') -o build/minic-backend
 ./minic emit-mir examples/shapes.kt -o build/shapes.mir     # frontend: K2, still on the JVM
 build/minic-backend build/shapes.mir -o build/shapes.c       # backend: native
 clang -std=c17 -O2 -Iruntime/include build/shapes.c runtime/src/*.c -lm -o build/shapes

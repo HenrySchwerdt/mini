@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # End to end on wasm32-wasip1: every program of compiler/testdata (or the ones named) goes
-#   minic emit-mir -> native-driver --backend=llvm --target=wasm32 -> clang (wasm) -> link with libminirt-wasm32.a
+#   minic-native --emit-ll --target=wasm32 -> clang (wasm) -> link with libminirt-wasm32.a
 #   -> node:wasi, and stdout / exit code / stderr lines are compared with the .out / .err expectations
 # exactly like LlvmEndToEndTest does for the native build.
 #
-#   scripts/wasm/test-programs.sh [name...]       env: MINIC (emit-mir driver), NATIVE_DRIVER, WASM_DIR, JOBS
-#   (run scripts/wasm/build-runtime.sh first; `./gradlew :jvm-bridge:installDist :native-driver:installDist` for the drivers)
+#   scripts/wasm/test-programs.sh [name...]       env: MINIC (the native compiler, default build/native/bin/minic-native), WASM_DIR, JOBS
+#   (run scripts/wasm/build-runtime.sh first; `./mini` builds the native compiler)
 set -uo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
-export MINIC="${MINIC:-$root/compiler/jvm-bridge/build/install/minic/bin/minic}"
-export NATIVE_DRIVER="${NATIVE_DRIVER:-$root/compiler/native-driver/build/install/native-driver/bin/native-driver}"
+export MINIC="${MINIC:-$root/build/native/bin/minic-native}"
+STDLIB="$(cd "$root" && find stdlib -name '*.kt' | LC_ALL=C sort | sed "s|^|$root/|" | tr '\n' ' ')"
+export STDLIB
 export WASM_DIR="${WASM_DIR:-build/wasm}"
 export root
 work="$WASM_DIR/prog"
@@ -23,8 +24,8 @@ one() {
     [ -f "$src" ] || src="examples/$name.kt"
     local log="$w/$name.log"
     (
-        "$MINIC" emit-mir "$src" -o "$w/$name.mir" || { [ -f "compiler/testdata/$name.cerr" ] && exit 0; exit 1; }
-        "$NATIVE_DRIVER" "$w/$name.mir" --backend=llvm --target=wasm32 -o "$w/$name.ll" || exit 1
+        # shellcheck disable=SC2086
+        "$MINIC" --emit-ll "$w/$name.ll" --target=wasm32 "$src" --stdlib $STDLIB >"$w/$name.compile" 2>&1 || { [ -f "compiler/testdata/$name.cerr" ] && exit 0; cat "$w/$name.compile"; exit 1; }
         $Y clang --target=wasm32-wasip1 -O1 -Wno-override-module -c "$w/$name.ll" -o "$w/$name.o" || exit 1
         $Y clang --target=wasm32-wasip1 "$w/$name.o" "$WASM_DIR/libminirt-wasm32.a" "$WASM_DIR/minirt-entry-wasm32.o" -o "$w/$name.wasm" || exit 1
         mkdir -p "$w/tmp"; node --no-warnings "$root/scripts/wasm/run-wasi.mjs" --dir "$w/tmp=/tmp" "$w/$name.wasm" >"$w/$name.stdout" 2>"$w/$name.stderr"

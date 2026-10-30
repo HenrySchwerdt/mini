@@ -11,7 +11,7 @@ backend without touching the programs.
   stack objects). Without the flag the runtime contains no counting code (`runtime/run_tests.sh` checks the object
   files). In a `--stats` build every retain/release is a call into the runtime so that the counters see all of them.
 * **Benchmark driver.** `compiler/bench/run.sh [--reps N] [--configs "base opt"] [--only name] [--cflags "-O2"]`, or
-  `gradle -p compiler bench` (`-Pbench.args="--reps 1 --only tree"`). For every benchmark it makes the MIR once
+  `compiler/bench/run.sh --reps 1 --only tree`. For every benchmark it makes the MIR once
   (`minic emit-mir`), runs the backend per configuration (`base` = `--no-rc-opt`, `opt` = RC elision), compiles the C twice
   (timing build, `-DMK_STATS` build) with clang `-O1` against libminirt (`-O2`), takes the best of N runs for the time and
   one run for the statistics, and checks that stdout (and the output file of the backend benchmarks) is identical in both
@@ -100,7 +100,7 @@ Hot spots found with the counters and by reading the generated C of the micro be
 ## Reproducing
 
 ```
-cd compiler && ./gradlew installDist && cd ..
+./mini --version   # builds the native toolchain
 bash compiler/bench/run.sh --reps 7           # about 8 minutes; --only tree for one benchmark
 cat compiler/build/bench/results.md
 ./minic build prog.kt -o prog --stats         # counters for any program; --no-rc-opt for the baseline
@@ -268,7 +268,7 @@ Mini 86 to 93, K/N 481, Go 2178, Rust 4259 (JVM: 3 KiB of class files, without t
 ### Reproducing
 
 ```sh
-cd compiler && ./gradlew installDist && cd ..     # builds ./minic
+./mini --version     # builds ./minic (native)
 bench/run.sh --reps 5 --stats                     # all languages that are installed (the JVM and Native compiles are slow)
 bench/run.sh --only json,wordcount --langs c,mini-managed --out /tmp/bench   # a subset
 ```

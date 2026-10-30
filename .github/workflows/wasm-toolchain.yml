@@ -4,10 +4,10 @@ name: WebAssembly toolchain
 # minic.wasm (the compiler as a WASI module), libminirt-wasm32.a, the stdlib sources, and the website layout
 # (manifest.json, module worker, the pinned prebuilt @yowasp/clang modules). clang and wasm-ld are not built here
 # (scripts/wasm/package.json pins the npm package). The script proves the pipeline before it packs anything:
-# every program of compiler/testdata through the JVM compiler -> clang.wasm -> node:wasi, minic.wasm itself
+# every program of compiler/testdata through the native compiler -> clang.wasm -> node:wasi, minic.wasm itself
 # (check + emit LLVM IR -> clang -> run), and the packed worker through the site's message protocol.
 #
-# Time: about 10 minutes cold (JVM build, runtime, minic.wasm with the host's clang in under a minute, the tests);
+# Time: about 10 minutes cold (native toolchain build, runtime, minic.wasm with the host's clang in under a minute, the tests);
 # a few seconds when nothing it depends on changed: the finished bundle is cached by the hash of its inputs.
 #
 # Consumers: `uses: ./.github/workflows/wasm-toolchain.yml` (workflow_call), then in a later job of the same run
@@ -41,7 +41,7 @@ jobs:
           path: |
             build/wasm-toolchain.tar.gz
             build/wasm-toolchain-site.tar.gz
-          key: wasm-toolchain-${{ hashFiles('compiler/*/src/main/**', 'compiler/*/build.gradle.kts', 'stdlib/**', 'runtime/**', 'compiler/testdata/**', 'scripts/wasm/**', 'scripts/build-wasm-toolchain.sh') }}
+          key: wasm-toolchain-${{ hashFiles('compiler/*/src/**', 'compiler/*/mini.toml', 'stdlib/**', 'runtime/**', 'compiler/testdata/**', 'scripts/wasm/**', 'scripts/build-wasm-toolchain.sh') }}
 
       - uses: ./.github/actions/setup
         if: steps.cache.outputs.cache-hit != 'true'
@@ -63,10 +63,11 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: npm ci --prefix scripts/wasm
 
-      - name: Build the compiler (JVM drivers)
+      - name: Build the native compiler (from the latest release, no JVM)
         if: steps.cache.outputs.cache-hit != 'true'
-        working-directory: compiler
-        run: ./gradlew installDist :native-driver:installDist --console=plain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-toolchain.sh
 
       - name: Build and test the toolchain
         if: steps.cache.outputs.cache-hit != 'true'
