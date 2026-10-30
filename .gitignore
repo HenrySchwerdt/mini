@@ -93,3 +93,7 @@ coverage.info
 # Gradle (compiler/)
 .gradle/
 .kotlin/
+
+# prebuilt wasm clang (npm)
+scripts/wasm/node_modules/
+website/public/toolchain/

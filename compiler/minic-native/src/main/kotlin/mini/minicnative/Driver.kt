@@ -4,6 +4,7 @@ import mini.backend.CEmitter
 import mini.backend.MirModule
 import mini.backend.MirWriter
 import mini.backend.llvm.LlvmEmitter
+import mini.backend.llvm.LlvmTarget
 import mini.io.readTextFile
 import mini.io.writeTextFile
 import mini.lower.LowerDiagnostics
@@ -14,7 +15,7 @@ import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
 
 /*
- *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--emit-c out.c] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--target=wasm32] [--emit-c out.c] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
  *   minic-native --backend=llvm-api -o out.o [--exe prog [--link-arg a]...] [--opt=O1] ...       (LLVM C API build only)
  *   minic-native --backend=llvm-api --run [--opt=O1] <user.kt>... --stdlib <std.kt>... [-- program args]
  *   minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
@@ -29,7 +30,7 @@ import mini.lower.lowerToMir
  * 10g phase 2): [runDriver] gets an [LlvmApi] there, `null` in the plain build.
  */
 
-const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--emit-c <out.c>] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]\n       minic-native --backend=llvm-api -o <out.o> [--exe <prog> [--link-arg <arg>]...] [--opt=O0..O3] [--no-rc-opt] <user.kt>... --stdlib <stdlib.kt>...\n       minic-native --backend=llvm-api --run [--time] [--opt=O0..O3] <user.kt>... --stdlib <stdlib.kt>... [-- <program args>]\n       minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]"
+const val USAGE = "usage: minic-native [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--target=wasm32] [--emit-c <out.c>] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]\n       minic-native --backend=llvm-api -o <out.o> [--exe <prog> [--link-arg <arg>]...] [--opt=O0..O3] [--no-rc-opt] <user.kt>... --stdlib <stdlib.kt>...\n       minic-native --backend=llvm-api --run [--time] [--opt=O0..O3] <user.kt>... --stdlib <stdlib.kt>... [-- <program args>]\n       minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]"
 
 /** What the build of the compiler with the LLVM C API bound in (compiler/llvm-c) adds: object files, linking, the ORC JIT. */
 interface LlvmApi {
@@ -49,6 +50,7 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
     var llOut: String? = null
     var cOut: String? = null
     var rcOpt = true
+    var wasm32 = false
     var check = false
     var brief = false
     var werror = false
@@ -78,6 +80,9 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
             if (i + 1 >= args.size) throw IllegalArgumentException("missing value for --emit-ll\n" + USAGE)
             llOut = args[i + 1]
             i += 2
+        } else if (a == "--target=wasm32") {
+            wasm32 = true
+            i += 1
         } else if (a == "--emit-c") {
             if (i + 1 >= args.size) throw IllegalArgumentException("missing value for --emit-c\n" + USAGE)
             cOut = args[i + 1]
@@ -177,7 +182,7 @@ fun runDriver(args: Array<String>, llvm: LlvmApi?) {
         return
     }
     if (output != null) writeTextFile(output, CEmitter.emit(module, rcOpt))
-    if (llOut != null) writeTextFile(llOut, LlvmEmitter.emit(module, rcOpt))
+    if (llOut != null) writeTextFile(llOut, LlvmEmitter.emit(module, rcOpt, target = if (wasm32) LlvmTarget.WASM32 else LlvmTarget.HOST))
 }
 
 private fun fileNameOf(path: String): String {

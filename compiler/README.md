@@ -804,11 +804,71 @@ times on the dev box: stage1 65 s (C: 81 s), clang on the compiler's IR 60 s (cl
 Run time is at parity (noise is about +-5 %; the self-hosted backend is 3-8 % faster). clang needs about 20 % less time on the `.ll` than on the equivalent C
 (selfhost -O1: 16.8 s vs 21.4 s; no C parsing), the `.ll` is 1.5x the size of the C file.
 
-**wasm32-wasi (stretch).** The box has clang with the `wasm32` target, `wasm-ld` and node 22, but no WASI sysroot (no wasi-libc; the GitHub release is blocked by the sandbox proxy and apt has
-no package), so libminirt cannot be compiled for wasm32 yet. What works: `native-driver prog.mir --backend=llvm --target=wasm32 -o prog.ll` (ILP32 layouts: 12-byte header,
-4-byte pointers and `size_t`) compiles with `clang --target=wasm32 -O2 -c` for the programs tried (hello, fib, classes_basic, exceptions, strings), `wasm-ld --no-entry --export=mk_main --allow-undefined`
-links them, and hello runs under node with a 10-line JS host that provides `mk_println_string` and reads the wasm32 `MkString` layout (`length` at 12, chars at 16): it prints `Hello, Mini!`.
-Needed for the rest: a wasi-libc sysroot (`clang --target=wasm32-wasi --sysroot=...`), libminirt without `alloc_debug.c` (the only pthread user) and without libuv, and `--target=wasm32-wasi`
-plumbing in `Cli` (target triple, `.wasm` output, runtime file list).
+**wasm32-wasi.** Done: `--target=wasm32` IR, libminirt and the whole compiler build for `wasm32-wasip1` and run under `node:wasi`; see "WebAssembly toolchain" below.
 
 **JIT via `lli` (evaluated, dropped).** `lli` with a shared libminirt cannot resolve the thread-local `mk_pending_exception` from JIT-compiled code; making it work needs a runtime accessor or a compiler hook that exists only for the JIT. The real JIT is ORC through the LLVM C API (phase 2).
+
+## WebAssembly toolchain
+
+The browser playground (docs/plan-kotlin.md 10i) runs the **compiler itself as a WASI module** and the prebuilt LLVM of the npm package
+[`@yowasp/clang`](https://www.npmjs.com/package/@yowasp/clang) (YoWASP: clang, wasm-ld, wasi-libc and compiler-rt, all compiled to wasm; pinned to
+`21.1.4-3` in `scripts/wasm/package.json`). Nothing LLVM-related is built by us. The LLVM C API binding stays the native path (JIT, single binary).
+
+```
+prog.kt --minic.wasm--> prog.ll (wasm32 IR) --clang.wasm--> prog.o --clang.wasm/wasm-ld--> prog.wasm  (+ libminirt-wasm32.a, wasi-libc)  --> WASI
+```
+
+| artifact | what | size |
+|---|---|---|
+| `minic.wasm` | `minic-native` (own frontend, memory checker, lowering, RcOpt, `LlvmEmitter`) compiled with `--backend=llvm --target=wasm32`, `clang -O1`, linked with libminirt; 32 MB stack | 4.2 MB (0.64 MB gzip) |
+| `libminirt-wasm32.a`, `minirt-entry-wasm32.o` | `runtime/src/*.c` for `wasm32-wasip1` (`alloc_debug.c` builds as is: wasi-libc has single-threaded pthread stubs; no runtime source needed a guard); the object holds `main` | 66 KB |
+| `stdlib.json` | stdlib `.kt` sources in compilation order (the compiler parses them on every run) | 0.26 MB |
+| `@yowasp/clang` | not ours: `llvm.core.wasm` + `llvm-resources.tar` (wasi sysroot `wasm32-wasip1`, builtins, headers) | 70 + 29 MB (22 + 4 MB gzip) |
+
+**Pipeline commands** (what the browser runs; paths are in the virtual working directory):
+
+```
+minic.wasm --check --brief prog.kt --stdlib <stdlib files>                  # Strict diagnostics (M-codes); exit 1 on errors
+minic.wasm --emit-ll prog.ll --target=wasm32 prog.kt --stdlib <stdlib files>
+clang --target=wasm32-wasip1 -O1 -Wno-override-module -c prog.ll -o prog.o
+clang --target=wasm32-wasip1 prog.o libminirt-wasm32.a minirt-entry-wasm32.o -o prog.wasm
+# run prog.wasm as a WASI command (stdout/stderr/stdin/exit code; /tmp preopened for the mini.io tests)
+```
+
+`minic.wasm` reads sources and stdlib with `mini.io` (`fopen`), so it needs a **preopened directory**: node uses `new WASI({ preopens: { '/work': dir } })`,
+the browser shim an in-memory file system (stdlib.json written under `/work/stdlib/`, the user source as `/work/prog.kt`). Output (`prog.ll`) is written there
+too. `@yowasp/clang` is driven with the same in-memory idea: `commands.clang(args, tree, { stdout, stderr })` takes and returns a tree
+`{ name: string | Uint8Array | subtree }` (its sysroot is built in: `--target=wasm32-wasip1` needs no `--sysroot`). `scripts/wasm/yowasp.mjs` is a
+small node wrapper that mounts real files into that tree and writes the results back.
+
+**Website integration** (`MiniToolchain` contract of `website/.vitepress/theme/playground/types.ts`). `scripts/wasm/pack-site.mjs <toolchain-dir> <out>` writes
+`<out>/manifest.json` and `<out>/<version>/` (`version` = hash of all files; everything below it is immutable) for `website/public/toolchain/`:
+`mini-toolchain.worker.js` (module worker, esbuild bundle of `scripts/wasm/worker/`, which includes `@yowasp/clang`'s JS and fetches its
+`llvm.core*.wasm` / `llvm-resources.tar` next to itself), `minic.wasm` and `stdlib.json` (manifest stage `check`), `libminirt-wasm32.a`, `minirt-entry-wasm32.o`,
+`llvm.core*.wasm`, `llvm-resources.tar` (stage `full`). The worker speaks the `load/check/compile` protocol: `check` and `compile` run `minic.wasm` on an in-memory
+WASI file system (`worker/memwasi.mjs`, 12 imports) and turn its text output into `Diagnostic` objects (`worker/toolchain-core.mjs`); `compile` then runs clang.wasm
+twice (compile, link) and returns the `.wasm` (plus MIR / LLVM IR on request). `scripts/wasm/test-worker.mjs` drives the packed worker through the protocol under
+node (fake `self`, `file:` fetch): load check, M0101 and type-error diagnostics, load full, compile hello and run it, compile errors. Not tested here: a real browser
+(the clang package is loaded by its own bundle, which is written for browsers and node). That is now covered by the Playwright test below.
+
+**Scripts** (all relative to the repository root; `scripts/build-wasm-toolchain.sh` runs them in this order and packs `build/wasm-toolchain.tar.gz`):
+
+| script | |
+|---|---|
+| `scripts/wasm/build-runtime.sh` | libminirt for wasm32 (17 s) |
+| `scripts/wasm/test-programs.sh` | every `compiler/testdata` program through JVM compiler -> clang.wasm -> `node:wasi`, stdout / exit code / `.err` lines like `LlvmEndToEndTest` (53/53 pass; about 2-3 minutes with 4 jobs) |
+| `scripts/wasm/build-minic-wasm.sh` | `minic.wasm`: JVM `emit-mir` of the compiler sources, `native-driver --target=wasm32`, then the **host's clang** (wasm32 target, `-c` on the IR needs no headers) and `wasm-ld` against the sysroot, crt1 and compiler-rt extracted from `@yowasp/clang`'s resources: about 50 s in total. Without a wasm32-capable host clang it falls back to clang.wasm, whose step takes about 29 minutes (the YoWASP build has LLVM assertions on and runs as wasm). Both give a module that passes `test-minic-wasm.sh` with byte-identical IR |
+| `scripts/wasm/test-minic-wasm.sh` | `--check` in wasm (`M0101` for `memory/uaf_simple.kt`, clean for `ok_heap_basic.kt`), and `minic.wasm --emit-ll` -> clang.wasm -> run for hello and testdata programs; the `.ll` must equal the JVM compiler's byte for byte |
+| `scripts/wasm/pack-site.mjs`, `scripts/wasm/test-worker.mjs` | website layout and a protocol test of the worker (see above) |
+| `scripts/wasm/build-one.sh` | one `.kt` file to a `.wasm` with the JVM compiler |
+| `.github/workflows/wasm-toolchain.yml` | the same on CI (artifact `wasm-toolchain`; `workflow_call` for `pages.yml`; the finished bundle is cached by the hash of its inputs) |
+| `website/scripts/e2e-playground.mjs` | headless Chromium (Playwright) against the built site: playground load, Check M0102, Run hello, uncaught exception, reload, notebook Run all, Open in playground (`pages.yml`, push to main) |
+
+**Findings.**
+* wasm32 IR needed no emitter change: all 53 programs run under `node:wasi` with the output of the native build. `minic-native` gained `--target=wasm32` (it is the
+  only entry point in the browser).
+* V8 (Node 22) crashed (segfault) at start of `minic.wasm` when it was linked with `--stack-first -z stack-size=64MB`; wasmtime ran the same file. The default
+  layout with `-z stack-size=32MB` works; keep it.
+* Run time of `minic.wasm` under node: `--check` of a small program 0.7 s including module compile and reading the 262 KB stdlib.
+* C interop programs (`cinterop_*`) are not part of the wasm check: they bind LP64 libc signatures (`strlen` as `Long`; wasm32 `size_t` is 32 bit) and need their own C files.
+* The prebuilt clang loads in about 1 s per invocation under node (one `llvm.core.wasm` instantiation); compiling hello.ll at `-O1` is a few seconds.
