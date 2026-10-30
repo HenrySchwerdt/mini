@@ -407,7 +407,11 @@ public class Axes {
     public fun fill_between(x: Any, y1: Any, y2: Any? = null, label: String = "", color: String = "", alpha: Double = 0.22) {
         val xs = toData(x)
         val a = dataOrScalar(y1, xs.size)
-        val it = add(KIND_FILL, xs, a, label, color)
+        // without a colour the area takes the colour of the line drawn last (or of the next one), and does not use up a palette colour
+        val it = Item(KIND_FILL, xs, a, if (colorCount > 0) colorCount - 1 else 0)
+        it.label = label
+        it.color = color
+        items.add(it)
         it.ys2 = if (y2 == null) DoubleArray(xs.size) { i -> 0.0 } else dataOrScalar(y2, xs.size)
         it.alpha = alpha
     }

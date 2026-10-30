@@ -24,7 +24,7 @@ internal class Theme(
 
 private val TABLEAU: List<String> = listOf("#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac")
 private val DEEP: List<String> = listOf("#4c72b0", "#dd8452", "#55a868", "#c44e52", "#8172b3", "#937860", "#da8bc3", "#8c8c8c", "#ccb974", "#64b5cd")
-private val OKABE: List<String> = listOf("#0072b2", "#e69f00", "#009e73", "#d55e00", "#cc79a7", "#56b4e9", "#f0e442", "#999999")
+private val OKABE: List<String> = listOf("#2a8fd4", "#e69f00", "#009e73", "#d55e00", "#cc79a7", "#56b4e9", "#f0e442", "#999999")
 private val BRIGHT: List<String> = listOf("#6ea8fe", "#ffa94d", "#69db7c", "#ff6b6b", "#b197fc", "#3bc9db", "#ffd43b", "#f783ac", "#a9e34b", "#adb5bd")
 
 /** The names of the styles for `plt.style.use`. */
