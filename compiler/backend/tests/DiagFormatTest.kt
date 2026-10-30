@@ -12,7 +12,7 @@ import mini.backend.memory.DiagStyle
 import mini.backend.memory.MemoryReport
 import mini.backend.memory.Pos
 import mini.backend.memory.Severity
-import java.io.File
+import mini.io.readTextFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,9 +45,9 @@ class DiagFormatTest {
     fun reportNamesEveryCodeOnceWithItsPage() {
         val report = MemoryReport(listOf(diag(), diag(line = 2, col = 5), diag("M0101")), mapOf("" to src), emptyList(), emptyList())
         val text = report.render()
-        assertEquals(1, Regex("note: M0102 ").findAll(text).count(), text)
+        assertEquals(1, occurrences(text, "note: M0102 "), text)
         assertTrue("note: M0101 (Use after free): https://henryschwerdt.github.io/mini/reference/diagnostics/M0101" in text, text)
-        assertEquals(2, Regex("(?m)^error\\[").findAll(report.render(limit = 2)).count())
+        assertEquals(2, report.render(limit = 2).lines().count { it.startsWith("error[") })
         assertEquals(2, report.json(limit = 2).size)
     }
 
@@ -63,11 +63,23 @@ class DiagFormatTest {
 
     @Test
     fun codeTitlesMatchTheDocumentationPages() {
-        val repo = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
-        val meta = File(repo, "website/scripts/diagnostics-meta.json").readText()
-        val codes = Regex("\"(M\\d{4})\": \\{\\s*\"title\": \"([^\"]*)\"").findAll(meta).toList()
+        // `mini test` runs in the package directory (compiler/backend)
+        val meta = readTextFile("../../website/scripts/diagnostics-meta.json")
+        val codes = ArrayList<Pair<String, String>>()
+        var at = 0
+        while (true) {
+            val k = meta.indexOf("\"M", at)
+            if (k < 0) break
+            at = k + 2
+            val code = meta.substring(k + 1, minOf(k + 6, meta.length))
+            if (code.length != 5 || !code.substring(1).all { it in '0'..'9' } || !meta.startsWith("\": {", k + 6)) continue
+            val t = meta.indexOf("\"title\": \"", k)
+            if (t < 0) break
+            val from = t + 10
+            codes.add(Pair(code, meta.substring(from, meta.indexOf('"', from))))
+        }
         assertTrue(codes.size >= 20)
-        for (m in codes) assertEquals(m.groupValues[2], DiagCodes.title(m.groupValues[1]), m.groupValues[1])
+        for ((code, title) in codes) assertEquals(title, DiagCodes.title(code), code)
     }
 
     @Test

@@ -6,7 +6,7 @@
 #   scripts/build-mini.sh [--out <dir>] [--minic-native <path> | --stage0 <path>] [--opt -O1|-O2] [--quiet]
 #
 # Output (default <repo>/build/native), the layout of a release archive:
-#   bin/minic-native   the native compiler          bin/mini   the project tool
+#   bin/minic-native   the native compiler          bin/mini   the project tool          bin/minic  the driver script (scripts/minic.sh)
 #   lib/libminirt.a    the runtime                  include/   minirt.h        stdlib/  (a link to <repo>/stdlib)
 #
 # Where the compiler comes from, in this order:
@@ -54,6 +54,8 @@ newer() {
 rm -rf "$OUT/stdlib"
 ln -s "$ROOT/stdlib" "$OUT/stdlib"
 cp "$ROOT/runtime/include/"*.h "$OUT/include/"
+cp "$ROOT/scripts/minic.sh" "$OUT/bin/minic"
+chmod +x "$OUT/bin/minic"
 
 build_runtime() {
     if ! newer "$OUT/lib/libminirt.a" "$ROOT/runtime/src" "$ROOT/runtime/include"; then return 0; fi

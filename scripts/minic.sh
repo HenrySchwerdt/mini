@@ -374,7 +374,7 @@ frontend() { # <mode: check|build> [<c file>]
 $2
 "
     fi
-    STDFILES="$(find "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
+    STDFILES="$(find -L "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
     # shellcheck disable=SC2086
     set -- $NATIVE_ARGS $SRCLIST --stdlib $STDFILES
     show "$NATIVE" "$@"

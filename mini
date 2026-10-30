@@ -25,7 +25,7 @@ stale() { # the tool is missing or a source it is built from is newer
     [ ! -x "$bin" ] && return 0
     [ -n "$(find "$root/compiler/mini-tool/src" "$root/compiler/mini-tool/host" "$root/compiler/frontend/src" \
         "$root/compiler/lower/src" "$root/compiler/backend/src" "$root/compiler/minic-native/src" \
-        "$root/stdlib" "$root/runtime/src" "$root/runtime/include" -type f -newer "$bin" -print -quit 2>/dev/null)" ]
+        "$root/stdlib" "$root/runtime/src" "$root/runtime/include" "$root/scripts/minic.sh" -type f -newer "$bin" -print -quit 2>/dev/null)" ]
 }
 
 build() {
