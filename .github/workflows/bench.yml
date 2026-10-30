@@ -1,0 +1,77 @@
+name: Benchmarks
+
+# Cross-language benchmark suite (bench/, docs/benchmarks.md "Cross-language baseline"): binary-trees, n-body, fannkuch-redux,
+# spectral-norm, mandelbrot, word-count, string-builder and json-like in C, Rust, Go, Kotlin/JVM, Kotlin/Native and Mini
+# (Managed / Arena / Strict, C and LLVM backends). Manual and weekly, never on pull requests: a shared runner is too noisy to
+# gate a PR, and the suite takes about 30 minutes. The results (JSON and a Markdown table) are uploaded as an artifact and
+# written to the job summary; compare runs of the same runner type only.
+on:
+  workflow_dispatch:
+    inputs:
+      reps:
+        description: Runs per benchmark (the best one is kept)
+        default: '5'
+      only:
+        description: Comma-separated programs (empty = all), e.g. binarytrees,json
+        default: ''
+  schedule:
+    - cron: '17 3 * * 1' # Mondays, 03:17 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench
+  cancel-in-progress: false
+
+env:
+  KOTLIN_VERSION: '2.1.20'
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustc --version
+
+      - name: Kotlin/JVM and Kotlin/Native compilers
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/kotlin-tools" && cd "$HOME/kotlin-tools"
+          base="https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}"
+          curl -fsSL -o kotlinc.zip "$base/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          unzip -q kotlinc.zip
+          curl -fsSL -o kn.tgz "$base/kotlin-native-prebuilt-linux-x86_64-${KOTLIN_VERSION}.tar.gz"
+          tar xzf kn.tgz
+          echo "$HOME/kotlin-tools/kotlinc/bin" >> "$GITHUB_PATH"
+          echo "$HOME/kotlin-tools/kotlin-native-prebuilt-linux-x86_64-${KOTLIN_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Build the Mini compiler
+        working-directory: compiler
+        run: ./gradlew installDist --console=plain
+
+      - name: Run the suite
+        run: |
+          bench/run.sh --reps "${{ github.event.inputs.reps || '5' }}" --stats --out bench/results/ci \
+            ${{ github.event.inputs.only && format('--only {0}', github.event.inputs.only) || '' }}
+
+      - name: Job summary
+        if: always()
+        run: |
+          for f in bench/results/ci/*.md; do [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY"; done || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-results
+          path: bench/results/ci/
+          if-no-files-found: warn
