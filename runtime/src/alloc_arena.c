@@ -12,11 +12,17 @@
 #include "internal.h"
 
 #include <stdint.h>
+#include <string.h>
 
+/* Allocation is a pointer bump: `used` is the offset of the next free byte. Chunks come from calloc and `hw` is the
+ * high-water mark of what has ever been handed out of the chunk: everything at or above it is still zero, so the
+ * zeroed allocation of an object (mk_alloc_sized_site) only clears the part below `hw` (memory reused after a reset)
+ * and costs no memset at all in fresh chunks. */
 typedef struct ArenaChunk {
     struct ArenaChunk *next;
     size_t capacity; /* data bytes */
     size_t used;
+    size_t hw;
 } ArenaChunk;
 
 #define CHUNK_HEADER ((sizeof(ArenaChunk) + MK_MAX_ALIGN - 1) / MK_MAX_ALIGN * MK_MAX_ALIGN)
@@ -29,7 +35,6 @@ typedef struct MkArena {
     ArenaChunk *head, *tail, *current; /* regular chunks */
     ArenaChunk *huge;                  /* dedicated chunks */
     size_t next_size;                  /* data size of the next regular chunk */
-    size_t used_total;                 /* bytes handed out since the last reset */
     size_t reserved;
 #ifdef MK_STATS
     size_t stat_objs, stat_bytes; /* objects allocated through mk_alloc_with since the last reset (statistics) */
@@ -40,11 +45,13 @@ static unsigned char *chunk_data(ArenaChunk *c) { return (unsigned char *)c + CH
 
 static ArenaChunk *chunk_new(MkArena *a, size_t capacity) {
     if (capacity > SIZE_MAX - CHUNK_HEADER) return NULL;
-    ArenaChunk *c = malloc(CHUNK_HEADER + capacity);
+    ArenaChunk *c = calloc(1, CHUNK_HEADER + capacity);
     if (c == NULL) return NULL;
     c->next = NULL;
     c->capacity = capacity;
     c->used = 0;
+    c->hw = 0;
+    MK_STAT_SMALL(MK_SMALL_STAT_ARENA_CHUNK, capacity);
     MK_POISON(chunk_data(c), capacity);
     a->reserved += capacity;
     return c;
@@ -56,29 +63,40 @@ static void chunk_free(MkArena *a, ArenaChunk *c) {
     free(c);
 }
 
-/* Bumps `size` bytes aligned to `align` out of `c`, or NULL if it does not fit. */
-static void *bump(MkArena *a, ArenaChunk *c, size_t size, size_t align) {
+/* Bumps `size` bytes aligned to `align` out of `c`, or NULL if it does not fit. With `zero` the bytes are cleared
+ * (only as far as they may be dirty). */
+static inline void *bump(ArenaChunk *c, size_t size, size_t align, int zero) {
     unsigned char *base = chunk_data(c);
     uintptr_t addr = (uintptr_t)(base + c->used);
     uintptr_t aligned = (addr + (align - 1)) & ~(uintptr_t)(align - 1);
     size_t offset = (size_t)(aligned - (uintptr_t)base);
     if (offset > c->capacity || size > c->capacity - offset) return NULL;
-    a->used_total += offset + size - c->used;
-    c->used = offset + size;
+    size_t end = offset + size;
+    c->used = end;
     MK_UNPOISON(base + offset, size);
+    if (c->hw < end) {
+        if (zero && c->hw > offset) memset(base + offset, 0, c->hw - offset);
+        c->hw = end;
+    } else if (zero) {
+        memset(base + offset, 0, size);
+    }
     return base + offset;
 }
 
-static void *arena_allocate(MkAllocator *self, size_t size, size_t align) {
-    MkArena *a = (MkArena *)self;
+static void *arena_alloc_slow(MkArena *a, size_t size, size_t align, int zero) {
     if (align == 0 || (align & (align - 1)) != 0) return NULL;
     if (size == 0) size = 1;
     if (size > SIZE_MAX / 2 || align > SIZE_MAX / 4) return NULL;
 
-    for (; a->current != NULL; a->current = a->current->next) {
-        void *p = bump(a, a->current, size, align);
+    if (a->current != NULL) {
+        void *p = bump(a->current, size, align, zero);
         if (p != NULL) return p;
-        if (a->current->next == NULL) break;
+    }
+    /* after a reset the chunks behind `current` are empty and reused in order */
+    while (a->current != NULL && a->current->next != NULL) {
+        a->current = a->current->next;
+        void *p = bump(a->current, size, align, zero);
+        if (p != NULL) return p;
     }
 
     size_t need = size + align; /* worst-case padding in a fresh max-aligned chunk */
@@ -88,7 +106,7 @@ static void *arena_allocate(MkAllocator *self, size_t size, size_t align) {
         if (c == NULL) return NULL;
         c->next = a->huge;
         a->huge = c;
-        return bump(a, c, size, align);
+        return bump(c, size, align, zero);
     }
     ArenaChunk *c = chunk_new(a, a->next_size);
     if (c == NULL) return NULL;
@@ -96,7 +114,28 @@ static void *arena_allocate(MkAllocator *self, size_t size, size_t align) {
     a->tail = c;
     a->current = c;
     if (a->next_size < MAX_CHUNK) a->next_size *= 2;
-    return bump(a, c, size, align);
+    return bump(c, size, align, zero);
+}
+
+/* Fast path: the current chunk has room. */
+static inline void *arena_alloc(MkArena *a, size_t size, size_t align, int zero) {
+    ArenaChunk *c = a->current;
+    if (c != NULL && size != 0 && align != 0 && (align & (align - 1)) == 0 && size <= SIZE_MAX / 2) {
+        void *p = bump(c, size, align, zero);
+        if (p != NULL) return p;
+    }
+    return arena_alloc_slow(a, size, align, zero);
+}
+
+static void *arena_allocate(MkAllocator *self, size_t size, size_t align) {
+    return arena_alloc((MkArena *)self, size, align, 0);
+}
+
+/* Zeroed block of `size` bytes aligned to MK_MAX_ALIGN: what mk_alloc_sized_site needs, without the indirect call
+ * through `allocate` and without clearing fresh chunk memory a second time. */
+void *mk_arena_alloc_zeroed(MkAllocator *arena, size_t size) {
+    MK_STAT_SMALL(MK_SMALL_STAT_ARENA_ALLOC, 0);
+    return arena_alloc((MkArena *)arena, size, MK_MAX_ALIGN, 1);
 }
 
 MkAllocator *mk_arena_create(size_t initial) {
@@ -119,11 +158,10 @@ void mk_arena_reset(MkAllocator *arena) {
         a->huge = next;
     }
     for (ArenaChunk *c = a->head; c != NULL; c = c->next) {
-        c->used = 0;
+        c->used = 0; /* c->hw stays: the memory below it is dirty */
         MK_POISON(chunk_data(c), c->capacity);
     }
     a->current = a->head;
-    a->used_total = 0;
 #ifdef MK_STATS
     MK_STAT_FREE_N(a->stat_objs, a->stat_bytes);
     a->stat_objs = a->stat_bytes = 0;
@@ -149,9 +187,9 @@ void mk_arena_destroy(MkAllocator *arena) {
     free(a);
 }
 
-#ifdef MK_STATS
 int mk_arena_is(const MkAllocator *a) { return a != NULL && a->allocate == arena_allocate; }
 
+#ifdef MK_STATS
 void mk_arena_stat_alloc(MkAllocator *a, size_t bytes) {
     MkArena *ar = (MkArena *)a;
     ar->stat_objs++;
@@ -159,5 +197,11 @@ void mk_arena_stat_alloc(MkAllocator *a, size_t bytes) {
 }
 #endif
 
-size_t mk_arena_used(const MkAllocator *arena) { return ((const MkArena *)arena)->used_total; }
+size_t mk_arena_used(const MkAllocator *arena) {
+    const MkArena *a = (const MkArena *)arena;
+    size_t total = 0;
+    for (const ArenaChunk *c = a->head; c != NULL; c = c->next) total += c->used;
+    for (const ArenaChunk *c = a->huge; c != NULL; c = c->next) total += c->used;
+    return total;
+}
 size_t mk_arena_reserved(const MkAllocator *arena) { return ((const MkArena *)arena)->reserved; }

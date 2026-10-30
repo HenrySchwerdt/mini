@@ -21,6 +21,8 @@
 #endif
 
 static MkStats stats;
+static uint64_t small_bytes[7];
+static uint64_t small_stats[7]; /* indexed by the MK_SMALL_STAT_* kinds (internal.h) */
 static int registered;
 
 static void raise_peak(uint64_t *peak, uint64_t value) {
@@ -67,6 +69,12 @@ void mk_stats_on_free_n(size_t objects, size_t bytes) {
     STAT_ADD(&stats.frees, objects);
     STAT_SUB(&stats.live, objects);
     STAT_SUB(&stats.bytes_live, bytes);
+}
+
+void mk_stats_on_small(int kind, size_t n) {
+    if (!STAT_LOAD(&registered)) register_dump();
+    STAT_ADD(&small_stats[kind], 1);
+    STAT_ADD(&small_bytes[kind], (uint64_t)n); /* only meaningful for the chunk kinds */
 }
 
 void mk_stats_on_retain(int kind) {
@@ -133,6 +141,13 @@ void mk_stats_dump(void) {
             "mk-stats: releases=%llu releases_nonatomic=%llu releases_atomic=%llu releases_noop=%llu\n",
             (unsigned long long)s.releases, plain_l, (unsigned long long)s.releases_atomic,
             (unsigned long long)s.releases_noop);
+#define SS(k) (unsigned long long)STAT_LOAD(&small_stats[k])
+#define SB(k) (unsigned long long)STAT_LOAD(&small_bytes[k])
+    fprintf(stderr, "mk-stats: heap_small=%llu heap_large=%llu small_chunks=%llu small_chunk_bytes=%llu central_refills=%llu overflows=%llu\n",
+            SS(MK_SMALL_STAT_SMALL), SS(MK_SMALL_STAT_LARGE), SS(MK_SMALL_STAT_CHUNK), SB(MK_SMALL_STAT_CHUNK),
+            SS(MK_SMALL_STAT_CENTRAL), SS(MK_SMALL_STAT_OVERFLOW));
+    fprintf(stderr, "mk-stats: arena_allocs=%llu arena_chunks=%llu arena_chunk_bytes=%llu\n",
+            SS(MK_SMALL_STAT_ARENA_ALLOC), SS(MK_SMALL_STAT_ARENA_CHUNK), SB(MK_SMALL_STAT_ARENA_CHUNK));
 }
 
 #endif /* MK_STATS */

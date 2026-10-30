@@ -70,6 +70,10 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
  * Marks the object MK_FLAG_FREED with refcount 0 first. */
 void mk_free_object_memory(MkObject *object);
 
+/* alloc_arena.c: is `a` an arena? / zeroed MK_MAX_ALIGN-aligned block of `size` bytes from an arena (NULL on OOM) */
+int mk_arena_is(const MkAllocator *a);
+void *mk_arena_alloc_zeroed(MkAllocator *arena, size_t size);
+
 /* The prefix in front of every heap object (see alloc.c). */
 #define MK_PREFIX_SIZE MK_MAX_ALIGN
 
@@ -78,19 +82,24 @@ void mk_free_object_memory(MkObject *object);
 void mk_stats_on_alloc(size_t bytes);
 void mk_stats_on_free(size_t bytes);
 void mk_stats_on_free_n(size_t objects, size_t bytes); /* an arena dies: all its objects at once */
-int mk_arena_is(const MkAllocator *a);                  /* alloc_arena.c: is `a` an arena? */
 void mk_arena_stat_alloc(MkAllocator *a, size_t bytes); /* an object of `bytes` (prefix included) was allocated in the arena */
+/* allocator-level counters (allocator line of the summary): kinds below, `n` is a count or a byte amount */
+enum { MK_SMALL_STAT_SMALL, MK_SMALL_STAT_LARGE, MK_SMALL_STAT_CHUNK, MK_SMALL_STAT_CENTRAL, MK_SMALL_STAT_OVERFLOW,
+       MK_SMALL_STAT_ARENA_ALLOC, MK_SMALL_STAT_ARENA_CHUNK };
+void mk_stats_on_small(int kind, size_t n);
 void mk_stats_on_retain(int kind);  /* 0 = no-op (NULL / static / stack), 1 = plain, 2 = atomic */
 void mk_stats_on_release(int kind);
 #define MK_STAT_ALLOC(bytes) mk_stats_on_alloc(bytes)
 #define MK_STAT_FREE(bytes) mk_stats_on_free(bytes)
 #define MK_STAT_FREE_N(n, bytes) mk_stats_on_free_n((n), (bytes))
+#define MK_STAT_SMALL(kind, n) mk_stats_on_small((kind), (n))
 #define MK_STAT_RETAIN(kind) mk_stats_on_retain(kind)
 #define MK_STAT_RELEASE(kind) mk_stats_on_release(kind)
 #else
 #define MK_STAT_ALLOC(bytes) ((void)0)
 #define MK_STAT_FREE(bytes) ((void)0)
 #define MK_STAT_FREE_N(n, bytes) ((void)0)
+#define MK_STAT_SMALL(kind, n) ((void)0)
 #define MK_STAT_RETAIN(kind) ((void)0)
 #define MK_STAT_RELEASE(kind) ((void)0)
 #endif
