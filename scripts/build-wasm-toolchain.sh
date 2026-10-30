@@ -13,7 +13,7 @@
 # package @yowasp/clang (scripts/wasm/package.json), which the playground loads as `commands.clang` (see compiler/README.md).
 #
 #   scripts/build-wasm-toolchain.sh [--skip-test]
-# Needs node 22, a JDK 21 and `cd compiler && ./gradlew installDist :native-driver:installDist` (done here when missing).
+# Needs node 22 and the native compiler (build/native/bin/minic-native; `./mini` builds it, done here when missing).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -21,9 +21,7 @@ skip_test=0; [ "${1:-}" = "--skip-test" ] && skip_test=1
 w=build/wasm
 dist=build/wasm-toolchain
 
-if [ ! -x compiler/jvm-bridge/build/install/minic/bin/minic ] || [ ! -x compiler/native-driver/build/install/native-driver/bin/native-driver ]; then
-    (cd compiler && ./gradlew installDist :native-driver:installDist --console=plain)
-fi
+[ -x build/native/bin/minic-native ] || ./mini --version >/dev/null
 [ -d scripts/wasm/node_modules ] || npm ci --prefix scripts/wasm
 
 scripts/wasm/build-runtime.sh "$w"
