@@ -46,5 +46,9 @@ typedef struct node {
 } node_t;
 node_t *node_push(node_t *head, int value);
 void node_free_all(node_t *head);
+/* FloatArray / DoubleArray objects passed as borrowed `void *` (the elements follow the MkArray header, see minirt.h) */
+float farray_sum(void *a, int n);
+void farray_scale(void *a, int n, float k);
+double darray_sum(void *a, int n);
 
 #endif

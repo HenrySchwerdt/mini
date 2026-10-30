@@ -28,7 +28,6 @@ internal fun broadcastStrides(shape: IntArray, out: IntArray): IntArray {
 }
 
 internal fun finish(r: DoubleArray, shape: IntArray, dt: DType): Tensor {
-    r.roundTo(dt)
     return Tensor(r, shape.dup(), dt)
 }
 

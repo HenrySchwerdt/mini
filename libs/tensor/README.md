@@ -53,13 +53,12 @@ Differentiable: arithmetic with broadcasting, `matmul`, reductions, the math fun
 
 ### dtypes
 
-`Float32` (default, like PyTorch), `Float64` and `Int64` (indices, `arange`, `argmax`). Storage is always a `DoubleArray` because the native backend has no `FloatArray` yet:
-a `Float32` tensor rounds every result to single precision, so values behave like float32 but memory use and speed are those of float64.
+`Float32` (default, like PyTorch), `Float64` and `Int64` (indices, `arange`, `argmax`). `Float32` tensors are stored as a real 32-bit `FloatArray` (`t.data` reads and writes `Double`, a store rounds to single precision); `Float64` and `Int64` use a `DoubleArray`. Element-wise operations compute in double and round the result to float32.
 Mixed operations promote like PyTorch (`Int64 < Float32 < Float64`).
 
 ## BLAS backend
 
-`matmul` calls `cblas_dgemm` (and `dgemv`) when a CBLAS library is available **at run time**; otherwise a pure Kotlin kernel runs (i-k-j loop, k blocked, four rows of B per pass).
+`matmul` calls `cblas_dgemm` / `dgemv` (Float64) or `cblas_sgemm` / `sgemv` (Float32, on the `FloatArray` directly) when a CBLAS library is available **at run time**; otherwise a pure Kotlin kernel runs (i-k-j loop, k blocked, four rows of B per pass).
 
 * `native/mt_blas.c` (listed in `c-sources`) opens the library with `dlopen`: `libopenblas.so.0`, `libblis`, `libcblas.so.3`, `libblas.so.3` on Linux; the Accelerate framework on macOS.
   There is no build-time dependency and no flag: a machine without BLAS simply uses the Kotlin kernel. (`apt-get install libopenblas0` to get the fast path.)
@@ -67,7 +66,7 @@ Mixed operations promote like PyTorch (`Int64 < Float32 < Float64`).
   `MINI_TENSOR_BLAS=0` in the environment disables BLAS.
 * All C calls live in `src/Blas.kt`. For a target without C interop (the browser), replace that file by `alt/Blas.kt` and remove `c-sources` from `mini.toml`: the library then runs on the Kotlin kernels only.
 
-The BLAS path is double precision for every dtype: Float32 results are computed in double and rounded (no `sgemm` until the backend has `FloatArray`).
+Float32 products with BLAS run in single precision (like PyTorch); without BLAS (or with `MINI_TENSOR_BLAS=0`) the Kotlin kernel computes in double and rounds the result.
 
 ### Benchmark (`bench/`, 4 core container, clang -O2, one run, noisy machine)
 
