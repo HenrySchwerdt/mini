@@ -7,6 +7,8 @@
 #
 # Output (default <repo>/build/native), the layout of a release archive:
 #   bin/minic-native   the native compiler          bin/mini   the project tool          bin/minic  the driver script (scripts/minic.sh)
+#   lib/stdlib.mlib    the precompiled standard library (docs/mlib.md)
+#   VERSION            the toolchain version (the VERSION file of the repository)
 #   lib/libminirt.a    the runtime                  include/   minirt.h        stdlib/  (a link to <repo>/stdlib)
 #
 # Where the compiler comes from, in this order:
@@ -55,6 +57,7 @@ rm -rf "$OUT/stdlib"
 ln -s "$ROOT/stdlib" "$OUT/stdlib"
 cp "$ROOT/runtime/include/"*.h "$OUT/include/"
 cp "$ROOT/scripts/minic.sh" "$OUT/bin/minic"
+cp "$ROOT/VERSION" "$OUT/VERSION"
 chmod +x "$OUT/bin/minic"
 
 build_runtime() {
@@ -99,6 +102,16 @@ elif compiler_stale; then
     compile_compiler "$s0" "$OUT/bin/minic-native"
 fi
 build_runtime
+
+# --- the precompiled standard library (docs/mlib.md): lib/stdlib.mlib, built by the compiler above
+stdlib_mlib_stale() { newer "$OUT/lib/stdlib.mlib" "$ROOT/stdlib" "$OUT/bin/minic-native" "$ROOT/VERSION"; }
+if stdlib_mlib_stale; then
+    say "stdlib.mlib"
+    # relative paths (stdlib/kotlin/...): what diagnostics and debuggers show for library code, whatever the checkout is called
+    # shellcheck disable=SC2046
+    (cd "$ROOT" && "$OUT/bin/minic-native" --emit-mlib "$OUT/lib/stdlib.mlib.tmp" --name stdlib --compiler-id "$(cat VERSION)" --no-memory-check $(find stdlib -name '*.kt' | LC_ALL=C sort))
+    mv "$OUT/lib/stdlib.mlib.tmp" "$OUT/lib/stdlib.mlib"
+fi
 
 # --- mini itself, compiled by the native compiler
 tool_stale() { newer "$OUT/bin/mini" "${TOOL_DIRS[@]}" "$HOST_C" "$ROOT/stdlib" "$ROOT/runtime/src" "$ROOT/runtime/include" "$OUT/bin/minic-native"; }

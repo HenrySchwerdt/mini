@@ -65,6 +65,8 @@ class IrFile(val path: String, val text: String, val packageFqName: String, val 
     val declarations = ArrayList<IrDeclaration>()
     var annotations: List<IrAnnotation> = emptyList()
     var isBuiltin = false
+    /** An API stub of a precompiled library (docs/mlib.md): declarations only, nothing of it is converted to MIR. */
+    var isLib = false
     private var lineStarts: IntArray? = null
 
     /** the file name without directories */
@@ -151,6 +153,8 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
     lateinit var returnType: Type
     var bodyValue: IrBody? = null
     var bodyBuilder: (() -> IrBody?)? = null
+    /** The body is not part of the API stub of a library: [body] is null, [hasBody] still says whether the source had one. */
+    var stub = false
     var visibility: String = "public"
     var modality: IrModality = IrModality.FINAL
     var isInline = false
@@ -165,6 +169,7 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
 
     var body: IrBody?
         get() {
+            if (stub) return null
             val b = bodyBuilder
             if (b != null) {
                 bodyBuilder = null
@@ -248,6 +253,7 @@ class IrProperty(val name: String, val sym: PropSym?) : IrDeclaration() {
 }
 
 class IrField(val name: String, var type: Type) : IrDeclaration() {
+    var stub = false
     var initializerBuilder: (() -> IrExpressionBody?)? = null
     var initializerValue: IrExpressionBody? = null
     var isStatic = false
@@ -256,6 +262,7 @@ class IrField(val name: String, var type: Type) : IrDeclaration() {
 
     var initializer: IrExpressionBody?
         get() {
+            if (stub) return null
             val b = initializerBuilder
             if (b != null) {
                 initializerBuilder = null
@@ -270,12 +277,14 @@ class IrField(val name: String, var type: Type) : IrDeclaration() {
 }
 
 class IrEnumEntry(val name: String) : IrDeclaration() {
+    var stub = false
     var initializerBuilder: (() -> IrExpressionBody?)? = null
     var initializerValue: IrExpressionBody? = null
     var correspondingClass: IrClass? = null
 
     var initializerExpression: IrExpressionBody?
         get() {
+            if (stub) return null
             val b = initializerBuilder
             if (b != null) {
                 initializerBuilder = null
@@ -290,10 +299,12 @@ class IrEnumEntry(val name: String) : IrDeclaration() {
 }
 
 class IrAnonymousInitializer : IrDeclaration() {
+    var stub = false
     var bodyBuilder: (() -> IrBlockBody)? = null
     var bodyValue: IrBlockBody? = null
     val body: IrBlockBody
         get() {
+            if (stub) return IrBlockBody(ArrayList())
             val b = bodyBuilder
             if (b != null) {
                 bodyBuilder = null

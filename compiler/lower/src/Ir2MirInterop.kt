@@ -296,7 +296,7 @@ private fun Ir2Mir.staticCFunction(c: IrCall, raw: List<IrExpression>, out: Muta
         val ptypes = ArrayList<MirType>()
         for (p in fn.parameters) ptypes.add(cCallbackType(p.type, p, false))
         val ret = cCallbackType(fn.returnType, fn, true)
-        val cName = Mangling.function("", currentFunctionName() + "\$cfun\$" + n, ptypes)
+        val cName = Mangling.function("", currentFunctionName() + "\$cfun\$" + nameTag + n, ptypes)
         val mf = inFreshFunction {
             currentFunction = fn
             currentReturn = ret
@@ -322,7 +322,7 @@ private fun Ir2Mir.staticCFunction(c: IrCall, raw: List<IrExpression>, out: Muta
         val ptypes = ArrayList<MirType>()
         for (p in target.parameters) ptypes.add(cCallbackType(p.type, p, false))
         val ret = cCallbackType(target.returnType, target, true)
-        val wrapper = Mangling.function("", currentFunctionName() + "\$cfun\$" + n, ptypes)
+        val wrapper = Mangling.function("", currentFunctionName() + "\$cfun\$" + nameTag + n, ptypes)
         val params = ArrayList<MirLocal>()
         val callArgs = ArrayList<MirExpr>()
         var i = 0

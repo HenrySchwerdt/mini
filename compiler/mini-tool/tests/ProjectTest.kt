@@ -248,7 +248,10 @@ class ProjectTest {
         assertEquals(0, p.mini("help", "build"))
         assertTrue(p.out.contains("Usage: mini build"))
         assertEquals(0, p.mini("--version"))
-        assertTrue(p.out.contains("mini ${Mini.VERSION}"))
+        // the toolchain version (the VERSION file of the installation), not a version of the tool's own
+        assertTrue(p.out.contains("mini " + Mini.version(p)))
+        assertTrue(!p.out.contains("mini 0.1.0"), p.out.toString())
+        assertTrue(!p.out.contains("mini " + Mini.UNKNOWN_VERSION), "the installation under test has no VERSION file: " + p.out.toString())
         p.reset()
         assertEquals(2, p.mini("buld"))
         assertTrue(p.err.contains("did you mean `build`?"))

@@ -141,7 +141,7 @@ internal fun Ir2Mir.closureClass(
     val retType: MirType = sam?.ret ?: anyNullable
     val n = lambdaCounter++
     val qualified = "$hint\$$n"
-    val cName = Mangling.className("", listOf("\$closure$n"))
+    val cName = Mangling.className("", listOf("\$closure$nameTag$n"))
     val type = TObject(qualified, cName, false)
     val fields = capTypes.mapIndexed { i, t -> MirField("c$i", t) }
     // constructor
@@ -290,7 +290,7 @@ internal fun Ir2Mir.liftLocalFunction(f: IrSimpleFunction) {
     val outerName = currentFunctionName()
     val paramTypes = f.parameters.map { mirType(it.type, it) }
     val capTypes = caps.map { capturedType(it) }
-    val cName = Mangling.function("", "$outerName\$${f.name}\$$n", capTypes + paramTypes)
+    val cName = Mangling.function("", "$outerName\$${f.name}\$$nameTag$n", capTypes + paramTypes)
     liftedFns[f] = LiftedFn(cName, caps)
     val fn = inFreshFunction {
         currentFunction = f
