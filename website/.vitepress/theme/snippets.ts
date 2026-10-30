@@ -12,7 +12,9 @@
  *   ```kotlin check=M0102     ... expected: error M0102   (`check=warn:M0202`: warning, `check=ok`: none)
  *   ```kotlin fresh           (notebook pages) do not share declarations with the cells above
  *   ```kotlin chain           share declarations with the cells above even on a page without `notebook: true`
- *   ```kotlin exercise        an exercise: the next ```output block is the goal, not a checked expectation
+ *   ```kotlin exit=1          the program is expected to end with this exit status (an uncaught exception)
+ *   ```kotlin exercise        an exercise: the next ```output block is the goal, not a checked expectation. With `check=CODE` it is a check
+ *                             exercise: the starter is expected to report CODE (verified in CI), the goal is a program without diagnostics
  * A ```output fence directly after a runnable cell is its expected output: shown as a hint, compared in the browser
  * and verified in CI.
  * `<<< @/samples/x.kt{kotlin}` includes follow the files next to the sample instead: `x.out` makes a Run cell,
@@ -41,6 +43,8 @@ export interface CellSpec {
   expected?: string
   /** Expectation of a check cell. */
   expect?: CheckExpectation
+  /** Exit status the program is expected to end with (default 0), e.g. a program that ends with an uncaught exception: `exit=1`. */
+  exit?: number
   /** Sample file (relative to `website/samples`) the code was included from. */
   from?: string
 }
@@ -112,8 +116,14 @@ export function decideCell(i: DecideInput): Omit<CellSpec, 'index'> | undefined 
     return { ...base, kind: 'run', chain, expected: i.sample.out, from: i.sample.path }
   }
   if (flags.has('check')) return { ...base, kind: 'check', chain: false, expect: parseCheckFlag(flags.get('check')) }
-  if (!flags.has('run') && !hasMain(i.source)) return undefined
-  return { ...base, kind: 'run', chain: wantsChain(flags, i.source, i.notebookPage), expected: i.output }
+  // On a notebook page every fragment is a cell (mark pseudo code `norun`); elsewhere only complete programs and `run` fragments.
+  if (!flags.has('run') && !hasMain(i.source) && !i.notebookPage) return undefined
+  return { ...base, kind: 'run', chain: wantsChain(flags, i.source, i.notebookPage), expected: i.output, ...exitOf(flags) }
+}
+
+function exitOf(flags: Map<string, string | true>): { exit?: number } {
+  const v = flags.get('exit')
+  return typeof v === 'string' && /^\d+$/.test(v) ? { exit: Number(v) } : {}
 }
 
 function wantsChain(flags: Map<string, string | true>, source: string, notebookPage: boolean): boolean {

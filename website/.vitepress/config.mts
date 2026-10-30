@@ -29,32 +29,68 @@ export default withMermaid(
       logo: '/logo.svg',
       siteTitle: 'Mini',
       nav: [
+        { text: 'Learn', link: '/learn/', activeMatch: '/learn/' },
+        { text: 'Install', link: '/install' },
         { text: 'Guide', link: '/guide/getting-started', activeMatch: '/guide/' },
-        { text: 'Language tour', link: '/tour/', activeMatch: '/tour/' },
+        {
+          text: 'Reference',
+          activeMatch: '/reference/|/stdlib',
+          items: [
+            { text: 'mini: the project tool', link: '/reference/mini' },
+            { text: 'minic: the compiler', link: '/reference/minic' },
+            { text: 'Diagnostics', link: '/reference/diagnostics/' },
+            { text: 'Standard library', link: '/stdlib' },
+          ],
+        },
         { text: 'Memory', link: '/memory/', activeMatch: '/memory/' },
-        { text: 'Diagnostics', link: '/reference/diagnostics/', activeMatch: '/reference/' },
         { text: 'Playground', link: '/playground' },
-        { text: 'Notebook', link: '/notebook' },
-        { text: 'How it works', link: '/internals/', activeMatch: '/internals/' },
         {
           text: 'More',
           items: [
-            { text: 'Standard library', link: '/stdlib' },
+            { text: 'Notebook', link: '/notebook' },
+            { text: 'Language tour (listings)', link: '/tour/' },
+            { text: 'How it works', link: '/internals/' },
             { text: 'Benchmarks', link: '/benchmarks' },
             { text: 'Roadmap and status', link: '/roadmap' },
           ],
         },
       ],
       sidebar: {
+        '/learn/': [
+          {
+            text: 'Learn Mini',
+            items: [
+              { text: 'Introduction', link: '/learn/' },
+              { text: '1. Hello, Mini', link: '/learn/hello' },
+              { text: '2. Values, functions, control flow', link: '/learn/basics' },
+              { text: '3. Classes, data and sealed types', link: '/learn/classes' },
+              { text: '4. Lambdas, collections, strings', link: '/learn/collections' },
+              { text: '5. Null safety and exceptions', link: '/learn/errors' },
+            ],
+          },
+          {
+            text: 'What makes Mini different',
+            items: [
+              { text: '6. Memory: managed by default', link: '/learn/memory-managed' },
+              { text: '7. Allocators and arenas', link: '/learn/memory-allocators' },
+              { text: '8. Strict mode', link: '/learn/memory-strict' },
+              { text: '9. C interop', link: '/learn/c-interop' },
+              { text: '10. Performance', link: '/learn/performance' },
+              { text: '11. The @ operator', link: '/learn/matrix' },
+            ],
+          },
+        ],
         '/guide/': [
           {
             text: 'Guide',
             items: [
+              { text: 'Install', link: '/install' },
               { text: 'Getting started', link: '/guide/getting-started' },
               { text: 'Mini and Kotlin/JVM', link: '/guide/mini-vs-kotlin' },
               { text: 'C interop', link: '/guide/c-interop' },
               { text: 'Command line', link: '/reference/cli' },
               { text: 'Playground and notebook', link: '/guide/playground' },
+              { text: 'Learn Mini (tutorial)', link: '/learn/' },
             ],
           },
         ],
@@ -98,7 +134,10 @@ export default withMermaid(
             text: 'Reference',
             items: [
               { text: 'Command line', link: '/reference/cli' },
+              { text: 'mini: the project tool', link: '/reference/mini' },
+              { text: 'minic: the compiler', link: '/reference/minic' },
               { text: 'Diagnostics', link: '/reference/diagnostics/' },
+              { text: 'Standard library', link: '/stdlib' },
             ],
           },
         ],

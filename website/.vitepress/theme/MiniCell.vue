@@ -115,6 +115,12 @@ async function go(kind: 'run' | 'check'): Promise<boolean> {
         return false
       }
       diags.value = prog.map(r.diagnostics)
+      if (spec.exercise) {
+        // the goal of a check exercise is a clean program, whatever the broken starter reports
+        const clean = meetsExpectation(r.diagnostics, { kind: 'ok' })
+        if (clean) verdict.value = 'match'
+        return clean
+      }
       const met = spec.expect ? meetsExpectation(r.diagnostics, spec.expect) : !r.diagnostics.some((d) => d.severity === 'error')
       if (spec.expect && met) verdict.value = 'match'
       else if (spec.expect && !modified.value) verdict.value = 'differs'
@@ -138,11 +144,11 @@ async function go(kind: 'run' | 'check'): Promise<boolean> {
     }
     result.value = out.run ?? null
     if (!out.run) return false
-    if (spec.expected !== undefined && out.run.exitCode === 0) {
+    if (spec.expected !== undefined && out.run.exitCode === (spec.exit ?? 0)) {
       if (sameOutput(stdout, spec.expected)) verdict.value = 'match'
       else if (!modified.value) verdict.value = 'differs'
     }
-    return out.run.exitCode === 0
+    return out.run.exitCode === (spec.exit ?? 0)
   } finally {
     phase.value = ''
     abort = undefined
@@ -256,6 +262,7 @@ const showPanel = computed(
       <button v-if="!editing" type="button" class="mc-btn" title="Edit this code" @click="startEdit">Edit</button>
       <button v-if="editing" type="button" class="mc-btn" title="Back to the original code" @click="reset">Reset</button>
       <span v-if="status" class="mc-status">{{ status }}<template v-if="status.startsWith('Loading')"> (first use)</template></span>
+      <span v-else-if="isCheck && spec.exercise" class="mc-hint">Goal: no diagnostics</span>
       <span v-else-if="isCheck && spec.expect" class="mc-hint">Expected: {{ describeExpectation(spec.expect) }}</span>
       <span class="mc-spacer"></span>
       <button type="button" class="mc-btn ghost" title="Open this code in the playground" @click="openInPlayground">Playground</button>
@@ -279,7 +286,7 @@ const showPanel = computed(
       <p v-if="checkSummary" class="mc-sum">{{ checkSummary }}</p>
       <RunOutput v-if="hasOutput" :segments="segments" :result="result" />
       <p v-if="verdict === 'match'" class="mc-verdict ok">
-        {{ isCheck ? 'Matches the documented result.' : spec.exercise ? 'Matches the goal.' : 'Matches the documented output.' }}
+        {{ isCheck && spec.exercise ? 'Fixed: the checker accepts the program.' : isCheck ? 'Matches the documented result.' : spec.exercise ? 'Matches the goal.' : 'Matches the documented output.' }}
       </p>
       <p v-else-if="verdict === 'differs'" class="mc-verdict bad">
         {{ isCheck ? 'The checker reports something other than the documentation says.' : 'The output differs from the documented output.' }}

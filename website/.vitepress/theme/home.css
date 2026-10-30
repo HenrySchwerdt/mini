@@ -1,0 +1,43 @@
+/* Landing page */
+:root {
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #6d4aff 25%, #c14bff);
+}
+.dark {
+  --vp-home-hero-name-background: linear-gradient(120deg, #a28bff 25%, #e08bff);
+}
+.VPHome .vp-doc .home-body {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 8px 24px 56px;
+}
+.VPHome .vp-doc .home-body h2 {
+  border-top: none;
+  margin-top: 40px;
+}
+@media (min-width: 960px) {
+  .VPHero.has-image .container {
+    align-items: center;
+  }
+  .VPHero.has-image .image {
+    order: 2;
+    margin: 0;
+    max-width: 540px;
+  }
+  .VPHero.has-image .main {
+    max-width: 520px;
+  }
+}
+@media (max-width: 959px) {
+  .VPHero.has-image .image {
+    margin-top: 28px;
+    width: 100%;
+  }
+  .VPHero .image-container {
+    height: auto !important;
+  }
+}
+.VPFeature .icon img {
+  width: 28px;
+  height: 28px;
+}

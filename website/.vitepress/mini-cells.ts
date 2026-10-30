@@ -7,7 +7,7 @@
  * programs CI has to verify.
  */
 import { existsSync, readFileSync } from 'node:fs'
-import type MarkdownIt from 'markdown-it'
+import type { default as MarkdownItClass } from 'markdown-it'
 import { decideCell, isKotlin, parseFenceInfo, type CellSpec } from './theme/snippets.ts'
 
 const SAMPLES_MARK = '/samples/'
@@ -17,7 +17,7 @@ function sidecar(sampleFile: string, ext: string): string | undefined {
   return existsSync(f) ? readFileSync(f, 'utf8') : undefined
 }
 
-export function miniCellsPlugin(md: MarkdownIt) {
+export function miniCellsPlugin(md: InstanceType<typeof MarkdownItClass>) {
   // A ```output fence right after a Kotlin fence is that cell's expected output: take it out of the token stream.
   md.core.ruler.push('mini_cell_output', (state) => {
     const toks = state.tokens
@@ -50,7 +50,7 @@ export function miniCellsPlugin(md: MarkdownIt) {
         norun: existsSync(src.replace(/\.kt$/, '.norun')),
       }
     }
-    const frontmatter = (env.frontmatter ?? {}) as { notebook?: boolean }
+    const frontmatter = (env?.frontmatter ?? {}) as { notebook?: boolean }
     const source = token.content.replace(/\n$/, '') + '\n'
     const decided = decideCell({
       info: token.info,
