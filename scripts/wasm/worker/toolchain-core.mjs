@@ -13,19 +13,39 @@ const WORK = '/work'
  * @param {(args: string[], files: object, options: object) => Promise<object>} [a.clang]   `commands.clang` of @yowasp/clang (level full)
  * @param {Uint8Array} [a.libminirt]          libminirt-wasm32.a
  * @param {Uint8Array} [a.entry]              minirt-entry-wasm32.o
+ * @param {{name: string, packages: string[], files: {path: string, text: string}[]}[]} [a.libs]
+ *        preinstalled libraries (libs.json, built by pack-libs.mjs): their sources are compiled together with the program
+ *        when the program mentions one of their packages (`import mini.plot.*`), like a path dependency of `mini build`
  */
-export function createCore({ minic, stdlib, clang, libminirt, entry }) {
+export function createCore({ minic, stdlib, clang, libminirt, entry, libs = [] }) {
     const stdlibPaths = stdlib.map(f => `${WORK}/stdlib/${f.path}`)
     const stdlibBytes = stdlib.map(f => enc.encode(f.text))
 
     const safeName = n => n.replace(/^\/+/, '').replace(/\.\.\//g, '')
+
+    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const libMatchers = libs.map(l => new RegExp(`(?<![\\w.])(?:${l.packages.map(escape).join('|')})(?![\\w])`))
+
+    /** Library files the program needs, as [path, text] pairs below /work/libs. */
+    function libFilesFor(files) {
+        const out = []
+        libs.forEach((l, i) => {
+            if (files.some(f => libMatchers[i].test(f.text))) for (const f of l.files) out.push([`${WORK}/libs/${l.name}/${f.path}`, f.text])
+        })
+        return out
+    }
 
     async function runMinic(files, flags, extraOut = []) {
         const fs = new Map()
         stdlib.forEach((f, i) => fs.set(stdlibPaths[i], stdlibBytes[i]))
         const userPaths = files.map(f => `${WORK}/${safeName(f.name)}`)
         files.forEach((f, i) => fs.set(userPaths[i], enc.encode(f.text)))
-        const r = await runCommand(minic, ['minic', ...flags, ...userPaths, '--stdlib', ...stdlibPaths], fs)
+        const libPaths = []
+        for (const [path, text] of libFilesFor(files)) {
+            fs.set(path, enc.encode(text))
+            libPaths.push(path)
+        }
+        const r = await runCommand(minic, ['minic', ...flags, ...userPaths, ...libPaths, '--stdlib', ...stdlibPaths], fs)
         const dec = new TextDecoder()
         const outputs = {}
         for (const p of extraOut) if (fs.has(p)) outputs[p] = dec.decode(fs.get(p))

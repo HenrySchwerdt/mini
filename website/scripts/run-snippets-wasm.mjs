@@ -7,12 +7,15 @@
 //
 // <toolchain-dir> is website/public/toolchain (or the deployed one). The cells are the samples next to which the docs
 // show a Run or Check button (NAME.out / NAME.check, without NAME.norun) and the programs of scripts/extract-snippets.mjs.
+// Display bundles (docs/display.md) in the output are replaced by `[display: <mime>]` lines before the comparison. Libraries of the
+// toolchain (libs.json, `import mini.plot.*`) are compiled in by the worker like in the browser.
 import { existsSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { WASI } from 'node:wasi'
+import { splitOutput } from '../.vitepress/theme/playground/display.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const site = resolve(here, '..')
@@ -103,7 +106,7 @@ for (const kt of [...files(join(site, 'samples')), ...files(snippets)]) {
     if (!r.wasm) { bad(`does not compile: ${JSON.stringify(r.diagnostics.slice(0, 2).map((d) => `${d.line}:${d.col} ${d.message}`))}`); continue }
     const res = await runWasm(r.wasm)
     if (res.code !== (Number(run?.trim()) || 0)) bad(`exit status ${res.code}: ${res.out.slice(-200)}`)
-    else if (out !== undefined && norm(res.out) !== norm(out)) bad(`output differs:\n--- expected\n${out}\n--- got\n${res.out}`)
+    else if (out !== undefined && norm(splitOutput(res.out).text) !== norm(out)) bad(`output differs:\n--- expected\n${out}\n--- got\n${res.out}`)
     else { pass++; console.log(`ok    ${name} (run)`) }
   } catch (e) {
     bad(`exception: ${e.message}`)

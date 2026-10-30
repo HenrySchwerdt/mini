@@ -1,0 +1,4 @@
+[package]
+name = "mini-plot"
+version = "0.1.0"
+kind = "lib"

@@ -116,6 +116,20 @@ a.mp-diag-code:hover { text-decoration: underline; }
 .mp-output .meta { color: var(--vp-c-text-3); }
 .mp-output .meta.bad { color: var(--mp-stderr); }
 .mp-output .meta.good { color: var(--mp-ok); }
+
+/* rich output (display.ts, DisplayOutput.vue) */
+.mp-display { margin: 0; padding: 10px 14px; overflow-x: auto; }
+.mp-display + .mp-output, .mp-output + .mp-display { border-top: 1px dashed var(--vp-c-divider); }
+.mp-svg { color: var(--vp-c-text-1); }
+.mp-svg svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.mp-svg-img { display: block; max-width: 100%; height: auto; margin: 0 auto; background: #fff; border-radius: 4px; }
+.mp-html { display: block; width: 100%; height: 240px; border: 1px solid var(--vp-c-divider); border-radius: 6px; background: var(--vp-c-bg); resize: vertical; }
+.mp-table-wrap { overflow-x: auto; }
+.mp-table { border-collapse: collapse; font-size: 13px; margin: 0; display: table; }
+.mp-table th, .mp-table td { border: 1px solid var(--vp-c-divider); padding: 4px 10px; text-align: left; }
+.mp-table th { background: var(--vp-c-bg-soft); }
+.mp-text { margin: 0; font-family: var(--vp-font-family-mono); font-size: 13px; white-space: pre-wrap; }
+.mp-unknown { color: var(--vp-c-text-3); }
 .mp-empty { color: var(--vp-c-text-3); font-size: 13px; padding: 10px 14px; }
 
 /* status banner */

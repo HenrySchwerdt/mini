@@ -1,7 +1,7 @@
 // Module worker of the Mini toolchain (protocol: website/.vitepress/theme/playground/types.ts, ToolchainRequest/Response).
 // Bundled with esbuild into `mini-toolchain.worker.js` (scripts/wasm/pack-site.sh); the @yowasp/clang wasm files sit next to it.
 //
-//   load  level check : minic.wasm + stdlib.json
+//   load  level check : minic.wasm + stdlib.json (+ libs.json, the preinstalled libraries, when the toolchain has it)
 //   load  level full  : + libminirt-wasm32.a, minirt-entry-wasm32.o and clang/wasm-ld (the @yowasp/clang modules, fetched by the package itself)
 import { commands } from '@yowasp/clang'
 import { createCore } from './toolchain-core.mjs'
@@ -51,6 +51,12 @@ async function load(id, level, manifestUrl) {
         assets.minic = await WebAssembly.compile(bytes)
         const std = await fetchBytes(file('stdlib.json'), 'Loading the standard library', 'stdlib', id, state)
         assets.stdlib = JSON.parse(new TextDecoder().decode(std)).files
+        // preinstalled libraries (mini.plot, ...): optional, absent from older toolchains
+        assets.libs = []
+        if (manifest.files.some(f => f.path.endsWith('/libs.json'))) {
+            const libs = await fetchBytes(file('libs.json'), 'Loading the libraries', 'libs', id, state)
+            assets.libs = JSON.parse(new TextDecoder().decode(libs)).libs
+        }
     }
     if (level === 'full' && !assets.libminirt) {
         assets.libminirt = await fetchBytes(file('libminirt-wasm32.a'), 'Loading the Mini runtime', 'runtime', id, state)
@@ -68,7 +74,7 @@ async function load(id, level, manifestUrl) {
     }
     loaded = level === 'full' ? 'full' : loaded ?? 'check'
     core = createCore({
-        minic: assets.minic, stdlib: assets.stdlib,
+        minic: assets.minic, stdlib: assets.stdlib, libs: assets.libs,
         clang: loaded === 'full' ? commands.clang : undefined, libminirt: assets.libminirt, entry: assets.entry,
     })
     return {
