@@ -111,7 +111,7 @@ fi
 build_runtime
 
 # --- mini itself, compiled by the native compiler
-tool_stale() { newer "$OUT/bin/mini" "${TOOL_DIRS[@]}" "$HOST_C" "$ROOT/stdlib" "$ROOT/runtime" "$OUT/bin/minic-native"; }
+tool_stale() { newer "$OUT/bin/mini" "${TOOL_DIRS[@]}" "$HOST_C" "$ROOT/stdlib" "$ROOT/runtime/src" "$ROOT/runtime/include" "$OUT/bin/minic-native"; }
 if tool_stale || [ -n "$GIVEN" ] || [ -n "$STAGE0" ] || [ -n "$JVM_MINIC" ]; then
     say "mini: compiled by minic-native ($OPT)"
     TOOL_SRCS="$(find "${TOOL_DIRS[@]}" -name '*.kt' -not -path '*/jvm/*' | LC_ALL=C sort)"

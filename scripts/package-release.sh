@@ -12,6 +12,7 @@
 # Output: <out>/mini-<version>-<target>.tar.gz containing
 #   bin/minic          shell wrapper: `minic build foo.kt -o foo` (compiler, then cc with the bundled runtime)
 #   bin/minic-native   the self-hosted native compiler (the C of stage3, built with -O2)
+#   bin/mini           the project tool (new, build, run, test, check, ...): Kotlin compiled by bin/minic-native, no JVM
 #   lib/libminirt.a    the runtime, prebuilt;  include/minirt.h
 #   stdlib/            the standard library sources (compiled together with every program)
 #   LICENSE NOTICE README.md
@@ -46,6 +47,12 @@ mkdir -p "$STAGE/bin" "$STAGE/lib" "$STAGE/include"
 
 echo "== minic-native (-O2)"
 "$CC" -std=c17 -O2 -w -I "$ROOT/runtime/include" "$WORK/stage3.c" "$ROOT"/runtime/src/*.c -o "$STAGE/bin/minic-native" -lm
+
+echo "== mini (-O2, compiled by the minic-native above)"
+MINI_BUILD="$(mktemp -d)"
+"$ROOT/scripts/build-mini.sh" --minic-native "$STAGE/bin/minic-native" --out "$MINI_BUILD" --opt -O2 --quiet
+cp "$MINI_BUILD/bin/mini" "$STAGE/bin/mini"
+rm -rf "$MINI_BUILD"
 
 echo "== libminirt.a (-O2)"
 OBJ="$(mktemp -d)"
@@ -116,11 +123,13 @@ echo "$VERSION" > "$STAGE/VERSION"
 cat > "$STAGE/README.md" <<EOF
 # Mini $VERSION ($TARGET)
 
-Kotlin compiled to native code. Needs a C compiler (clang or gcc) on the PATH; no JDK.
+Kotlin compiled to native code. Needs a C compiler (clang or gcc) on the PATH; no JDK, no Gradle.
 
     export PATH="\$PWD/bin:\$PATH"
-    minic build hello.kt -o hello && ./hello
+    mini new hello && cd hello && mini run        # a project: mini new, build, run, test, check, ...
+    minic build hello.kt -o hello && ./hello      # or a single file
 
+* \`bin/mini\`          the project tool, itself compiled by Mini (\`mini help\` lists the commands)
 * \`bin/minic\`         build driver (\`build\`, \`emit-c\`, \`version\`); runs \`bin/minic-native\`, then \`cc\` with \`lib/libminirt.a\`
 * \`bin/minic-native\`  the self-hosted compiler: \`minic-native [-o out.c] [--emit-mir out.mir] <user.kt>... --stdlib <files>...\`
 * \`lib/libminirt.a\`, \`include/\`  the C runtime

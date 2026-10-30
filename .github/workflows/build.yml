@@ -36,6 +36,8 @@ jobs:
               - 'runtime/**'
               - 'examples/**'
               - 'minic'
+              - 'mini'
+              - 'install.sh'
               - 'scripts/**'
               - '.github/workflows/build.yml'
 
@@ -67,7 +69,7 @@ jobs:
         # All shards on Linux; macOS runs every shard on main and only the platform-sensitive
         # ones (e2e, selfhost, modules) on pull requests, since macOS runners are scarce.
         os: ${{ fromJSON(github.ref == 'refs/heads/main' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
-        # `stage0` (bootstrap from the latest release's native compiler, ~1 min) runs everywhere; `bootstrap` (from the
+        # `stage0` (bootstrap from the latest release's native compiler, then the native `mini` tool and its smoke test, ~2 min) runs everywhere; `bootstrap` (from the
         # JVM stage1, ~4 min, guards the K2 path) only on main.
         shard: ${{ fromJSON(github.ref == 'refs/heads/main' && '["modules","e2e","llvm","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","selfcompare","stage0","bootstrap"]' || '["modules","e2e","llvm","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","selfcompare","stage0"]') }}
         include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"selfhost"},{"os":"macos-latest","shard":"modules"}]') }}
@@ -101,7 +103,9 @@ jobs:
             selfcompare)       ./gradlew :jvm-bridge:installDist --console=plain && python3 selfcompare.py; exit ;;
             # B3 from the latest release: native stage0 -> stage1 -> stage2 -> stage3 without JVM and K2.
             # Falls back to the JVM stage1 when there is no release (yet) or the download fails.
-            stage0)            ../scripts/ci-stage0.sh "$RUNNER_TEMP/stage0"; exit ;;
+            # Then the native `mini` project tool is built by that stage3 compiler (no JVM) and smoke-tested:
+            # mini new, build, run, test, check.
+            stage0)            ../scripts/ci-stage0.sh "$RUNNER_TEMP/stage0" && ../scripts/ci-mini-smoke.sh "$RUNNER_TEMP/stage0"; exit ;;
             # B3: stage1 -> stage2 -> stage3 without K2, stage2 == stage3 byte for byte.
             bootstrap)         ./gradlew :jvm-bridge:installDist --console=plain && ./bootstrap.sh "$RUNNER_TEMP/b3"; exit ;;
           esac
