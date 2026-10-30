@@ -478,6 +478,17 @@ fun BodyChecker.infixCall(e: BinaryExpr, expected: Type?): Type {
     return res.ret
 }
 
+/** `set` for `a[i]++` / `--a[i]`: the operator that stores the incremented element (the value type is the result of inc/dec). */
+fun BodyChecker.indexSetForIncDec(target: Expr, valueType: Type, at: Int): CallInfo? {
+    val l = AstWalk.unparen(target)
+    if (l !is IndexExpr) return null
+    val rt0 = rec.get(l.receiver)?.type ?: return null
+    val idxTypes = ArrayList<Type>()
+    for (ix in l.indices) idxTypes.add(rec.get(ix)?.type ?: sema.nullableAny)
+    idxTypes.add(valueType)
+    return resolveOperator("set", fin(rt0), idxTypes, at, null)?.info
+}
+
 fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
     when (e.op) {
         "!" -> {
@@ -538,6 +549,7 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
             invalidate(e.expr)
             val pr = record(e, t, null)
             pr.call = res?.info
+            if (res != null) pr.extra = CompoundInfo(false, indexSetForIncDec(e.expr, res.ret, e.start))
             return t
         }
     }
@@ -564,6 +576,7 @@ fun BodyChecker.postfix(e: PostfixExpr, expected: Type?): Type {
     invalidate(e.expr)
     val por = record(e, t, null)
     por.call = res?.info
+    if (res != null) por.extra = CompoundInfo(false, indexSetForIncDec(e.expr, res.ret, e.start))
     return t
 }
 
