@@ -198,7 +198,7 @@ t_llvm_api() { # <src>
     [ $rc -eq 0 ] || { echo "API build failed:"; head -20 "$W/$name.log"; return 1; }
     local links; links="$(links_of "$src")"
     # shellcheck disable=SC2086
-    clang "$W/$name.o" $extra "$RTLIB" -o "$W/$name.exe" -lm > "$W/$name.cc" 2>&1 || { echo "link failed:"; head "$W/$name.cc"; return 1; }
+    clang -I "$INCLUDE" -I "$TESTDATA" "$W/$name.o" $extra "$RTLIB" -o "$W/$name.exe" -lm > "$W/$name.cc" 2>&1 || { echo "link failed:"; head "$W/$name.cc"; return 1; }
     run_and_compare "$name" "$src" "$W/$name.exe" "llvm-api" none
 }
 

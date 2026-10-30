@@ -1,1 +1,1 @@
-unsupported construct: boxing of a value of type Ptr as kotlin.Any? (Byte, Short, Float and C pointers cannot be stored in Any, collections or generic code)
+unsupported construct: boxing of a value of type Ptr as kotlin.Any? (Byte, Short and C pointers cannot be stored in Any, collections or generic code)

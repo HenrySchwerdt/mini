@@ -55,7 +55,7 @@ These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus wh
 
 - No coroutines or `suspend` functions (planned, on top of libuv).
 - No property references (`::prop`), except `::lateinitProp.isInitialized`.
-- `Byte`, `Short` and `Float` are supported as unboxed scalars for C interop; nullable or boxed uses are restricted. General `value class` support and unsigned types are not available.
+- `Byte` and `Short` are supported as unboxed scalars for C interop; nullable or boxed uses are restricted. `Float` is a real 32-bit type (`FloatArray`, `List<Float>`, `Float?`, IEEE float32 arithmetic). General `value class` support and unsigned types are not available.
 - Annotations with arguments are not supported by the backend (the `mini.memory` annotations are handled by the checker).
 - Not supported: enum entries with bodies, local `object` declarations, nested classes inside local classes, `Unit?`; type aliases are ignored (no code is generated for them).
 - A lambda parameter of an `inline` function may only be invoked or passed on to another inline function; use `noinline` to store it.
