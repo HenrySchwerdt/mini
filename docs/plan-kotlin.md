@@ -324,7 +324,7 @@ simply add a target in existing KMP projects (later phase).
 |---|---|
 | `bootstrap/` (mini0, C), old `std/*.mini`, `examples/*.mini`, docs v0.2/v0.3 | **removed** (last state: merge commit `391270a` on `main`) |
 | `runtime/` | is now libminirt (C17); the libuv binding of the old compiler served as a template |
-| CI, xmake | xmake removed; CI = runtime suite (`runtime/run_tests.sh`) + Gradle tests on Linux/macOS |
+| CI, xmake | xmake removed; CI = runtime suite (`runtime/run_tests.sh`) + native `mini test` / `scripts/test-e2e.sh` / bootstrap shards on Linux/macOS; K2 cross-checks nightly (`tools/k2-oracle`) |
 | Docs v0.2/v0.3 | archive. New reference: "Kotlin + Mini memory model" |
 
 ## 10. Phases and acceptance criteria
@@ -576,7 +576,7 @@ compiler underneath (like `rustc`).
   - Plus a build cache: local per user (`~/.mini/cache`, content-addressed) and optionally shared
     (CI or team cache), like sccache. A package registry comes after that.
 
-**The repository itself drops Gradle after B3.** The compiler is then just another Mini
+**The repository itself dropped Gradle after B3 (done: see docs/no-gradle.md).** The compiler is then just another Mini
 project built by `mini`:
 - A workspace `mini.toml` at the root with members `compiler/frontend`, `compiler/lower`,
   `compiler/backend`, `compiler/driver`, `stdlib`, `runtime` (until §10c removes the C runtime)

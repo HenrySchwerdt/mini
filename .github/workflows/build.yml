@@ -33,6 +33,7 @@ jobs:
               - 'compiler/**'
               - 'stdlib/**'
               - 'stdlib-test/**'
+              - 'tools/**'
               - 'runtime/**'
               - 'examples/**'
               - 'minic'
@@ -58,8 +59,9 @@ jobs:
       - name: Runtime tests (ASan, UBSan, TSan)
         run: runtime/run_tests.sh
 
-  # Compiler tests, split into shards that run in parallel. The shards are defined by exclusion
-  # (`-PtestExclude`), so a new test class always runs in one of them.
+  # Compiler tests, split into shards that run in parallel. No JVM and no Gradle: every shard builds the native toolchain
+  # (scripts/ci-toolchain.sh: the latest release's compiler builds the compiler, runtime and `mini` of this checkout, ~2 min)
+  # and runs `mini test` / scripts/test-e2e.sh. The K2 cross-checks live in k2-oracle.yml (nightly, not per PR).
   compiler:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -67,49 +69,57 @@ jobs:
       fail-fast: false
       matrix:
         # All shards on Linux; macOS runs every shard on main and only the platform-sensitive
-        # ones (e2e, selfhost, modules) on pull requests, since macOS runners are scarce.
+        # ones (e2e, modules) on pull requests, since macOS runners are scarce.
         os: ${{ fromJSON(github.ref == 'refs/heads/main' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
-        # `stage0` (bootstrap from the latest release's native compiler, then the native `mini` tool and its smoke test, ~2 min) runs everywhere; `bootstrap` (from the
-        # JVM stage1, ~4 min, guards the K2 path) only on main.
-        shard: ${{ fromJSON(github.ref == 'refs/heads/main' && '["modules","e2e","llvm","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","selfcompare","stage0","bootstrap"]' || '["modules","e2e","llvm","selfhost","bridge","oracle","frontend-selfhost","sema-selfhost","selfcompare","stage0"]') }}
-        include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"selfhost"},{"os":"macos-latest","shard":"modules"}]') }}
+        # modules: purity + `mini test` of backend, frontend, native-driver (103 tests); mini-tool: `mini test` of the tool (72, slow: real builds);
+        # e2e: scripts/test-e2e.sh (C backend, sanitizers, memory corpus); llvm: LLVM backend suites, the LLVM bootstrap and the LLVM C API;
+        # stage0: bootstrap from the release, stage2 == stage3, then the `mini` smoke test.
+        shard: ${{ fromJSON('["modules","mini-tool","e2e","llvm","stage0"]') }}
+        include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"modules"}]') }}
     name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+      - name: Toolchain
+        if: matrix.shard != 'stage0'
+        run: scripts/ci-toolchain.sh
       - name: Tests (${{ matrix.shard }})
-        working-directory: compiler
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           case "${{ matrix.shard }}" in
-            modules)           args=(test -x :jvm-bridge:test -x :frontend-oracle:test) ;;
-            e2e)               args=(:jvm-bridge:test --tests EndToEndTest) ;;
-            selfhost)          args=(:jvm-bridge:test --tests SelfHostTest) ;;
+            modules)
+              scripts/check-purity.sh
+              (cd compiler && ../build/native/bin/mini test -p backend -p frontend -p native-driver) ;;
+            mini-tool)
+              (cd compiler && ../build/native/bin/mini test -p mini-tool) ;;
+            e2e)
+              scripts/test-e2e.sh ;;
             llvm)
-              # LLVM C API headers and libLLVM for the in-memory backend and the ORC JIT (LlvmApiEndToEndTest).
+              # LLVM C API headers and libLLVM for the in-memory backend (and the ORC JIT).
               if [ "$RUNNER_OS" = Linux ]; then
                 sudo apt-get install -y -qq llvm-18-dev >/dev/null
                 echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"; export PATH="/usr/lib/llvm-18/bin:$PATH"
                 llvm-config --version
               fi
-              args=(:jvm-bridge:test --tests LlvmEndToEndTest --tests LlvmApiEndToEndTest) ;;
-            bridge)            args=(:jvm-bridge:test -PtestExclude=EndToEndTest,SelfHostTest,LlvmEndToEndTest,LlvmApiEndToEndTest) ;;
-            oracle)            args=(:frontend-oracle:test -PtestExclude=FrontendSelfHostTest,SemaSelfHostTest) ;;
-            frontend-selfhost) args=(:frontend-oracle:test --tests FrontendSelfHostTest) ;;
-            sema-selfhost)     args=(:frontend-oracle:test --tests SemaSelfHostTest) ;;
-            # Self-compile MIR, own frontend vs K2: the normalised diff must not exceed selfcompare-baseline.txt.
-            selfcompare)       ./gradlew :jvm-bridge:installDist --console=plain && python3 selfcompare.py; exit ;;
-            # B3 from the latest release: native stage0 -> stage1 -> stage2 -> stage3 without JVM and K2.
-            # Falls back to the JVM stage1 when there is no release (yet) or the download fails.
-            # Then the native `mini` project tool is built by that stage3 compiler (no JVM) and smoke-tested:
+              (cd compiler && ../build/native/bin/mini build -p native-driver)
+              export NATIVE_DRIVER="$PWD/compiler/build/debug/native-driver"
+              scripts/test-e2e.sh --suite llvm --suite llvm-leak --suite llvm-variants
+              if [ "$RUNNER_OS" = Linux ]; then
+                # bootstrap through the LLVM backend, then through the LLVM C API; the API compiler runs the llvm-api suite
+                # (stage0 = the compiler of this checkout that the Toolchain step built from the release)
+                compiler/bootstrap.sh --backend=llvm "$RUNNER_TEMP/boot-llvm"
+                compiler/bootstrap.sh --backend=llvm-api "$RUNNER_TEMP/boot-api"
+                MINIC_API="$RUNNER_TEMP/boot-api/stage3" scripts/test-e2e.sh --suite llvm-api
+              fi ;;
+            # B3 from the latest release: native stage0 -> stage1 -> stage2 -> stage3, stage2 == stage3 byte for byte.
+            # Then the native `mini` project tool is built by that stage3 compiler and smoke-tested:
             # mini new, build, run, test, check.
-            stage0)            ../scripts/ci-stage0.sh "$RUNNER_TEMP/stage0" && ../scripts/ci-mini-smoke.sh "$RUNNER_TEMP/stage0"; exit ;;
-            # B3: stage1 -> stage2 -> stage3 without K2, stage2 == stage3 byte for byte.
-            bootstrap)         ./gradlew :jvm-bridge:installDist --console=plain && ./bootstrap.sh "$RUNNER_TEMP/b3"; exit ;;
+            stage0)
+              scripts/ci-stage0.sh "$RUNNER_TEMP/stage0" && scripts/ci-mini-smoke.sh "$RUNNER_TEMP/stage0" ;;
           esac
-          ./gradlew "${args[@]}" --console=plain
 
   # Single status for branch protection: green when every job that ran passed.
   ci-ok:

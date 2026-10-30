@@ -32,8 +32,7 @@ a rebuild without changes is instant, see [Incremental builds](#incremental-buil
 **Source checkout.** The wrapper script `./mini` in the repository root builds the tool and the compiler on first use with
 `scripts/build-mini.sh` (a minute or two) into `build/native` and rebuilds them when their sources change. The compiler is
 bootstrapped from a native compiler it finds (`$MINI_STAGE0`, `~/.mini`, `PATH`) or from the latest release, which it downloads
-once into `build/stage0`. Only when neither is possible does it fall back to the JVM build of the compiler (`./gradlew
-:jvm-bridge:installDist`, JDK 21); the tool itself never runs on the JVM.
+once into `build/stage0`. There is no JVM fallback: the repository builds without a JDK.
 
 To use it from any directory, put the repository root on your `PATH`:
 
@@ -85,6 +84,7 @@ name = "hello"          # a-z, 0-9, _ and -; starts with a letter
 version = "0.1.0"       # MAJOR.MINOR.PATCH (default 0.1.0)
 kind = "app"            # "app" (default) or "lib"
 memory = "managed"      # default memory mode of the package: "managed" (default) or "strict"
+c-sources = ["host/x.c"]  # optional: C files (relative to the package) compiled and linked into every binary that contains the package
 
 [dependencies]
 geometry = { path = "../geometry" }
@@ -183,7 +183,8 @@ loop while you write code. Prints the `M01xx`/`M02xx` diagnostics.
 
 ### `mini test [filter] [--list] [--nocapture] [--fail-fast] [--release] [-- args...]`
 
-1. Finds top-level `@Test fun name()` functions in `tests/**/*.kt` and `src/**/*.kt` of the selected packages, using the
+1. Finds top-level `@Test fun name()` functions and `@Test` methods of classes and objects (a class needs a no-argument
+   constructor; every test gets a fresh instance; ids are `file::Class.method`) in `tests/**/*.kt` and `src/**/*.kt` of the selected packages, using the
    Mini frontend's parser. `@Ignore` skips a test. (The file with `fun main` is not part of the test build; keep testable
    code in other files, as the `mini new` template does.)
 2. Generates a runner (`build/test/<pkg>/`) and builds **one** test binary containing the sources, the tests and a small
@@ -246,7 +247,7 @@ Repeated subtrees are marked `(*)`.
 
 Prints the explanation of a diagnostic (`M0102`, `m102` and `102` all work) from the catalog in
 [memory-model.md](memory-model.md) section 7. The texts are generated from that file at build time
-(`:mini-tool:generateExplainData`), so they never drift.
+(`scripts/gen-explain.py`), so they never drift.
 
 ### `mini doctor`
 
@@ -304,9 +305,9 @@ mini (this document)                     minic (compiler)
 
 `compiler/mini-tool` has a **pure Kotlin core** (`mini.tool`: manifest parser, dependency graph, command logic, output,
 templates) behind a small `Platform` interface (file system, process spawn, environment, clock, terminal detection). There are
-two implementations: `mini.tool.native.NativePlatform` (`src/native/kotlin`, Mini code on top of `src/native/c/mini_host.c`, a
-small POSIX layer reached through `@CSymbol`) is what ships; `mini.tool.jvm.JvmPlatform` (`src/main/kotlin/mini/tool/jvm`) only
-runs the unit tests on the JVM. `MiniToolPurityTest` enforces that the core uses no `java.*`, `javax.*`, `kotlin.jvm`, `System.*`, ...
+one implementation: `mini.tool.native.NativePlatform` (`src/NativePlatform.kt`, Mini code on top of `host/mini_host.c`, a
+small POSIX layer reached through `@CSymbol`, linked through `c-sources` in `compiler/mini-tool/mini.toml`); the unit tests run on it
+too. `scripts/check-purity.sh` enforces that the sources use no `java.*`, `javax.*`, `kotlin.jvm`, `System.*`, ...
 The only dependency of the core is the pure-Kotlin parser of `compiler/frontend` (for `@Test` discovery and the file-level
 `MemoryMode` annotation). Because the core is compiled by Mini, it avoids what the Mini stdlib lacks (`Regex`, a few `String`
 helpers); `Text.kt` has the hand-written line patterns.
@@ -314,7 +315,7 @@ helpers); `Text.kt` has the hand-written line patterns.
 **Build pipeline.** `mini build` runs `minic-native -o app.c <sources> --stdlib <stdlib files>` (Kotlin to C; `--check` for the
 memory checker) and then the C compiler on that file, `lib/libminirt.a` and `-l` flags from `@file:CLink`. `scripts/build-mini.sh`
 builds the tool the same way: `minic-native -o mini.c <tool + frontend sources> --stdlib ...`, then `clang mini.c mini_host.c libminirt.a`.
-`ExplainData.kt` (the `mini explain` texts) is generated from `docs/memory-model.md` by `:mini-tool:generateExplainData` and checked in,
+`ExplainData.kt` (the `mini explain` texts) is generated from `docs/memory-model.md` by `scripts/gen-explain.py` and checked in,
 so the native build needs no Gradle.
 
 ## Follow-ups

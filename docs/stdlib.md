@@ -1,8 +1,8 @@
 # Standard library from source (v1-S)
 
 Status: milestone v1-S. Related: `docs/plan-kotlin.md` (sections 6 and 10b), `compiler/README.md`,
-code in `compiler/jvm-bridge` (`FrontendDriver.kt`, `Stdlib.kt`, `Reachability.kt`, `Ir2MirIntrinsics.kt`),
-sources in `stdlib/`, tests in `stdlib-test/` and `compiler/jvm-bridge/src/test/kotlin/StdlibJvmTest.kt`.
+code in `tools/k2-oracle/jvm-bridge` (`FrontendDriver.kt`, `Stdlib.kt`, `Reachability.kt`, `Ir2MirIntrinsics.kt`),
+sources in `stdlib/`, tests in `stdlib-test/` and `tools/k2-oracle/jvm-bridge/src/test/kotlin/StdlibJvmTest.kt`.
 
 ## 1. Decision
 

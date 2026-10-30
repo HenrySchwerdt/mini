@@ -127,6 +127,10 @@ export function parseDiagnostics(text, files, exitCode) {
         } else if ((m = KOTLIN_DIAG.exec(line))) {
             cur = { severity: m[4], message: m[5], _spans: [], help: [], _primary: span(m[1], +m[2], +m[3]) }
             out.push(cur)
+        } else if ((m = /^error: (?!could not compile )(.+)$/.exec(line))) {
+            // a general error without a position (internal compiler error, usage error, error limit)
+            cur = { severity: 'error', message: m[1], _spans: [], help: [] }
+            out.push(cur)
         } else if (cur) {
             let s
             if ((s = MINI_SPAN.exec(line))) cur._spans.push({ ...span(s[1], +s[2], +s[3]), label: s[4] ?? '' })

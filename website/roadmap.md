@@ -23,7 +23,7 @@ This page separates what exists today from what is planned. Anything under "Plan
 
 | Area | State |
 |---|---|
-| **Repository without Gradle** | After the native `mini`, the test suite moves to `mini test`; the K2 cross-checks move to a separate, optional tool. |
+| **Repository without Gradle** | Done: the compiler is a workspace of flat Mini projects, tests run with `mini test` and `scripts/test-e2e.sh`, the K2 cross-checks are the separate optional tool `tools/k2-oracle` (nightly). See `docs/no-gradle.md`. |
 | **LLVM performance** | Bringing the LLVM backends to at least the speed of the C backend, then making LLVM the default. |
 | **Strict codegen and stdlib on the memory model (D2)** | Strict programs are checked everywhere; programs that use allocator objects and `mini.memory` do not build everywhere yet, so the memory chapters of the tutorial use Check only. |
 

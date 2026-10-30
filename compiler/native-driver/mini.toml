@@ -1,0 +1,6 @@
+# B1 driver: reads a .mir file, runs the C emitter, writes the .c file (used by scripts/wasm).
+[package]
+name = "native-driver"
+
+[dependencies]
+backend = { path = "../backend" }

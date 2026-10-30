@@ -16,7 +16,7 @@
 # program each block runs in the browser (with the same .out / .run / .check files); they are listed as `page:<name>`.
 #
 # Usage: website/scripts/check-samples.sh [substring-filter]
-# Requires: JDK 21, clang, and `npm ci` in website/ (snippet extraction). `./minic` builds the compiler on first use.
+# Requires: a C compiler and `npm ci` in website/ (snippet extraction). `./minic` builds the compiler on first use (native, no JVM).
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,7 +31,7 @@ node "$root/website/scripts/extract-snippets.mjs" "$snippets" || { echo "extract
 cd "$root"
 # Build the compiler once up front so the per-sample timings are not skewed and errors show early.
 ./minic check examples/hello.kt >/dev/null 2>"$tmp/warmup.log" || {
-    echo "minic is not usable:"; grep -v JAVA_TOOL_OPTIONS "$tmp/warmup.log"; exit 2; }
+    echo "minic is not usable:"; cat "$tmp/warmup.log"; exit 2; }
 
 pass=0
 fail=0
@@ -53,7 +53,7 @@ while IFS= read -r kt; do
         exe="$tmp/$(echo "$name" | tr '/:' '__')"
         if ! ./minic build "$kt" -o "$exe" >"$tmp/build.log" 2>&1; then
             report_fail "$name" "build failed"
-            grep -v JAVA_TOOL_OPTIONS "$tmp/build.log" | head -5 | sed 's/^/        /'
+            head -5 "$tmp/build.log" | sed 's/^/        /'
             continue
         fi
         "$exe" >"$tmp/actual.out" 2>"$tmp/actual.err"

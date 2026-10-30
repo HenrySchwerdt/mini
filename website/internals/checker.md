@@ -5,7 +5,7 @@ The Strict-mode checker implements the [memory model](/memory/). It lives in `co
 ```mermaid
 flowchart LR
   ir["Kotlin IR (user file)"] --> ir2mir["Ir2Mir"] --> mir["MIR, C backend"]
-  ir --> facts["MemoryFacts<br/>(jvm-bridge)"]
+  ir --> facts["MemoryFacts<br/>(lower)"]
   facts --> memir["MemIr"]
   memir --> cfg["Cfg"]
   cfg --> df["dataflow<br/>State + Transfer"]
@@ -14,7 +14,7 @@ flowchart LR
 
 ## Stages
 
-- **`MemoryFacts` (jvm-bridge)** lowers the Kotlin IR of the user file to **MemIr**, a second view of the same IR. The C-oriented MIR cannot carry what the checker needs: source positions, `@Owned`, `@Borrowed`, `@MemoryMode`, `@AllocatedBy`, `@NoAlloc`, `@ThreadBoundary`, context parameters, allocator objects, and calls to `free`, `move`, `use` and `close`. Inline lambdas (`use`, `context`, `run`, `let`, `repeat`, `forEach`, ...) become scope blocks read like code; thread-boundary lambdas are scopes whose captured owners move in; all other lambdas are analysed separately.
+- **`MemoryFacts` (lower; the K2 path has its own in tools/k2-oracle)** lowers the Kotlin IR of the user file to **MemIr**, a second view of the same IR. The C-oriented MIR cannot carry what the checker needs: source positions, `@Owned`, `@Borrowed`, `@MemoryMode`, `@AllocatedBy`, `@NoAlloc`, `@ThreadBoundary`, context parameters, allocator objects, and calls to `free`, `move`, `use` and `close`. Inline lambdas (`use`, `context`, `run`, `let`, `repeat`, `forEach`, ...) become scope blocks read like code; thread-boundary lambdas are scopes whose captured owners move in; all other lambdas are analysed separately.
 - **`Cfg`** builds a control-flow graph per function (and per escaping lambda). A stack of frames (scope locals, loops, `finally` bodies, `use` closes, thread-lambda ends, try handlers) makes every leaving edge (end of scope, `return`, `break`, `continue`, `throw`) run the right exit operations. `finally` bodies are copied into each exit path, and leaks are checked per path, which is why messages name the path kind.
 - **`State`** is the abstract domain. A tracked slot holds a *set* of states (`Owned`, `Null`, `Freed`, `Moved`, `Borrowed`, already-reported); the join at a merge is the union, which is the specification's `Maybe`. It also records which owner slots an alias borrows from, and the allocation sites of the value (position, allocator kind and identity). Field states (`local.field`: unknown, null, owned, moved-out) support overwrite leaks and partial moves.
 - **`Transfer`** holds the transfer functions: allocator resolution per allocation site, moves and borrows, function summaries from annotations, arena scopes (M0105, M0106, M0115, M0202), thread boundaries (M0206), `@NoAlloc` (M0205), field moves (M0113) and annotation checks (M0111).

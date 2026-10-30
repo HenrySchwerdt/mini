@@ -6,8 +6,7 @@
 #   export PATH="$PATH:/path/to/mini"     # then: mini new hello && cd hello && mini run
 #
 # The first use needs a native compiler to start from: one found on this machine (MINI_STAGE0, ~/.mini, PATH) or the latest
-# release (downloaded once into build/stage0, see install.sh). Only when neither works does it fall back to the JVM build
-# (./gradlew :jvm-bridge:installDist, needs JDK 21).
+# release (downloaded once into build/stage0, see install.sh).
 set -euo pipefail
 
 # resolve symlinks, so `ln -s /path/to/mini/mini ~/bin/mini` works too
@@ -24,9 +23,9 @@ bin="$home/bin/mini"
 
 stale() { # the tool is missing or a source it is built from is newer
     [ ! -x "$bin" ] && return 0
-    [ -n "$(find "$root/compiler/mini-tool/src/main" "$root/compiler/mini-tool/src/native" "$root/compiler/frontend/src/main" \
-        "$root/compiler/lower/src/main" "$root/compiler/backend/src/main" "$root/compiler/minic-native/src/main" \
-        "$root/stdlib" "$root/runtime/src" "$root/runtime/include" -type f -newer "$bin" -print -quit 2>/dev/null)" ]
+    [ -n "$(find "$root/compiler/mini-tool/src" "$root/compiler/mini-tool/host" "$root/compiler/frontend/src" \
+        "$root/compiler/lower/src" "$root/compiler/backend/src" "$root/compiler/minic-native/src" \
+        "$root/stdlib" "$root/runtime/src" "$root/runtime/include" "$root/scripts/minic.sh" -type f -newer "$bin" -print -quit 2>/dev/null)" ]
 }
 
 build() {
@@ -40,11 +39,8 @@ build() {
         "$root/scripts/build-mini.sh" --quiet --stage0 "$root/build/stage0/bin/minic-native" >&2
         return $?
     fi
-    # last resort: the JVM build of the compiler
-    echo "mini: the download failed; building the compiler with the JVM (./gradlew, JDK 21) ..." >&2
-    (cd "$root/compiler" && ./gradlew -q :jvm-bridge:installDist) >&2 ||
-        { echo "mini: cannot build the toolchain: no native compiler, no release to download and no JDK 21. Install a release (see install.sh) and retry" >&2; return 1; }
-    "$root/scripts/build-mini.sh" --quiet --jvm-minic "$root/compiler/jvm-bridge/build/install/minic/bin/minic" >&2
+    echo "mini: cannot build the toolchain: no native compiler, and no release to download. Install a release (see install.sh) and retry" >&2
+    return 1
 }
 
 if stale; then

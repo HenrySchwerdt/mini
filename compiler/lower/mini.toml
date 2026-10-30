@@ -1,0 +1,8 @@
+# Typed AST -> K2-shaped IR -> MIR (Ast2Ir, Reachability, Ir2Mir).
+[package]
+name = "lower"
+kind = "lib"
+
+[dependencies]
+frontend = { path = "../frontend" }
+backend = { path = "../backend" }

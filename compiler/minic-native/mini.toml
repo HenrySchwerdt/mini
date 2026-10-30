@@ -1,0 +1,8 @@
+# minic-native: the compiler. Own frontend + lowering + backend behind one driver; `mini build -p minic-native`.
+[package]
+name = "minic-native"
+
+[dependencies]
+lower = { path = "../lower" }
+frontend = { path = "../frontend" }
+backend = { path = "../backend" }

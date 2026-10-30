@@ -34,17 +34,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: website/package-lock.json
 
-      - name: Build the compiler
-        working-directory: compiler
-        run: ./gradlew installDist --console=plain
+      - name: Build the native toolchain (from the latest release, no JVM)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-toolchain.sh
 
       - name: Install site dependencies (the snippet extraction below needs them)
         working-directory: website

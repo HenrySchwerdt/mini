@@ -15,24 +15,33 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$out"
 cd "$root"
 
-quiet() { "$@" 2> >(grep -v JAVA_TOOL_OPTIONS >&2); }
+quiet() { "$@"; }
+
+# the native compiler (./mini builds it on first use): `minic-native -o out.c [--emit-mir out.mir] [--no-rc-opt] src --stdlib <files>`
+./mini --version >/dev/null
+native=build/native/bin/minic-native
+stdlib="$(find stdlib -name '*.kt' | LC_ALL=C sort)"
+emit() { # <src> <out.c> [flags...]
+    local src="$1" outc="$2"; shift 2
+    # shellcheck disable=SC2086
+    "$native" -o "$outc" "$@" "$src" --stdlib $stdlib
+}
 
 # extract FILE LABEL: the section the emitter starts with the comment "/* LABEL */", up to the next blank line
 extract() { awk -v label="/* $2 */" '$0 == label { on = 1 } on && /^$/ { exit } on { print }' "$1"; }
 
 src=website/samples/internals/counter.kt
-quiet ./minic emit-mir "$src" -o "$tmp/counter.mir"
+emit "$src" "$tmp/counter.c" --emit-mir "$tmp/counter.mir"
 grep -Ev '^  \(class "(java|kotlin)\.' "$tmp/counter.mir" > "$out/counter.mir.txt"
-quiet ./minic build "$src" -o "$tmp/counter" --emit-c "$tmp/counter.c"
 sed -n '/^\/\* prototypes \*\//,$p' "$tmp/counter.c" > "$out/counter.c.txt"
-quiet ./minic build "$src" -o "$tmp/counter0" --no-rc-opt --emit-c "$tmp/counter0.c"
+emit "$src" "$tmp/counter0.c" --no-rc-opt
 extract "$tmp/counter0.c" main > "$out/counter.noopt.main.c.txt"
 
-quiet ./minic build website/samples/internals/throws.kt -o "$tmp/throws" --emit-c "$tmp/throws.c"
+emit website/samples/internals/throws.kt "$tmp/throws.c"
 extract "$tmp/throws.c" half > "$out/throws.half.c.txt"
 extract "$tmp/throws.c" main > "$out/throws.main.c.txt"
 
-quiet ./minic build website/samples/internals/closure.kt -o "$tmp/closure" --emit-c "$tmp/closure.c"
+emit website/samples/internals/closure.kt "$tmp/closure.c"
 extract "$tmp/closure.c" 'class adder.<lambda>$0' > "$out/closure.class.c.txt"
 extract "$tmp/closure.c" 'adder' > "$out/closure.adder.c.txt"
 extract "$tmp/closure.c" 'adder.<lambda>$0.invoke' > "$out/closure.invoke.c.txt"

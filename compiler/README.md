@@ -1,24 +1,41 @@
-# Kotlin/Mini compiler (Phase 0 spike)
+# Kotlin/Mini compiler
 
-Compiles real Kotlin source through the official **K2 frontend** (pinned to Kotlin
-**2.4.21**) into our own backend, which emits C17. clang compiles the C and links it with
-the C runtime (`libminirt`, ABI in `runtime/include/minirt.h`).
+Compiles Kotlin source with our own frontend (lexer, parser, semantic analysis) through a typed IR and MIR into C17 (or LLVM IR);
+clang/gcc compiles the C and links it with the C runtime (`libminirt`, ABI in `runtime/include/minirt.h`). The compiler is written
+in Kotlin and compiles itself: **no JVM and no Gradle in the build** (`docs/no-gradle.md`). The original path through the official
+K2 frontend still exists as a cross-check in `tools/k2-oracle` (nightly CI).
 See `docs/plan-kotlin.md` (sections 2, 3, 10, 10a) for the why.
 
 ```
-hello.kt ─► K2 (FIR) ─► fir2ir ─► Kotlin IR ─► Ir2Mir ─► MIR ─► CEmitter ─► hello.c ─► clang + libminirt ─► binary
-            └──────────────── compiler/jvm-bridge ───────────────┘   └──── compiler/backend ────┘
+hello.kt ─► frontend (parse, sema) ─► Ast2Ir ─► IR ─► Ir2Mir ─► MIR ─► CEmitter ─► hello.c ─► cc + libminirt ─► binary
+            └──── compiler/frontend ────┘   └───── compiler/lower ─────┘   └──── compiler/backend ────┘
 ```
+
+## Layout
+
+Flat Mini projects (`docs/mini-tool.md`): `compiler/mini.toml` is the workspace, every member has `mini.toml`, `src/*.kt` and
+`tests/*.kt` (no `src/main/kotlin/<package path>/`).
+
+| Project | Role | JVM APIs? |
+|---|---|---|
+| `compiler/backend` (lib) | MIR data model (`Mir.kt`), name mangling, MIR to C (`CEmitter.kt`), LLVM emitters (`llvm/`), RcOpt, the Strict-mode memory checker (`memory/`) | **No** |
+| `compiler/frontend` (lib) | own Kotlin frontend: lexer, lossless CST parser, typed AST (`mini.frontend`); symbols, types, inference, call resolution, smart casts (`sema/`); `driver/` holds the self-compilation drivers of the K2 oracle | **No** |
+| `compiler/lower` (lib) | `Ast2Ir` (analysed AST to a K2-shaped IR), `Reachability`, `Ir2Mir` behind `lowerToMir` | **No** |
+| `compiler/minic-native` (app) | `minic-native`, the compiler: own frontend + lowering + backend behind one driver (`main(args)` on `mini.io`) | **No** |
+| `compiler/native-driver` (app) | B1: reads a `.mir` file, runs the emitter, writes `.c`/`.ll` | **No** |
+| `compiler/mini-tool` (app) | the `mini` project tool: pure core behind `Platform`, `NativePlatform` on `host/mini_host.c` | **No** |
+| `compiler/llvm-c` | LLVM C API binding (`mini.llvm`, `mini.llvmapi`), built by `bootstrap.sh --backend=llvm-api` | **No** |
+| `tools/k2-oracle` | K2 frontend (`jvm-bridge`), K2 oracles (`frontend-oracle`, `memory-spec`), Gradle | Yes, optional, nightly |
 
 ## Build and run
 
-Requires JDK 21, Gradle 8.x (a wrapper is included), clang. This is the JVM build of the compiler (K2 frontend and the Gradle test suites).
-The project tool `mini` and the native compiler `minic-native` need neither: see [The native `mini` tool](#the-native-mini-tool).
+Needs a C compiler (clang or gcc) and, for the first build, a native compiler to start from (the latest release, downloaded once
+by `./mini`; or the C bootstrap seed of a release).
 
 ```sh
-gradle -p compiler installDist            # builds compiler/jvm-bridge/build/install/minic/bin/minic
-compiler/jvm-bridge/build/install/minic/bin/minic build hello.kt -o build/hello
-./build/hello
+./mini --version                         # builds build/native: bin/minic-native, bin/mini, bin/minic, lib/libminirt.a
+./minic run examples/hello.kt            # the driver script (scripts/minic.sh) over bin/minic-native
+(cd compiler && ../mini build -p minic-native)    # the same compiler built by mini itself: compiler/build/debug/minic-native
 ```
 
 ```
@@ -28,6 +45,15 @@ minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
             [--stats] [--no-rc-opt]
 minic check <file.kt>... [--extra-src <file.kt>]... [--brief] [-Werror] [--frontend=mini|k2]
 ```
+
+The release `minic` (`bin/minic`, no JDK; `scripts/minic.sh`) has the same core plus more commands: `minic run foo.kt [-- args]`,
+`minic build foo.kt` (output `./foo`, default `-O2`; `-O0..-O3`, `-g`/`--debug`), `minic check foo.kt` (no C compiler needed), `minic emit-c`, `--version`,
+`<command> --help`, "did you mean" for unknown commands and options, and diagnostics options `--color=auto|always|never` (`NO_COLOR` is respected),
+`--error-format=human|json` (one JSON object per diagnostic on stderr, for editors) and `--error-limit=N`. Exit status: 0 success, 1 compile error,
+2 usage error, 3 internal compiler error (also what a C compiler failure on the generated C is reported as, with the C kept as `minic-ice-<name>.c`).
+`minic build hello.kt` takes about 0.35 s (`--time` shows the split: ~185 ms parsing and analysing the stdlib plus the program, which is nearly all of the front end; ~120 ms
+for the C compiler at `-O2` and the link; the default `-O2` costs +2% on the self-host C and +6% on a mid-size program compared with `-O1`).
+The option block above is the CLI of the JVM `minic` of `tools/k2-oracle`; the native `minic` is documented in `website/reference/cli.md`.
 
 * Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.
 * The Mini standard library (`stdlib`, found next to `runtime/` or via `--stdlib <dir>`) is compiled from source together
@@ -53,37 +79,30 @@ minic check <file.kt>... [--extra-src <file.kt>]... [--brief] [-Werror] [--front
 * Exit codes: 0 ok, 1 compile error (Kotlin error, unsupported construct, C compiler
   failure), 2 usage, 3 internal emitter error.
 
-Tests: `gradle -p compiler test`.
+Tests (no Gradle; `docs/no-gradle.md` has the full table):
 
-* `backend` tests: purity rule (below), mangling, emitter details.
-* `jvm-bridge` `EndToEndTest`: builds every `compiler/testdata/*.kt` with the CLI against the
-  real runtime `runtime` (sources compiled in), compiles with `-Werror`, runs the
-  binary and compares stdout with `<name>.out`.
+* `scripts/check-purity.sh`: the purity rule (below).
+* `cd compiler && ../mini test [-p backend] [-p frontend] [-p native-driver] [-p mini-tool]`: unit tests next to the sources
+  (`tests/*.kt`, `@Test` functions and classes; `kotlin.test` assertions). Backend: mangling, emitters, RcOpt, strict codegen, MIR serial,
+  diagnostics format. Frontend: lossless lexing/parsing of every `.kt` in the repository, malformed input, fuzz, semantic analysis.
+* `scripts/test-e2e.sh`: every `compiler/testdata/*.kt` is built with `minic-native` (C backend `-Wall -Werror`, or `--suite llvm`,
+  `llvm-api`), run and compared with `<name>.out`.
   * `<name>.err` (optional): substrings expected on stderr; the program must then exit non-zero (panic or uncaught exception).
-  * `<name>.cerr`: the build must fail with exit 1 and stderr must contain each line.
-  * `<name>.nok2` (empty marker): the program uses a Mini language extension K2 cannot parse (the `@` matrix
-    operator), so it is neither compared with K2 nor run through the K2 oracle tests (`frontend-oracle`'s `Corpus`
-    and `SemaOracleTest` skip it). Its `.out` is hand-verified, not JVM-generated. The compiler's own sources never use `@`
-    as an operator (bootstrap through K2 must parse them).
-  * The `.out` files were generated by running the same programs on the JVM with the real
-    Kotlin compiler, so they are the reference semantics.
-* `jvm-bridge` `EndToEndTest.leakCheck`: every program with a `.out` and no `.err`/`.cerr` is built a
-  second time with `-fsanitize=address,undefined` (LeakSanitizer on) and must print the same output,
-  exit 0 and report nothing. The C compiler is clang when it can link the sanitizer runtimes, else gcc
-  (as in `runtime/run_tests.sh`); the test is skipped when neither can. Set `MINIC_DEBUG=1` to get
-  stack traces for unsupported-construct errors.
+  * `<name>.cerr`: the build must fail with exit 1 and the compiler output must contain each line.
+  * `<name>.diag` (memory corpus): the expected `line:col: CODE` of `minic-native --check --brief` (`--suite memcheck`).
+  * `<name>.nok2` (empty marker): the program uses a Mini language extension K2 cannot parse (the `@` matrix operator), so the K2 oracle
+    tests skip it. Its `.out` is hand-verified. The compiler's own sources never use `@` as an operator.
+  * The `.out` files were generated by running the same programs on the JVM with the real Kotlin compiler, so they are the reference semantics.
+  * `--suite leak`: every program with a `.out` and no `.err`/`.cerr`/`.noleakcheck` (also the Strict programs of `testdata/memory`) is built a
+    second time with `-fsanitize=address,undefined` (LeakSanitizer on) and must print the same output, exit 0 and report nothing. The C
+    compiler is clang when it can link the sanitizer runtimes, else gcc (as in `runtime/run_tests.sh`).
+* `compiler/bootstrap.sh`: stage2 == stage3 for the C, LLVM and LLVM C API builds.
+* `tools/k2-oracle`: the same programs through K2, K2 against the own frontend, the real kotlin-stdlib against the Mini stdlib.
 
-## Module layout
+## The K2 path
 
-| Module | Role | May use JVM APIs? |
-|---|---|---|
-| `compiler/backend` | MIR data model (`Mir.kt`), name mangling (`Mangling.kt`), MIR → C emitter (`CEmitter.kt`) | **No** |
-| `compiler/native-driver` | B1: `main(args)` that reads a `.mir` file, runs `CEmitter`, writes the `.c` file (runs on the JVM via Gradle, natively once minic can compile the backend) | **No** (file access through `mini.io`) |
-| `compiler/frontend` | B2-1: own Kotlin frontend: lexer, lossless CST parser, typed AST, outline renderer (`mini.frontend`); B2-2: symbols, types, inference, call resolution, smart casts (`mini.frontend.sema`); `driver/` holds the self-compilation driver | **No** (PurityTest) |
-| `compiler/lower` | B2-3: `Ast2Ir` (analysed AST to a K2-shaped IR), `Reachability`, and `Ir2Mir` (a port of the jvm-bridge one) behind `lowerToMir` | **No** (LowerPurityTest) |
-| `compiler/minic-native` | B2-3: `minic-native`, the compiler without K2 (own frontend + lowering + backend, `main(args)` on `mini.io`) | **No** (MinicNativePurityTest) |
-| `compiler/frontend-oracle` | Test-only: compares the frontend with the K2 PSI parser and the semantic analysis with K2's FIR resolution, hosts the native self-compilation tests | Yes (tests) |
-| `compiler/jvm-bridge` | Runs K2 (`FrontendDriver`), converts Kotlin IR to MIR (`Ir2Mir*.kt`, see the source layout below), CLI (`Cli`, `Main`), starts clang | Yes, and the only module allowed to touch compiler internals |
+The sections below on `jvm-bridge` describe the original pipeline through the official K2 frontend. It now lives in
+`tools/k2-oracle/jvm-bridge` and is only used as a cross-check; the shipped compiler uses `compiler/lower` (a port of `Ir2Mir`).
 
 ### How the IR is obtained
 
@@ -109,9 +128,8 @@ exact Kotlin semantics (no overflow at `Int.MAX_VALUE`, empty ranges, step > 0 c
 
 `compiler/backend` is pure common-style Kotlin so it can compile itself later: no `java.*`,
 `javax.*`, `kotlin.jvm.*`, `@Jvm*`, `kotlin.reflect`, `::class.java`, `System.*`, no Java
-sources, and no dependency but the Kotlin stdlib. `backend/src/test/kotlin/PurityTest.kt`
-greps the main sources and the module's build file and fails the build on any violation.
-(The check runs as part of `gradle -p compiler test`.)
+sources, and no dependency but the Kotlin stdlib. `scripts/check-purity.sh` greps the sources of every compiler package and checks
+the dependencies in its `mini.toml` (and the native build would fail on such code anyway).
 
 ## C name mangling
 
@@ -375,7 +393,7 @@ the annotation).
     dropped (cascade suppression). Managed functions are not analysed except for the boundary rule M0110.
   * `Diagnostics.kt`: rustc-like rendering (`error[M0102]: ...`, `--> file:line:col label`, `help:`); the stable
     parts are the code and the primary position.
-* **Tests.** `jvm-bridge/src/test/kotlin/MemoryCheckTest.kt` runs the checker on every `testdata/memory/*.kt`
+* **Tests.** `tools/k2-oracle/jvm-bridge/src/test/kotlin/MemoryCheckTest.kt` (K2) and `scripts/test-e2e.sh --suite memcheck` (native) run the checker on every `testdata/memory/*.kt`
   (`.diag` = exact expected `line:col: CODE` multiset, no `.diag` = no diagnostics at all) and on our own additional
   programs in `testdata/memory-extra` (same conventions); `build/reports/memory-check-summary.txt` has the pass
   rate per code. `MemoryRunTest` builds the accepted programs natively (`.out` comparison); programs the C backend
@@ -545,7 +563,7 @@ constructors. `Comparable` and `CharSequence` are erased (`Any` / `String`); `co
 * Reference cycles leak (no cycle collector): e.g. a closure stored in a field of the object it captures.
 * `>>` on negative Int/Long relies on arithmetic shift (clang/gcc behaviour, implementation-defined in C17).
 * The generated C uses GNU statement expressions (clang and gcc; not MSVC).
-* The Gradle build resolves from `repo1.maven.org` first (same content as Maven Central);
+* The K2 oracle Gradle build (`tools/k2-oracle`) resolves from `repo1.maven.org` first (same content as Maven Central);
   this only matters in environments where `repo.maven.apache.org` is rate limited.
 
 ## Bootstrap B1: serialized MIR and the native driver
@@ -558,20 +576,20 @@ byte-identical to MIR -> C and that `native-driver` (JVM run) produces the same 
 
 `compiler/native-driver` (`fun main(args: Array<String>)`): `native-driver in.mir -o out.c`. Its file access is the Mini
 stdlib API `mini.io.readTextFile/writeTextFile` (`stdlib/mini/io/Files.kt`, intrinsics `mk_b1_*` in the B1 block of
-`minirt.h`, `runtime/src/b1.c`); on the JVM the Gradle build compiles `Files.kt` together with
+`minirt.h`, `runtime/src/b1.c`); on the JVM the oracle build compiles `Files.kt` together with
 `stdlib-test/jvm/mini/internal/B1Intrinsics.kt`. `fun main(args: Array<String>)` is supported by the compiler (the C
 entry wrapper takes the array from `mk_b1_args()`).
 
 ## v1-A: the backend compiles and runs natively
 
-`minic` compiles its own backend: `./minic build compiler/selfhost/SelfMain.kt $(find compiler/backend/src/main/kotlin -name '*.kt') -o build/selfhost`
+`minic` compiles its own backend: `./minic build compiler/selfhost/SelfMain.kt $(find compiler/backend/src -name '*.kt') -o build/selfhost`
 (about 10 s plus clang) gives a native program that prints exactly what the same driver prints on the JVM.
 
 * `compiler/selfhost/SelfMain.kt` (package `selfhost`) drives the pure-Kotlin backend: handcrafted MIR modules (every operator,
   conversion, loop form, class/itable/object, cast, box, exception construct), a few hundred pseudo-random well-formed MIR
   functions (deterministic LCG), and handcrafted plus pseudo-random MemIr programs for `MemoryChecker`. The output is ~25k
   lines (C code and diagnostics).
-* `SelfHostTest` (jvm-bridge, part of `gradle test`, the v1 gate) has three parts: (1) the driver on the JVM (compiled by the real
+* `SelfHostTest` (`tools/k2-oracle/jvm-bridge`, the v1 gate of the oracle) has three parts: (1) the driver on the JVM (compiled by the real
   Kotlin compiler as part of the test source set) versus the natively compiled one, byte-identical, clang `-Werror`; (2) the same
   native build with ASan/UBSan: no memory error, no UB, no direct leak (reference cycles, e.g. `LinkedHashMap` nodes, show up as
   *indirect* leaks only and are tolerated); (3) the B1 acceptance test: `native-driver` + backend are compiled into a native
@@ -589,7 +607,7 @@ nested string templates, raw and multi-dollar strings), `parseKotlin` (hand-writ
 reference PSI parser, error recovery with positions) giving a lossless CST (`printCst` reproduces the source byte for byte) and a
 typed AST (`Ast.kt`, sealed classes), and `Outline` (canonical text of every declaration and fully parenthesised expression).
 
-Tests (`frontend` + `frontend-oracle`, all in `gradle test`): lossless + error-free parse of every `.kt` in the repo; the
+Tests (`frontend` via `mini test`, `frontend-oracle` in `tools/k2-oracle`): lossless + error-free parse of every `.kt` in the repo; the
 Outline of our AST equals the same rendering of K2's PSI tree on the repo sources, ~230 tricky snippets, 30k random expressions,
 20k random declarations and ~12k mutated repo files (whenever PSI accepts them); malformed input (positions, first error line vs PSI,
 mutation/truncation fuzz, hostile nesting); native self-compilation (`FrontendSelfHostTest`): frontend + driver built by minic
@@ -635,7 +653,7 @@ in `build/sema-oracle-cache` (keyed by the content of all inputs).
 Developer tools: `SemaProbeTest` (env `MINI_FIR_PROBE=<file>`, with `MINI_SEMA_COMPARE=1` or `MINI_SEMA_DUMP=1`).
 
 Agreement (positions where K2 resolved a type or callee / positions): all of `compiler/testdata/*.kt`, `stdlib/**`, `compiler/backend`,
-`compiler/native-driver`, `compiler/frontend/src/main` (including this analysis), `compiler/selfhost`, `examples` and `compiler/testdata/memory*`:
+`compiler/native-driver`, `compiler/frontend/src` (including this analysis), `tools/k2-oracle/selfhost`, `examples` and `compiler/testdata/memory*`:
 **86658 of 86668 (99.99%)**. Mismatches left: blocks (comment attached to a block), `x ?: y` with an intersection least upper bound,
 smart casts after loops that reassign a variable.
 
@@ -681,17 +699,19 @@ frontend after normalising local ids and `tmpN` numbers (41 lines of 96,774 diff
 
 | Asset | Contents |
 |---|---|
-| `mini-<version>-<target>.tar.gz` | `bin/mini` (the project tool, native, compiled by `bin/minic-native`), `bin/minic` (shell wrapper: `minic build foo.kt -o foo`, `emit-c`, `version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
+| `mini-<version>-<target>.tar.gz` | `bin/mini` (the project tool, native, compiled by `bin/minic-native`), `bin/minic` (shell driver `scripts/minic.sh`: `build`, `run`, `check`, `emit-c`, `--version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
 | `mini-<version>-bootstrap-c.tar.gz` | the generated C of the compiler (`minic.c`), `runtime/`, `build.sh`: `cc` alone builds a stage0 (`scripts/package-seed.sh`) |
 | `SHA256SUMS` | checksums of the above; `install.sh` verifies them |
 
-The `minic` wrapper is a shell script for v0: the native stdlib has no process API yet, so `minic-native` only emits C and the wrapper calls `cc`.
+The `minic` driver is a shell script (`scripts/minic.sh`, copied into the tarball with `VERSION` and `TARGET`): the native stdlib has no process API yet, so `minic-native` only
+emits C and the script calls `cc`, finds a C compiler (`--cc`, `CC`, `cc`, `clang`, `gcc`; otherwise it explains how to install one) and turns a C compiler error on the
+generated C into an "internal compiler error". `minic-native` itself prints diagnostics to stderr (`--color=`, `--error-format=`, `--error-limit=`; the stdlib has the
+intrinsics `stderrWrite` and `exitProcess` for that) and exits with 0, 1 (compile error), 2 (usage) or 3 (internal compiler error). `scripts/test-minic-cli.sh <MINI_HOME>` tests the CLI.
 
-`compiler/bootstrap.sh --stage0 <native minic>` replaces the JVM stage1 by a prebuilt native compiler (a release's `bin/minic-native` or the stage
+`compiler/bootstrap.sh --stage0 <native minic>` starts from a prebuilt native compiler (there is no JVM stage1 any more; the K2/JVM-started chain is `tools/k2-oracle/bootstrap-k2.sh`) (a release's `bin/minic-native` or the stage
 built from the seed): stage0 compiles the current sources, then stage1, stage2, stage3 follow and stage2 == stage3 is checked. It builds at -O0
 by default (clang takes 9 s instead of 73 s per stage), so the whole check takes about a minute without Gradle or the JVM. CI runs it as the
-`stage0` shard (`scripts/ci-stage0.sh`: downloads the latest release for the platform, verifies its SHA256, falls back to the JVM stage1 when there
-is no release, the download fails or stage0 cannot build the sources); the JVM-stage1 `bootstrap` shard (guards the K2 path) runs on main.
+`stage0` shard (`scripts/ci-stage0.sh`: downloads the latest release for the platform, verifies its SHA256, fails when there is no release or stage0 cannot build the sources); the K2-started bootstrap runs nightly in `k2-oracle.yml`.
 
 ### The native `mini` tool
 
@@ -709,9 +729,9 @@ scripts/build-mini.sh --minic-native <compiler of these sources>   # e.g. stage3
 
 `mini` calls only `minic-native` (`-o app.c <sources> --stdlib <stdlib>`, `--check` for the memory checker) and the C compiler; the K2
 frontend is not reachable from it. `package-release.sh` ships `bin/mini` next to `bin/minic-native`, and the `stage0` CI shard builds it
-from the stage3 compiler and smoke-tests `mini new/build/run/test/check` (`scripts/ci-mini-smoke.sh`). The Gradle `mini-tool` tests
-(JVM `Platform`) run the end-to-end cases against the staged `build/native` when it exists. The Mini stdlib has no `Regex`, so the
-core uses hand-written patterns (`Text.kt`); `ExplainData.kt` is generated from `docs/memory-model.md` by Gradle and checked in.
+from the stage3 compiler and smoke-tests `mini new/build/run/test/check` (`scripts/ci-mini-smoke.sh`). The `mini-tool` tests
+(`mini test -p mini-tool`, on `NativePlatform`) run the end-to-end cases against the staged `build/native`. The Mini stdlib has no `Regex`, so the
+core uses hand-written patterns (`Text.kt`); `ExplainData.kt` is generated from `docs/memory-model.md` by `scripts/gen-explain.py` and checked in.
 
 ## LLVM backend
 
@@ -769,14 +789,14 @@ The lowering is written once against `IrBuilder<V, B>` (`backend/.../llvm/IrBuil
 instruction kinds the lowering needs). `Lowering.kt` is the former `LlvmEmitter`; `TextIrBuilder` prints the textual IR (`LlvmEmitter.emit`, unchanged
 output except the order of some external type-info declarations and an explicit `entry:` label on the generated helper functions) and `ApiIrBuilder`
 (`compiler/llvm-c`) builds the module through the LLVM C API. Both are pure with respect to the lowering; only the API builder needs C interop, so it is
-not part of the Gradle build (the JVM cannot run `external fun`): it is compiled by `minic` into the native compiler.
+not part of the K2 oracle build (the JVM cannot run `external fun`): it is compiled by `minic` into the native compiler.
 
 ```
 MIR ─► RcOpt ─► Lowering ─► ApiIrBuilder ─► LLVMModuleRef ─► verify ─► LLVMRunPasses(default<O1>) ─► TargetMachine ─► prog.o ─► system linker
                                                           └─► ORC LLJIT (minic-native --run): no file, no link
 ```
 
-`compiler/llvm-c/src/main/kotlin`:
+`compiler/llvm-c/src`:
 * `mini/llvm/Core.kt`, `Backend.kt`, `Orc.kt`: the **bindings** of LLVM 18 (`@file:CInclude("llvm-c/Core.h")`, `@file:CLink("LLVM-18")`, `external fun` + `@CName`, handles are
   `COpaquePointer` typealiases under their C names, `@Owned(free = "LLVMDispose...")` on everything LLVM hands out). Covered: contexts, modules (name, target, data
   layout, print, named lookup), types (ints, float/double, `ptr`, void, function, array, packed and named struct), constants (int, real, null, string, array,
@@ -881,11 +901,11 @@ node (fake `self`, `file:` fetch): load check, M0101 and type-error diagnostics,
 | script | |
 |---|---|
 | `scripts/wasm/build-runtime.sh` | libminirt for wasm32 (17 s) |
-| `scripts/wasm/test-programs.sh` | every `compiler/testdata` program through JVM compiler -> clang.wasm -> `node:wasi`, stdout / exit code / `.err` lines like `LlvmEndToEndTest` (53/53 pass; about 2-3 minutes with 4 jobs) |
-| `scripts/wasm/build-minic-wasm.sh` | `minic.wasm`: JVM `emit-mir` of the compiler sources, `native-driver --target=wasm32`, then the **host's clang** (wasm32 target, `-c` on the IR needs no headers) and `wasm-ld` against the sysroot, crt1 and compiler-rt extracted from `@yowasp/clang`'s resources: about 50 s in total. Without a wasm32-capable host clang it falls back to clang.wasm, whose step takes about 29 minutes (the YoWASP build has LLVM assertions on and runs as wasm). Both give a module that passes `test-minic-wasm.sh` with byte-identical IR |
+| `scripts/wasm/test-programs.sh` | every `compiler/testdata` program through the native compiler -> clang.wasm -> `node:wasi`, stdout / exit code / `.err` lines like `LlvmEndToEndTest` (53/53 pass; about 2-3 minutes with 4 jobs) |
+| `scripts/wasm/build-minic-wasm.sh` | `minic.wasm`: `minic-native --emit-ll --target=wasm32` of the compiler sources, then the **host's clang** (wasm32 target, `-c` on the IR needs no headers) and `wasm-ld` against the sysroot, crt1 and compiler-rt extracted from `@yowasp/clang`'s resources: about 50 s in total. Without a wasm32-capable host clang it falls back to clang.wasm, whose step takes about 29 minutes (the YoWASP build has LLVM assertions on and runs as wasm). Both give a module that passes `test-minic-wasm.sh` with byte-identical IR |
 | `scripts/wasm/test-minic-wasm.sh` | `--check` in wasm (`M0101` for `memory/uaf_simple.kt`, clean for `ok_heap_basic.kt`), and `minic.wasm --emit-ll` -> clang.wasm -> run for hello and testdata programs; the `.ll` must equal the JVM compiler's byte for byte |
 | `scripts/wasm/pack-site.mjs`, `scripts/wasm/test-worker.mjs` | website layout and a protocol test of the worker (see above) |
-| `scripts/wasm/build-one.sh` | one `.kt` file to a `.wasm` with the JVM compiler |
+| `scripts/wasm/build-one.sh` | one `.kt` file to a `.wasm` with the native compiler |
 | `.github/workflows/wasm-toolchain.yml` | the same on CI (artifact `wasm-toolchain`; `workflow_call` for `pages.yml`; the finished bundle is cached by the hash of its inputs) |
 | `website/scripts/e2e-playground.mjs` | headless Chromium (Playwright) against the built site: playground load, Check M0102, Run hello, uncaught exception, reload, notebook Run all, Open in playground (`pages.yml`, push to main) |
 

@@ -1,5 +1,5 @@
 name: Setup
-description: JDK, Gradle cache and (optionally) libuv for the build jobs
+description: Build job prerequisites (the runners have a C compiler); optionally libuv for the runtime tests
 inputs:
   libuv:
     description: Install libuv (only the runtime tests need it)
@@ -7,14 +7,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: '21'
-    - uses: gradle/actions/setup-gradle@v4
-      with:
-        # Only main writes the Gradle cache; pull requests read it.
-        cache-read-only: ${{ github.ref != 'refs/heads/main' }}
     - name: Install libuv (Linux)
       if: inputs.libuv == 'true' && runner.os == 'Linux'
       shell: bash

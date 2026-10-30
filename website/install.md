@@ -162,16 +162,16 @@ git clone https://github.com/HenrySchwerdt/mini && cd mini
 compiler/bootstrap.sh --stage0 /path/to/minic-native
 ```
 
-### From a checkout with the JDK
+### From a checkout
 
-This is the development setup. It needs JDK 21 and a C compiler, and builds the compiler with Gradle on first use:
+This is the development setup. It needs a C compiler (no JDK, no Gradle) and builds the compiler natively on first use, starting from the latest release:
 
 ```sh
 git clone https://github.com/HenrySchwerdt/mini && cd mini
 ./minic build examples/hello.kt -o build/hello && ./build/hello
 ```
 
-The `./minic` script in the repository builds the compiler with Gradle (the first run downloads dependencies from Maven Central and takes a minute), then runs it. This is the JVM build with the K2 frontend, used by the test suite. `cd compiler && ./gradlew installDist` builds it without running anything.
+The `./minic` and `./mini` scripts in the repository build the native toolchain into `build/native` on first use (a minute or two) and rebuild it when its sources change. The optional K2 cross-checks against the official Kotlin compiler (JDK 21) live in `tools/k2-oracle`.
 
 ## If something goes wrong
 

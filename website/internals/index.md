@@ -28,7 +28,7 @@ flowchart LR
 
 | Stage | Where | What it does |
 |---|---|---|
-| Frontend | `compiler/jvm-bridge` (K2) | Parses and type-checks your files together with all of `stdlib/`. Runs the real Kotlin K2 compiler (pinned to 2.4.21) on the JVM, with `-no-stdlib -no-jdk`, so `kotlin.*` comes from Mini's own sources. A compiler plugin receives the Kotlin IR after fir2ir and before any JVM lowering. |
+| Frontend | `tools/k2-oracle/jvm-bridge` (K2; the shipped `minic` uses the own frontend) | Parses and type-checks your files together with all of `stdlib/`. Runs the real Kotlin K2 compiler (pinned to 2.4.21) on the JVM, with `-no-stdlib -no-jdk`, so `kotlin.*` comes from Mini's own sources. A compiler plugin receives the Kotlin IR after fir2ir and before any JVM lowering. |
 | Reachability | `jvm-bridge` | Drops every stdlib declaration the program cannot reach, so `println("x")` becomes about 66 lines of C. |
 | `Ir2Mir` | `jvm-bridge` (`Ir2Mir*.kt`) | Translates the Kotlin IR to MIR: classes, vtables, closures, inline expansion, exceptions, boxing. Anything it does not understand is a compile error, never wrong C. |
 | Memory checker | `backend/.../memory` | For Strict files, a second view of the same IR (`MemoryFacts` to `MemIr`) goes through CFG construction and a dataflow analysis. Errors stop the build before code generation. See [Memory checker](./checker). |
@@ -58,7 +58,7 @@ Its MIR is on the [next page](./mir), its C a little further down on the same pa
 | `compiler/backend` | MIR model, name mangling, `RcOpt`, `ThrowAnalysis`, `CEmitter`, memory checker | no (pure Kotlin, enforced by a test) |
 | `compiler/native-driver` | reads a serialized `.mir` file and writes C; the entry point of the self-hosted backend | no |
 | `compiler/frontend` | own lexer, parser, typed AST and semantic analysis | no |
-| `compiler/frontend-oracle` | tests that compare the own frontend against K2 | yes (tests only) |
-| `compiler/jvm-bridge` | drives K2, `Ir2Mir`, the CLI, starts clang | yes, the only module that touches compiler internals |
+| `tools/k2-oracle/frontend-oracle` | tests that compare the own frontend against K2 | yes (tests only) |
+| `tools/k2-oracle/jvm-bridge` | drives K2, `Ir2Mir`, the CLI, starts clang | yes, the only module that touches compiler internals |
 
 The "purity rule" (no `java.*`, no `kotlin.jvm.*`, no reflection in the backend) is what makes self-hosting possible: the backend must be compilable by Mini itself.

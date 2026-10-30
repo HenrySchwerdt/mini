@@ -2,10 +2,9 @@
 # D1 benchmark driver (docs/benchmarks.md).
 #
 #   compiler/bench/run.sh [--reps N] [--configs "base opt"] [--only <substring>] [--out <dir>] [--cflags "-O2"]
-#   gradle -p compiler bench                     (same, builds the distributions first; ARGS via -Pbench.args="--reps 1")
 #
 # For every benchmark and every configuration it
-#   1. turns the Kotlin program into MIR once (`minic emit-mir`),
+#   1. turns the Kotlin program into MIR once (`minic-native --emit-mir`),
 #   2. runs the backend per configuration (`native-driver`; `base` = --no-rc-opt, `opt` = RC elision on),
 #   3. compiles the C twice with clang against libminirt: a timing binary and a -DMK_STATS binary,
 #   4. runs the timing binary --reps times (best wall time) and the stats binary once.
@@ -34,12 +33,20 @@ done
 CC="${CC:-clang}"
 mkdir -p "$out"
 
-if [ -z "${BENCH_NO_BUILD:-}" ]; then # the Gradle task `bench` builds the distributions itself
-    echo "== building minic and native-driver" >&2
-    (cd "$root/compiler" && ./gradlew -q installDist) >&2 || exit 1
+if [ -z "${BENCH_NO_BUILD:-}" ]; then
+    echo "== building the native compiler and native-driver" >&2
+    "$root/mini" --version >/dev/null
+    (cd "$root/compiler" && "$root/build/native/bin/mini" build --release -p native-driver) >&2 || exit 1
 fi
-minic="$root/compiler/jvm-bridge/build/install/minic/bin/minic"
-driver="$root/compiler/native-driver/build/install/native-driver/bin/native-driver"
+minic="$root/build/native/bin/minic-native"
+driver="$root/compiler/build/release/native-driver"
+stdlib_files=$(find "$root/stdlib" -name '*.kt' | LC_ALL=C sort)
+# emit_mir <out.mir> <src.kt>...: the Kotlin program as MIR (the native compiler writes it with --emit-mir)
+emit_mir() {
+    local mir="$1"; shift
+    # shellcheck disable=SC2086
+    "$minic" --emit-mir "$mir" "$@" --stdlib $stdlib_files
+}
 
 # libminirt twice: plain and with statistics
 for variant in plain stats; do
@@ -118,18 +125,18 @@ for src in "$here"/micro/*.kt; do
     name="$(basename "$src" .kt)"
     want "$name" || continue
     echo "== $name" >&2
-    "$minic" emit-mir "$src" -o "$out/$name.mir" >&2
+    emit_mir "$out/$name.mir" "$src" >&2
     for cfg in $configs; do build_bin "$name" "$cfg" "$out/$name.mir"; run_one "$name" "$name" "$cfg"; done
 done
 
 # the self-hosted backend: native-driver + backend compiled by minic; input = MIR of stdlib_collections / of the backend itself
 if want selfhost; then
     echo "== selfhost" >&2
-    backend_srcs=$(find "$root/compiler/backend/src/main/kotlin" -name '*.kt' | sort)
-    driver_srcs=$(find "$root/compiler/native-driver/src/main/kotlin" -name '*.kt' | sort)
+    backend_srcs=$(find "$root/compiler/backend/src" -name '*.kt' | sort)
+    driver_srcs=$(find "$root/compiler/native-driver/src" -name '*.kt' | sort)
     # shellcheck disable=SC2086
-    "$minic" emit-mir $driver_srcs $backend_srcs -o "$out/selfhost.mir" >&2
-    "$minic" emit-mir "$root/compiler/testdata/stdlib_collections.kt" -o "$out/small_input.mir" >&2
+    emit_mir "$out/selfhost.mir" $driver_srcs $backend_srcs >&2
+    emit_mir "$out/small_input.mir" "$root/compiler/testdata/stdlib_collections.kt" >&2
     for cfg in $configs; do
         # the program under test is minic-backend; its arguments are an input .mir and the output .c
         build_bin selfhost "$cfg" "$out/selfhost.mir"

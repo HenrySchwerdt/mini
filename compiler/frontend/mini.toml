@@ -1,0 +1,4 @@
+# The own Kotlin frontend: lexer, lossless CST parser, typed AST (mini.frontend) and semantic analysis (mini.frontend.sema).
+[package]
+name = "frontend"
+kind = "lib"

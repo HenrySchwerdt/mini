@@ -50,15 +50,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # stage1 (JVM, own frontend) -> stage2 -> stage3, stage2 == stage3 (the release is the checked fixpoint)
+      # the previous release's native compiler (stage0) -> stage1 -> stage2 -> stage3, stage2 == stage3 (the release is the checked fixpoint)
       - name: Bootstrap
-        working-directory: compiler
-        run: ./gradlew :jvm-bridge:installDist --console=plain && ./bootstrap.sh "$RUNNER_TEMP/boot"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-stage0.sh "$RUNNER_TEMP/boot0"
       - name: Package
         run: |
           flags=""
           if [ "${{ matrix.seed }}" = "true" ]; then flags="--seed"; fi
-          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot" --out dist $flags
+          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot0/s0" --out dist $flags
       - name: Smoke test the tarball
         run: |
           d="$(mktemp -d)"
@@ -66,6 +67,7 @@ jobs:
           "$d/home/bin/minic" build examples/hello.kt -o "$d/hello"
           "$d/hello" | tee "$d/out.txt"
           grep -q 'Hello, Mini!' "$d/out.txt"
+          scripts/test-minic-cli.sh "$d/home"
           # the project tool (a native binary, no JVM): new, build, run, test, check
           mkdir "$d/proj" && cd "$d/proj"
           "$d/home/bin/mini" new demo && cd demo
@@ -108,7 +110,18 @@ jobs:
         run: |
           tag="v$VERSION"
           prev="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "$tag" | head -n 1 || true)"
-          if [ -n "$prev" ]; then
+          # hand-written notes in docs/releases/<tag>.md, followed by the commit list
+          if [ -f "docs/releases/$tag.md" ]; then
+            {
+              cat "docs/releases/$tag.md"
+              if [ -n "$prev" ]; then
+                echo
+                echo "## All changes since $prev"
+                echo
+                git log --no-merges --pretty='* %s (%h)' "$prev..${GITHUB_SHA}"
+              fi
+            } > notes.md
+          elif [ -n "$prev" ]; then
             {
               echo "Changes since $prev:"
               echo
@@ -124,7 +137,7 @@ jobs:
           * Kotlin 1:1: classes, sealed/data/enum/object, interfaces, generics, lambdas, inline/reified, exceptions, extensions, ranges, collections and large parts of the stdlib. The stdlib is Kotlin source and ships in the tarball.
 
           **What is in the release**
-          * `mini-<version>-<target>.tar.gz` for linux-x64, linux-arm64 and macos-arm64: `bin/mini` (the project tool: `mini new`, `build`, `run`, `test`, `check`; itself compiled by Mini, no JVM), `bin/minic` (`minic build foo.kt -o foo`), `bin/minic-native`, `lib/libminirt.a`, `include/`, `stdlib/`.
+          * `mini-<version>-<target>.tar.gz` for linux-x64, linux-arm64 and macos-arm64: `bin/mini` (the project tool: `mini new`, `build`, `run`, `test`, `check`; itself compiled by Mini, no JVM), `bin/minic` (`minic run foo.kt`, `minic build foo.kt`, `minic check foo.kt`), `bin/minic-native`, `lib/libminirt.a`, `include/`, `stdlib/`.
           * `mini-<version>-bootstrap-c.tar.gz`: the generated C of the compiler plus the runtime sources; a C compiler alone builds a working compiler from it.
           * `SHA256SUMS`. Install with `curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh`.
 

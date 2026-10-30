@@ -1,0 +1,4 @@
+# The compiler workspace: `mini build`, `mini check` and `mini test` here apply to every member
+# (docs/mini-tool.md). The members are plain Mini projects: src/*.kt, tests/*.kt, no Gradle, no JVM.
+[workspace]
+members = ["backend", "frontend", "lower", "minic-native", "native-driver", "mini-tool"]

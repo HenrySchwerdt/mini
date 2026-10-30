@@ -12,7 +12,7 @@ Mini is a Kotlin compiler. You write `.kt` files, `minic` turns them into C17 an
 |---|---|
 | clang (or gcc) | compiles the generated C |
 | A release (`install.sh`) or a checkout of the repository | the compiler finds `runtime/` and `stdlib/` next to itself |
-| JDK 21 and network access to Maven Central | only for the JVM `./minic` wrapper of a checkout (K2 frontend, Gradle); the native `mini` and `minic` of a release need neither |
+| JDK 21 | not needed; only the optional K2 cross-checks in `tools/k2-oracle` use one |
 | libuv (optional) | only needed to run the runtime test suite, not to compile programs |
 
 Supported platforms are Linux (x64, arm64) and macOS (Apple silicon). Windows is [planned](/roadmap).
@@ -35,10 +35,10 @@ cd mini
 ./minic build examples/hello.kt -o build/hello
 ```
 
-The `./minic` script builds the compiler with Gradle on first use (and again whenever compiler sources are newer than the installed binary), then runs it. You can also build it explicitly:
+The `./minic` and `./mini` scripts build the native toolchain (`build/native`) on first use, and again whenever its sources are newer than the installed binaries, then run it. You can also build it explicitly:
 
 ```sh
-cd compiler && ./gradlew installDist
+./mini --version
 ```
 
 ## Hello, world

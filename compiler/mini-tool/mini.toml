@@ -1,0 +1,8 @@
+# The `mini` project tool: a pure core (src/*.kt behind the Platform interface) and its native platform layer
+# (src/NativePlatform.kt on top of host/mini_host.c, a small POSIX layer reached through @CSymbol).
+[package]
+name = "mini-tool"
+c-sources = ["host/mini_host.c"]
+
+[dependencies]
+frontend = { path = "../frontend" }
