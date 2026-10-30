@@ -149,6 +149,54 @@ Open: the Iterator.next group cannot be borrowed when boxing primitive iterators
 dropped while `AbstractMutableMap.get` is reachable, and RcOpt precision depends on `@NoHeapEffects` assertions on the
 collection `equals`/`hashCode`/`toString`.
 
+## Allocator: size-class free lists and a real bump arena
+
+D2 left a measurable fact: counted operations were mostly gone but wall time had not moved, because every object
+still went through `malloc`/`free` and the arena zeroed each object separately. The allocator work targets exactly
+that (`runtime/src/alloc*.c`, `docs/memory-model.md` 2.6):
+
+* Rc and Heap objects up to 256 bytes (prefix included) come from thread-local size-class free lists; frees go to the
+  freeing thread's list, whole batches of 256 blocks move to a central pool; larger blocks stay on `malloc`.
+* The arena allocation is a pointer bump inlined into `mk_alloc_sized_site`, on `calloc`ed chunks with a high-water
+  mark (no per-object memset in fresh memory), and closed arenas hand their chunks to a process-wide cache.
+* `-DMK_PLAIN_MALLOC` (and any AddressSanitizer build, automatically) switches the new paths off.
+
+Before = `origin/main` runtime, after = this branch, same generated C, `-O2`, best of 5, 4 cores. `opt` is the Managed
+code generation, `strict` the default (Arena/Heap objects of the three `arena_*` programs; the other programs are
+Managed in both columns). Outputs are byte-identical.
+
+| benchmark | opt ms before -> after | strict ms before -> after |
+|---|---|---|
+| arena_managed (Rc tree) | 80 -> 42 (-48%) | 78 -> 41 (-47%) |
+| arena_heap (`Heap`) | 75 -> 42 (-44%) | 77 -> 46 (-40%) |
+| arena_arena (`Arena`) | 77 -> 42 (-45%) | 67 -> 40 (-40%) |
+| tree | 64 -> 40 (-38%) | 67 -> 43 (-36%) |
+| mapfilter | 143 -> 102 (-29%) | 138 -> 96 (-30%) |
+| templates | 117 -> 93 (-21%) | 116 -> 93 (-20%) |
+| stringbuilder | 62 -> 53 (-15%) | 60 -> 53 (-12%) |
+| arraylist | 218 -> 199 (-9%) | 211 -> 194 (-8%) |
+| hashmap | 67 -> 78 (+16%, noise: 71 -> 74 best of 15) | 76 -> 74 (-3%) |
+| selfhost-small | 47 -> 40 (-15%) | 50 -> 39 (-22%) |
+| selfhost-large | 1071 -> 736 (-31%) | 1112 -> 690 (-38%) |
+| selfhost-large-no-rcopt | 1008 -> 677 (-33%) | 1104 -> 684 (-38%) |
+
+Whole-compiler effect: `minic-native` compiling its own sources (`compiler/bootstrap.sh` stage 2/3 step, the same
+`stage2.c` linked against the old and the new runtime, `-O1`, best of 5): 5.39 s -> 4.50 s (-16%). The bootstrap
+fixpoint (C and `--backend=llvm`, stage2 == stage3) holds.
+
+Reading: the three `arena_*` programs now cost the same, about 41 ms, wherever the nodes live: allocation is a few
+instructions in all three (the 25 % of instructions the old path spent in `arena_allocate`, `mk_alloc_with` and `memset`
+for `arena_arena` is down to the bump). `hashmap` and `arraylist` allocate mostly buffers above 256 bytes (still
+`malloc`), so they barely move. Two details mattered more than the free lists themselves: handing batches between a thread
+and the central pool in O(1) (the first version walked cold chains and made `hashmap` about 20 % slower than `malloc`), and
+keeping freed arena chunks warm (an arena per round otherwise page-faults fresh memory every round: `arena_arena` was
+10 % slower than before until the chunk cache).
+
+Allocator counters (`MK_STATS`, new `mk-stats:` lines): `selfhost-large` serves 8 509 608 objects from size classes and
+130 220 from `malloc`, carves 488 chunks (127 MB for a 107 MB peak), and needs 451 central-pool refills for
+9 588 hand-offs; `arena_arena` makes 1 966 020 arena allocations, 600 of them on the slow path (new or cached chunk),
+10 fresh chunks (4.2 MB) for 60 arenas.
+
 ## D2: annotation and diagnostic experience
 
 Stdlib annotations needed: 10 `@ReturnsBorrowed`, 10 `@TakesOwnership` (collections), 27 `@NoHeapEffects`,

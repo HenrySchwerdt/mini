@@ -198,6 +198,34 @@ Pool<Item>(64).use { pool ->
 }
 ```
 
+### 2.6 Implementation notes: how the allocators get their memory
+
+Everything below is runtime internals (`runtime/src/alloc*.c`); the language-level contract above does not change.
+
+* **Block layout.** Every heap object is `[owner | size/link word][MkObject header | fields]`: a 16-byte prefix holds
+  the owning `MkAllocator*` and, behind it, the block size. `mk_free_object_memory` routes the block by the owner.
+* **`Rc` and `Heap` (small-object allocator, `alloc_small.c`).** Blocks of up to 256 bytes (prefix included) are served
+  from thread-local free lists, one per 16-byte size class; larger blocks use `malloc`/`free`. A thread frees into its
+  own lists, whichever thread allocated the block (reference counted objects die where the last reference is dropped);
+  whole batches of 256 blocks move between a thread and a mutex-protected central pool, so memory freed on a consumer
+  thread flows back to producers and a thread's exit hands its lists to the pool. New memory is carved from 16 KB
+  .. 256 KB chunks that are never returned to the system. The free-list link sits behind the owner word, so the
+  `MK_FLAG_FREED` double-free check keeps working until the block is reused. Reads and writes of the lists are
+  thread-local; the only shared state is the central pool (lock), so TSan sees proper happens-before edges.
+* **Sanitizer builds.** Under AddressSanitizer, or with `-DMK_PLAIN_MALLOC`, the small-object allocator (and the arena
+  chunk cache) is compiled out: `Rc` and `Heap` objects are plain `malloc` blocks again, so ASan and the
+  `leakCheck` tests see every object. `DebugAllocator`, `Pool` and `Arena` never used it: a `DebugAllocator` over
+  `Heap` calls the stateless `malloc` callbacks. Embedders that call `mk_heap_allocator()->allocate` directly also get
+  plain `malloc` blocks.
+* **`Arena`.** A pointer bump in the current chunk (chunks start at 4 KB by default and double up to 4 MB; oversized
+  requests get a dedicated chunk), inlined into `mk_alloc_sized_site`. Chunks come from `calloc` and carry a high-water
+  mark, so a fresh chunk needs no zeroing of objects and reused memory is cleared only below the mark. Freeing an
+  individual arena object stays a diagnostic (M0106, `mk_free` panics; `mk_discard` of a Scoped object is a no-op), the
+  arena never runs `dispose` (M0115 keeps foreign references out of arena objects), and closing the arena returns the
+  chunks to a process-wide cache (up to 32 MB) from which the next arena takes them warm.
+* **Statistics.** `-DMK_STATS` adds an allocator line to the summary: objects served from size classes vs `malloc`,
+  chunks and chunk bytes, central pool refills and hand-offs, arena allocations (slow path) and arena chunks.
+
 ---
 
 ## 3. Release

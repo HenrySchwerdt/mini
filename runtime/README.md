@@ -8,7 +8,8 @@ IR-to-C backend; generated code includes only that header.
 | File | Contents |
 | --- | --- |
 | `src/alloc.c` | Rc (default) and Heap allocators, traits, `mk_alloc*`, `mk_free`, hidden allocator prefix |
-| `src/alloc_arena.c` | Arena (Scoped bump allocator) |
+| `src/alloc_small.{h,c}` | thread-local size-class free lists behind Rc and Heap (off under ASan / `-DMK_PLAIN_MALLOC`) |
+| `src/alloc_arena.{h,c}` | Arena (Scoped bump allocator, inline fast path, chunk cache) |
 | `src/alloc_pool.c` | Pool (fixed-size free list) |
 | `src/alloc_debug.c` | DebugAllocator (leak and double-free diagnostics) |
 | `src/object.c` | retain/release/share, `mk_is_instance`, `mk_type_Any` |
@@ -57,9 +58,9 @@ or SCOPED (`free == NULL`). Trait bits: `MK_ALLOCATOR_DEALLOCATING`, `_SCOPED`,
 
 | Allocator | Constructor | Traits | Notes |
 | --- | --- | --- | --- |
-| Rc (default) | `mk_default_allocator()` / `mk_rc_allocator()` | MANAGED, THREAD_SAFE | malloc underneath; the compiler may assume release-at-zero |
-| Heap | `mk_heap_allocator()` | DEALLOCATING, THREAD_SAFE | the same malloc, but manual ownership: `mk_free` once |
-| Arena | `mk_arena_create(initial)`, `_reset`, `_destroy`, `_used`, `_reserved` | SCOPED | bump allocation, not thread-safe |
+| Rc (default) | `mk_default_allocator()` / `mk_rc_allocator()` | MANAGED, THREAD_SAFE | size-class free lists (<= 256 B) over malloc; the compiler may assume release-at-zero |
+| Heap | `mk_heap_allocator()` | DEALLOCATING, THREAD_SAFE | the same memory source, but manual ownership: `mk_free` once |
+| Arena | `mk_arena_create(initial)`, `_reset`, `_destroy`, `_used`, `_reserved` | SCOPED | bump allocation (inline fast path, cached chunks), not thread-safe |
 | Pool | `mk_pool_create(block_size, blocks_per_slab)`, `_destroy`, `_live_count` | DEALLOCATING | one block size, free list, not thread-safe |
 | Debug | `mk_debug_allocator_create(inner)`, `_destroy`, `mk_debug_stats`, `mk_debug_report_leaks` | inner's | books, quarantine, locked |
 
