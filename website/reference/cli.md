@@ -1,6 +1,6 @@
 # Command line
 
-`minic` is the compiler driver. From a source checkout use the `./minic` wrapper, which builds the compiler with Gradle on first use. It is a bare compiler; a project tool, `mini`, is [planned](/roadmap#planned).
+`minic` is the compiler driver. From a source checkout use the `./minic` wrapper, which builds the compiler with Gradle on first use. It is a bare compiler. For projects there is the project tool `mini`, described [below](#the-mini-project-tool); it is a native binary and needs no JDK and no Gradle.
 
 ```text
 minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
@@ -50,3 +50,22 @@ Runs the frontend and writes [MIR](/internals/mir) as text. The self-hosted nati
 ## The standard library
 
 The Mini stdlib (`stdlib/`, found next to `runtime/`) is compiled from source together with your program; only what is reachable ends up in the C file. See [Standard library](/stdlib).
+
+## The `mini` project tool
+
+`mini` is to Mini what `cargo` is to Rust (and `minic` is `rustc`). It is Kotlin compiled by Mini itself, a native binary of about 3 MB with no JVM, no Gradle and no other runtime; it calls the native compiler `minic-native` and your C compiler.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
+export PATH="$HOME/.mini/bin:$PATH"
+
+mini new hello && cd hello
+mini run                 # build and run
+mini test                # run the @Test functions in tests/
+mini check               # type-check and run the memory checker, no binary
+mini build --release     # optimized build in build/release/
+mini explain M0102       # explain a diagnostic
+mini doctor              # check the toolchain and suggest fixes
+```
+
+A project is a directory with a `mini.toml` manifest and sources in `src/` (`main.kt` for an app, `lib.kt` for a library); dependencies are paths or git repositories, pinned in `mini.lock`. In a source checkout, `./mini` builds the tool on first use and needs no Gradle. The full reference is [docs/mini-tool.md](https://github.com/HenrySchwerdt/mini/blob/main/docs/mini-tool.md).

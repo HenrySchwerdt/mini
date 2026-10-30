@@ -12,7 +12,8 @@ hello.kt ─► K2 (FIR) ─► fir2ir ─► Kotlin IR ─► Ir2Mir ─► MIR
 
 ## Build and run
 
-Requires JDK 21, Gradle 8.x (a wrapper is included), clang.
+Requires JDK 21, Gradle 8.x (a wrapper is included), clang. This is the JVM build of the compiler (K2 frontend and the Gradle test suites).
+The project tool `mini` and the native compiler `minic-native` need neither: see [The native `mini` tool](#the-native-mini-tool).
 
 ```sh
 gradle -p compiler installDist            # builds compiler/jvm-bridge/build/install/minic/bin/minic
@@ -676,7 +677,7 @@ frontend after normalising local ids and `tmpN` numbers (41 lines of 96,774 diff
 
 | Asset | Contents |
 |---|---|
-| `mini-<version>-<target>.tar.gz` | `bin/minic` (shell wrapper: `minic build foo.kt -o foo`, `emit-c`, `version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
+| `mini-<version>-<target>.tar.gz` | `bin/mini` (the project tool, native, compiled by `bin/minic-native`), `bin/minic` (shell wrapper: `minic build foo.kt -o foo`, `emit-c`, `version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
 | `mini-<version>-bootstrap-c.tar.gz` | the generated C of the compiler (`minic.c`), `runtime/`, `build.sh`: `cc` alone builds a stage0 (`scripts/package-seed.sh`) |
 | `SHA256SUMS` | checksums of the above; `install.sh` verifies them |
 
@@ -687,6 +688,26 @@ built from the seed): stage0 compiles the current sources, then stage1, stage2, 
 by default (clang takes 9 s instead of 73 s per stage), so the whole check takes about a minute without Gradle or the JVM. CI runs it as the
 `stage0` shard (`scripts/ci-stage0.sh`: downloads the latest release for the platform, verifies its SHA256, falls back to the JVM stage1 when there
 is no release, the download fails or stage0 cannot build the sources); the JVM-stage1 `bootstrap` shard (guards the K2 path) runs on main.
+
+### The native `mini` tool
+
+`mini` (compiler/mini-tool: pure Kotlin core, `Platform` interface) is compiled by `minic-native` like the compiler itself, no JVM:
+`scripts/build-mini.sh` runs `minic-native -o mini.c <mini-tool + frontend sources> --stdlib ...` and links the C with
+`lib/libminirt.a` and `mini_host.c` (`compiler/mini-tool/src/native/c`, the POSIX layer for files, environment, processes and the
+terminal that `NativePlatform` reaches through `@CSymbol`). Given a compiler it builds the staged layout of a release in
+`build/native` (`bin/minic-native`, `bin/mini`, `lib/libminirt.a`, `include/`, `stdlib/`):
+
+```sh
+scripts/build-mini.sh --stage0 <any native minic-native>     # builds the current compiler with it, then mini (about a minute)
+scripts/build-mini.sh --minic-native <compiler of these sources>   # e.g. stage3 of bootstrap.sh; release packaging uses -O2
+./mini new demo && cd demo && ../mini run                    # the wrapper does the above on first use
+```
+
+`mini` calls only `minic-native` (`-o app.c <sources> --stdlib <stdlib>`, `--check` for the memory checker) and the C compiler; the K2
+frontend is not reachable from it. `package-release.sh` ships `bin/mini` next to `bin/minic-native`, and the `stage0` CI shard builds it
+from the stage3 compiler and smoke-tests `mini new/build/run/test/check` (`scripts/ci-mini-smoke.sh`). The Gradle `mini-tool` tests
+(JVM `Platform`) run the end-to-end cases against the staged `build/native` when it exists. The Mini stdlib has no `Regex`, so the
+core uses hand-written patterns (`Text.kt`); `ExplainData.kt` is generated from `docs/memory-model.md` by Gradle and checked in.
 
 ## LLVM backend
 

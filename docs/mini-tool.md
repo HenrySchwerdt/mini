@@ -1,7 +1,7 @@
 # `mini`: the project tool
 
 `mini` is to Mini what `cargo` is to Rust: it creates projects, resolves dependencies, builds, runs and tests them.
-`minic` stays the bare compiler underneath (like `rustc`); `mini` calls it as a subprocess. Users never see Gradle.
+`minic` stays the bare compiler underneath (like `rustc`); `mini` calls the native compiler `minic-native` as a subprocess. `mini` itself is a native binary compiled by Mini from Kotlin sources: no JVM, no Gradle, ever.
 
 ```text
 $ ./mini new hello && cd hello
@@ -26,8 +26,14 @@ a rebuild without changes is instant, see [Incremental builds](#incremental-buil
 
 ## Installation
 
-`mini` runs from a source checkout. The wrapper script `./mini` in the repository root builds the tool and the compiler
-on first use (needs JDK 21 and clang or gcc; `mini doctor` checks this) and then runs it.
+**Release.** `install.sh` installs `bin/mini`, `bin/minic-native`, `bin/minic`, `lib/libminirt.a`, `include/` and `stdlib/` into
+`~/.mini` (needs clang or gcc; `mini doctor` checks this). `mini` finds the rest next to itself, no environment needed.
+
+**Source checkout.** The wrapper script `./mini` in the repository root builds the tool and the compiler on first use with
+`scripts/build-mini.sh` (a minute or two) into `build/native` and rebuilds them when their sources change. The compiler is
+bootstrapped from a native compiler it finds (`$MINI_STAGE0`, `~/.mini`, `PATH`) or from the latest release, which it downloads
+once into `build/stage0`. Only when neither is possible does it fall back to the JVM build of the compiler (`./gradlew
+:jvm-bridge:installDist`, JDK 21); the tool itself never runs on the JVM.
 
 To use it from any directory, put the repository root on your `PATH`:
 
@@ -243,7 +249,7 @@ Prints the explanation of a diagnostic (`M0102`, `m102` and `102` all work) from
 
 ### `mini doctor`
 
-Checks the Mini root, `minic`, the C compiler (clang or gcc), the JDK (needed only until `minic` is self-hosted, B3), git
+Checks the Mini root, `minic-native`, the C compiler (clang or gcc), git
 (only for git dependencies), libuv (only for the runtime tests) and the write access to `$MINI_HOME`, and prints a fix
 for everything missing. Exit code 1 if something required is missing.
 
@@ -296,18 +302,25 @@ mini (this document)                     minic (compiler)
 ### Architecture and self-hosting
 
 `compiler/mini-tool` has a **pure Kotlin core** (`mini.tool`: manifest parser, dependency graph, command logic, output,
-templates) behind a small `Platform` interface (file system, process spawn, environment, clock, terminal detection). The
-only implementation today is `mini.tool.jvm.JvmPlatform`; it is the only code that touches `java.*`.
-`MiniToolPurityTest` enforces this (no `java.*`, `javax.*`, `kotlin.jvm`, `System.*`, ... outside `mini/tool/jvm`). After
-the bootstrap (B3, [plan-kotlin.md](plan-kotlin.md) section 10f) a native `Platform` (libc/libuv) replaces the JVM one and
-`mini` is compiled by `minic` itself; the repository then builds with `mini` and drops Gradle. The only dependency of the
-core is the pure-Kotlin parser of `compiler/frontend` (for `@Test` discovery and the file-level `MemoryMode` annotation).
+templates) behind a small `Platform` interface (file system, process spawn, environment, clock, terminal detection). There are
+two implementations: `mini.tool.native.NativePlatform` (`src/native/kotlin`, Mini code on top of `src/native/c/mini_host.c`, a
+small POSIX layer reached through `@CSymbol`) is what ships; `mini.tool.jvm.JvmPlatform` (`src/main/kotlin/mini/tool/jvm`) only
+runs the unit tests on the JVM. `MiniToolPurityTest` enforces that the core uses no `java.*`, `javax.*`, `kotlin.jvm`, `System.*`, ...
+The only dependency of the core is the pure-Kotlin parser of `compiler/frontend` (for `@Test` discovery and the file-level
+`MemoryMode` annotation). Because the core is compiled by Mini, it avoids what the Mini stdlib lacks (`Regex`, a few `String`
+helpers); `Text.kt` has the hand-written line patterns.
+
+**Build pipeline.** `mini build` runs `minic-native -o app.c <sources> --stdlib <stdlib files>` (Kotlin to C; `--check` for the
+memory checker) and then the C compiler on that file, `lib/libminirt.a` and `-l` flags from `@file:CLink`. `scripts/build-mini.sh`
+builds the tool the same way: `minic-native -o mini.c <tool + frontend sources> --stdlib ...`, then `clang mini.c mini_host.c libminirt.a`.
+`ExplainData.kt` (the `mini explain` texts) is generated from `docs/memory-model.md` by `:mini-tool:generateExplainData` and checked in,
+so the native build needs no Gradle.
 
 ## Follow-ups
 
 Deferred in v0:
 
-* A native `Platform` and a native `mini` (after B3), prebuilt binaries on GitHub Releases, `mini install`.
+* `mini install`; the K2 frontend is no longer reachable from `mini` (only the own frontend of `minic-native` is used).
 * `[dev-dependencies]`, `[features]`, `subdir` for git dependencies in a monorepo, registries and versions ranges.
 * Parallel compilation of several workspace members and parallel test execution; test timeouts.
 * A watch mode (`mini watch check|test|run`) and `mini fmt`.

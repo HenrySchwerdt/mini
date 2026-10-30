@@ -12,6 +12,7 @@ This page separates what exists today from what is planned. Anything under "Plan
 | **RC elision (D1)** | **Done.** `arraylist` 405 to 265 ms, `tree` retains 8.3M to 0, self-hosted backend 749 to 603 ms. See [Benchmarks](/benchmarks). |
 | **Memory model checker** | Implemented: diagnostics M0101 to M0115, M0202, M0204 to M0206 ([reference](/reference/diagnostics/)). M0201 and M0203 are specified but not implemented. |
 | **Language and stdlib** | classes, `sealed`/`data`/`enum`/`object`, interfaces, generics, lambdas, `inline`/`reified`, exceptions, extensions, collections. See [Mini and Kotlin/JVM](/guide/mini-vs-kotlin). |
+| **Project tool `mini`** | **Done.** `mini new`, `build`, `run`, `test`, `check`, `add`, a `mini.toml` manifest with a lockfile, libraries as source packages. A native binary compiled by Mini itself (no JVM, no Gradle), shipped in every release ([command line reference](/reference/cli#the-mini-project-tool)). |
 | **Platforms** | Linux and macOS (CI). |
 
 ## In progress
@@ -34,8 +35,7 @@ This page separates what exists today from what is planned. Anything under "Plan
 
 | Area | Plan |
 |---|---|
-| **Project tool `mini`** | `mini new`, `mini build`, `mini run`, `mini test`, `mini add`, a `mini.toml` manifest with a lockfile, libraries as source packages. First as commands of the current `minic`, after B3 rewritten in Mini as a native binary. Planned right after B2-3 (plan section 10f). |
-| **Repository without Gradle** | After B3 the compiler is built by `mini`, with a C bootstrap seed (the generated C of `minic` is published with every release, so building from scratch needs only a C compiler). Gradle would survive only in optional K2 oracle checks. |
+| **Repository without Gradle** | The project tool `mini` is already a native binary built by Mini (no JVM, no Gradle; it ships in every release). Still to do: build the compiler itself and run the test suites with `mini` and the C bootstrap seed, so that Gradle survives only in optional K2 oracle checks. |
 | **Reflection** | R2 after B3: static, read-only metadata for `KClass.members`, `memberProperties`, `KProperty.get/set`, `KFunction.call`, only for classes that are reflected on, with ownership annotations stored in the metadata. Today only `Foo::class` and `simpleName`/`qualifiedName` exist (R1). |
 | **Compiler plugins, JSON, web framework** | R3 plugin API; `kotlinx.serialization`-style JSON (`@Serializable`, `Json.encodeToString`) with serializers generated at compile time; a Spring-like web framework with compile-time DI and routing and **one arena per request**. Needs coroutines and async IO first. |
 | **Coroutines and async IO** | `suspend` lowering, a dispatcher on libuv, `mini.io` with timers, files, TCP/UDP, DNS. Not started; `suspend` is a compile error today. |
