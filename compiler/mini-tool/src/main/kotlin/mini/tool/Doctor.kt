@@ -22,35 +22,22 @@ class Doctor(val p: Platform, val c: Console) {
         else -> "sudo apt install $pkgApt   (Debian/Ubuntu; use your distribution's package manager otherwise)"
     }
 
-    private fun javaMajor(): Pair<Int?, String>? {
-        val r = p.exec(Exec(listOf("java", "-version")))
-        if (r.startError != null && r.exitCode != 0 && r.stderr.isEmpty()) return null
-        val text = (r.stderr + "\n" + r.stdout).lines().firstOrNull { it.contains("version") } ?: return Pair(null, "unknown version")
-        val v = Regex("\"([^\"]+)\"").find(text)?.groupValues?.get(1) ?: return Pair(null, text.trim())
-        val major = if (v.startsWith("1.")) v.removePrefix("1.").substringBefore('.').toIntOrNull() else v.substringBefore('.').substringBefore('-').toIntOrNull()
-        return Pair(major, v)
-    }
-
     fun run(): Int {
         c.println(c.out.bold("mini ${Mini.VERSION} doctor") + "  (${p.os})")
         c.println()
 
         val root = Toolchain.findRoot(p)
-        if (root != null && p.isDirectory(Paths.join(root, "stdlib")) && p.isFile(Paths.join(root, "runtime/include/minirt.h"))) ok("Mini root", root)
-        else bad("Mini root", "stdlib/ and runtime/ not found", listOf("run `mini` through the wrapper script in the repository (`<repo>/mini`), or set MINI_ROOT=<repo>"))
+        if (root != null && p.isDirectory(Paths.join(root, "stdlib")) && p.isFile(Paths.join(root, "include/minirt.h"))) ok("Mini root", root)
+        else bad("Mini root", "stdlib/ and include/ not found", listOf("install Mini (see the README), or in a source checkout run `./mini` (it builds the toolchain), or set MINI_ROOT"))
 
-        val minic = p.env("MINIC")?.takeIf { it.isNotEmpty() } ?: root?.let { Paths.join(it, Toolchain.MINIC_RELATIVE) }
-        if (minic != null && p.isFile(minic)) ok("minic", minic)
-        else bad("minic", "the compiler is not built", listOf("run `./minic --help` in the repository once (builds it), or `cd compiler && ./gradlew installDist`"))
+        val minic = p.env("MINIC_NATIVE")?.takeIf { it.isNotEmpty() } ?: root?.let { Paths.join(it, Toolchain.MINIC_RELATIVE) }
+        if (minic != null && p.isFile(minic)) ok("minic-native", minic)
+        else bad("minic-native", "the compiler is not built", listOf("in a source checkout run `./mini` or `scripts/build-mini.sh`"))
+        if (root != null && !p.isFile(Paths.join(root, "lib/libminirt.a"))) bad("runtime", "lib/libminirt.a is missing", listOf("reinstall Mini, or run `scripts/build-mini.sh` in a source checkout"))
 
         val cc = Toolchain.findCompiler(p)
         if (cc != null) ok("C compiler", cc.second)
         else bad("C compiler", "neither clang nor gcc found", listOf(installHint("clang", "llvm"), "or set MINI_CC to your compiler"))
-
-        val j = javaMajor()
-        if (j == null) bad("JDK", "`java` not found", listOf("minic still runs on the JVM (until the bootstrap B3): " + installHint("openjdk-21-jdk", "openjdk@21")))
-        else if (j.first == null || j.first!! < 21) warn("JDK", "found ${j.second}, JDK 21 is required", listOf(installHint("openjdk-21-jdk", "openjdk@21")))
-        else ok("JDK", "${j.second} (needed only while minic runs on the JVM)")
 
         val g = p.exec(Exec(listOf("git", "--version")))
         if (g.exitCode == 0) ok("git", g.stdout.trim()) else warn("git", "not found (only needed for git dependencies)", listOf(installHint("git", "git")))

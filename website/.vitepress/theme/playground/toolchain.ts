@@ -40,7 +40,7 @@ export async function probeToolchain(siteBase: string): Promise<ToolchainManifes
 }
 
 /** Registers the cache-first service worker for the toolchain files (see README, "Caching"). Best effort. */
-function registerServiceWorker(siteBase: string, version: string) {
+export function registerServiceWorker(siteBase: string, version: string) {
   try {
     if (!('serviceWorker' in navigator) || location.hostname === 'localhost') return
     const base = siteBase.replace(/\/?$/, '/')

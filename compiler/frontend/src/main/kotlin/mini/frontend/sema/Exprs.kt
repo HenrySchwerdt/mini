@@ -327,6 +327,7 @@ fun operatorName(op: String): String? = when (op) {
     "*" -> "times"
     "/" -> "div"
     "%" -> "rem"
+    "@" -> "matmul"
     else -> null
 }
 
@@ -334,7 +335,7 @@ fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
     val op = e.op
     when (op) {
         "=" -> return assign(e)
-        "+=", "-=", "*=", "/=", "%=" -> return compoundAssign(e)
+        "+=", "-=", "*=", "/=", "%=", "@=" -> return compoundAssign(e)
         "&&", "||" -> return andOr(e)
         "==", "!=", "===", "!==" -> {
             val l = expr(e.left, null)
@@ -377,7 +378,7 @@ fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
         val r = expr(e.right, null)
         val res = resolveOperator(on, l, listOf(r), e.start, null)
         if (res == null) {
-            err(e.start, "no operator " + on + " for " + renderType(l))
+            err(e.start, "no operator " + on + " for " + renderType(l) + (if (op == "@") " (declare `operator fun matmul(other: T)`)" else ""))
             return ErrType("operator $on")
         }
         completeLiteralArg(e.right, res.paramTypes, 0)
@@ -623,6 +624,14 @@ fun BodyChecker.compoundAssign(e: BinaryExpr): Type {
     val assignName = base + "Assign"
     var res = resolveOperator(assignName, lt, listOf(rt), e.start, null)
     var isAssignOp = res != null
+    if (res != null && e.op == "@=") {
+        // like Kotlin: on a `var` target both `matmulAssign` and `matmul` apply, which is ambiguous
+        val c = rec.get(l)?.callee
+        val isVarTarget = (c is VarSym && c.isVar) || (c is PropSym && c.isVar)
+        if (isVarTarget && resolveOperator(base, lt, listOf(rt), e.start, null) != null) {
+            err(e.start, "ambiguous assignment: both operator 'matmulAssign' and 'matmul' apply to " + renderType(lt))
+        }
+    }
     if (res == null) res = resolveOperator(base, lt, listOf(rt), e.start, null)
     if (res != null) {
         val rr = record(e, sema.unitType, res.callee)

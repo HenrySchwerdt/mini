@@ -17,6 +17,7 @@ function sourceOf(block: Element): string {
 export function decorateCodeBlocks() {
   const blocks = document.querySelectorAll('.vp-doc div[class*="language-kotlin"], .vp-doc div[class*="language-kt"]')
   blocks.forEach((block) => {
+    if (block.closest('.mc')) return // runnable cells have their own toolbar
     if (block.querySelector(`.${CLASS}`)) return
     const button = document.createElement('button')
     button.type = 'button'

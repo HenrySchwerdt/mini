@@ -39,7 +39,7 @@ fun renderSourceError(e: TomlError, file: String, source: String, style: Style, 
     sb.append(pad).append(style.blue("-->")).append(" $file:${e.span.line}:${e.span.col}\n")
     sb.append(pad).append(style.blue(" |")).append('\n')
     fun snippet(sp: Span, label: String?, primary: Boolean) {
-        val text = lines.getOrElse(sp.line - 1) { "" }.trimEnd('\r')
+        val text = lines.getOrElse(sp.line - 1) { "" }.trimEndChars('\r')
         sb.append(style.blue(sp.line.toString().padStart(width) + " |")).append(' ').append(text).append('\n')
         val len = sp.len.coerceIn(1, maxOf(1, text.length - sp.col + 1))
         val marks = (if (primary) "^" else "-").repeat(len)

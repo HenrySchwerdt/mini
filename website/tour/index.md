@@ -1,6 +1,10 @@
 # Language tour
 
-Mini is Kotlin, so this tour is short on explanation and long on programs. Every listing here is a real file under `website/samples/tour/`. CI builds each one with `./minic build`, runs it and compares stdout with the output shown beneath it.
+::: tip New here?
+[Learn Mini](/learn/) is the step-by-step tutorial with exercises. This tour is the reference listing of the same features.
+:::
+
+Mini is Kotlin, so this tour is short on explanation and long on programs. Every listing here is a real file under `website/samples/tour/`, and **every one has a Run button**: it compiles and runs in your browser. CI builds each one with `./minic build`, runs it and compares stdout with the output shown beneath it.
 
 Build and run any of them yourself:
 

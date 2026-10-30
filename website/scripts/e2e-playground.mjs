@@ -8,7 +8,10 @@
 //   /playground  loads the toolchain, Check on the memory-leak example shows M0102, Run prints hello, an uncaught exception shows stderr
 //                and a non-zero exit code, a second visit is served from the service worker cache
 //   /notebook    "Run all" on the starter notebook ends at the expected M0102 cell
-//   docs page    "Open in playground" opens the playground with the code of the block
+//   preload      a fresh visitor on an ordinary docs page: the toolchain starts loading by itself (no click) and the badge goes to "ready"
+//   docs pages   every runnable Kotlin fence has Run with the output below (a plain fence on /install, a sample on /tour/basics, the
+//                hero example on the landing page); a tutorial page (/learn/*): Run, Edit + Run, Check with M0102, Run all, exercise goal
+//   docs page    "Open in playground" opens the playground with the code of a block that is not a runnable cell
 // Screenshots go to --shots (default: ./e2e-shots). Exit code 1 on the first failing check.
 import { createServer } from 'node:http'
 import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs'
@@ -149,8 +152,111 @@ await step('notebook: Run all stops at the expected M0102', async () => {
     await shot('notebook-run-all')
 })
 
-await step('docs page: Open in playground', async () => {
-    await page.goto(`${base}/memory/arenas`)
+// ---- the cells of the documentation ----
+
+await step('preload: the toolchain starts loading on a docs page without a click', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+    const p = await ctx.newPage()
+    const urls = []
+    ctx.on('request', r => urls.push(r.url()))
+    await p.goto(`${base}/install`)
+    await p.locator('.mc').first().waitFor({ timeout: 30000 })
+    await p.locator('.tc-badge').waitFor({ timeout: 30000 })
+    const t0 = Date.now()
+    while (!urls.some(u => u.endsWith('minic.wasm')) && Date.now() - t0 < 30000) await p.waitForTimeout(100)
+    assert.ok(urls.some(u => u.endsWith('minic.wasm')), 'minic.wasm was requested without any click')
+    assert.equal(await p.locator('.cm-editor').count(), 0, 'the editor is not loaded before the first Edit')
+    await p.screenshot({ path: join(shots, 'docs-preload-loading.png') })
+    await p.locator('.tc-badge.ready').waitFor({ timeout: 240000 })
+    assert.ok(urls.some(u => u.endsWith('llvm.core.wasm')), 'the compiler stage was preloaded too')
+    // a plain fenced snippet (no sample file behind it): Run and the output right below it
+    const cell = p.locator('.mc').first()
+    await cell.getByRole('button', { name: 'Run', exact: true }).click()
+    await cell.locator('.mp-output').waitFor({ timeout: 60000 })
+    await p.waitForFunction(() => /exit code 0/.test(document.querySelector('.mc .mp-output')?.textContent ?? ''), null, { timeout: 60000 })
+    assert.match(await cell.locator('.mp-output').innerText(), /^Hello, Mini!\n/)
+    assert.equal(await cell.locator('.mc-verdict.ok').count(), 1, 'the output matches the documented output')
+    // the output panel is below the code
+    const [codeBox, outBox] = await Promise.all([cell.locator('.mc-code').boundingBox(), cell.locator('.mp-output').boundingBox()])
+    assert.ok(outBox.y > codeBox.y + codeBox.height - 1, 'output is below the code')
+    await p.screenshot({ path: join(shots, 'docs-install-cell.png') })
+    // the sample behind a <<< include on a tour page
+    await p.goto(`${base}/tour/basics`)
+    const tour = p.locator('.mc').first()
+    await tour.getByRole('button', { name: 'Run', exact: true }).click()
+    await p.waitForFunction(() => /liftoff/.test(document.querySelector('.mc .mp-output')?.textContent ?? ''), null, { timeout: 60000 })
+    assert.equal(await tour.locator('.mc-verdict.ok').count(), 1)
+    // the hero example on the landing page
+    await p.goto(`${base}/`)
+    const hero = p.locator('.hero-demo .mc')
+    await hero.getByRole('button', { name: 'Run', exact: true }).click()
+    await p.waitForFunction(() => /Hello from native code: 44/.test(document.querySelector('.hero-demo .mp-output')?.textContent ?? ''), null, { timeout: 60000 })
+    await p.screenshot({ path: join(shots, 'home-hero-run.png') })
+    await ctx.close()
+})
+
+await step('tutorial: Run, edit and run, Check, exercise goal, Run all', async () => {
+    // reuse the service worker cache of the earlier steps
+    await page.goto(`${base}/learn/hello`)
+    const cells = page.locator('.mc')
+    await cells.first().waitFor({ timeout: 30000 })
+    // Run the first cell
+    await cells.nth(0).getByRole('button', { name: 'Run', exact: true }).click()
+    await cells.nth(0).locator('.mc-verdict.ok').waitFor({ timeout: 180000 })
+    assert.match(await cells.nth(0).locator('.mp-output').innerText(), /Hello, Mini!/)
+    // Edit: the editor replaces the static code; run the edited program
+    await cells.nth(0).getByRole('button', { name: 'Edit', exact: true }).click()
+    const editor = cells.nth(0).locator('.cm-content')
+    await editor.waitFor({ timeout: 30000 })
+    await editor.click()
+    await page.keyboard.press('Control+A')
+    await page.keyboard.insertText('fun main() {\n    println("edited ${6 * 7}")\n}\n')
+    await cells.nth(0).getByRole('button', { name: 'Run', exact: true }).click()
+    await page.waitForFunction(() => /edited 42/.test(document.querySelector('.mc .mp-output')?.textContent ?? ''), null, { timeout: 60000 })
+    assert.equal(await cells.nth(0).locator('.mc-verdict').count(), 0, 'an edited program is not compared with the documentation')
+    await shot('tutorial-hello-edited')
+    // Reset restores the original
+    await cells.nth(0).getByRole('button', { name: 'Reset', exact: true }).click()
+    assert.equal(await cells.nth(0).locator('.cm-editor').count(), 0)
+    // notebook semantics: the third cell uses `name` from the cell above
+    await cells.nth(2).getByRole('button', { name: 'Run', exact: true }).click()
+    await page.waitForFunction(() => /Goodbye, Mini \(2027 is next year\)/.test(document.querySelectorAll('.mc')[2]?.textContent ?? ''), null, { timeout: 60000 })
+    // an exercise: the starter does not reach the goal, the solution does
+    const exercise = page.locator('.mc-exercise')
+    await exercise.getByRole('button', { name: 'Run', exact: true }).click()
+    await exercise.locator('.mp-output').waitFor({ timeout: 60000 })
+    assert.equal(await exercise.locator('.mc-verdict.ok').count(), 0)
+    assert.match(await exercise.locator('.mc-expected').innerText(), /Hello, Grace!/)
+    await page.getByText('Show solution').click()
+    const solution = page.locator('details .mc').first()
+    await solution.getByRole('button', { name: 'Run', exact: true }).click()
+    await solution.locator('.mc-verdict.ok').waitFor({ timeout: 60000 })
+
+    // Check cells: the memory checker with the documented M0102
+    await page.goto(`${base}/learn/memory-strict`)
+    const leak = page.locator('.mc').first()
+    await leak.getByRole('button', { name: 'Check', exact: true }).click()
+    await leak.locator('.mc-diag').first().waitFor({ timeout: 120000 })
+    const text = await leak.locator('.mc-out').innerText()
+    assert.match(text, /M0102/)
+    assert.match(text, /never released/)
+    await leak.locator('.mc-verdict.ok').waitFor({ timeout: 5000 })
+    await shot('tutorial-check-m0102')
+
+    // Run all on a page: every cell passes
+    await page.goto(`${base}/learn/basics`)
+    await page.getByRole('button', { name: 'Run all' }).waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: 'Run all' }).click()
+    await page.waitForFunction(() => /^Run all$/.test(document.querySelector('.ra-btn.primary')?.textContent?.trim() ?? ''), null, { timeout: 240000 })
+    const okCount = await page.locator('.mc-verdict.ok').count()
+    const cellCount = await page.locator('.mc:not(.mc-exercise)').count()
+    assert.ok(okCount >= cellCount - 1, `expected the cells of /learn/basics to match their documented output (${okCount} of ${cellCount})`)
+    assert.equal(await page.locator('.ra-fail').count(), 0)
+    await shot('tutorial-run-all')
+})
+
+await step('docs page: Open in playground (code block that is not a runnable cell)', async () => {
+    await page.goto(`${base}/guide/c-interop`)
     const button = page.locator('.mp-open-pg').first()
     await button.waitFor({ timeout: 30000 })
     await button.click()
@@ -158,6 +264,13 @@ await step('docs page: Open in playground', async () => {
     await page.locator('.cm-content').first().waitFor()
     assert.ok((await page.locator('.cm-content').first().innerText()).length > 20)
     await shot('docs-open-in-playground')
+})
+
+await step('docs page: a cell opens in the playground with its program', async () => {
+    await page.goto(`${base}/learn/hello`)
+    await page.locator('.mc').first().getByRole('button', { name: 'Playground' }).click()
+    await page.waitForURL(/\/playground/, { timeout: 30000 })
+    await page.waitForFunction(() => document.querySelector('.cm-content')?.textContent?.includes('Hello, Mini!'), null, { timeout: 30000 })
 })
 
 const real = problems.filter(p => !/favicon|Failed to load resource: the server responded with a status of 404/.test(p))

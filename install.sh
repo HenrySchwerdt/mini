@@ -1,5 +1,6 @@
 #!/bin/sh
-# Installs a prebuilt Mini (minic) from GitHub Releases into ~/.mini.
+# Installs a prebuilt Mini (the `mini` project tool and the `minic` compiler) from GitHub Releases into ~/.mini.
+# No JDK and no Gradle: both are native binaries compiled by Mini itself.
 #
 #   curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
 #
@@ -98,10 +99,14 @@ case ":$PATH:" in
     *":$MINI_HOME/bin:"*) ;;
     *)
         say ""
-        say "Add minic to your PATH (put it in your shell profile):"
+        say "Add mini and minic to your PATH (put it in your shell profile):"
         say "    export PATH=\"$MINI_HOME/bin:\$PATH\""
         ;;
 esac
 say ""
-say "minic needs a C compiler (clang or gcc). Try:"
+say "mini and minic need a C compiler (clang or gcc). Try:"
+if [ -x "$MINI_HOME/bin/mini" ]; then
+    say "    mini new hello && cd hello && mini run"
+    say "or, for a single file:"
+fi
 say "    minic run hello.kt"

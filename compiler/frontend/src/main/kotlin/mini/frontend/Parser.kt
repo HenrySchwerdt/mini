@@ -498,7 +498,7 @@ class Parser(internal val lex: LexResult) {
     }
 
     /** modifier list of a declaration: annotations, modifier keywords and context parameters; null when empty */
-    internal fun parseModifierList(): Modifiers? {
+    internal fun parseModifierList(allowIn: Boolean = false): Modifiers? {
         val m = mark()
         val s = tokStart()
         val items = ArrayList<ModItem>()
@@ -515,6 +515,11 @@ class Parser(internal val lex: LexResult) {
                 val t = tokText()
                 advance()
                 items.add(fin(KeywordMod(t), ks))
+            } else if (allowIn && kind() == Tk.IN) {
+                // like K2, the variance keyword `in` parses as a modifier of a value parameter (sema rejects it)
+                val ks = tokStart()
+                advance()
+                items.add(fin(KeywordMod("in"), ks))
             } else if (atContextClause()) {
                 ctx = parseContextParams()
             } else {
@@ -924,7 +929,7 @@ class Parser(internal val lex: LexResult) {
     internal fun parseParam(full: Boolean): Param {
         val m = mark()
         val s = tokStart()
-        val mods = parseModifierList()
+        val mods = parseModifierList(allowIn = true)
         var vv: String? = null
         if (kind() == Tk.VAL || kind() == Tk.VAR) {
             vv = tokText()

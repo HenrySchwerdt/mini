@@ -40,8 +40,19 @@ export function probe(): Promise<void> {
   return probed
 }
 
-/** Loads the toolchain up to `level`, reporting progress. Throws on failure and records `loadError`. */
-export async function ensureToolchain(level: LoadStage): Promise<WorkerToolchain> {
+let loadChain: Promise<unknown> = Promise.resolve()
+
+/**
+ * Loads the toolchain up to `level`, reporting progress. Throws on failure and records `loadError`.
+ * Calls are serialized (the preload, a Run click and the playground may all ask at once), and a level that is already loaded is free.
+ */
+export function ensureToolchain(level: LoadStage): Promise<WorkerToolchain> {
+  const p = loadChain.then(() => loadNow(level))
+  loadChain = p.catch(() => {})
+  return p
+}
+
+async function loadNow(level: LoadStage): Promise<WorkerToolchain> {
   await probe()
   if (availability.value !== 'available') throw new ToolchainUnavailableError()
   toolchain ??= new WorkerToolchain(siteBase)
@@ -57,6 +68,15 @@ export async function ensureToolchain(level: LoadStage): Promise<WorkerToolchain
   } finally {
     progress.value = null
   }
+}
+
+let busy: Promise<unknown> = Promise.resolve()
+
+/** The toolchain worker handles one request at a time: compile and check calls from different cells queue up here. */
+export function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const p = busy.then(fn)
+  busy = p.catch(() => {})
+  return p
 }
 
 export function cancelToolchain() {
@@ -97,7 +117,7 @@ export async function buildAndRun(files: SourceFile[], h: RunHandlers): Promise<
   }
   let res
   try {
-    res = await tc.compile(files, h.compile)
+    res = await exclusive(() => tc.compile(files, h.compile))
   } catch (e) {
     return { stage: 'compile', diagnostics: [], timings: {}, failure: `The compiler failed: ${(e as Error).message}` }
   }
@@ -116,7 +136,7 @@ export async function checkOnly(files: SourceFile[]): Promise<{ diagnostics: Dia
     return { diagnostics: [], failure: (e as Error).message }
   }
   try {
-    return { diagnostics: await tc.check(files) }
+    return { diagnostics: await exclusive(() => tc.check(files)) }
   } catch (e) {
     return { diagnostics: [], failure: `The checker failed: ${(e as Error).message}` }
   }

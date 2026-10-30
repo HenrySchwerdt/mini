@@ -30,13 +30,14 @@ class Console(val platform: Platform, colorMode: ColorMode, val verbosity: Verbo
     init {
         val noColor = !platform.env("NO_COLOR").isNullOrEmpty()
         val force = !platform.env("CLICOLOR_FORCE").isNullOrEmpty() && platform.env("CLICOLOR_FORCE") != "0"
-        fun decide(s: Stream): Boolean = when (colorMode) {
-            ColorMode.Always -> true
-            ColorMode.Never -> false
-            ColorMode.Auto -> !noColor && (force || (platform.isTerminal(s) && platform.env("TERM") != "dumb"))
-        }
-        out = Style(decide(Stream.Stdout))
-        err = Style(decide(Stream.Stderr))
+        out = Style(decide(colorMode, noColor, force, Stream.Stdout))
+        err = Style(decide(colorMode, noColor, force, Stream.Stderr))
+    }
+
+    private fun decide(colorMode: ColorMode, noColor: Boolean, force: Boolean, s: Stream): Boolean = when (colorMode) {
+        ColorMode.Always -> true
+        ColorMode.Never -> false
+        ColorMode.Auto -> !noColor && (force || (platform.isTerminal(s) && platform.env("TERM") != "dumb"))
     }
 
     val quiet get() = verbosity == Verbosity.Quiet

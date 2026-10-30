@@ -6,11 +6,16 @@ This page separates what exists today from what is planned. Anything under "Plan
 
 | Area | State |
 |---|---|
-| **v1: self-hosted native backend** | **Done.** `minic` compiles its own backend; the native `minic-backend` produces byte-identical C for every test program (`SelfHostTest`). |
-| **Own parser (B2-1)** | **Done.** 0 mismatches against K2's PSI tree on the repo sources, about 230 tricky snippets, 30k random expressions, 20k random declarations and about 12k mutated repo files. |
-| **Own type checker (B2-2)** | **Done.** 99.99 % agreement with K2 FIR (86658 of 86668 positions). Builds natively with the same result as on the JVM. |
-| **RC elision (D1)** | **Done.** `arraylist` 405 to 265 ms, `tree` retains 8.3M to 0, self-hosted backend 749 to 603 ms. See [Benchmarks](/benchmarks). |
-| **Memory model checker** | Implemented: diagnostics M0101 to M0115, M0202, M0204 to M0206 ([reference](/reference/diagnostics/)). M0201 and M0203 are specified but not implemented. |
+| **Self-hosting (B3)** | **Done.** The native `minic-native` compiles itself without a JVM or K2; stage 2 and stage 3 are byte-identical, through the C backend and both LLVM backends. CI bootstraps from the latest release. |
+| **Own frontend (B2)** | **Done** and the default: own parser (0 mismatches against K2's PSI tree on large fuzzed corpora), own type checker (99.99 % agreement with K2 FIR) and lowering to MIR without K2. |
+| **Native `mini` project tool** | **Done.** `mini new/build/run/test/check`, `mini.toml`, path and git dependencies; a native binary compiled by Mini, about 1 ms to start, shipped in the release archives. |
+| **Releases** | Prebuilt archives for linux-x64, linux-arm64 and macos-arm64, plus a C bootstrap seed. See [Install](/install). |
+| **Memory model checker** | Diagnostics M0101 to M0115, M0202, M0204 to M0207 ([reference](/reference/diagnostics/)), natively (`minic-native --check`) and in the browser. M0201 and M0203 are specified but not implemented. |
+| **C interop** | `external` with `@CName`, `CPointer`/`*Var`, `memScoped`, `@CStruct`, `staticCFunction`, `@file:CInclude`/`@file:CLink`, `@Owned(free=)`. See [C interop](/guide/c-interop). |
+| **LLVM backend** | MIR to LLVM IR, as text or in memory through the LLVM C API bound in Mini; `minic-native --run` runs programs with the ORC JIT. |
+| **Playground and notebook in the browser** | The compiler built for WebAssembly runs in your browser ([Playground and notebook](/guide/playground)), and every example in the documentation is a live cell ([Learn Mini](/learn/)). |
+| **Matrix operator `@`** | `a @ b` calls an `operator fun matmul`; no type implements it by default. See [Mini and Kotlin/JVM](/guide/mini-vs-kotlin). |
+| **Performance, first round** | RC elision, a size-class allocator and faster arenas, inline array accessors, borrowed array reads, fast integer formatting. Several benchmarks are within 1.0 to 1.3x of C. See [Benchmarks](/benchmarks). |
 | **Language and stdlib** | classes, `sealed`/`data`/`enum`/`object`, interfaces, generics, lambdas, `inline`/`reified`, exceptions, extensions, collections. See [Mini and Kotlin/JVM](/guide/mini-vs-kotlin). |
 | **Platforms** | Linux and macOS (CI). |
 
@@ -18,15 +23,9 @@ This page separates what exists today from what is planned. Anything under "Plan
 
 | Area | State |
 |---|---|
-| **Own frontend to MIR without K2 (B2-3)** | In progress. On the working branch all 47 test programs already lower to MIR identical to the K2 path, also from a natively built, K2-free `minic-native`. |
-| **Strict codegen and stdlib on the memory model (D2)** | In progress. Strict programs are checked, but programs that use allocator objects, context parameters or `mini.memory` do not build natively yet (`minic build` reports `unsupported construct: value class 'NativePtr'` while compiling `mini.memory`). The planned lowering uses `mk_alloc_with`, `mk_free` and `mk_arena_*` from the runtime. |
-| **Playground and notebook in the browser** | The editors, runner and notebook are built ([Playground and notebook](/guide/playground)); **Run** and **Check** stay disabled until the compiler built for WebAssembly is shipped with the site (plan section 10i). |
-
-## Next
-
-| Area | State |
-|---|---|
-| **Full bootstrap, stage 2 == stage 3 (B3)** | Next. `minic` compiles itself without a JVM. |
+| **Repository without Gradle** | After the native `mini`, the test suite moves to `mini test`; the K2 cross-checks move to a separate, optional tool. |
+| **LLVM performance** | Bringing the LLVM backends to at least the speed of the C backend, then making LLVM the default. |
+| **Strict codegen and stdlib on the memory model (D2)** | Strict programs are checked everywhere; programs that use allocator objects and `mini.memory` do not build everywhere yet, so the memory chapters of the tutorial use Check only. |
 
 ## Planned
 
@@ -34,21 +33,19 @@ This page separates what exists today from what is planned. Anything under "Plan
 
 | Area | Plan |
 |---|---|
-| **Project tool `mini`** | `mini new`, `mini build`, `mini run`, `mini test`, `mini add`, a `mini.toml` manifest with a lockfile, libraries as source packages. First as commands of the current `minic`, after B3 rewritten in Mini as a native binary. Planned right after B2-3 (plan section 10f). |
-| **Repository without Gradle** | After B3 the compiler is built by `mini`, with a C bootstrap seed (the generated C of `minic` is published with every release, so building from scratch needs only a C compiler). Gradle would survive only in optional K2 oracle checks. |
-| **Reflection** | R2 after B3: static, read-only metadata for `KClass.members`, `memberProperties`, `KProperty.get/set`, `KFunction.call`, only for classes that are reflected on, with ownership annotations stored in the metadata. Today only `Foo::class` and `simpleName`/`qualifiedName` exist (R1). |
-| **Compiler plugins, JSON, web framework** | R3 plugin API; `kotlinx.serialization`-style JSON (`@Serializable`, `Json.encodeToString`) with serializers generated at compile time; a Spring-like web framework with compile-time DI and routing and **one arena per request**. Needs coroutines and async IO first. |
-| **Coroutines and async IO** | `suspend` lowering, a dispatcher on libuv, `mini.io` with timers, files, TCP/UDP, DNS. Not started; `suspend` is a compile error today. |
-| **C interop** | `external fun` with `@CName`, `@CInclude`/`@CLink`, a `kotlinx.cinterop`-compatible API, a bindgen tool and C export. Not started; `external` is used only inside the stdlib, for runtime intrinsics. |
-| **LLVM backend** | Replaces C emission later; would allow real exception unwinding. |
-| **Windows** | Linux and macOS first. The generated C also uses GNU statement expressions, so MSVC is out. |
-| **Runtime written in Kotlin** | Rewrite libminirt piece by piece in Strict mode with `@NoAlloc`, on a small `mini.unsafe` layer (raw pointers, atomics, `external` libc). |
+| **Dependencies and packages** | Dependencies in `mini.toml` by git URL or path with a lockfile, later precompiled `.mlib` packages, a build cache and a registry. |
+| **Reflection** | Static, read-only metadata for `KClass.members`, `memberProperties`, `KProperty.get/set`, `KFunction.call`, only for classes that are reflected on, with ownership annotations stored in the metadata. Today only `Foo::class` and `simpleName`/`qualifiedName` exist. |
+| **Compiler plugins** | A plugin API that generates code at compile time (serializers, DI wiring, route tables). |
+| **Libraries outside the stdlib** | `mini-serialization` (JSON in the style of kotlinx.serialization), `mini-web` (a web framework with compile-time DI and routing and one arena per request), tensor libraries on the `@` operator. Separate packages, not part of the stdlib. |
+| **Coroutines and async IO** | `suspend` lowering, a dispatcher on libuv, `mini.io` with timers, files, TCP/UDP, DNS. `suspend` is a compile error today. |
+| **LLVM by default** | Embedded linker, static libuv, `.kts` scripts and a REPL on the JIT, real exception unwinding. |
+| **Performance, second round** | A faster `HashMap` and cached string hashes (wordcount), runtime memory layout, link-time optimization, arenas inside the compiler. |
+| **Windows** | Linux and macOS first. |
+| **Runtime written in Kotlin** | Rewrite libminirt piece by piece in Strict mode, and replace libuv step by step. |
 | **Cycle collector and weak references** | Reference cycles leak today. |
-| **Escape analysis and stack placement** | Specified (M0201, M0203) but not implemented; the checker treats escape only syntactically. |
+| **Escape analysis and stack placement** | Specified (M0201, M0203) but not implemented. |
 | **Collections of owned values** | `List<@Owned T>` and arrays of owned elements; today they are rejected with M0110. |
-| **Transitive `@NoAlloc` and function summaries**, **`M0207` and `minic mem-report`** (show where reference counting remains) | Designs in the plan and the specification. |
-| **Dogfooding the memory model** | An `Arena` per compiler phase; stdlib internals (`ArrayList`, `HashMap`, `StringBuilder` buffers) converted to Strict. |
-| **Kotlin libraries** | Source of Kotlin Multiplatform libraries (`commonMain`), later klib import and a Gradle plugin. JVM-only `.jar` libraries are deliberately not supported. |
+| **Kotlin libraries** | Source of Kotlin Multiplatform libraries (`commonMain`). JVM-only `.jar` libraries are deliberately not supported. |
 
 ## Plan phases
 

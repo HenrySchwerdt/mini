@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# The Mini project tool (like cargo). Runs from a source checkout and builds itself and the compiler on first use.
+# The Mini project tool (like cargo). Runs from a source checkout and builds itself on first use: `mini` is a native binary
+# compiled by the Mini compiler (scripts/build-mini.sh), no JVM and no Gradle.
 #   ./mini new hello && cd hello && ../mini run
 # To use it from any directory, put the repository root on PATH:
 #   export PATH="$PATH:/path/to/mini"     # then: mini new hello && cd hello && mini run
+#
+# The first use needs a native compiler to start from: one found on this machine (MINI_STAGE0, ~/.mini, PATH) or the latest
+# release (downloaded once into build/stage0, see install.sh). Only when neither works does it fall back to the JVM build
+# (./gradlew :jvm-bridge:installDist, needs JDK 21).
 set -euo pipefail
 
 # resolve symlinks, so `ln -s /path/to/mini/mini ~/bin/mini` works too
@@ -14,26 +19,40 @@ while [ -L "$src" ]; do
 done
 root="$(cd "$(dirname "$src")" && pwd)"
 
-bin="$root/compiler/mini-tool/build/install/mini/bin/mini"
-minic="$root/compiler/jvm-bridge/build/install/minic/bin/minic"
+home="$root/build/native"
+bin="$home/bin/mini"
 
-stale() { # stale <launcher> <module-dir>...: the launcher is missing or a main source is newer
-    local launcher="$1"; shift
-    [ ! -x "$launcher" ] && return 0
-    for d in "$@"; do
-        [ -n "$(find "$root/compiler/$d" -name '*.kt' -path '*/src/main/*' -newer "$launcher" -print -quit 2>/dev/null)" ] && return 0
-    done
-    return 1
+stale() { # the tool is missing or a source it is built from is newer
+    [ ! -x "$bin" ] && return 0
+    [ -n "$(find "$root/compiler/mini-tool/src/main" "$root/compiler/mini-tool/src/native" "$root/compiler/frontend/src/main" \
+        "$root/compiler/lower/src/main" "$root/compiler/backend/src/main" "$root/compiler/minic-native/src/main" \
+        "$root/stdlib" "$root/runtime/src" "$root/runtime/include" -type f -newer "$bin" -print -quit 2>/dev/null)" ]
 }
 
-if stale "$bin" mini-tool frontend || stale "$minic" jvm-bridge backend frontend; then
-    echo "mini: building the toolchain (first use, takes about a minute) ..." >&2
-    (cd "$root/compiler" && ./gradlew -q :mini-tool:installDist :jvm-bridge:installDist) >&2 ||
-        { echo "mini: building the toolchain failed; is JDK 21 installed? (try: mini doctor)" >&2; exit 1; }
+build() {
+    local status=0
+    "$root/scripts/build-mini.sh" --quiet >&2 || status=$?
+    [ "$status" -eq 0 ] && return 0
+    [ "$status" -eq 3 ] || return "$status"
+    # no native compiler on this machine: the latest release gives one
+    echo "mini: no native compiler found, downloading the latest release (once) ..." >&2
+    if MINI_HOME="$root/build/stage0" sh "$root/install.sh" >&2 && [ -x "$root/build/stage0/bin/minic-native" ]; then
+        "$root/scripts/build-mini.sh" --quiet --stage0 "$root/build/stage0/bin/minic-native" >&2
+        return $?
+    fi
+    # last resort: the JVM build of the compiler
+    echo "mini: the download failed; building the compiler with the JVM (./gradlew, JDK 21) ..." >&2
+    (cd "$root/compiler" && ./gradlew -q :jvm-bridge:installDist) >&2 ||
+        { echo "mini: cannot build the toolchain: no native compiler, no release to download and no JDK 21. Install a release (see install.sh) and retry" >&2; return 1; }
+    "$root/scripts/build-mini.sh" --quiet --jvm-minic "$root/compiler/jvm-bridge/build/install/minic/bin/minic" >&2
+}
+
+if stale; then
+    echo "mini: building the toolchain (first use, takes a minute or two) ..." >&2
+    build || { echo "mini: building the toolchain failed" >&2; exit 1; }
 fi
 
-export MINI_ROOT="$root"
-export MINIC="$minic"
+export MINI_ROOT="$home"
 [ -t 1 ] && export MINI_TTY_STDOUT=1 || export MINI_TTY_STDOUT=0
 [ -t 2 ] && export MINI_TTY_STDERR=1 || export MINI_TTY_STDERR=0
 exec "$bin" "$@"
