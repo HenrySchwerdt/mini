@@ -20,7 +20,16 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The in-browser toolchain (minic.wasm, runtime, worker, prebuilt clang modules): only on pushes to main, cached by the hash of its
+  # inputs (see wasm-toolchain.yml). Pull requests skip it and the site then says that Run is not available.
+  toolchain:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/wasm-toolchain.yml
+
   build:
+    needs: toolchain
+    # a skipped toolchain job (pull request) must not skip the build
+    if: ${{ !cancelled() && (needs.toolchain.result == 'success' || needs.toolchain.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,10 +75,38 @@ jobs:
         working-directory: website
         run: npm test && npm run typecheck
 
+      - name: Download the wasm toolchain
+        if: github.event_name != 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-toolchain
+          path: wasm-toolchain
+
+      # website/public/toolchain/: manifest.json, the module worker and the versioned wasm files (about 107 MB, not committed).
+      - name: Unpack the wasm toolchain into the site
+        if: github.event_name != 'pull_request'
+        run: tar -xzf wasm-toolchain/wasm-toolchain-site.tar.gz -C website/public
+
       # VitePress fails the build on dead links.
       - name: Build the site
         working-directory: website
         run: npm run docs:build
+
+      # Headless Chromium against the built site: playground, checker, run, notebook, "Open in playground".
+      - name: Browser end-to-end test
+        if: github.event_name != 'pull_request'
+        working-directory: website
+        run: |
+          npx playwright install --with-deps chromium
+          node scripts/e2e-playground.mjs --shots "$RUNNER_TEMP/e2e-shots"
+
+      - name: Upload the end-to-end screenshots
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: ${{ runner.temp }}/e2e-shots
+          if-no-files-found: ignore
 
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'

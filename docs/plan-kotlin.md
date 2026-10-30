@@ -674,7 +674,7 @@ notebook page (Markdown and code cells sharing state). No server: GitHub Pages i
 `stdlib.json` and `toolchain.json` (artifact `wasm-toolchain`). Verified under `node:wasi`: all 53 test programs (JVM compiler -> clang.wasm -> run, output identical to the
 native build), `minic.wasm --check` (M-codes) and `minic.wasm --emit-ll --target=wasm32` -> clang.wasm -> run with IR byte-identical to the JVM compiler's. No runtime
 source needed a platform guard. Open: the website worker and WASI shim, a precompiled stdlib bundle (`.mlib`, §10f) to skip re-parsing the stdlib, incremental cells for the
-notebook, a faster clang step (the prebuilt clang is an assertions build: about 29 min for `minic.wasm` at `-O1`, seconds for user programs). Details: `compiler/README.md`,
+notebook, a smaller clang download (22 MB gzip; the prebuilt clang is an assertions build, so `minic.wasm` is compiled with the host's clang instead, in seconds). Verified in headless Chromium (Playwright, `website/scripts/e2e-playground.mjs`): load, Check, Run, exceptions, notebook, Open in playground. Details: `compiler/README.md`,
 "WebAssembly toolchain".
 
 ## 11. Working method: manager and Sonnet agents

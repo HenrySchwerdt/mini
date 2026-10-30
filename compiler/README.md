@@ -849,7 +849,7 @@ small node wrapper that mounts real files into that tree and writes the results 
 WASI file system (`worker/memwasi.mjs`, 12 imports) and turn its text output into `Diagnostic` objects (`worker/toolchain-core.mjs`); `compile` then runs clang.wasm
 twice (compile, link) and returns the `.wasm` (plus MIR / LLVM IR on request). `scripts/wasm/test-worker.mjs` drives the packed worker through the protocol under
 node (fake `self`, `file:` fetch): load check, M0101 and type-error diagnostics, load full, compile hello and run it, compile errors. Not tested here: a real browser
-(the clang package is loaded by its own bundle, which is written for browsers and node).
+(the clang package is loaded by its own bundle, which is written for browsers and node). That is now covered by the Playwright test below.
 
 **Scripts** (all relative to the repository root; `scripts/build-wasm-toolchain.sh` runs them in this order and packs `build/wasm-toolchain.tar.gz`):
 
@@ -857,11 +857,12 @@ node (fake `self`, `file:` fetch): load check, M0101 and type-error diagnostics,
 |---|---|
 | `scripts/wasm/build-runtime.sh` | libminirt for wasm32 (17 s) |
 | `scripts/wasm/test-programs.sh` | every `compiler/testdata` program through JVM compiler -> clang.wasm -> `node:wasi`, stdout / exit code / `.err` lines like `LlvmEndToEndTest` (53/53 pass; about 2-3 minutes with 4 jobs) |
-| `scripts/wasm/build-minic-wasm.sh` | `minic.wasm` (JVM `emit-mir` of the compiler sources, `native-driver --target=wasm32`, clang.wasm; **the clang step takes about 29 minutes**: the YoWASP build has LLVM assertions on and runs as wasm) |
+| `scripts/wasm/build-minic-wasm.sh` | `minic.wasm`: JVM `emit-mir` of the compiler sources, `native-driver --target=wasm32`, then the **host's clang** (wasm32 target, `-c` on the IR needs no headers) and `wasm-ld` against the sysroot, crt1 and compiler-rt extracted from `@yowasp/clang`'s resources: about 50 s in total. Without a wasm32-capable host clang it falls back to clang.wasm, whose step takes about 29 minutes (the YoWASP build has LLVM assertions on and runs as wasm). Both give a module that passes `test-minic-wasm.sh` with byte-identical IR |
 | `scripts/wasm/test-minic-wasm.sh` | `--check` in wasm (`M0101` for `memory/uaf_simple.kt`, clean for `ok_heap_basic.kt`), and `minic.wasm --emit-ll` -> clang.wasm -> run for hello and testdata programs; the `.ll` must equal the JVM compiler's byte for byte |
 | `scripts/wasm/pack-site.mjs`, `scripts/wasm/test-worker.mjs` | website layout and a protocol test of the worker (see above) |
 | `scripts/wasm/build-one.sh` | one `.kt` file to a `.wasm` with the JVM compiler |
-| `.github/workflows/wasm-toolchain.yml` | the same on CI (artifact `wasm-toolchain`; `workflow_call` for other workflows) |
+| `.github/workflows/wasm-toolchain.yml` | the same on CI (artifact `wasm-toolchain`; `workflow_call` for `pages.yml`; the finished bundle is cached by the hash of its inputs) |
+| `website/scripts/e2e-playground.mjs` | headless Chromium (Playwright) against the built site: playground load, Check M0102, Run hello, uncaught exception, reload, notebook Run all, Open in playground (`pages.yml`, push to main) |
 
 **Findings.**
 * wasm32 IR needed no emitter change: all 53 programs run under `node:wasi` with the output of the native build. `minic-native` gained `--target=wasm32` (it is the
@@ -869,4 +870,5 @@ node (fake `self`, `file:` fetch): load check, M0101 and type-error diagnostics,
 * V8 (Node 22) crashed (segfault) at start of `minic.wasm` when it was linked with `--stack-first -z stack-size=64MB`; wasmtime ran the same file. The default
   layout with `-z stack-size=32MB` works; keep it.
 * Run time of `minic.wasm` under node: `--check` of a small program 0.7 s including module compile and reading the 262 KB stdlib.
+* C interop programs (`cinterop_*`) are not part of the wasm check: they bind LP64 libc signatures (`strlen` as `Long`; wasm32 `size_t` is 32 bit) and need their own C files.
 * The prebuilt clang loads in about 1 s per invocation under node (one `llvm.core.wasm` instantiation); compiling hello.ll at `-O1` is a few seconds.

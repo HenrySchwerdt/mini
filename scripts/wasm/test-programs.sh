@@ -52,6 +52,8 @@ if [ $# -gt 0 ]; then names=("$@"); else
     for f in compiler/testdata/*.kt; do
         n="$(basename "$f" .kt)"
         # programs that deliberately do not compile (.cerr) never reach the backend
+        # C interop programs bind LP64 libc signatures (strlen as Long) and need their own C files: not part of the browser toolchain
+        case "$n" in cinterop_*) continue ;; esac
         [ -f "compiler/testdata/$n.cerr" ] || names+=("$n")
     done
 fi

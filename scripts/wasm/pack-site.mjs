@@ -13,7 +13,7 @@
 // Everything below <version>/ is immutable for that version; only manifest.json changes.
 import { build } from 'esbuild'
 import { createHash } from 'node:crypto'
-import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs'
+import { copyFileSync, readdirSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -48,6 +48,7 @@ for (const [name, p] of [['mini-toolchain.worker.js', join(tmp, 'mini-toolchain.
 }
 const version = hash.digest('hex').slice(0, 12)
 const vdir = join(outDir, version)
+for (const e of readdirSync(outDir)) if (e !== version && e !== '.tmp') rmSync(join(outDir, e), { recursive: true, force: true })
 rmSync(vdir, { recursive: true, force: true })
 mkdirSync(vdir, { recursive: true })
 copyFileSync(join(tmp, 'mini-toolchain.worker.js'), join(vdir, 'mini-toolchain.worker.js'))
