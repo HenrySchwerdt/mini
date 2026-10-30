@@ -5,13 +5,18 @@
 #
 # Expectation files (next to NAME.kt):
 #   NAME.out    the program is built and run; its stdout must equal this file
+#   NAME.run    the program is built and run; it must exit with the status written in the file (default 0); stdout is not compared
+#   NAME.norun  (web only) the docs show the sample but offer no Run/Check in the browser; not checked here
 #   NAME.check  the program is only passed through `minic check` (Strict-mode checker). Content:
 #                 ok               accepted, no diagnostics, exit 0
 #                 error M0102      rejected with exactly this code (exit 1)
 #                 warning M0202    accepted (exit 0) but this warning is reported
 #
+# Runnable code blocks written inline in the markdown pages are checked the same way: scripts/extract-snippets.mjs writes the
+# program each block runs in the browser (with the same .out / .run / .check files); they are listed as `page:<name>`.
+#
 # Usage: website/scripts/check-samples.sh [substring-filter]
-# Requires: JDK 21, clang. `./minic` builds the compiler on first use.
+# Requires: JDK 21, clang, and `npm ci` in website/ (snippet extraction). `./minic` builds the compiler on first use.
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +25,8 @@ samples="$root/website/samples"
 filter="${1:-}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+snippets="$tmp/snippets"
+node "$root/website/scripts/extract-snippets.mjs" "$snippets" || { echo "extract-snippets failed (run 'npm ci' in website/ first)"; exit 2; }
 
 cd "$root"
 # Build the compiler once up front so the per-sample timings are not skewed and errors show early.
@@ -38,11 +45,12 @@ report_fail() {
 
 while IFS= read -r kt; do
     rel="${kt#"$samples"/}"
+    case "$kt" in "$snippets"/*) rel="page:${kt#"$snippets"/}" ;; esac
     [ -n "$filter" ] && [[ "$rel" != *"$filter"* ]] && continue
     base="${kt%.kt}"
     name="${rel%.kt}"
-    if [ -f "$base.out" ]; then
-        exe="$tmp/$(echo "$name" | tr '/' '_')"
+    if [ -f "$base.out" ] || [ -f "$base.run" ]; then
+        exe="$tmp/$(echo "$name" | tr '/:' '__')"
         if ! ./minic build "$kt" -o "$exe" >"$tmp/build.log" 2>&1; then
             report_fail "$name" "build failed"
             grep -v JAVA_TOOL_OPTIONS "$tmp/build.log" | head -5 | sed 's/^/        /'
@@ -50,10 +58,13 @@ while IFS= read -r kt; do
         fi
         "$exe" >"$tmp/actual.out" 2>"$tmp/actual.err"
         status=$?
-        if [ $status -ne 0 ]; then
+        want_status=0
+        [ -f "$base.run" ] && want_status="$(tr -d ' \n' <"$base.run")"
+        [ -n "$want_status" ] || want_status=0
+        if [ "$status" -ne "$want_status" ]; then
             report_fail "$name" "exit status $status"
             head -3 "$tmp/actual.err" | sed 's/^/        /'
-        elif ! diff -u "$base.out" "$tmp/actual.out" >"$tmp/diff.txt"; then
+        elif [ -f "$base.out" ] && ! diff -u "$base.out" "$tmp/actual.out" >"$tmp/diff.txt"; then
             report_fail "$name" "output differs from $name.out"
             head -20 "$tmp/diff.txt" | sed 's/^/        /'
         else
@@ -87,9 +98,10 @@ while IFS= read -r kt; do
             *) report_fail "$name" "unknown expectation '$kind' in $name.check" ;;
         esac
     else
-        report_fail "$name" "no $name.out or $name.check next to the sample"
+        [ -f "$base.norun" ] && continue
+        report_fail "$name" "no $name.out, $name.run or $name.check next to the sample"
     fi
-done < <(find "$samples" -name '*.kt' | sort)
+done < <(find "$samples" "$snippets" -name '*.kt' | sort)
 
 echo
 echo "samples: $pass passed, $fail failed"
