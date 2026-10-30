@@ -233,7 +233,7 @@ npm run docs:dev
 A notebook code cell can declare `// %dataset https://example.org/data.csv` on its own line.
 On an explicit Run, the host downloads the UTF-8 text (CORS must allow it), decompresses `.gz` files,
 and compiles a generated source module exposing `mini.notebook.datasetText(): String` alongside the cell.
-The directive applies to that cell only. Downloads omit credentials, time out after 30 seconds, can be stopped,
+The closest directive at or above a code cell supplies its input, until a later directive replaces it. Markdown cells are ignored. Downloads omit credentials, time out after 30 seconds, can be stopped,
 and are limited to 2 MiB after decompression. The dataset is fetched again on each run, not saved in `.minb`.
 Cells using datasets have a 120-second execution budget; other cells retain 15 seconds.
 This is a notebook host facility, not a general Mini HTTP client; it requires no new compiler intrinsic.
@@ -244,3 +244,5 @@ The host validates the payload and renders a mouse/touch drawing pad, reduces it
 and evaluates `softmax(x @ weight.T + bias)` locally. No scripts from output are executed. This fast inference path
 uses the emitted Mini-trained parameters in JavaScript; training, evaluation and plotting run in Mini.
 The widget is a snapshot of one run, not a persistent Mini process. See `/libraries/digits` for the editable experiment.
+
+The digit lab uses short declaration cells and a final executable cell. Its **Run experiment** button runs the last code cell, which assembles all earlier declarations; **Run all** retains the usual cell-by-cell behavior. The second preset version uses `mini-notebook-digits-v2` storage, leaving the original saved notebook untouched.

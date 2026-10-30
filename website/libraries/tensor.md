@@ -6,7 +6,7 @@ title: mini.tensor
 
 Tensors, automatic differentiation and neural networks in Mini. Train with familiar `Linear`, `Sequential`, `crossEntropy` and `Adam` APIs, then run the same code natively or in WebAssembly.
 
-**[Open the digit lab →](/libraries/digits)** Download handwritten digits over HTTPS, train a classifier, inspect its loss curve, and draw your own digits in the notebook output. Everything runs in your browser.
+**[Open the digit lab →](/libraries/digits)** Download handwritten digits over HTTPS, compare a classifier built with raw matrices against `Linear`, explore three plotting APIs, and draw your own digits in the notebook output. Everything runs in your browser.
 
 ## A training loop
 

@@ -53,7 +53,7 @@ features:
 
 ## Train it. Draw it. Try it.
 
-Teach a model to recognize handwritten digits, then test it with your own mouse or touch input. The [**digit lab**](/libraries/digits) downloads real data over HTTPS, trains with **mini.tensor**, and charts the learning curve with **mini.plot** — all in an editable Mini notebook in your browser.
+Teach a model to recognize handwritten digits, then test it with your own mouse or touch input. The [**digit lab**](/libraries/digits) downloads real data over HTTPS, compares raw matrix multiplication with **Linear**, and shows three **mini.plot** APIs — all in an editable Mini notebook in your browser.
 
 [Open the digit lab →](/libraries/digits) · [Explore the libraries](/libraries/)
 

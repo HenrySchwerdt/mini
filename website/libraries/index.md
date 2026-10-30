@@ -16,4 +16,4 @@ In the browser there is no package registry yet, so the libraries below are **pr
 
 ## A complete experiment
 
-[**The digit lab →**](/libraries/digits) combines the libraries in one editable notebook: fetch a real dataset, train a classifier with autograd, plot its learning curve, and test it with your own handwriting. No installation required.
+[**The digit lab →**](/libraries/digits) combines the libraries in one editable notebook: fetch a real dataset, train the same classifier with matrices and `Linear`, compare pyplot, Figure/Axes and DSL plots, and test both models with your own handwriting. No installation required.

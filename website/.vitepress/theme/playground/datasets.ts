@@ -52,3 +52,13 @@ export function datasetSource(text: string): { name: string; text: string } {
   const literal = JSON.stringify(text).replace(/\$/g, '\\$')
   return { name: 'notebook-dataset.kt', text: `package mini.notebook\nfun datasetText(): String = ${literal}\n` }
 }
+
+/** The closest directive at or above a code cell remains its input until replaced. */
+export function notebookDatasetUrl(cells: { type: string; source: string }[], target: number): string | null {
+  for (let i = target; i >= 0; i--) {
+    if (cells[i].type !== 'code') continue
+    const url = datasetUrl(cells[i].source)
+    if (url !== null) return url
+  }
+  return null
+}

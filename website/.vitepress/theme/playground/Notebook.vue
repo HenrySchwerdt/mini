@@ -14,12 +14,12 @@ import {
 import { hashFor, readHash } from './share.ts'
 import { starterNotebook } from './starter.ts'
 import { digitNotebook } from './digit-notebook.ts'
-import { datasetUrl, fetchDataset, datasetSource } from './datasets.ts'
+import { notebookDatasetUrl, fetchDataset, datasetSource } from './datasets.ts'
 import { availability, buildAndRun, cancelToolchain, probe, setSiteBase } from './session.ts'
 import type { Diagnostic, RunResult } from './types.ts'
 
 const props = defineProps<{ example?: 'digits' }>()
-const STORAGE_KEY = props.example === 'digits' ? 'mini-notebook-digits' : 'mini-notebook'
+const STORAGE_KEY = props.example === 'digits' ? 'mini-notebook-digits-v2' : 'mini-notebook'
 const initialNotebook = () => props.example === 'digits' ? digitNotebook() : starterNotebook()
 const { site } = useData()
 
@@ -46,6 +46,7 @@ const dragging = ref(false)
 let abort: AbortController | undefined
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let renderMd: (s: string) => string = (s) => s
+const lastCodeIndex = computed(() => nb.value.cells.findLastIndex(c => c.type === 'code'))
 const unavailable = computed(() => availability.value === 'unavailable')
 const docsUrl = (code: string) => withBase(`/reference/diagnostics/${code}`)
 const mdHtml = (src: string) => renderMd(src) || '<p class="mp-empty">Empty text cell. Double-click to edit.</p>'
@@ -238,7 +239,7 @@ async function runCell(i: number): Promise<boolean> {
   let datasetText: string | undefined
   let dataset: string | null
   try {
-    dataset = datasetUrl(cell.source)
+    dataset = notebookDatasetUrl(nb.value.cells, i)
     if (dataset) {
       out.note = 'Downloading dataset…'
       datasetText = await fetchDataset(dataset, controller.signal)
@@ -371,6 +372,7 @@ onBeforeUnmount(() => {
       >
         Run all
       </button>
+      <button v-if="props.example === 'digits'" class="mp-btn primary" :disabled="unavailable || running || lastCodeIndex < 0" @click="runOne(lastCodeIndex)">Run experiment</button>
       <button v-if="running" class="mp-btn" @click="stop">Stop</button>
       <button class="mp-btn" @click="add(nb.cells.length, 'code')">+ Code</button>
       <button class="mp-btn" @click="add(nb.cells.length, 'markdown')">+ Text</button>

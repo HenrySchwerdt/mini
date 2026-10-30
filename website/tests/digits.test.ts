@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { datasetUrl, fetchDataset } from '../.vitepress/theme/playground/datasets.ts'
+import { datasetUrl, notebookDatasetUrl, fetchDataset } from '../.vitepress/theme/playground/datasets.ts'
 import { parseDigitModel, digitProbabilities } from '../.vitepress/theme/playground/digits.ts'
 import { assembleProgram, newCell } from '../.vitepress/theme/playground/notebook.ts'
 
@@ -48,11 +48,17 @@ test('dataset download handles gzip, HTTP errors, limits and cancellation', asyn
   } finally { globalThis.fetch = original }
 })
 
-test('digit experiment keeps training and evaluation ordered inside main', () => {
+test('short experiment cells assemble both models and all three plot APIs', () => {
   const source = readFileSync(new URL('../.vitepress/theme/playground/digit-training.kt', import.meta.url), 'utf8')
-  const asm = assembleProgram([newCell('code', source)], 0)
+  const cells = source.split(/^\/\/ %% .+\r?\n/gm).slice(1).map(s => newCell('code', s.trim()))
+  const asm = assembleProgram(cells, cells.length - 1)
+  assert.equal(cells.length, 11)
+  assert.ok(cells.every(c => c.source.split('\n').length <= 22), 'Keep code cells small')
+  assert.match(asm.file.text, /x @ weight.T/)
+  assert.match(asm.file.text, /Linear\(64, 10\)/)
+  for (const api of ['plt.plot', 'axes[0].plot', 'plot {']) assert.ok(asm.file.text.includes(api))
   assert.equal((asm.file.text.match(/fun main\(/g) ?? []).length, 1)
-  assert.ok(asm.file.text.indexOf('optimizer.step()') < asm.file.text.indexOf('val accuracy'))
+  assert.ok(asm.file.text.indexOf('optimizer.step()') < asm.file.text.indexOf('val accuracy = noGrad'))
   assert.match(asm.file.text, /application\/vnd.mini.digit-classifier\+json/)
 })
 
@@ -88,4 +94,11 @@ test('area downsampling preserves thin strokes between grid sample centers', asy
   assert.ok(pixels.every(x => x >= 0 && x <= 1))
   assert.equal(pixels.filter(x => x > 0).length, 16)
   assert.ok(Math.abs(pixels[3] - 9 / 32) < 1e-12)
+})
+
+test('dataset directives are inherited, replaced and never read from future or markdown cells', () => {
+  const cells = [newCell('code', '// %dataset https://example.com/a'), newCell('markdown', '// %dataset https://example.com/ignored'), newCell('code', 'println(1)'), newCell('code', '// %dataset https://example.com/b')]
+  assert.equal(notebookDatasetUrl(cells, 2), 'https://example.com/a')
+  assert.equal(notebookDatasetUrl(cells, 3), 'https://example.com/b')
+  assert.equal(notebookDatasetUrl([newCell('code', 'println(1)'), ...cells], 0), null)
 })
