@@ -27,12 +27,30 @@ private fun Parser.parseAssignmentLevel(m: Int, s: Int): Expr {
             val right = parseBin(1)
             done(m, NodeKind.BINARY)
             left = fin(BinaryExpr(op, left, right), s)
+        } else if (atMatmulAssign()) {
+            // Mini extension: `a @= b` (`@` directly followed by `=`, whitespace before)
+            advance()
+            advance()
+            val right = parseBin(1)
+            done(m, NodeKind.BINARY)
+            left = fin(BinaryExpr("@=", left, right), s)
         } else {
             break
         }
     }
     return left
 }
+
+/**
+ * Mini's matrix operator `@` is binary only in operator position (after a complete operand) with whitespace on BOTH
+ * sides; `@Ident` (no whitespace after) is always an annotation, `ident@` a label.
+ */
+private fun Parser.atMatmul(): Boolean =
+    kind() == Tk.AT && !adjacentPrevToCurrent() && !adjacent(0) && la(1) != Tk.EOF
+
+/** `@=`: `@` immediately followed by `=` (not `==`), whitespace before */
+private fun Parser.atMatmulAssign(): Boolean =
+    kind() == Tk.AT && la(1) == Tk.EQ && adjacent(0) && !adjacentPrevToCurrent()
 
 /**
  * Binary operator at the current position: returns the number of tokens it consists of (0: none); its text goes to
@@ -100,6 +118,12 @@ private fun Parser.binOp(): Int {
         }
         Tk.STAR, Tk.SLASH, Tk.PERC -> {
             opText = tokText()
+            opLevel = 10
+            return 1
+        }
+        Tk.AT -> {
+            if (!atMatmul()) return 0
+            opText = "@"
             opLevel = 10
             return 1
         }

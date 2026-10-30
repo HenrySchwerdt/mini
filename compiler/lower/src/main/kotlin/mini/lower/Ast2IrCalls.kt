@@ -245,7 +245,7 @@ fun Ast2Ir.fillCallArgs(
 }
 
 /** The implicit context argument for [p]: the innermost context parameter in scope whose type fits. */
-private fun Ast2Ir.contextArgument(p: IrValueParameter, subst: Map<TypeParamSym, Type>): IrExpression? {
+fun Ast2Ir.contextArgument(p: IrValueParameter, subst: Map<TypeParamSym, Type>): IrExpression? {
     val want = ops.substitute(p.type, subst)
     var c = ctx
     while (c != null) {
@@ -391,6 +391,8 @@ fun Ast2Ir.callOperator(info: CallInfo, recv: IrExpression, args: List<IrExpress
                 call.arguments.add(if (regular < args.size) args[regular] else null)
                 regular++
             }
+            // `context(h: Heap) operator fun matmul(...)`: the context argument comes from the scope like for any call
+            IrParameterKind.Context -> call.arguments.add(contextArgument(p, emptyMap()))
             else -> call.arguments.add(null)
         }
     }
@@ -401,7 +403,7 @@ fun Ast2Ir.binaryExpr(e: BinaryExpr): IrExpression {
     val op = e.op
     when (op) {
         "=" -> return assignExpr(e)
-        "+=", "-=", "*=", "/=", "%=" -> return compoundAssign(e)
+        "+=", "-=", "*=", "/=", "%=", "@=" -> return compoundAssign(e)
         "&&" -> return andOr(e, true)
         "||" -> return andOr(e, false)
         "==", "!=", "===", "!==" -> return equality(e)
@@ -423,6 +425,7 @@ fun Ast2Ir.binaryExpr(e: BinaryExpr): IrExpression {
         "*" -> "MUL"
         "/" -> "DIV"
         "%" -> "PERC"
+        "@" -> "MATMUL"
         ".." -> "RANGE"
         "..<" -> "RANGE_UNTIL"
         else -> null

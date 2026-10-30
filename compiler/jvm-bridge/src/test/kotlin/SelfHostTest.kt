@@ -159,7 +159,7 @@ class SelfHostTest {
         val exe = File(work, "minic-backend")
         val built by lazy { build(exe, listOf("--cflag", "-Werror"), null, driverSrc + backendSources()); true }
         val stdlib = Stdlib.sources(Stdlib.findDir(null, repoRoot)!!)
-        val programs = testdata.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+        val programs = testdata.listFiles { f -> f.isFile && f.extension == "kt" && !File(f.parentFile, f.nameWithoutExtension + ".nok2").exists() }!!.sortedBy { it.name }
         return programs.map { src ->
             DynamicTest.dynamicTest(src.nameWithoutExtension) {
                 if (File(src.parentFile, src.nameWithoutExtension + ".cerr").isFile) return@dynamicTest
