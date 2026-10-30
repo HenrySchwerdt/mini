@@ -554,6 +554,14 @@ static inline MkObject *mk_array_get_obj(const MkObject *array, MkInt index) {
     mk_retain(v);
     return v;
 }
+/* Borrowed read for the code generator (RcOpt proved the array keeps the slot alive while the result is used): no retain. */
+static inline MkObject *mk_array_get_obj_b(const MkObject *array, MkInt index) {
+    if (__builtin_expect((uint32_t)index >= (uint32_t)((const MkArray *)array)->length, 0)) {
+        mk_raise_index(index, ((const MkArray *)array)->length);
+        return NULL;
+    }
+    return MK_ARRAY_ELEMS(MkObject *, array)[index];
+}
 static inline void mk_array_set_obj(MkObject *array, MkInt index, MkObject *value) {
     if (__builtin_expect((uint32_t)index >= (uint32_t)((const MkArray *)array)->length, 0)) {
         mk_raise_index(index, ((const MkArray *)array)->length);

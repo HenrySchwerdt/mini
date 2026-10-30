@@ -1331,7 +1331,7 @@ private class Lowering<V : Any, B : Any>(
             is MirExpr.RuntimeCall -> {
                 val owns = NativeConventions.ownedArgs(e.cName)
                 if (e.cName == "mk_free_dealloc" && !tr.enabled) b.none
-                else if (arrayAccessKind(e.cName) != null) arrayAccess(e)
+                else if (arrayAccessKind(e.cName) != null) arrayAccess(e, fplan?.borrowedReads?.contains(e) == true)
                 else if (owns != null) {
                     declare(e.cName, e.type, e.args.map { it.type })
                     ownedCall(e.cName, e.type, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0, null)
@@ -1473,9 +1473,9 @@ private class Lowering<V : Any, B : Any>(
     /**
      * The inline form of the accessors of minirt.h: the length is loaded, an unsigned compare covers both bounds, the failing path
      * is a cold call of `mk_raise_index` (the pending exception is tested by the caller as for the runtime function) and the access
-     * yields zero / NULL. `get_obj` retains the element, `set_obj` retains the new and releases the old element.
+     * yields zero / NULL. `get_obj` retains the element (unless [borrowedRead]: the result defines a borrowing local, see RcFunctionPlan.borrowedReads), `set_obj` retains the new and releases the old element.
      */
-    fun arrayAccess(e: MirExpr.RuntimeCall): V {
+    fun arrayAccess(e: MirExpr.RuntimeCall, borrowedRead: Boolean): V {
         val kind = arrayAccessKind(e.cName)!!
         val arr = expr(e.args[0])
         if (kind == "length") return load(TInt, gep(arr, layouts.headerSize))
@@ -1508,7 +1508,7 @@ private class Lowering<V : Any, B : Any>(
                 "char" -> b.load(IrType.I16, p, 0, "")
                 else -> b.load(IrType.PTR, p, 0, "")
             }
-            if (kind == "obj") retain(result)
+            if (kind == "obj" && !borrowedRead) retain(result)
         } else {
             when (kind) {
                 "boolean" -> b.store(b.cast(IrCast.ZEXT, value!!, IrType.I8, ""), p, 0)
