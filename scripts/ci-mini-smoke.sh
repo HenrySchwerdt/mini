@@ -2,13 +2,13 @@
 # CI: build the native `mini` project tool with the compiler of a bootstrap work dir (no JVM) and smoke-test it:
 # mini new, build, run, test, check, and a broken program must fail with a diagnostic.
 #
-#   scripts/ci-mini-smoke.sh <work-dir>     the work dir ci-stage0.sh was given (uses s0/stage3, or jvm/stage3 after its fallback)
+#   scripts/ci-mini-smoke.sh <work-dir>     the work dir ci-stage0.sh was given (uses s0/stage3)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${1:?usage: ci-mini-smoke.sh <work-dir>}"
 
 minic=""
-for cand in "$WORK/s0/stage3" "$WORK/jvm/stage3"; do
+for cand in "$WORK/s0/stage3"; do
     [ -x "$cand" ] && { minic="$cand"; break; }
 done
 [ -n "$minic" ] || { echo "ci-mini-smoke.sh: no stage3 compiler below $WORK" >&2; exit 1; }

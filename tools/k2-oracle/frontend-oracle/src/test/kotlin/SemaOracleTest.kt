@@ -24,9 +24,9 @@ class SemaOracleTest {
         val td = kt("compiler/testdata").filter { it.parentFile.name == "testdata" && !File(it.path.removeSuffix(".kt") + ".cerr").exists() && Corpus.isK2Parsable(it) }
         out.add(Area("testdata", td.map { Pair(stdlib + it, listOf(it)) }))
         out.add(Area("stdlib", listOf(Pair(stdlib, stdlib))))
-        val backend = kt("compiler/backend/src/main")
-        val nativeDriver = kt("compiler/native-driver/src/main")
-        val frontend = kt("compiler/frontend/src/main")
+        val backend = kt("compiler/backend/src")
+        val nativeDriver = kt("compiler/native-driver/src")
+        val frontend = kt("compiler/frontend/src")
         out.add(Area("backend", listOf(Pair(stdlib + backend, backend))))
         out.add(Area("native-driver", listOf(Pair(stdlib + backend + nativeDriver, nativeDriver))))
         out.add(Area("frontend", listOf(Pair(stdlib + frontend, frontend))))
@@ -34,7 +34,7 @@ class SemaOracleTest {
         out.add(Area("examples", ex.map { Pair(stdlib + it, listOf(it)) }))
         val mem = kt("compiler/testdata/memory") + kt("compiler/testdata/memory-extra")
         out.add(Area("memory", mem.filter { !File(it.path.removeSuffix(".kt") + ".cerr").exists() }.map { Pair(stdlib + it, listOf(it)) }))
-        val selfhost = kt("compiler/selfhost")
+        val selfhost = kt("tools/k2-oracle/selfhost")
         out.add(Area("selfhost", listOf(Pair(stdlib + backend + nativeDriver + selfhost, selfhost))))
         return out
     }

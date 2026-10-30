@@ -6,6 +6,8 @@ plugins {
 kotlin { jvmToolchain(21) }
 
 val kotlinVersion: String by project
+val repoRoot = rootProject.projectDir.parentFile.parentFile
+val compilerDir = repoRoot.resolve("compiler")
 
 dependencies {
     implementation(project(":backend"))
@@ -35,25 +37,25 @@ application {
 tasks.test {
     useJUnitPlatform()
     // The end-to-end tests build real executables from compiler/testdata.
-    systemProperty("mini.testdata", rootProject.file("testdata").absolutePath)
-    systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
-    systemProperty("mini.compilerDir", rootProject.projectDir.absolutePath)
-    inputs.dir(rootProject.file("llvm-c"))
+    systemProperty("mini.testdata", compilerDir.resolve("testdata").absolutePath)
+    systemProperty("mini.repoRoot", repoRoot.absolutePath)
+    systemProperty("mini.compilerDir", compilerDir.absolutePath)
+    inputs.dir(compilerDir.resolve("llvm-c"))
     // Memory-model corpus (docs/memory-model.md) and the mini.memory API sources for MemoryCheckTest.
-    systemProperty("mini.memoryCorpus", rootProject.file("testdata/memory").absolutePath)
-    systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("stdlib/mini/memory").absolutePath)
-    systemProperty("mini.memoryExtra", rootProject.file("testdata/memory-extra").absolutePath)
-    inputs.dir(rootProject.file("testdata/memory"))
-    inputs.dir(rootProject.file("testdata/memory-extra"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("stdlib/mini/memory"))
+    systemProperty("mini.memoryCorpus", compilerDir.resolve("testdata/memory").absolutePath)
+    systemProperty("mini.memoryApi", repoRoot.resolve("stdlib/mini/memory").absolutePath)
+    systemProperty("mini.memoryExtra", compilerDir.resolve("testdata/memory-extra").absolutePath)
+    inputs.dir(compilerDir.resolve("testdata/memory"))
+    inputs.dir(compilerDir.resolve("testdata/memory-extra"))
+    inputs.dir(repoRoot.resolve("stdlib/mini/memory"))
     // Declared as inputs so edits to test programs or the runtime re-run the test instead of hitting the cache.
-    inputs.dir(rootProject.file("testdata"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("runtime"))
-    systemProperty("mini.backendSrc", rootProject.file("backend/src/main/kotlin").absolutePath)
+    inputs.dir(compilerDir.resolve("testdata"))
+    inputs.dir(repoRoot.resolve("runtime"))
+    systemProperty("mini.backendSrc", compilerDir.resolve("backend/src").absolutePath)
     systemProperty("mini.selfhostSrc", rootProject.file("selfhost").absolutePath)
     inputs.dir(rootProject.file("selfhost"))
-    inputs.dir(rootProject.file("backend/src/main/kotlin"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("stdlib"))
+    inputs.dir(compilerDir.resolve("backend/src"))
+    inputs.dir(repoRoot.resolve("stdlib"))
     maxHeapSize = "2g"
     testLogging {
         events("passed", "failed", "skipped")

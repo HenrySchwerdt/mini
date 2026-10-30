@@ -35,7 +35,7 @@ class LlvmApiEndToEndTest {
     private val llvmLib: String? by lazy { capture("llvm-config", "--libdir") }
 
     private fun kt(dir: String, skip: String? = null): List<String> =
-        File(compilerDir, "$dir/src/main/kotlin").walkTopDown().filter { it.isFile && it.extension == "kt" && it.name != skip }.map { it.path }.sorted().toList()
+        File(compilerDir, "$dir/src").walkTopDown().filter { it.isFile && it.extension == "kt" && it.name != skip }.map { it.path }.sorted().toList()
 
     private val stdlib: List<String> by lazy {
         File(repoRoot, "stdlib").walkTopDown().filter { it.isFile && it.extension == "kt" }.map { it.path }.sorted().toList()

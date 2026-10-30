@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
  * MemIr programs, runs `CEmitter` and the memory checker and prints everything. This test
  *
  *  1. runs that driver on the JVM (the backend classes compiled by the real Kotlin compiler),
- *  2. compiles the very same sources (driver + all of `compiler/backend/src/main`) with `minic` to a native
+ *  2. compiles the very same sources (driver + all of `compiler/backend/src`) with `minic` to a native
  *     executable (clang `-Werror`, so no C warnings either), and runs it,
  *  3. requires the two outputs to be byte-identical,
  *  4. builds the native program once more with AddressSanitizer/UBSan and requires a clean run: no memory error, no
@@ -154,7 +154,7 @@ class SelfHostTest {
      */
     @TestFactory
     fun nativeMinicBackendOnAllTestPrograms(): List<DynamicTest> {
-        val driverSrc = File(repoRoot, "compiler/native-driver/src/main/kotlin").walkTopDown()
+        val driverSrc = File(repoRoot, "compiler/native-driver/src").walkTopDown()
             .filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.map { it.path }.toList()
         val exe = File(work, "minic-backend")
         val built by lazy { build(exe, listOf("--cflag", "-Werror"), null, driverSrc + backendSources()); true }

@@ -8,6 +8,8 @@ plugins {
 kotlin { jvmToolchain(21) }
 
 val kotlinVersion: String by project
+val repoRoot = rootProject.projectDir.parentFile.parentFile
+val compilerDir = repoRoot.resolve("compiler")
 
 dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:$kotlinVersion")
@@ -19,13 +21,13 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    systemProperty("mini.memoryCorpus", rootProject.file("testdata/memory").absolutePath)
+    systemProperty("mini.memoryCorpus", compilerDir.resolve("testdata/memory").absolutePath)
     // Declared as inputs so edits to the corpus or the API re-run the test instead of hitting the cache.
-    inputs.dir(rootProject.file("testdata/memory"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("stdlib"))
+    inputs.dir(compilerDir.resolve("testdata/memory"))
+    inputs.dir(repoRoot.resolve("stdlib"))
     // only the mini.memory API: the rest of stdlib is the Mini stdlib (package kotlin.*, docs/stdlib.md) and cannot be compiled against the JVM stdlib
-    systemProperty("mini.memoryApi", rootProject.projectDir.parentFile.resolve("stdlib/mini/memory").absolutePath)
-    // regenerate expected outputs: gradle -p compiler :memory-spec:test -Pregen
+    systemProperty("mini.memoryApi", repoRoot.resolve("stdlib/mini/memory").absolutePath)
+    // regenerate expected outputs: ./gradlew :memory-spec:test -Pregen
     systemProperty("mini.regen", (project.findProperty("regen") != null).toString())
     maxHeapSize = "2g"
     testLogging {

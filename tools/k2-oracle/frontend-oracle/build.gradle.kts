@@ -5,6 +5,8 @@ plugins {
 kotlin { jvmToolchain(21) }
 
 val kotlinVersion: String by project
+val repoRoot = rootProject.projectDir.parentFile.parentFile
+val compilerDir = repoRoot.resolve("compiler")
 
 // Test-only module: compares the pure-Kotlin frontend (:frontend) with the PSI parser of the K2 compiler
 // (kotlin-compiler-embeddable), the oracle of bootstrap stage B2. It also hosts the native self-compilation test,
@@ -23,7 +25,7 @@ dependencies {
 // the JVM run of the driver (compiler/frontend/driver/common); `native/Main.kt` only exists for minic
 sourceSets {
     test {
-        kotlin.srcDir(rootProject.file("frontend/driver/common"))
+        kotlin.srcDir(compilerDir.resolve("frontend/driver/common"))
     }
 }
 
@@ -41,14 +43,14 @@ tasks.test {
     inputs.property("probeCompare", System.getenv("MINI_SEMA_COMPARE") ?: "")
     val probeFile = System.getenv("MINI_FIR_PROBE")
     if (probeFile != null && File(probeFile).isFile) inputs.file(probeFile)
-    systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
-    systemProperty("mini.testdata", rootProject.file("testdata").absolutePath)
-    systemProperty("mini.frontendSrc", rootProject.file("frontend/src/main/kotlin").absolutePath)
-    inputs.dir(rootProject.file("frontend/src/main/kotlin"))
-    inputs.dir(rootProject.file("frontend/driver"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("runtime"))
-    inputs.dir(rootProject.projectDir.parentFile.resolve("stdlib"))
-    inputs.dir(rootProject.file("testdata"))
+    systemProperty("mini.repoRoot", repoRoot.absolutePath)
+    systemProperty("mini.testdata", compilerDir.resolve("testdata").absolutePath)
+    systemProperty("mini.frontendSrc", compilerDir.resolve("frontend/src").absolutePath)
+    inputs.dir(compilerDir.resolve("frontend/src"))
+    inputs.dir(compilerDir.resolve("frontend/driver"))
+    inputs.dir(repoRoot.resolve("runtime"))
+    inputs.dir(repoRoot.resolve("stdlib"))
+    inputs.dir(compilerDir.resolve("testdata"))
     maxHeapSize = "2g"
     testLogging {
         events("passed", "failed", "skipped")

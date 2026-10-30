@@ -13,7 +13,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /**
- * Bootstrap B2, self-compilation check: `minic` compiles the pure-Kotlin frontend (all of `compiler/frontend/src/main`)
+ * Bootstrap B2, self-compilation check: `minic` compiles the pure-Kotlin frontend (all of `compiler/frontend/src`)
  * plus the driver `compiler/frontend/driver` into a native executable (clang `-Werror`). For every Kotlin file of the
  * repository the native executable must print exactly what the JVM run of the same driver code prints (errors, lossless
  * check, counters, declaration outline with every expression), and the build must be sanitizer clean.
@@ -28,7 +28,7 @@ class FrontendSelfHostTest {
         File(repoRoot, dir).walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.map { it.path }.toList()
 
     private fun sources(): List<String> =
-        kt("compiler/frontend/driver") + kt("compiler/frontend/src/main/kotlin")
+        kt("compiler/frontend/driver") + kt("compiler/frontend/src")
 
     private fun build(exe: File, extra: List<String>, cc: String? = null): String {
         val errBuf = ByteArrayOutputStream()

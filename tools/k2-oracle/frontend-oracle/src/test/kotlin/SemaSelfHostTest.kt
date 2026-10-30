@@ -25,7 +25,7 @@ class SemaSelfHostTest {
         File(repoRoot, dir).walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.toList()
 
     private fun sources(): List<String> =
-        (kt("compiler/frontend/driver") + kt("compiler/frontend/src/main/kotlin")).map { it.path }
+        (kt("compiler/frontend/driver") + kt("compiler/frontend/src")).map { it.path }
 
     private fun build(exe: File, extra: List<String>): String {
         val errBuf = ByteArrayOutputStream()
@@ -93,7 +93,7 @@ class SemaSelfHostTest {
     @Test
     fun nativeSemaEqualsJvmSemaOnStdlibAndCompilerSources() {
         if (System.getenv("MINI_SEMA_NATIVE_FILES") != null) return
-        val files = kt("stdlib") + kt("compiler/backend/src/main") + kt("compiler/native-driver/src/main") + kt("compiler/frontend/src/main/kotlin")
+        val files = kt("stdlib") + kt("compiler/backend/src") + kt("compiler/native-driver/src") + kt("compiler/frontend/src")
         val exe = File(work, "frontend-driver2")
         build(exe, listOf("--cflag", "-Werror", "--cflag", "-O1"))
         val inputs = files.map { SourceInput(it.path, it.readText()) }

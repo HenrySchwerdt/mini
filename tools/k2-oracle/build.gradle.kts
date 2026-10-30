@@ -9,22 +9,11 @@ allprojects {
     version = "0.0.1"
 }
 
-// CI shards (.github/workflows/build.yml): `-PtestExclude=A,B` skips the named test classes.
+// `-PtestExclude=A,B` skips the named test classes.
 subprojects {
     tasks.withType<Test>().configureEach {
         (findProperty("testExclude") as String?)?.split(",")?.filter { it.isNotBlank() }?.forEach {
             filter.excludeTestsMatching(it.trim())
         }
     }
-}
-
-// D1 benchmarks (docs/benchmarks.md): micro programs and the self-hosted backend, baseline vs RC elision.
-tasks.register<Exec>("bench") {
-    group = "verification"
-    description = "Runs compiler/bench/run.sh (time and MK_STATS counters with and without RcOpt)"
-    dependsOn(":jvm-bridge:installDist", ":native-driver:installDist")
-    workingDir = rootDir.parentFile
-    environment("BENCH_NO_BUILD", "1")
-    val extra = (findProperty("bench.args") as String?)?.split(" ")?.filter { it.isNotEmpty() } ?: emptyList()
-    commandLine(listOf("bash", "compiler/bench/run.sh") + extra)
 }

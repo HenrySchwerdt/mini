@@ -11,11 +11,11 @@ Known, listed difference (not hidden by the normaliser): K2 keeps smart casts fr
 import difflib, glob, os, re, subprocess, sys, tempfile
 
 here = os.path.dirname(os.path.abspath(__file__))
-root = os.path.dirname(here)
+root = os.path.dirname(os.path.dirname(here))  # the repository root
 minic = os.path.join(here, 'jvm-bridge/build/install/minic/bin/minic')
 srcs = []
 for m in ['minic-native', 'lower', 'frontend', 'backend']:
-    srcs += sorted(glob.glob(os.path.join(here, m, 'src/main/kotlin/**/*.kt'), recursive=True))
+    srcs += sorted(glob.glob(os.path.join(root, 'compiler', m, 'src/**/*.kt'), recursive=True))
 work = tempfile.mkdtemp(prefix='selfcompare-')
 env = dict(os.environ, JAVA_OPTS='-Xss512m -Xmx6g')
 for name, extra in [('k2', ['--frontend=k2']), ('mini', ['--frontend=mini'])]:

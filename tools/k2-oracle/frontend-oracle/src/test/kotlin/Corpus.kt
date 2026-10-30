@@ -9,7 +9,7 @@ object Corpus {
     val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
 
     val files: List<File> by lazy {
-        val roots = listOf("compiler", "stdlib", "stdlib-test", "examples", "runtime", "docs")
+        val roots = listOf("compiler", "stdlib", "stdlib-test", "examples", "runtime", "docs", "tools")
         val out = ArrayList<File>()
         for (r in roots) {
             val dir = File(repoRoot, r)
