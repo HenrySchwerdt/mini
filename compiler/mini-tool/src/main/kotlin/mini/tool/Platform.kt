@@ -15,6 +15,9 @@ interface Platform {
     fun cwd(): String
     fun homeDir(): String?
 
+    /** Absolute path of the running `mini` executable (the native tool), null when unknown (the JVM tool). */
+    fun exePath(): String? = null
+
     fun isTerminal(stream: Stream): Boolean
     fun terminalWidth(): Int?
 
@@ -83,7 +86,13 @@ object Paths {
         else -> "$a/$b"
     }
 
-    fun join(vararg parts: String): String = parts.reduce { x, y -> join(x, y) }
+    private fun joinAll(parts: Array<out String>): String {
+        var r = ""
+        for (x in parts) r = join(r, x)
+        return r
+    }
+
+    fun join(vararg parts: String): String = joinAll(parts)
 
     /** Removes `.`, resolves `..` lexically and collapses duplicate slashes. */
     fun normalize(p: String): String {

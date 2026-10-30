@@ -7,8 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * `mini` against the real compiler: every test here compiles with minic and clang (about 30 s each, dominated by the
- * K2 frontend). Skipped when minic is not installed (`./gradlew :jvm-bridge:installDist`) or there is no C compiler.
+ * `mini` against the real compiler: every test here compiles with minic-native and clang. Skipped when the native toolchain is not staged
+ * (`scripts/build-mini.sh`, then it lives in `build/native`) or there is no C compiler.
  */
 class EndToEndTest {
     private fun runBinary(p: TestPlatform, rel: String, vararg args: String): ExecResult =

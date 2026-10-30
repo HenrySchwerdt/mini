@@ -9,10 +9,8 @@ class TestPlatform(val root: File, var dir: File = root, private val extraEnv: M
     val out = StringBuilder()
     val err = StringBuilder()
 
-    private val repo: String = System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set")
     private val envMap: Map<String, String> = mapOf(
-        "MINI_ROOT" to repo,
-        "MINIC" to "$repo/compiler/jvm-bridge/build/install/minic/bin/minic",
+        "MINI_ROOT" to nativeHome(),
         "MINI_HOME" to File(root, "home").path,
         "NO_COLOR" to "1",
     ) + extraEnv
@@ -35,10 +33,13 @@ class TestPlatform(val root: File, var dir: File = root, private val extraEnv: M
     companion object {
         fun temp(): TestPlatform = TestPlatform(Files.createTempDirectory("mini-test").toFile().canonicalFile)
 
-        /** Whether the full toolchain (built minic, a C compiler) is available for end-to-end tests. */
+        /** The native toolchain staged by `scripts/build-mini.sh` (bin/minic-native, lib/libminirt.a, include/, stdlib/). */
+        fun nativeHome(): String = System.getProperty("mini.nativeHome") ?: error("mini.nativeHome not set")
+
+        /** Whether the full toolchain (the native compiler, the runtime, a C compiler) is available for end-to-end tests. */
         fun toolchainAvailable(): Boolean {
-            val repo = System.getProperty("mini.repoRoot") ?: return false
-            if (!File("$repo/compiler/jvm-bridge/build/install/minic/bin/minic").isFile) return false
+            val home = System.getProperty("mini.nativeHome") ?: return false
+            if (!File("$home/bin/minic-native").isFile || !File("$home/lib/libminirt.a").isFile) return false
             return try {
                 ProcessBuilder("clang", "--version").redirectErrorStream(true).start().waitFor() == 0 ||
                     ProcessBuilder("gcc", "--version").redirectErrorStream(true).start().waitFor() == 0

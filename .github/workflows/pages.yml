@@ -46,8 +46,13 @@ jobs:
         working-directory: compiler
         run: ./gradlew installDist --console=plain
 
-      # Every code listing on the site is a file under website/samples. Build and run them (or check
-      # them, for the memory-model samples) and compare with the expected output / diagnostic code.
+      - name: Install site dependencies (the snippet extraction below needs them)
+        working-directory: website
+        run: npm ci
+
+      # Every code listing on the site is a file under website/samples, or a runnable fence in a markdown page (extracted by
+      # website/scripts/extract-snippets.mjs). Build and run them (or check them, for the memory-model samples) and compare with the
+      # expected output / diagnostic code.
       - name: Check the code samples
         run: website/scripts/check-samples.sh
 
@@ -66,10 +71,6 @@ jobs:
             echo "::error::Generated docs are stale. Run 'node website/scripts/gen-diagnostics.mjs' and 'website/scripts/gen-internals.sh' and commit the result."
             exit 1
           fi
-
-      - name: Install site dependencies
-        working-directory: website
-        run: npm ci
 
       - name: Playground unit tests and typecheck
         working-directory: website
@@ -91,6 +92,12 @@ jobs:
       - name: Build the site
         working-directory: website
         run: npm run docs:build
+
+      # The same cells through the in-browser toolchain (the real worker and wasm files, in node): what the Run and Check buttons do.
+      - name: Run the documentation cells with the wasm toolchain
+        if: github.event_name != 'pull_request'
+        working-directory: website
+        run: node scripts/run-snippets-wasm.mjs public/toolchain --keep-going
 
       # Headless Chromium against the built site: playground, checker, run, notebook, "Open in playground".
       - name: Browser end-to-end test

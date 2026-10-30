@@ -147,7 +147,7 @@ object CommandLine {
             "Prints the description from the memory-model reference (docs/memory-model.md, section 7).",
             listOf("mini explain M0102", "mini explain --list"), maxPositionals = 1,
         ),
-        Command("doctor", "Check the toolchain (C compiler, JDK, git, libuv) and suggest fixes", "", emptyList()),
+        Command("doctor", "Check the toolchain (compiler, C compiler, git, libuv) and suggest fixes", "", emptyList()),
         Command(
             "completions", "Print a shell completion script", "<SHELL>",
             emptyList(),
@@ -270,7 +270,7 @@ object CommandLine {
             val dash = if (f.long == "Werror") "-Werror" else "--${f.long}"
             short + dash + (if (f.value != null) " ${f.value}" else "")
         }
-        val w = (labels.maxOfOrNull { it.length } ?: 0) + 2
+        val w = (labels.fold(0) { m, l -> if (l.length > m) l.length else m }) + 2
         for ((i, f) in flags.withIndex()) sb.append("  ").append(s.cyan(labels[i].padEnd(w))).append(f.help).append('\n')
     }
 }

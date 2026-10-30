@@ -94,7 +94,7 @@ In Strict mode a separate checker runs before code generation.
 | **Own frontend to MIR without K2 (B2-3)** | **Done.** `--frontend=mini` gives MIR and C byte-identical to the K2 path for all 47 test programs. The natively built `minic-native` (no JVM, no K2) compiles the whole compiler in about 5 s. |
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. |
 | **Full bootstrap, stage 2 == stage 3 (B3)** | **Done.** `compiler/bootstrap.sh`: stage1 builds stage2, stage2 builds stage3, and the C and MIR of stage 2 and stage 3 are byte-identical. Checked in CI. |
-| Project tool `mini` (`mini new/build/run/test`, `mini.toml`, path and git dependencies; JVM-hosted v0) | **v0 done**, see [docs/mini-tool.md](docs/mini-tool.md). A native `mini` and a repository without Gradle are next. |
+| Project tool `mini` (`mini new/build/run/test`, `mini.toml`, path and git dependencies) | **Done, and native**: `mini` is Kotlin compiled by Mini itself and calls `minic-native`; no JVM, no Gradle. It ships in the release archives. See [docs/mini-tool.md](docs/mini-tool.md). Dropping Gradle from the rest of the repository (tests, K2 oracle) is next. |
 | Reflection (static metadata, ownership-aware) and a compiler-plugin API in the toolchain; JSON (`mini-serialization`) and a web framework with compile-time DI and one arena per request (`mini-web`) as separate libraries | Planned after B3. |
 | LLVM as the primary backend (in-process via its C API, embedded lld, single binary, no clang), statically bundled libuv, `.kts` scripts and a REPL on the LLVM ORC JIT | Planned after B3. |
 | Coroutines and async IO on libuv, runtime written in Kotlin, Windows | Later. |
@@ -106,13 +106,15 @@ Platforms: Linux and macOS (CI). Windows follows later. The full plan is in
 
 ### Install a release
 
-Prebuilt `minic` for Linux (x64, arm64) and macOS (arm64), no JDK needed, only a C compiler (clang or gcc):
+Prebuilt `mini` (project tool) and `minic` (compiler) for Linux (x64, arm64) and macOS (arm64), no JDK and no Gradle, only a C compiler (clang or gcc):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
 export PATH="$HOME/.mini/bin:$PATH"
-minic build hello.kt -o hello && ./hello
+mini new hello && cd hello && mini run
 ```
+
+For a single file there is the bare compiler: `minic build hello.kt -o hello && ./hello`.
 
 The script installs the latest [release](https://github.com/HenrySchwerdt/mini/releases) into `~/.mini` after checking its
 SHA256 (`MINI_VERSION=0.4.0` picks a version, `MINI_HOME` the directory). A release also carries a portable C bootstrap
@@ -121,15 +123,16 @@ seed (`mini-<version>-bootstrap-c.tar.gz`): `./build.sh` in it builds a native c
 
 ### From a source checkout
 
-Requirements: JDK 21, clang (or gcc). libuv is only needed for the runtime tests.
+Requirements: clang (or gcc). No JDK and no Gradle: the first `./mini` builds the native compiler and the tool
+(`scripts/build-mini.sh`, about a minute) starting from a native compiler it finds or downloads (the latest release).
+libuv is only needed for the runtime tests.
 
 ```sh
-./minic build examples/hello.kt -o build/hello && ./build/hello
-./minic build examples/shapes.kt -o build/shapes && ./build/shapes
-./minic check examples/memory_leak.kt
+./mini new hello && cd hello && ../mini run
 ```
 
-`./minic` builds the compiler on first use (Gradle) and then runs it.
+The bare compiler wrapper `./minic` (`./minic build examples/hello.kt -o build/hello`, `./minic check examples/memory_leak.kt`)
+still runs the JVM build (K2 frontend, JDK 21, Gradle); it is only needed for the K2 comparison and the Gradle test suites.
 
 ### Create a project
 
@@ -146,7 +149,7 @@ mini check                          # type-check and run the memory checker, no 
 mini explain M0102                  # explain a diagnostic
 ```
 
-Without `PATH` use `./mini new hello && cd hello && ../mini run`. `mini` also has `build --release`, `add`, `remove`,
+Without `PATH` use `./mini new hello && cd hello && ../mini run`. `mini` is a native binary (about 3 MB, starts in a few milliseconds); in a checkout it lives in `build/native/bin/mini`. It also has `build --release`, `add`, `remove`,
 `update`, `tree`, `clean`, `doctor` and shell completions; dependencies are paths or git repositories pinned in
 `mini.lock`. Full reference: [docs/mini-tool.md](docs/mini-tool.md).
 

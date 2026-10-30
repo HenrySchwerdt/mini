@@ -21,7 +21,7 @@ class SemaOracleTest {
 
     private fun areas(): List<Area> {
         val out = ArrayList<Area>()
-        val td = kt("compiler/testdata").filter { it.parentFile.name == "testdata" && !File(it.path.removeSuffix(".kt") + ".cerr").exists() }
+        val td = kt("compiler/testdata").filter { it.parentFile.name == "testdata" && !File(it.path.removeSuffix(".kt") + ".cerr").exists() && Corpus.isK2Parsable(it) }
         out.add(Area("testdata", td.map { Pair(stdlib + it, listOf(it)) }))
         out.add(Area("stdlib", listOf(Pair(stdlib, stdlib))))
         val backend = kt("compiler/backend/src/main")

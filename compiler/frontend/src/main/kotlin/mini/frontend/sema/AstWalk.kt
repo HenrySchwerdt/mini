@@ -164,7 +164,7 @@ object AstWalk {
         for (c in ch) capturedAssigned(c, out)
     }
 
-    fun isAssignOp(op: String): Boolean = op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%="
+    fun isAssignOp(op: String): Boolean = op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=" || op == "@="
 
     fun unparen(e: Expr): Expr {
         var x = e

@@ -195,6 +195,15 @@ builds a share link from the block's text and navigates to `/playground`.
 4. Decide the time limit defaults (`Playground.vue`: 10 s selectable, `Notebook.vue`: 15 s) and whether `check` should load on page open.
 5. Cross-origin isolation is not required (no `SharedArrayBuffer` needed; `poll_oneoff` falls back to a busy wait where `Atomics.wait` is not allowed).
 
+## Cells in the documentation, preload
+
+- `../../mini-cells.ts` (markdown-it plugin) wraps every runnable Kotlin fence in `<MiniCell>`; `../snippets.ts` holds the fence syntax
+  (`norun`, `run`, `check=M0102`, `fresh`, `chain`, `exercise`, `exit=N`, a following `output` fence) and `programFor`, which assembles
+  the program of a cell (notebook semantics on pages with `notebook: true`). `MiniCell.vue` runs it through `session.ts`.
+- `preload.ts` starts loading the toolchain after the page `load` and an idle moment (skipped for Save-Data and 2g/3g); `ToolchainBadge.vue`
+  shows progress. `ensureToolchain` and `exclusive` in `session.ts` serialize loads and compile/check requests.
+- CI: `scripts/extract-snippets.mjs` with `scripts/check-samples.sh` (native compiler) and `scripts/run-snippets-wasm.mjs` (in-browser toolchain, in node).
+
 ## Development
 
 ```

@@ -20,7 +20,7 @@ class MirSerialTest {
 
     @TestFactory
     fun roundTrip(): List<DynamicTest> {
-        val sources = testdata.listFiles { f -> f.isFile && f.extension == "kt" }!!.sortedBy { it.name }
+        val sources = testdata.listFiles { f -> f.isFile && f.extension == "kt" && !File(f.parentFile, f.nameWithoutExtension + ".nok2").exists() }!!.sortedBy { it.name }
         assertTrue(sources.size >= 10)
         val stdlib = Stdlib.sources(Stdlib.findDir(null, repoRoot)!!)
         return sources.map { src ->
