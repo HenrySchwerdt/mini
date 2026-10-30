@@ -1,11 +1,11 @@
 ---
-title: "11. Strict mode: leaks are compile errors"
+title: "17. Strict mode and ownership"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 11. Strict mode: leaks are compile errors
+# 17. Strict mode and ownership
 
 Managed code releases ordinary acyclic objects automatically; cycles can still leak. Strict code gives you full control and takes the safety net away, and in exchange **the compiler proves you did it right**. A file opts in with its first line:
 
@@ -16,7 +16,6 @@ import mini.memory.*
 ```
 
 In Strict mode every allocation has exactly one **owner**, and the owner must release it exactly once on every path, or hand it on. If the compiler cannot prove that, the program does not compile. Everything below is a live **Check** cell: edit the code and press Check to watch the checker answer. Diagnostics carry a stable code such as `M0102`; click it for the [reference page](/reference/diagnostics/).
-
 
 **By the end:** follow an owned allocation through every exit path, distinguish borrowing from moving, and repair a leak without creating a double free. These are checker experiments: an expected diagnostic is a result to understand, not an instruction to execute unsafe code.
 
@@ -153,5 +152,3 @@ fun main() {
 }
 ```
 :::
-
-Next: [C interop](./c-interop).

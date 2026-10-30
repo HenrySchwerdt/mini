@@ -24,18 +24,42 @@ fun main() {
 Kotlin → native code, with Mini
 ```
 
-## A path through the notebook
+## A course, not a list of language features
 
-Use the chapters on the left to jump anywhere. On a phone, open **Menu** to find them. Each chapter has a previous/next link at the bottom, examples, a short reasoning checkpoint and an exercise with a solution you can reveal.
+This course has **26 chapters**, arranged so that a concept first appears in a small example, then in an API or project, and finally in a lifetime or testing decision. Read in order if you are new to programming. Each chapter gives you code to inspect, a prediction to make and an experiment or exercise to complete.
 
-| Part | Chapters | What you will be able to do |
+Use the chapter list on the left to jump directly to a topic. On a phone, open **Menu**. The links at the bottom continue to the next lesson. Keep the code editable while treating explanations as your reference: you cannot accidentally delete a lesson or change its structure.
+
+| Part | Chapters | Skills to practice |
 |---|---|---|
-| Kotlin foundations | [1. Hello](./hello) · [2. Values and control flow](./basics) · [3. Types and classes](./classes) · [4. Collections](./collections) · [5. Null safety](./errors) | Read and write small Kotlin programs; model data and handle missing or invalid input. |
-| Thinking in Kotlin | [6. Generics](./generics) · [7. Extensions and scope](./extensions) · [8. A task report](./project) | Express reusable contracts and combine the pieces in one working program. |
-| What makes Mini different | [9. Managed memory](./memory-managed) · [10. Allocators](./memory-allocators) · [11. Strict](./memory-strict) · [12. C](./c-interop) · [13. Performance](./performance) · [14. Matrix operator](./matrix) | Explain who releases memory, read ownership diagnostics, and distinguish browser experiments from native execution. |
-| Keep building | [15. A native project](./workflow) | Turn the notebook's program into a project you can build, check and test locally. |
+| Getting started | [1. Hello](./hello), [2. Values and types](./values), [3. Branching and loops](./basics), [4. Functions and scope](./functions) | Trace execution, choose types, understand references and write small operations with explicit inputs and results. |
+| Model data and behavior | [5. Classes](./classes), [6. States and invariants](./modelling) | Define constructors, protect valid state, distinguish equality from identity and choose sealed alternatives. |
+| Work with data | [7. Lambdas and collections](./collections), [8. Collection design](./collection-design), [9. Null safety](./errors), [10. Failure and parsing](./error-design) | Transform data without silently losing information; make ordering, missing values and invalid input explicit. |
+| Build reusable programs | [11. Generics](./generics), [12. Extensions and receivers](./extensions), [13. Task-report project](./project) | Read type contracts, build small APIs and connect parsing, transformation and formatting. |
+| Understand Mini memory | [14. Managed memory](./memory-managed), [15. Reference graphs](./memory-graphs), [16. Allocators](./memory-allocators), [17. Strict mode](./memory-strict) | Draw an object graph, recognize cycles, explain region lifetimes and read ownership diagnostics. |
+| Design Mini lifetimes | [18. Ownership APIs](./ownership), [19. Resources](./resources), [20. C interop](./c-interop), [21. Performance](./performance), [22. Memory boundaries](./memory-design) | Follow transfer and cleanup across calls, failures, fields, callbacks and native boundaries; understand current checker limits. |
+| Practice and build | [23. Matrix operator](./matrix), [24. Tests and debugging](./testing), [25. Native workflow](./workflow), [26. Import-report capstone](./capstone) | Verify behavior, reduce failures and build a larger program with structured errors, deterministic reports and explicit lifetime decisions. |
 
-Allow several sessions: roughly five to six hours including experiments. If you already know Kotlin, start at [Managed memory](./memory-managed), then return to the project as a practical checkpoint. If programming is new to you, take the first five chapters in order and change one thing at a time.
+### Choose a starting point
+
+**New to programming:** begin with Hello and spend time predicting each result. Do not skip the small exercises in favor of the longest example. A useful session is one or two chapters, followed by writing a similar example without looking.
+
+**Know another language:** work through values, modelling, collection design and error design before assuming familiar syntax has familiar behavior. Pay particular attention to read-only references, shallow copies, nullable lookup results and extension dispatch.
+
+**Already know Kotlin:** start with Managed memory and reference graphs, then continue through the lifetime chapters. Return to the capstone to practice Mini's project workflow and its current boundaries around collections and allocators.
+
+The estimated chapter times include hands-on work, not just reading. Plan several sessions: about **15–20 hours** for a first careful pass, longer if programming itself is new. Mastery comes from changing and explaining examples, not reaching the last page quickly.
+
+### A practice routine that reveals gaps
+
+For each chapter, do four things:
+
+1. Predict a result before Run or Check.
+2. Change one input or operation and predict the change.
+3. Complete the exercise before opening the solution.
+4. Explain the rule in your own words and test one boundary the lesson did not show.
+
+Hints and solutions are separate so you can ask for a nudge before seeing the entire answer. A solution is one implementation; its contract and the reasons it works matter more than copying its spelling.
 
 ## Read → predict → run → explain
 

@@ -1,11 +1,11 @@
 ---
-title: "7. Extensions, receivers and scope"
+title: "12. Extensions, receivers and scope"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 7. Extensions, receivers and scope
+# 12. Extensions, receivers and scope
 
 Kotlin lets you make an API read naturally without changing the class it works on. Extensions, receiver lambdas and scope functions are three pieces of the same idea: choosing which object is convenient to work with inside a block.
 

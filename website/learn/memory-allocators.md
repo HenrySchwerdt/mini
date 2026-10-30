@@ -1,18 +1,17 @@
 ---
-title: "10. Allocators and arenas"
+title: "16. Allocators and arenas"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 10. Allocators and arenas
+# 16. Allocators and arenas
 
 In Managed code every `Foo(...)` allocates with reference counting. To decide *where* objects come from, you put an **allocator** in scope and the compiler uses it for every allocation site inside.
 
 ::: info These cells are Check cells
 Programs that use allocator objects are checked by the compiler today, and native code generation for them is still in progress (see the [roadmap](/roadmap)). So the cells in this chapter and the next have a **Check** button instead of **Run**: it runs the same memory checker as `minic check`, in your browser.
 :::
-
 
 **By the end:** distinguish allocation strategy from memory-checking mode, read an allocator context and explain why an arena object cannot escape its region. A value copied out of an object and a reference to that object have different lifetime requirements.
 
@@ -122,5 +121,3 @@ fun main() {
 }
 ```
 :::
-
-Next: [Strict mode](./memory-strict). The reference chapters are [Allocators and context](/memory/allocators) and [Arenas and Scoped](/memory/arenas).

@@ -1,11 +1,11 @@
 ---
-title: "8. Build a task report"
+title: "13. Build a task report"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 8. Build a task report
+# 13. Build a task report
 
 Now combine the language features into a small program: read task descriptions, reject invalid records and summarize the unfinished work. The input stays in memory so the complete example runs in the browser. Later, a native application could obtain the same records from a file or another boundary.
 
@@ -113,7 +113,7 @@ println("All report checks passed")
 All report checks passed
 ```
 
-Do not remove a failed check to make a refactor look successful. Read which contract changed. In a native project these cases belong in test functions; [chapter 15](./workflow) shows the project tool.
+Do not remove a failed check to make a refactor look successful. Read which contract changed. In a native project these cases belong in test functions; [the native workflow chapter](./workflow) shows the project tool.
 
 ## Exercise: filter by a time budget
 

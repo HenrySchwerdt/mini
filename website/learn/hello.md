@@ -20,7 +20,6 @@ Hello, Mini!
 
 Press **Run**. The code is compiled to WebAssembly by Mini's own compiler (the same one you [install](/install) on your machine, built for the browser) and run on the spot.
 
-
 **By the end:** explain what `main` does, print values with string templates, and distinguish an independent program from a shared notebook fragment. Start by changing one string rather than several parts of a program at once.
 
 ## Change it
@@ -103,7 +102,5 @@ Hello, Grace!
 Hello, Linus!
 ```
 :::
-
-Next: [Values, functions and control flow](./basics).
 
 Language reference: [Kotlin basic syntax](https://kotlinlang.org/docs/basic-syntax.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

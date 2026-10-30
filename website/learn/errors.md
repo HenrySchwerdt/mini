@@ -1,12 +1,11 @@
 ---
-title: "5. Null safety and exceptions"
+title: "9. Null safety and exceptions"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 5. Null safety and exceptions
-
+# 9. Null safety and exceptions
 
 **By the end:** represent absence with a nullable type, narrow a type with a check, and decide between a missing result and an exception. A failed conversion of user input is usually a case to handle, not a reason to add `!!`.
 
@@ -48,6 +47,39 @@ int 42
 string of length 6
 something else
 ```
+
+## Nullable elements and a nullable collection are different
+
+`List<String?>` is a present list that may contain missing elements. `List<String>?` is a list that may itself be absent, with non-null strings when present. The question mark belongs to the type immediately before it.
+
+```kotlin
+fun main() {
+    val withMissing: List<String?> = listOf("Ada", null, "Bo")
+    val missingList: List<String>? = null
+    println(withMissing.size)
+    println(withMissing.map { it?.length })
+    println(withMissing.filterNotNull())
+    println(missingList?.size ?: 0)
+}
+```
+```output
+3
+[3, null, 2]
+[Ada, Bo]
+0
+```
+
+`filterNotNull` removes absent elements and narrows the element type. A safe call on the collection itself would address a different absence. Start by naming what can be missing rather than adding question marks until the compiler is quiet.
+
+The final expression chooses to interpret a missing list as a size of zero. That may be suitable for display, but it erases the distinction between “no data loaded” and “loaded an empty list.” If that distinction matters to the application, preserve it as separate states.
+
+## Smart casts need a stable fact
+
+A null check narrows a value only while the compiler can rely on the checked fact. A local read-only value is a straightforward case. A mutable property accessed twice may change, have a custom getter or be affected by other code; the compiler cannot always treat the second access as the same value.
+
+A common approach is to read a property once into a local `val`, check that value and use it. Do not reach for `!!` just to silence the failure to smart-cast. `!!` changes the runtime failure behavior; it does not establish that the value cannot change.
+
+A safe cast `as?` also gives a nullable result rather than throwing on a type mismatch. Prefer testing or safe casts at genuinely mixed-type boundaries; an API returning a precise type often avoids the need for casts altogether.
 
 ## Extension functions
 
@@ -160,7 +192,5 @@ fun main() {
 sum = 12
 ```
 :::
-
-Next: [Generics and type contracts](./generics). After extensions and the project, continue with [Managed memory](./memory-managed). More listings: [exceptions](/tour/exceptions) and [extensions and null safety](/tour/extensions).
 
 Language reference: [Kotlin null safety](https://kotlinlang.org/docs/null-safety.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

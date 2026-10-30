@@ -1,14 +1,13 @@
 ---
-title: "13. Performance"
+title: "21. Measure and understand performance"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 13. Performance
+# 21. Measure and understand performance
 
 Mini compiles Kotlin to C17 (or LLVM IR) and lets clang optimize it. There is no virtual machine, no garbage collector and no warm-up. A hello-world starts in about a millisecond and the binary is 80 to 210 KiB.
-
 
 **By the end:** separate compile time from runtime, compare equivalent algorithms and use native counters to investigate allocation costs. A browser timing is a useful experiment in that browser, not a native benchmark.
 
@@ -48,7 +47,7 @@ In the browser this runs as WebAssembly. Compiled natively with `minic build -O2
 - **`--stats`.** Builds the program so that it prints allocation and reference-count counters to stderr at exit: allocations, frees, live objects at exit and the peak, and retain/release calls split into non-atomic, atomic and no-ops. Use it to find where counting remains.
 - **`--emit-c file.c`.** Keeps the generated C. It is readable; the [How it works](/internals/) pages walk through it.
 - **Backends.** The default backend writes C. `--backend=llvm` writes textual LLVM IR, and a build of the compiler with the LLVM C API bound in has `--backend=llvm-api`, which emits object files directly and can **run a program in memory with a JIT** (`--run`). See the [command line reference](/reference/minic).
-- **Allocators.** Arenas allocate by bumping a pointer and free everything at once, with no per-object counting. For a workload with many small objects of one lifetime (a request, a compiler phase, a frame) that is the biggest single lever. [Chapter 10](./memory-allocators) shows the syntax.
+- **Allocators.** Arenas allocate by bumping a pointer and free everything at once, with no per-object counting. For a workload with many small objects of one lifetime (a request, a compiler phase, a frame) that is the biggest single lever. [The allocator chapter](./memory-allocators) shows the syntax.
 
 ## Numbers
 
@@ -118,5 +117,3 @@ fun main() {
 9592
 ```
 :::
-
-Next: [The `@` operator](./matrix).

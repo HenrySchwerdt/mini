@@ -1,11 +1,11 @@
 ---
-title: "6. Generics and type contracts"
+title: "11. Generics and type contracts"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 6. Generics and type contracts
+# 11. Generics and type contracts
 
 You can already write `List<Int>` and pass a lambda to `map`. Now we will build that kind of API ourselves. The aim is to preserve information about values instead of falling back to `Any` and casting it back later.
 

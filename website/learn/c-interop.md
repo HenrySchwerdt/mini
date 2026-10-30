@@ -1,18 +1,17 @@
 ---
-title: "12. C interop"
+title: "20. The native boundary: C interop"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 12. C interop
+# 20. The native boundary: C interop
 
 Mini calls C directly: no wrapper layer, no generated glue. The API is the one of Kotlin/Native's `kotlinx.cinterop`, so code written for it mostly works unchanged.
 
 ::: warning Not in the browser
 The in-browser compiler produces WebAssembly with no C libraries and no system calls beyond standard output, so a program that calls into C cannot run here. The listings in this chapter are plain code. To run them, [install Mini](/install). The **Check** cell at the end works in the browser, because the memory checker needs no C at all.
 :::
-
 
 **By the end:** identify the symbol, representation and lifetime contract at a C boundary. This chapter needs a native installation for execution; the browser cannot link your host libraries. Ownership checks can still be demonstrated in a Check cell.
 
@@ -81,5 +80,3 @@ Does a C pointer keep its allocation alive? Can a Kotlin `String` simply be pass
 ::: details Reasoning
 A pointer is an address, not a reference-counted owner. Convert strings through the documented C representation and respect the conversion buffer's lifetime. The C API defines whether a returned pointer is borrowed or owned and which release function matches it.
 :::
-
-Next: [Performance](./performance).

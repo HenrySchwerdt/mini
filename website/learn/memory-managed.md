@@ -1,11 +1,11 @@
 ---
-title: "9. Memory: managed by default"
+title: "14. Memory: managed by default"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 9. Memory: managed by default
+# 14. Memory: managed by default
 
 From here on Mini differs from Kotlin. Kotlin on the JVM has a garbage collector. Mini has none: it has a **memory model with three tiers** and you choose the tier per file.
 
@@ -16,7 +16,6 @@ From here on Mini differs from Kotlin. Kotlin on the JVM has a garbage collector
 | **Strict** | you, with `free()` and `use {}` | every allocation has exactly one owner and is released exactly once |
 
 This chapter is the first tier, the one you have been using since chapter 1.
-
 
 **By the end:** draw a small reference graph, explain why sharing is different from copying, and recognize a cycle that ordinary reference counting cannot release. You do not need to introduce explicit allocators to write useful Mini programs.
 
@@ -130,5 +129,3 @@ fun main() {
 5
 ```
 :::
-
-Next: [Allocators and arenas](./memory-allocators). The reference version of this chapter is [Managed by default](/memory/managed).

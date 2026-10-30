@@ -1,12 +1,11 @@
 ---
-title: "4. Lambdas, collections and strings"
+title: "7. Lambdas, collections and strings"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 4. Lambdas, collections and strings
-
+# 7. Lambdas, collections and strings
 
 **By the end:** read a function type, follow a lambda capture, transform a collection and identify where a pipeline may allocate. The dedicated [generics chapter](./generics) will develop the type contracts behind these APIs.
 
@@ -54,6 +53,53 @@ xx
 big: 20
 none
 ```
+
+## Read a function type one part at a time
+
+`(Int) -> String` means a function accepting an integer and returning a string. `(Int, Int) -> Int` accepts two integers. `() -> Unit` accepts no arguments and performs an action without a meaningful returned value.
+
+```kotlin
+fun applyTo(value: Int, operation: (Int) -> Int): Int = operation(value)
+
+fun main() {
+    val double: (Int) -> Int = { number -> number * 2 }
+    println(applyTo(6, double))
+    println(applyTo(6) { number -> number + 3 })
+    println(applyTo(6) { it * it })
+}
+```
+```output
+12
+9
+36
+```
+
+The second call moves the final lambda argument outside the parentheses. The third uses the implicit name `it` because there is one parameter. These are alternate spellings of function values passed to the same parameter, not different kinds of loop.
+
+For two parameters you write their names explicitly, as in `{ sum, value -> sum + value }`. The last expression supplies the lambda's result. A `println` at the end supplies `Unit`, so a logging statement can accidentally change the result of a multi-line lambda.
+
+Prefer explicit names when nesting lambdas. In `groups.map { group -> group.filter { item -> ... } }`, names reveal which object is being used. Several nested `it` references force the reader to count scopes.
+
+## Local returns and non-local returns
+
+```kotlin
+fun main() {
+    listOf(1, 2, 3).forEach { value ->
+        if (value == 2) return@forEach
+        println(value)
+    }
+    println("after loop")
+}
+```
+```output
+1
+3
+after loop
+```
+
+`return@forEach` returns from this lambda invocation, much like skipping one iteration. An eligible inline lambda can use an unlabelled `return` to leave the enclosing function instead. Those behaviors are different; adding or removing a label can change which later work executes.
+
+Use an ordinary `for` loop when its `break` and `continue` express the intended control flow more clearly. A functional-looking chain is not a goal by itself. In Mini, inline bodies also matter to ownership checking because the checker can analyze them as part of the surrounding path.
 
 ## Collections
 
@@ -197,7 +243,5 @@ the: 3
 dog: 3
 ```
 :::
-
-Next: [Null safety and exceptions](./errors).
 
 Language reference: [Kotlin collections](https://kotlinlang.org/docs/collections-overview.html) and [higher-order functions](https://kotlinlang.org/docs/lambdas.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

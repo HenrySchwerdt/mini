@@ -1,18 +1,17 @@
 ---
-title: "14. The @ operator"
+title: "23. The @ operator"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 14. The `@` operator
+# 23. The @ operator
 
 Mini adds exactly one operator to Kotlin: a binary `@`, in the spirit of Python's `@` ([PEP 465](https://peps.python.org/pep-0465/)). It is the matrix-multiplication operator. Nothing in the standard library defines it; you give your own types an `operator fun matmul`.
 
 ::: warning Not Kotlin
 Programs that use `@` are not valid Kotlin and the Kotlin compiler cannot read them. Everything else in Mini is.
 :::
-
 
 **By the end:** define the operation behind `@`, predict its precedence and distinguish a binary operator from an annotation or a label. This is a Mini syntax extension, so it is the point where these examples leave standard Kotlin syntax.
 

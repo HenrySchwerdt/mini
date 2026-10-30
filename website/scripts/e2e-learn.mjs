@@ -6,6 +6,7 @@ import { createReadStream, existsSync, statSync, mkdirSync } from 'node:fs'
 import { extname, resolve, sep } from 'node:path'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
+import { learnChapters } from '../.vitepress/theme/learn-course.ts'
 
 const dist = resolve(import.meta.dirname, '../.vitepress/dist')
 const shots = process.env.MINI_LEARN_SHOTS
@@ -49,7 +50,7 @@ try {
   const editor = first.locator('.cm-content')
   await editor.waitFor()
   assert.equal(await page.locator('.nb-actions, .nb-md-edit, .nb-md[tabindex]').count(), 0, 'lesson prose and structure have no editing controls')
-  assert.equal(await page.locator('.VPSidebar a[href*="/learn/"]').count(), 16, 'introduction and 15 chapters are reachable')
+  assert.equal(await page.locator('.VPSidebar a[href*="/learn/"]').count(), learnChapters.length + 1, 'introduction and all chapters are reachable')
   await editor.fill('fun main() { println("edited lesson") }')
   assert.match(await editor.innerText(), /edited lesson/)
   await first.getByRole('button', { name: 'Reset', exact: true }).click()
@@ -57,9 +58,9 @@ try {
   assert.equal(await first.locator('.cm-editor').count(), 1, 'reset keeps the code editable')
   if (shots) await page.screenshot({ path: resolve(shots, 'learn-desktop.png') })
   await page.locator('.VPSidebar a[href$="/learn/generics"]').click()
-  await page.locator('h1').filter({ hasText: '6. Generics and type contracts' }).waitFor()
+  await page.locator('h1').filter({ hasText: 'Generics and type contracts' }).waitFor()
   await page.locator('.learn-pagination a').last().click()
-  await page.locator('h1').filter({ hasText: '7. Extensions, receivers and scope' }).waitFor()
+  await page.locator('h1').filter({ hasText: 'Extensions, receivers and scope' }).waitFor()
   console.log('ok learn: direct editing, reset, fixed prose, chapter and next navigation')
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(base + 'learn/hello')
@@ -68,7 +69,7 @@ try {
   await page.getByRole('button', { name: 'Menu', exact: true }).click()
   await page.locator('.VPSidebar.open').waitFor()
   await page.locator('.VPSidebar a[href$="/learn/generics"]').click()
-  await page.locator('h1').filter({ hasText: '6. Generics and type contracts' }).waitFor()
+  await page.locator('h1').filter({ hasText: 'Generics and type contracts' }).waitFor()
   assert.equal(await page.locator('.VPSidebar.open').count(), 0, 'drawer closes after navigation')
   if (shots) await page.screenshot({ path: resolve(shots, 'learn-mobile.png') })
   await page.evaluate(() => document.documentElement.classList.add('dark'))

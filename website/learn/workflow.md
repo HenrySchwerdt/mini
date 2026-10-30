@@ -1,11 +1,11 @@
 ---
-title: "15. From notebook to native project"
+title: "25. From notebook to native project"
 notebook: true
 learnNotebook: true
 aside: false
 ---
 
-# 15. From notebook to native project
+# 25. From notebook to native project
 
 The notebook has made the language visible. A project gives the same program a source tree, repeatable checks and tests. This chapter is a bridge to your own work, with a checklist of decisions you can now explain.
 
