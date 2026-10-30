@@ -98,6 +98,7 @@ Prefer to read the script before running it? It is [`install.sh`](https://github
 ~/.mini/
   bin/minic            the driver you run: minic build foo.kt -o foo (a shell script)
   bin/minic-native     the compiler itself: Kotlin to C, self-hosted, no JDK
+  bin/mini             the project tool: mini new / build / run / test (native)
   lib/libminirt.a      the runtime (reference counting, allocators, strings, exceptions), prebuilt
   include/             minirt.h and the other runtime headers
   stdlib/              the standard library as Kotlin source, compiled together with your program
@@ -106,7 +107,7 @@ Prefer to read the script before running it? It is [`install.sh`](https://github
 
 `minic` finds its files relative to its own location, so you can move the directory or symlink `bin/minic` into a directory that is already on your `PATH`. The [`minic` reference](/reference/minic) lists every command and option.
 
-The project tool [`mini`](/reference/mini) (`mini new`, `mini run`, `mini test`, `mini.toml`, dependencies) is **not part of the release archive yet**. It runs from a source checkout today and is being rewritten as a native program, so that it can ship in the archive. Until then, use `minic` directly.
+The project tool [`mini`](/reference/mini) (`mini new`, `mini run`, `mini test`, `mini.toml`, dependencies) is a native binary in `bin/mini`, next to the compiler. It needs no JDK either.
 
 ## Verify a download by hand
 
@@ -170,7 +171,7 @@ git clone https://github.com/HenrySchwerdt/mini && cd mini
 ./minic build examples/hello.kt -o build/hello && ./build/hello
 ```
 
-The `./minic` script in the repository builds the compiler with Gradle (the first run downloads dependencies from Maven Central and takes a minute), then runs it. This is the JVM build, which is also what the memory checker and the `mini` tool run on today. `cd compiler && ./gradlew installDist` builds it without running anything.
+The `./minic` script in the repository builds the compiler with Gradle (the first run downloads dependencies from Maven Central and takes a minute), then runs it. This is the JVM build with the K2 frontend, used by the test suite. `cd compiler && ./gradlew installDist` builds it without running anything.
 
 ## If something goes wrong
 

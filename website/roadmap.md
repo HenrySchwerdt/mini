@@ -8,6 +8,7 @@ This page separates what exists today from what is planned. Anything under "Plan
 |---|---|
 | **Self-hosting (B3)** | **Done.** The native `minic-native` compiles itself without a JVM or K2; stage 2 and stage 3 are byte-identical, through the C backend and both LLVM backends. CI bootstraps from the latest release. |
 | **Own frontend (B2)** | **Done** and the default: own parser (0 mismatches against K2's PSI tree on large fuzzed corpora), own type checker (99.99 % agreement with K2 FIR) and lowering to MIR without K2. |
+| **Native `mini` project tool** | **Done.** `mini new/build/run/test/check`, `mini.toml`, path and git dependencies; a native binary compiled by Mini, about 1 ms to start, shipped in the release archives. |
 | **Releases** | Prebuilt archives for linux-x64, linux-arm64 and macos-arm64, plus a C bootstrap seed. See [Install](/install). |
 | **Memory model checker** | Diagnostics M0101 to M0115, M0202, M0204 to M0207 ([reference](/reference/diagnostics/)), natively (`minic-native --check`) and in the browser. M0201 and M0203 are specified but not implemented. |
 | **C interop** | `external` with `@CName`, `CPointer`/`*Var`, `memScoped`, `@CStruct`, `staticCFunction`, `@file:CInclude`/`@file:CLink`, `@Owned(free=)`. See [C interop](/guide/c-interop). |
@@ -22,7 +23,6 @@ This page separates what exists today from what is planned. Anything under "Plan
 
 | Area | State |
 |---|---|
-| **Native `mini` project tool** | The `mini` tool (`mini new/build/run/test`, `mini.toml`) is being rebuilt as a native binary compiled by Mini, so that it ships in the release archives and needs no JVM. |
 | **Repository without Gradle** | After the native `mini`, the test suite moves to `mini test`; the K2 cross-checks move to a separate, optional tool. |
 | **LLVM performance** | Bringing the LLVM backends to at least the speed of the C backend, then making LLVM the default. |
 | **Strict codegen and stdlib on the memory model (D2)** | Strict programs are checked everywhere; programs that use allocator objects and `mini.memory` do not build everywhere yet, so the memory chapters of the tutorial use Check only. |

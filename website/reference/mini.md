@@ -7,7 +7,7 @@ title: "mini: the project tool"
 `mini` is to Mini what `cargo` is to Rust: it creates projects, builds them, runs and tests them, and manages dependencies, driven by a `mini.toml` file. It calls `minic` for the real work, through a process boundary only.
 
 ::: warning Status
-`mini` is not part of the release archive yet. Today it runs from a **source checkout** (the `mini` script in the repository root builds it and the compiler on first use and needs a JDK 21), and it is being rewritten as a native program so that it can ship with `minic`. The commands and the `mini.toml` format below are what the current tool implements; the native version is meant to keep them. For a single file, [`minic`](./minic) is all you need.
+`mini` is a native program, compiled from Kotlin by Mini itself, and ships in the [release archive](/install) next to `minic`: no JDK and no Gradle. It drives the native compiler `minic-native` and the C compiler. In a source checkout, the `mini` script in the repository root builds it natively on first use. For a single file, [`minic`](./minic) is all you need.
 :::
 
 ```sh

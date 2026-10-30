@@ -10,14 +10,14 @@ Mini has two command-line programs.
 |---|---|---|
 | **Is** | the compiler driver | the project tool, like `cargo` |
 | **You use it for** | one or a few `.kt` files: `minic build hello.kt -o hello` | whole projects: `mini new`, `mini run`, `mini test`, dependencies, `mini.toml` |
-| **Installed by** | the [release archive](/install) | not in the archive yet; runs from a source checkout and is becoming a native program |
+| **Installed by** | the [release archive](/install) | the [release archive](/install), as a native binary next to `minic` |
 | **Reference** | [`minic`](./minic) | [`mini`](./mini) |
 
 ```sh
 # one file
 minic build hello.kt -o hello && ./hello
 
-# a project (from a source checkout today)
+# a project
 mini new hello && cd hello && mini run
 ```
 

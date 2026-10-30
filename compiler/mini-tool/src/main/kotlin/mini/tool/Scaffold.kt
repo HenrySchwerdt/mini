@@ -56,10 +56,8 @@ fun addsNumbers() {
 }
 
 object ManifestEdit {
-    private val depHeader = Regex("""^\s*\[dependencies\]\s*(#.*)?$""")
-
     private fun section(lines: List<String>): Pair<Int, Int>? {
-        val h = lines.indexOfFirst { depHeader.matches(it) }
+        val h = lines.indexOfFirst { isDependenciesHeader(it) }
         if (h < 0) return null
         var end = lines.size
         for (i in h + 1 until lines.size) if (lines[i].trimStart().startsWith("[")) { end = i; break }
@@ -67,7 +65,7 @@ object ManifestEdit {
     }
 
     private fun keyOf(line: String): String? =
-        Regex("""^\s*([A-Za-z0-9_\-]+)\s*=""").find(line)?.groupValues?.get(1)
+        tomlKeyOf(line)
 
     /** Adds or replaces `name = <spec>` in `[dependencies]`; returns the new text and whether a line was replaced. */
     fun addDependency(text: String, name: String, spec: String): Pair<String, Boolean> {
@@ -75,7 +73,7 @@ object ManifestEdit {
         val line = "$name = $spec"
         val sec = section(lines)
         if (sec == null) {
-            val base = text.trimEnd('\n')
+            val base = text.trimEndChars('\n')
             return Pair("$base\n\n[dependencies]\n$line\n", false)
         }
         val (h, end) = sec

@@ -10,15 +10,24 @@ Mini is a Kotlin compiler. You write `.kt` files, `minic` turns them into C17 an
 
 | Needed | Why |
 |---|---|
-| JDK 21 | `minic` runs the Kotlin K2 frontend on the JVM (at compile time only; the output does not need a JVM) |
-| clang (or gcc, selected with `--cc`) | compiles the generated C |
-| A checkout of the repository | the compiler finds `runtime/` and `stdlib/` next to itself |
-| Network access to Maven Central on the first run | Gradle downloads the compiler dependencies |
+| clang (or gcc) | compiles the generated C |
+| A release (`install.sh`) or a checkout of the repository | the compiler finds `runtime/` and `stdlib/` next to itself |
+| JDK 21 and network access to Maven Central | only for the JVM `./minic` wrapper of a checkout (K2 frontend, Gradle); the native `mini` and `minic` of a release need neither |
 | libuv (optional) | only needed to run the runtime test suite, not to compile programs |
 
 Supported platforms are Linux (x64, arm64) and macOS (Apple silicon). Windows is [planned](/roadmap).
 
-## Get and build the compiler
+## Install the project tool and compiler
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
+export PATH="$HOME/.mini/bin:$PATH"
+mini new hello && cd hello && mini run
+```
+
+`mini` is the native project tool (no JVM, no Gradle), `minic` the compiler it calls; the [command line reference](/reference/cli#the-mini-project-tool) lists its commands. In a checkout, `./mini new hello` builds the tool and the native compiler on first use without Gradle.
+
+## Build the JVM compiler from a checkout
 
 ```sh
 git clone https://github.com/HenrySchwerdt/mini

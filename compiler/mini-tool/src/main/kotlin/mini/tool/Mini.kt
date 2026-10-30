@@ -33,7 +33,7 @@ object Mini {
             1
         } catch (e: Exception) {
             c.error("internal error in mini: ${e.message ?: e.toString()}", "this is a bug; please report it with the command you ran")
-            if (p.env("MINI_DEBUG") != null) c.eprintln(e.stackTraceToString())
+            if (p.env("MINI_DEBUG") != null) c.eprintln(e.toString())
             101
         }
     }

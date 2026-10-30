@@ -117,15 +117,17 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
 
     // ---- compiling ---------------------------------------------------------------------------------------------------
 
+    private val nameOnlyDiag = KotlinDiagPattern(allowSlash = false)
+
     private fun report(root: Package, r: ExecResult, files: List<SourceFile>): Boolean {
         val maps = mappings(root)
         var text = Diagnostics.remap(Diagnostics.clean(r.stdout + (if (r.stdout.isNotEmpty() && r.stderr.isNotEmpty()) "\n" else "") + r.stderr), maps)
         // the Kotlin frontend prints only the file *name*: use the project path when it is unambiguous
         val byName = files.groupBy { Paths.name(it.real) }
         text = text.lines().joinToString("\n") { l ->
-            val m = Regex("""^([^\s:/][^:/]*\.kt):(\d+:\d+: (?:error|warning): .*)$""").find(l)
+            val m = nameOnlyDiag.find(l)
             val cand = m?.let { byName[it.groupValues[1]] }
-            if (m != null && cand != null && cand.size == 1) cand[0].display + ":" + m.groupValues[2] else l
+            if (m != null && cand != null && cand.size == 1) cand[0].display + l.substring(m.groupValues[1].length) else l
         }
         if (text.isBlank()) return true
         if (o.json) {
@@ -136,17 +138,9 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         return true
     }
 
-    private fun minicBase(): List<String> = listOf("--stdlib", tc.stdlib, "--runtime-src", tc.runtimeSrc, "--runtime-include", tc.runtimeInclude) +
-        (if (tc.cc != "clang") listOf("--cc", tc.cc) else emptyList())
-
-    private fun runMinic(args: List<String>): ExecResult {
-        c.trace("minic " + args.joinToString(" "))
-        return tc.runMinic(p, args)
-    }
-
     private fun failed(root: Package, r: ExecResult, files: List<SourceFile>, what: String): BuildResult {
         report(root, r, files)
-        if (r.startError != null) throw MiniError("could not start minic (${tc.minic}): ${r.startError}", "run `mini doctor`")
+        if (r.startError != null) throw MiniError("could not start minic-native (${tc.minic}): ${r.startError}", "run `mini doctor`")
         if (!o.json) c.error("could not $what `${root.name}` due to the errors above")
         return BuildResult(false, null)
     }
@@ -159,8 +153,8 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         val strict = files.filter { it.strict }
         for (f in strict.drop(1)) {
             c.status("Checking", display(f.real))
-            val args = listOf("check", f.path) + files.filter { it !== f }.flatMap { listOf("--extra-src", it.path) } + if (o.werror) listOf("-Werror") else emptyList()
-            val r = runMinic(args)
+            c.trace("minic-native --check " + f.path)
+            val r = tc.check(p, f.path, files.filter { it !== f }.map { it.path }, o.werror)
             if (r.exitCode != 0) { failed(root, r, files, what); return false }
             report(root, r, files)
         }
@@ -208,14 +202,8 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
             sources += stub
         }
         if (!checkEachStrict(root, files, "compile")) return BuildResult(false, null)
-        val args = ArrayList<String>()
-        args += "build"
-        args += sources
-        args += listOf("-o", binary)
-        args += minicBase()
-        if (o.werror) args += "-Werror"
-        args += listOf("--cflag", if (o.release) "-O2" else "-g")
-        val r = runMinic(args)
+        c.trace("minic-native " + sources.joinToString(" ") + " -> " + binary)
+        val r = tc.compile(p, sources, emptyList(), binary, o.werror, o.release)
         if (r.exitCode != 0) return failed(root, r, files, "compile")
         report(root, r, files)
         p.writeText(fpFile, fp + "\n")
@@ -232,8 +220,8 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         val targets = files.filter { it.strict }.ifEmpty { listOf(files.first()) }
         var ok = true
         for (f in targets) {
-            val args = listOf("check", f.path) + files.filter { it !== f }.flatMap { listOf("--extra-src", it.path) } + if (o.werror) listOf("-Werror") else emptyList()
-            val r = runMinic(args)
+            c.trace("minic-native --check " + f.path)
+            val r = tc.check(p, f.path, files.filter { it !== f }.map { it.path }, o.werror)
             if (r.exitCode != 0) { failed(root, r, files, "check"); ok = false; break }
             report(root, r, files)
         }
@@ -247,16 +235,8 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         if (fresh(fpFile, fp, binary)) return BuildResult(true, binary, fresh = true)
         p.mkdirs(Paths.parent(binary)!!)
         if (!checkEachStrict(root, files, "build the tests of")) return BuildResult(false, null)
-        val args = ArrayList<String>()
-        args += "build"
-        args += files.map { it.path }
-        args += extraSources
-        for (d in declarationOnly) { args += "--extra-src"; args += d }
-        args += listOf("-o", binary)
-        args += minicBase()
-        if (o.werror) args += "-Werror"
-        args += listOf("--cflag", if (o.release) "-O2" else "-g")
-        val r = runMinic(args)
+        c.trace("minic-native " + files.joinToString(" ") { it.path } + " -> " + binary)
+        val r = tc.compile(p, files.map { it.path } + extraSources, declarationOnly, binary, o.werror, o.release)
         if (r.exitCode != 0) return failed(root, r, files, "build the tests of")
         report(root, r, files)
         p.writeText(fpFile, fp + "\n")

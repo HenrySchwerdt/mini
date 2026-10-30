@@ -105,7 +105,7 @@ object TestDiscovery {
                 val names = annotationNames(d.mods)
                 if ("Test" !in names) continue
                 // the line of `fun name` (the annotation may be on the line above)
-                val funAt = Regex("""\bfun\b""").find(f.text, d.start)?.range?.first ?: d.start
+                val funAt = indexOfWordFun(f.text, d.start).let { if (it < 0) d.start else it }
                 val line = lineOf(f.text, funAt)
                 if (d.receiver != null || d.params.isNotEmpty()) {
                     throw MiniError("${f.display}:$line: test function `${d.name}` must take no parameters and have no receiver", "write `@Test fun ${d.name}() { ... }`")
@@ -114,7 +114,7 @@ object TestDiscovery {
                     throw MiniError("${f.display}:$line: test function `${d.name}` is private", "tests are called by the generated runner: remove `private`")
                 }
                 if (r.file.imports.none { it.path.startsWith("kotlin.test") } && r.file.packageName != "kotlin.test") needsImport += Pair(d.name!!, line)
-                val fn = d.name!!.trim('`')
+                val fn = d.name!!.trimChars('`')
                 val q = (r.file.packageName?.split('.')?.map { "`$it`" } ?: emptyList()) + "`$fn`"
                 val rel = Paths.relativize(pkg.dir, f.real)
                 out += TestCase("$rel::$fn", q.joinToString("."), rel, line, "Ignore" in names)
@@ -146,7 +146,7 @@ class TestRunner(val p: Platform, val c: Console, val builder: Builder) {
 
     private fun describeFailure(r: ExecResult): String {
         val err = r.stderr.lines().filter { !Diagnostics.isNoise(it) }.joinToString("\n").trim()
-        val cleaned = err.replace("Exception in thread \"main\" ", "").replace(Regex("""\b(java\.lang|kotlin)\.(?=[A-Z])"""), "")
+        val cleaned = err.replace("Exception in thread \"main\" ", "").let { stripPackagePrefixes(it) }
         if (r.startError != null) return "could not start the test binary: ${r.startError}"
         if (r.exitCode == 1 || r.exitCode == 0) return cleaned.ifEmpty { "the test failed (exit code ${r.exitCode})" }
         val sig = when (r.exitCode) { 134 -> "SIGABRT (a panic or failed internal check)"; 139 -> "SIGSEGV (crash)"; 136 -> "SIGFPE"; 137 -> "killed (SIGKILL)"; else -> null }

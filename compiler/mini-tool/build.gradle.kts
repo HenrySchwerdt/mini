@@ -25,12 +25,13 @@ application {
 }
 
 // `mini explain <code>`: the texts come from docs/memory-model.md section 7 and are compiled in as Kotlin source,
-// so the (pure) core needs no resource loading. After B3 the same generator runs as a `mini` build step.
+// so the (pure) core needs no resource loading. The generated file is checked in (src/main/kotlin/mini/tool/ExplainData.kt) because
+// the native `mini` is built by scripts/build-mini.sh without Gradle; this task refreshes it whenever the document changes.
 val generateExplain = tasks.register("generateExplainData") {
     val doc = repoRoot.resolve("docs/memory-model.md")
-    val outDir = layout.buildDirectory.dir("generated/explain")
+    val outFile = projectDir.resolve("src/main/kotlin/mini/tool/ExplainData.kt")
     inputs.file(doc)
-    outputs.dir(outDir)
+    outputs.file(outFile)
     doFirst {
         val lines = doc.readLines()
         val start = lines.indexOfFirst { it.startsWith("## 7. Diagnostic Catalog") }
@@ -79,21 +80,17 @@ val generateExplain = tasks.register("generateExplainData") {
         sb.append("    val overview: List<Triple<String, String, String>> = listOf(\n")
         for (r in rows.distinctBy { it[0] }.sortedBy { it[0] }) sb.append("        Triple(${lit(r[0])}, ${lit(r[1])}, ${lit(r[2])}),\n")
         sb.append("    )\n}\n")
-        val f = outDir.get().asFile.resolve("mini/tool/ExplainData.kt")
-        f.parentFile.mkdirs()
-        f.writeText(sb.toString())
+        if (!outFile.isFile || outFile.readText() != sb.toString()) outFile.writeText(sb.toString())
     }
 }
-sourceSets.main { kotlin.srcDir(layout.buildDirectory.dir("generated/explain")) }
 tasks.named("compileKotlin") { dependsOn(generateExplain) }
 
 tasks.test {
     useJUnitPlatform()
-    dependsOn(":jvm-bridge:installDist")
+    // the end-to-end tests drive the native toolchain staged by scripts/build-mini.sh (<repo>/build/native); without it they are skipped
+    systemProperty("mini.nativeHome", repoRoot.resolve("build/native").absolutePath)
     systemProperty("mini.toolMain", file("src/main/kotlin/mini/tool").absolutePath)
     systemProperty("mini.repoRoot", repoRoot.absolutePath)
-    inputs.dir(repoRoot.resolve("runtime"))
-    inputs.dir(repoRoot.resolve("stdlib"))
     maxHeapSize = "1g"
     testLogging { events("passed", "failed", "skipped"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }
