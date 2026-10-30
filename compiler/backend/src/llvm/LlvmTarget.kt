@@ -27,7 +27,7 @@ import mini.backend.isRef
  * loader cannot resolve TLS relocations of generated code (the in-process ORC JIT); the optimizer treats the call as
  * pure, so it costs one call per function that tests for exceptions.
  */
-class LlvmTarget(val ptrBytes: Int, val triple: String?, val dataLayout: String?, val pendingAccessor: Boolean = false) {
+class LlvmTarget(val ptrBytes: Int, val triple: String?, val dataLayout: String?, val pendingAccessor: Boolean = false, val wasmLib: Boolean = false) {
     /** The LLVM integer type of `size_t`. */
     val sizeT: String get() = if (ptrBytes == 8) "i64" else "i32"
 
@@ -35,6 +35,9 @@ class LlvmTarget(val ptrBytes: Int, val triple: String?, val dataLayout: String?
         /** The host of the clang that compiles the IR (any 64-bit target with natural alignment). */
         val HOST = LlvmTarget(8, null, null)
         val WASM32 = LlvmTarget(4, "wasm32-unknown-wasi", null)
+
+        /** A wasm32 library module (no entry point): it exports its `@WasmExport` functions and `mini_init` (WasmLib.kt). */
+        val WASM32_LIB = LlvmTarget(4, "wasm32-unknown-wasi", null, false, true)
 
     }
 }
