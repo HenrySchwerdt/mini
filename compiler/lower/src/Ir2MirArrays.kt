@@ -6,7 +6,7 @@ import mini.frontend.sema.*
 
 
 /*
- * Ir2Mir: arrays (`Array<T>`, IntArray, LongArray, DoubleArray, BooleanArray, CharArray), `vararg`
+ * Ir2Mir: arrays (`Array<T>`, IntArray, LongArray, DoubleArray, FloatArray, BooleanArray, CharArray), `vararg`
  * and spread, `for (x in array)`. Arrays are runtime objects (MkArray, see minirt.h v1-L); an
  * `Array<T>` holds references (primitives are boxed: erasure), the typed arrays hold raw values.
  * Element access goes through bounds-checked runtime calls that raise
@@ -22,6 +22,7 @@ private val ARRAY_KINDS = listOf(
     ArrayKind("MkBooleanArray", "kotlin.BooleanArray", TBoolean, "boolean"),
     ArrayKind("MkCharArray", "kotlin.CharArray", TChar, "char"),
     ArrayKind("MkObjectArray", "kotlin.Array", null, "obj"),
+    ArrayKind("MkFloatArray", "kotlin.FloatArray", TFloat, "float"),
 )
 
 internal fun arrayKindOfFq(fq: String?): ArrayKind? = when (fq) {
@@ -88,6 +89,7 @@ internal fun Ir2Mir.arrayFunction(c: IrCall, name: String, pkg: String, out: Mut
             "intArrayOf" -> ARRAY_KINDS[0]
             "longArrayOf" -> ARRAY_KINDS[1]
             "doubleArrayOf" -> ARRAY_KINDS[2]
+            "floatArrayOf" -> ARRAY_KINDS[6]
             "booleanArrayOf" -> ARRAY_KINDS[3]
             "charArrayOf" -> ARRAY_KINDS[4]
             else -> null

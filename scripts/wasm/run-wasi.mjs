@@ -4,6 +4,11 @@
 // stdout/stderr/stdin are inherited, the exit code is the program's.
 import { WASI } from 'node:wasi'
 import { readFileSync } from 'node:fs'
+import v8 from 'node:v8'
+
+// Node 22 can segfault when a garbage collection runs inside a WASI call made from TurboFan-compiled wasm through the
+// fast API call path (InnerPointerToCodeCache crash in path_open). Taking the regular call path avoids it.
+v8.setFlagsFromString('--no-turbo-fast-api-calls')
 
 const argv = process.argv.slice(2)
 const preopens = {}

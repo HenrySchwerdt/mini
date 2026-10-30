@@ -1,7 +1,7 @@
 package mini.tensor
 
 // Matrix products: `a @ b` is `a.matmul(b)`. The heavy loop is BLAS (dgemm) when a CBLAS library can be loaded at run
-// time, else a blocked pure Kotlin kernel.
+// time (dgemm for Float64, sgemm for Float32), else a blocked pure Kotlin kernel.
 
 /** The linear algebra backend. */
 object Blas {
@@ -22,6 +22,9 @@ object Blas {
         }
 
     val active: Boolean get() = available && enabled
+
+    /** Float32 products run in single precision BLAS (sgemm) when the library has it. */
+    val floatActive: Boolean get() = active && mtBlasHasFloat() == 1
 }
 
 /** Pure Kotlin row-major kernel: C (m x n) = A (m x k) * B (k x n), loop order i-k-j with the k loop blocked for the cache. */
@@ -102,6 +105,15 @@ internal fun gemm(a: DoubleArray, aOff: Int, b: DoubleArray, bOff: Int, c: Doubl
     gemmKotlin(aa, ao, bb, bo, c, cOff, m, n, k, acc)
 }
 
+/** Single precision C = op(A) op(B) through sgemm / sgemv (the caller checked `Blas.floatActive`). */
+internal fun gemmF(a: FloatArray, aOff: Int, b: FloatArray, bOff: Int, c: FloatArray, cOff: Int,
+                   ta: Boolean, tb: Boolean, m: Int, n: Int, k: Int) {
+    if (m == 0 || n == 0) return
+    if (k == 0) return
+    if (n == 1 && !ta && aOff == 0 && bOff == 0 && cOff == 0) mtSgemv(a, b, c, m, k)
+    else mtSgemm(a, aOff, b, bOff, c, cOff, if (ta) 1 else 0, if (tb) 1 else 0, m, n, k, 0)
+}
+
 /** Batched product without autograd; a and b have at least two dimensions, their batch dimensions are equal or one side has none. */
 internal fun bmmRaw(a: Tensor, b: Tensor, ta: Boolean, tb: Boolean): Tensor {
     val an = a.shape.size
@@ -143,13 +155,27 @@ internal fun bmmRaw(a: Tensor, b: Tensor, ta: Boolean, tb: Boolean): Tensor {
     osh[batchShape.size] = m
     osh[batchShape.size + 1] = n
     val dt = promote(a.dtype, b.dtype)
+    if (dt == DType.Float32 && Blas.floatActive && m.toLong() * n * k >= Blas.threshold) {
+        // single precision: the FloatArray storage goes to sgemm / sgemv as it is
+        val af = a.data.toFloats()
+        val bf = b.data.toFloats()
+        val rf = FloatArray(batch * m * n)
+        if (bStep == 0 && !ta && batch > 1) {
+            gemmF(af, 0, bf, 0, rf, 0, false, tb, batch * m, n, k)
+        } else {
+            for (q in 0 until batch) gemmF(af, q * aStep, bf, q * bStep, rf, q * m * n, ta, tb, m, n, k)
+        }
+        return Tensor(TensorData(rf, null), osh, dt)
+    }
     val r = DoubleArray(batch * m * n)
+    val ad = a.data.toDoubles()
+    val bd = b.data.toDoubles()
     if (bStep == 0 && !ta && batch > 1) {
         // B is one matrix: all batches are one big product
-        gemm(a.data, 0, b.data, 0, r, 0, false, tb, batch * m, n, k, false, true)
+        gemm(ad, 0, bd, 0, r, 0, false, tb, batch * m, n, k, false, true)
     } else {
         for (q in 0 until batch) {
-            gemm(a.data, q * aStep, b.data, q * bStep, r, q * m * n, ta, tb, m, n, k, false, true)
+            gemm(ad, q * aStep, bd, q * bStep, r, q * m * n, ta, tb, m, n, k, false, true)
         }
     }
     return finish(r, osh, dt)

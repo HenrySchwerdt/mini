@@ -82,3 +82,22 @@ void node_free_all(node_t *head) {
         head = next;
     }
 }
+
+/* arrays: MkArray header, then the elements (minirt.h); a FloatArray holds 32-bit floats, a DoubleArray 64-bit doubles */
+#include "minirt.h"
+float farray_sum(void *a, int n) {
+    const float *e = MK_ARRAY_ELEMS(float, a);
+    float s = 0;
+    for (int i = 0; i < n; i++) s += e[i];
+    return s;
+}
+void farray_scale(void *a, int n, float k) {
+    float *e = MK_ARRAY_ELEMS(float, a);
+    for (int i = 0; i < n; i++) e[i] *= k;
+}
+double darray_sum(void *a, int n) {
+    const double *e = MK_ARRAY_ELEMS(double, a);
+    double s = 0;
+    for (int i = 0; i < n; i++) s += e[i];
+    return s;
+}

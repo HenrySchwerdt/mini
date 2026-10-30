@@ -1,6 +1,6 @@
 package mini.tensor
 
-/** Element type. Storage is always a `DoubleArray`; `Float32` tensors round every result to single precision. */
+/** Element type. `Float32` tensors are stored as a `FloatArray` (32-bit), `Float64` and `Int64` as a `DoubleArray`. */
 enum class DType { Float32, Float64, Int64 }
 
 /** The dtype of new floating point tensors (PyTorch: float32). */
@@ -51,6 +51,56 @@ internal fun DoubleArray.roundTo(dt: DType): DoubleArray {
     return this
 }
 
+/**
+ * The elements of a tensor: a `FloatArray` for `Float32`, a `DoubleArray` otherwise. Elements are read and written as `Double`;
+ * a store into a `Float32` tensor rounds to single precision.
+ */
+class TensorData internal constructor(internal val f: FloatArray?, internal val d: DoubleArray?) {
+    val size: Int get() = if (f != null) f.size else d!!.size
+
+    operator fun get(i: Int): Double {
+        val ff = f
+        return if (ff != null) ff[i].toDouble() else d!![i]
+    }
+
+    operator fun set(i: Int, v: Double) {
+        val ff = f
+        if (ff != null) ff[i] = v.toFloat() else d!![i] = v
+    }
+
+    /** Stores are rounded to the element type already, so there is nothing left to do (kept for the call sites that fill a tensor in bulk). */
+    internal fun roundTo(dt: DType): TensorData = this
+
+    /** The elements as doubles: the storage itself for Float64 / Int64, a converted copy for Float32. */
+    internal fun toDoubles(): DoubleArray {
+        val ff = f
+        if (ff == null) return d!!
+        val r = DoubleArray(ff.size)
+        for (i in 0 until ff.size) r[i] = ff[i].toDouble()
+        return r
+    }
+
+    /** The elements as floats: the storage itself for Float32, a rounded copy otherwise. */
+    internal fun toFloats(): FloatArray {
+        val ff = f
+        if (ff != null) return ff
+        val dd = d!!
+        val r = FloatArray(dd.size)
+        for (i in 0 until dd.size) r[i] = dd[i].toFloat()
+        return r
+    }
+
+    internal companion object {
+        fun of(values: DoubleArray, dt: DType): TensorData {
+            if (dt != DType.Float32) return TensorData(null, values)
+            val r = FloatArray(values.size)
+            for (i in 0 until values.size) r[i] = values[i].toFloat()
+            return TensorData(r, null)
+        }
+        fun zeros(n: Int, dt: DType): TensorData = if (dt == DType.Float32) TensorData(FloatArray(n), null) else TensorData(null, DoubleArray(n))
+    }
+}
+
 internal fun promote(a: DType, b: DType): DType =
     if (a == DType.Float64 || b == DType.Float64) DType.Float64
     else if (a == DType.Float32 || b == DType.Float32) DType.Float32
@@ -62,7 +112,9 @@ internal fun promote(a: DType, b: DType): DType =
  * `view`, `reshape`, `flatten`, `unsqueeze`, `squeeze` share the storage; every other shape operation copies.
  * With `requiresGrad = true` the operations on the tensor are recorded and `backward()` fills `grad`, see Autograd.kt.
  */
-class Tensor internal constructor(val data: DoubleArray, val shape: IntArray, val dtype: DType) {
+class Tensor internal constructor(val data: TensorData, val shape: IntArray, val dtype: DType) {
+    internal constructor(values: DoubleArray, shape: IntArray, dtype: DType) : this(TensorData.of(values, dtype), shape, dtype)
+
     val ndim: Int get() = shape.size
     val numel: Int get() = data.size
     val strides: IntArray = stridesOf(shape)
@@ -149,7 +201,7 @@ class Tensor internal constructor(val data: DoubleArray, val shape: IntArray, va
 
 internal fun build(shape: IntArray, dtype: DType, requiresGrad: Boolean): Tensor {
     for (s in shape) if (s < 0) fail("negative dimension in shape ${shape.contentToString()}")
-    val t = Tensor(DoubleArray(numelOf(shape)), shape.dup(), dtype)
+    val t = Tensor(TensorData.zeros(numelOf(shape), dtype), shape.dup(), dtype)
     t.requiresGrad = requiresGrad
     return t
 }

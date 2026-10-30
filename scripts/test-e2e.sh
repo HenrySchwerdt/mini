@@ -166,7 +166,7 @@ t_llvm() { # <src> [asan]
         # shellcheck disable=SC2086
         clang -O1 -w $SAN_FLAGS -Wno-override-module -c "$ll" -o "$W/$name.o" > "$W/$name.cc" 2>&1 || { echo "clang on the IR failed:"; head -20 "$W/$name.cc"; return 1; }
         # shellcheck disable=SC2086
-        "$SANCC" $SAN_FLAGS "$W/$name.o" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links >> "$W/$name.cc" 2>&1 || { echo "sanitizer link failed:"; head -20 "$W/$name.cc"; return 1; }
+        "$SANCC" $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$W/$name.o" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links >> "$W/$name.cc" 2>&1 || { echo "sanitizer link failed:"; head -20 "$W/$name.cc"; return 1; }
         local out="$W/$name.stdout" err="$W/$name.stderr" code
         ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
         [ $code -eq 0 ] || { echo "failed under sanitizers (exit $code):"; head -30 "$err"; return 1; }
@@ -207,7 +207,7 @@ t_llvm_api() { # <src>
     [ $rc -eq 0 ] || { echo "API build failed:"; head -20 "$W/$name.log"; return 1; }
     local links; links="$(links_of "$src")"
     # shellcheck disable=SC2086
-    clang "$W/$name.o" $extra "$RTLIB" -o "$W/$name.exe" -lm > "$W/$name.cc" 2>&1 || { echo "link failed:"; head "$W/$name.cc"; return 1; }
+    clang -I "$INCLUDE" -I "$TESTDATA" "$W/$name.o" $extra "$RTLIB" -o "$W/$name.exe" -lm > "$W/$name.cc" 2>&1 || { echo "link failed:"; head "$W/$name.cc"; return 1; }
     run_and_compare "$name" "$src" "$W/$name.exe" "llvm-api" none
 }
 

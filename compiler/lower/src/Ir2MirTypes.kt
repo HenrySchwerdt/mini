@@ -51,7 +51,7 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         else -> null
     }
     if (prim != null) {
-        if (prim.isInteropScalar && nullable) unsupported(at, "nullable type '$n?' (Byte, Short and Float cannot be boxed; use a non-null type)")
+        if (prim.isInteropScalar && nullable) unsupported(at, "nullable type '$n?' (Byte and Short cannot be boxed; use a non-null type)")
         return if (nullable) TBoxed(prim) else prim
     }
     val ptrClass = t.classOrNull

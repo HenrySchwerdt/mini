@@ -82,6 +82,32 @@ class MatmulTest {
     }
 
     @Test
+    fun float32StorageAndProduct() {
+        val g = Generator(5)
+        val a = randn(37, 53, generator = g)
+        val b = randn(53, 29, generator = g)
+        assertTrue(a.dtype == DType.Float32)
+        assertTrue(a.data.size == 37 * 53)
+        // elements are real 32-bit floats
+        for (i in 0 until a.data.size) assertTrue(a.data[i] == a.data[i].toFloat().toDouble())
+        val fast = a @ b
+        Blas.enabled = false
+        val slow = a @ b
+        Blas.enabled = true
+        val ref = zeros(37, 29, dtype = DType.Float64)
+        for (i in 0 until 37) for (j in 0 until 29) {
+            var s = 0.0
+            for (k in 0 until 53) s += a.at(i, k) * b.at(k, j)
+            ref[i, j] = s
+        }
+        assertTrue(fast.dtype == DType.Float32)
+        assertTrue(fast.allClose(ref, 1e-4, 1e-4))
+        assertTrue(slow.allClose(ref, 1e-4, 1e-4))
+        val v = randn(53, generator = g)
+        assertTrue((a @ v).allClose(a.double() @ v.double(), 1e-4, 1e-4))
+    }
+
+    @Test
     fun shapeMismatch() {
         val e = assertFailsWith<IllegalArgumentException> { zeros(2, 3) @ zeros(4, 5) }
         assertTrue(e.message!!.contains("[2, 3] @ [4, 5]"), e.message)
