@@ -106,12 +106,27 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         if (p.exists(dir)) {
             throw MiniError("destination `${loader.display(dir)}` already exists", "choose another name, or run `mini init` inside the existing directory")
         }
-        scaffold(dir, name, if (a.has("lib")) Kind.Lib else Kind.App, a.has("strict"), !a.has("no-git"))
+        val kind = templateKind()
+        scaffold(dir, name, kind, a.has("strict"), !a.has("no-git"))
         val shown = loader.display(dir)
-        c.status("Created", "${if (a.has("lib")) "library" else "app"} `$name` at $shown/")
-        nextSteps(shown, a.has("lib"))
+        c.status("Created", "${kindWord(kind)} `$name` at $shown/")
+        nextSteps(shown, kind)
         return 0
     }
+
+    private fun templateKind(): Kind {
+        val t = a.value("template")
+        if (t != null && a.has("lib") && t != "lib") throw UsageError("`--lib` and `--template $t` contradict each other", "use only `--template $t`")
+        return when (t) {
+            null -> if (a.has("lib")) Kind.Lib else Kind.App
+            "app" -> Kind.App
+            "lib" -> Kind.Lib
+            "wasm-lib" -> Kind.WasmLib
+            else -> throw UsageError("unknown template `$t`", "templates: app, lib, wasm-lib")
+        }
+    }
+
+    private fun kindWord(kind: Kind): String = when (kind) { Kind.App -> "app"; Kind.Lib -> "library"; Kind.WasmLib -> "WebAssembly library" }
 
     private fun suggestion(name: String): String = ManifestParser.sanitizeName(name)
 
@@ -131,16 +146,22 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         }
         val name = a.value("name") ?: Paths.name(dir)
         validateName(name, "mini init --name ${suggestion(name)}")
-        scaffold(dir, name, if (a.has("lib")) Kind.Lib else Kind.App, a.has("strict"), !a.has("no-git"))
-        c.status("Initialized", "${if (a.has("lib")) "library" else "app"} `$name` in the current directory")
-        nextSteps(null, a.has("lib"))
+        val kind = templateKind()
+        scaffold(dir, name, kind, a.has("strict"), !a.has("no-git"))
+        c.status("Initialized", "${kindWord(kind)} `$name` in the current directory")
+        nextSteps(null, kind)
         return 0
     }
 
     private fun scaffold(dir: String, name: String, kind: Kind, strict: Boolean, git: Boolean) {
         val files = LinkedHashMap<String, String>()
         files["mini.toml"] = Templates.manifest(name, kind, strict)
-        if (kind == Kind.App) {
+        if (kind == Kind.WasmLib) {
+            files["src/lib.kt"] = Templates.wasmLibKt()
+            files["tests/lib_test.kt"] = Templates.wasmLibTest()
+            files["index.html"] = Templates.wasmLibHtml(name)
+            files["run.mjs"] = Templates.wasmLibRunMjs(name)
+        } else if (kind == Kind.App) {
             files["src/main.kt"] = Templates.mainKt()
             files["src/greeting.kt"] = Templates.greetingKt()
             files["tests/greeting_test.kt"] = Templates.greetingTest()
@@ -165,7 +186,8 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         }
     }
 
-    private fun nextSteps(dir: String?, lib: Boolean) {
+    private fun nextSteps(dir: String?, kind: Kind) {
+        val lib = kind != Kind.App
         if (c.quiet) return
         val s = c.err
         c.eprintln()
@@ -173,7 +195,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         if (dir != null) c.eprintln("  ${s.cyan("cd $dir")}")
         if (!lib) c.eprintln("  ${s.cyan("mini run")}      build and run the app")
         c.eprintln("  ${s.cyan("mini test")}     run the tests in tests/")
-        c.eprintln("  ${s.cyan(if (lib) "mini build" else "mini check")}    ${if (lib) "compile the library" else "type-check and run the memory checker only"}")
+        c.eprintln("  ${s.cyan(if (lib) "mini build" else "mini check")}    ${if (kind == Kind.WasmLib) "build build/wasm/<name>.wasm and its JavaScript glue" else if (lib) "compile the library" else "type-check and run the memory checker only"}")
         c.eprintln("  ${s.cyan("mini help")}     all commands")
         if (!lib) c.eprintln("\nEdit ${s.bold("src/main.kt")} and run ${s.bold("mini run")} again.")
     }
@@ -191,7 +213,11 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         writeLock = writeLock,
     )
 
-    private fun buildOptions() = BuildOptions(a.has("release"), a.has("strict"), a.has("Werror"), a.value("message-format") == "json")
+    private fun buildOptions(): BuildOptions {
+        val target = a.value("target")
+        if (target == null && a.has("lib") && a.command.name == "build") throw UsageError("`--lib` needs `--target wasm32`", "use `mini build --target wasm32 --lib`")
+        return BuildOptions(a.has("release"), a.has("strict"), a.has("Werror"), a.value("message-format") == "json", target == "wasm32" && a.has("lib"), target == "wasm32")
+    }
 
     private fun builder(project: Project): Builder = Builder(p, c, Toolchain.locate(p), project, buildOptions())
 
@@ -209,8 +235,10 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         }
         if (!ok) return 1
         if (!allFresh) c.status("Finished", "${b.o.profile} build in ${formatDuration(p.nowMillis() - start)}")
-        for (pkg in project.selected) if (pkg.info.kind == Kind.App && !c.quiet) {
+        for (pkg in project.selected) if (pkg.info.kind == Kind.App && !b.o.wasmLib && !c.quiet) {
             c.status("Binary", b.display(Paths.join(project.buildDir, b.o.profile, pkg.name)))
+        } else if ((pkg.info.kind == Kind.WasmLib || b.o.wasmLib) && !c.quiet) {
+            c.status("Wasm", b.display(Paths.join(project.buildDir, "wasm", pkg.name + ".wasm")) + " (+ .mjs, .d.ts)")
         }
         return 0
     }
@@ -264,7 +292,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         val b = builder(project)
         if (!b.useLibs) throw MiniError("`mini package` needs a toolchain with a precompiled standard library (lib/stdlib.mlib)", "install a release, or run scripts/build-mini.sh in a source checkout")
         for (pkg in project.selected) {
-            if (pkg.info.kind != Kind.Lib) throw MiniError("`${pkg.name}` is an app: only libraries can be packaged", "set `kind = \"lib\"` in its mini.toml")
+            if (pkg.info.kind != Kind.Lib) throw MiniError("`${pkg.name}` is ${if (pkg.info.kind == Kind.WasmLib) "a wasm-lib" else "an app"}: only libraries can be packaged", "set `kind = \"lib\"` in its mini.toml")
             val built = b.libraryFile(pkg) ?: return 1
             val out = Paths.join(project.buildDir, "package", "${pkg.name}-${pkg.info.version}.mlib")
             p.mkdirs(Paths.parent(out)!!)

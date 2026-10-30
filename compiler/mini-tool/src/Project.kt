@@ -249,7 +249,7 @@ private class Resolver(
             fail(owner.manifest, spec, "dependency `${spec.name}` is called `${info.name}` in ${loader.display(m.file)}", "name does not match", "use `${info.name} = { ... }` here")
         }
         if (info.kind != Kind.Lib) {
-            fail(owner.manifest, spec, "dependency `${spec.name}` is an app, not a library", "apps cannot be dependencies", "set `kind = \"lib\"` in ${loader.display(m.file)}")
+            fail(owner.manifest, spec, "dependency `${spec.name}` is ${if (info.kind == Kind.WasmLib) "a wasm-lib" else "an app"}, not a library", "only libraries can be dependencies", "set `kind = \"lib\"` in ${loader.display(m.file)}")
         }
         named[info.name]?.let { other ->
             if (other.dir != dir) {

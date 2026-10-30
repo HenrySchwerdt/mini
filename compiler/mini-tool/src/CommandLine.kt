@@ -58,18 +58,24 @@ object CommandLine {
     private val formatFlag = Flag("message-format", "Diagnostics format: human or json (one JSON object per line, for editors)", value = "<FMT>", choices = listOf("human", "json"))
     private val releaseFlag = Flag("release", "Optimised build (build/release/, clang -O2)")
 
+    private val targetFlag = Flag("target", "Build for another target: wasm32 (a library for JavaScript; needs `kind = \"wasm-lib\"` or --lib)", value = "<TARGET>", choices = listOf("wasm32"))
+    private val wasmLibFlag = Flag("lib", "With --target wasm32: build the package as a WebAssembly library (its @WasmExport functions)")
+    private val templateFlag = Flag("template", "Project template: app, lib or wasm-lib (a WebAssembly module for JavaScript)", value = "<TEMPLATE>", choices = listOf("app", "lib", "wasm-lib"))
+
     private val buildFlags = listOf(pkgFlag, releaseFlag, memFlag, werrorFlag, offlineFlag, lockedFlag, formatFlag, manifestFlag)
+    private val buildTargetFlags = buildFlags + listOf(targetFlag, wasmLibFlag)
 
     val commands: List<Command> = listOf(
         Command(
             "new", "Create a new project in a new directory", "<NAME>",
             listOf(
                 Flag("lib", "Create a library (source package) instead of an app"),
+                templateFlag,
                 Flag("strict", "Start in Strict memory mode (`memory = \"strict\"`)"),
                 Flag("no-git", "Do not run `git init`"),
             ),
             "Creates <NAME>/ with mini.toml, src/, tests/, .gitignore and a README.",
-            listOf("mini new hello", "mini new geometry --lib", "mini new payments --strict"),
+            listOf("mini new hello", "mini new geometry --lib", "mini new payments --strict", "mini new mathlib --template wasm-lib"),
             minPositionals = 1, maxPositionals = 1,
         ),
         Command(
@@ -77,6 +83,7 @@ object CommandLine {
             listOf(
                 Flag("name", "Package name (default: the directory name)", value = "<NAME>"),
                 Flag("lib", "Create a library instead of an app"),
+                templateFlag,
                 Flag("strict", "Start in Strict memory mode"),
                 Flag("no-git", "Do not run `git init`"),
             ),
@@ -84,11 +91,13 @@ object CommandLine {
             listOf("mini init", "mini init --lib --name geometry"),
         ),
         Command(
-            "build", "Compile the project to native code", "",
-            buildFlags,
+            "build", "Compile the project to native code (or to WebAssembly for `kind = \"wasm-lib\"`)", "",
+            buildTargetFlags,
             "Compiles src/ of the selected packages together with their dependencies (and the stdlib) with minic.\n" +
-                "Nothing is rebuilt when no source, manifest or dependency changed.",
-            listOf("mini build", "mini build --release", "mini build --strict -Werror", "mini build -p server"),
+                "Nothing is rebuilt when no source, manifest or dependency changed.\n" +
+                "A `wasm-lib` package (or `--target wasm32 --lib`) becomes build/wasm/<name>.wasm plus <name>.mjs and <name>.d.ts, the JavaScript glue\n" +
+                "for its @WasmExport functions. That needs clang with the wasm32 target, wasm-ld and the wasm32 runtime (see `mini doctor`).",
+            listOf("mini build", "mini build --release", "mini build --strict -Werror", "mini build -p server", "mini build --target wasm32 --lib"),
         ),
         Command(
             "run", "Build and run the app", "[-- ARGS...]",

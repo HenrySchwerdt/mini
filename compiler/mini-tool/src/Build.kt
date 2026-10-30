@@ -9,6 +9,10 @@ class BuildOptions(
     val strict: Boolean = false,
     val werror: Boolean = false,
     val json: Boolean = false,
+    /** `--target wasm32 --lib`: build the package as a WebAssembly library whatever its kind is. */
+    val wasmLib: Boolean = false,
+    /** `--target wasm32` was given. */
+    val wasmTarget: Boolean = false,
 ) {
     val profile: String get() = if (release) "release" else "debug"
 }
@@ -225,7 +229,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
             is Origin.Git -> "(git ${org.url}#${org.commit.take(7)})"
             else -> "(" + display(pkg.dir).let { if (it == ".") "." else it } + ")"
         }
-        c.status("Compiling", "${pkg.id} $where" + if (pkg.info.kind == Kind.Lib && isRoot) " [lib]" else "")
+        c.status("Compiling", "${pkg.id} $where" + if (isRoot && (pkg.info.kind == Kind.WasmLib || o.wasmLib)) " [wasm-lib]" else if (pkg.info.kind == Kind.Lib && isRoot) " [lib]" else "")
     }
 
     private fun fresh(fpFile: String, fp: String, binary: String?): Boolean =
@@ -237,6 +241,10 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         if (root.sources(p).isEmpty()) {
             throw MiniError("package `${root.name}` has no Kotlin sources", "put code in ${display(root.sourceDir())}/" + if (root.info.kind == Kind.App) "main.kt (with `fun main()`)" else "lib.kt")
         }
+        if (o.wasmTarget && root.info.kind != Kind.WasmLib && !o.wasmLib) {
+            throw MiniError("`--target wasm32` builds libraries for JavaScript, but `${root.name}` is not one", "add `--lib` to build its @WasmExport functions, or set `kind = \"wasm-lib\"` in mini.toml")
+        }
+        if (root.info.kind == Kind.WasmLib || o.wasmLib) return buildWasmLib(root, files)
         val isApp = root.info.kind == Kind.App
         if (useLibs && !isApp) return buildLib(root)
         val libs = if (useLibs) planLibs(root) else emptyList()
@@ -269,6 +277,34 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         p.writeText(fpFile, fp + "\n")
         val ms = p.nowMillis() - start
         return BuildResult(true, if (isApp) binary else null, millis = ms)
+    }
+
+    /**
+     * A WebAssembly library: Kotlin to LLVM IR for wasm32 (`--emit=wasm-lib`), clang to an object, wasm-ld with the wasm32 runtime
+     * to `build/wasm/<name>.wasm`, next to it the JavaScript glue `<name>.mjs` and the declarations `<name>.d.ts`.
+     */
+    private fun buildWasmLib(root: Package, files: List<SourceFile>): BuildResult {
+        val libs = if (useLibs) planLibs(root) else emptyList()
+        val outDir = Paths.join(project.buildDir, "wasm")
+        val wasm = Paths.join(outDir, root.name + ".wasm")
+        val fpFile = Paths.join(outDir, ".fingerprint", root.name)
+        val tools = tc.wasmTools(p)
+        val fp = fingerprint(root, files, "wasm-lib:" + (p.stat(tools.runtime)?.size ?: 0L) + tools.clang.joinToString(" "), libs)
+        val start = p.nowMillis()
+        if (fresh(fpFile, fp, wasm) && p.isFile(Paths.join(outDir, root.name + ".mjs")) && p.isFile(Paths.join(outDir, root.name + ".d.ts"))) {
+            c.status("Fresh", "${root.id} (no changes)")
+            return BuildResult(true, null, fresh = true)
+        }
+        if (!ensureLibs(root, libs)) return BuildResult(false, null)
+        announce(root)
+        p.mkdirs(outDir)
+        if (!checkEachStrict(root, files, "compile", libs)) return BuildResult(false, null)
+        c.trace("minic-native --target=wasm32 --emit=wasm-lib " + files.joinToString(" ") { it.path } + " -> " + display(wasm))
+        val r = tc.compileWasmLib(p, tools, files.map { it.path }, libs.map { it.path }, root.name, outDir, o.werror, o.release)
+        if (r.exitCode != 0) return failed(root, r, files, "compile")
+        report(root, r, files)
+        p.writeText(fpFile, fp + "\n")
+        return BuildResult(true, null, millis = p.nowMillis() - start)
     }
 
     /** A library package: its dependencies and itself are built to `.mlib` files (nothing is linked, no C compiler is needed). */
