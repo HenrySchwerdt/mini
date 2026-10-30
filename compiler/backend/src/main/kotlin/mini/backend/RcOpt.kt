@@ -44,6 +44,11 @@ class RcFunctionPlan(
     val fresh: HashSet<MirStmt>,
     /** Assignments whose value expression hands the assigned local's own old reference to a callee: the old value is gone. */
     val selfTakes: HashSet<MirStmt>,
+    /**
+     * `mk_array_get_obj` reads (compared by identity) that define a borrowing local: the element is kept alive by the array
+     * (an alias validated like a field read), so the emitters use the non-retaining form (`mk_array_get_obj_b`).
+     */
+    val borrowedReads: HashSet<MirExpr> = HashSet(),
 ) {
     fun isBorrowed(l: MirLocal): Boolean = l.id in borrowed
 }
@@ -56,6 +61,7 @@ class RcStats {
     var moves = 0
     var takes = 0
     var ownedParams = 0
+    var borrowedReads = 0
 }
 
 class RcPlan internal constructor(
@@ -294,6 +300,11 @@ private class RcAnalyzer(
     private val consumedTop = BitIds()
     private val fresh = HashSet<MirStmt>()
     private val selfTakes = HashSet<MirStmt>()
+    /** Definitions of locals by an array element read, to find the reads of the locals that end up borrowing. */
+    private val readDefs = ArrayList<Pair<LocalInfo, MirExpr>>()
+
+    private fun isArrayRead(e: MirExpr): Boolean =
+        e is MirExpr.RuntimeCall && e.cName == "mk_array_get_obj" && tr.conv?.enabledConventions == true && tr.rc(f, e.type)
 
     /** Probe result: which parameters are consumed by a top-level statement of the function. */
     fun consumedParams(): BooleanArray {
@@ -342,7 +353,10 @@ private class RcAnalyzer(
         stats.ownedParams += ownedParams.size
         if (!probe && f.constructorOf != null && f.params.isNotEmpty()) findFreshStores()
         if (borrowedIds.isEmpty() && moves.isEmpty() && takes.isEmpty() && ownedParams.isEmpty() && fresh.isEmpty()) return null
-        return RcFunctionPlan(borrowedIds, moves, takes, ownedParams, dead, fresh, selfTakes)
+        val reads = HashSet<MirExpr>()
+        if (!probe) for ((i, e) in readDefs) if (i.borrowed) reads += e
+        if (reads.isNotEmpty()) stats.borrowedReads += reads.size
+        return RcFunctionPlan(borrowedIds, moves, takes, ownedParams, dead, fresh, selfTakes, reads)
     }
 
     // ---- borrowed results (Conventions) ---------------------------------------------------------------------------------
@@ -492,7 +506,7 @@ private class RcAnalyzer(
         }
         // a call with a borrowed result (see Conventions) is like a field read of whatever it was given
         is MirExpr.Call, is MirExpr.VCall, is MirExpr.ICall, is MirExpr.RuntimeCall ->
-            if (tr.conv?.borrowedResult(e) != true) {
+            if (tr.conv?.borrowedResult(e) != true && !isArrayRead(e)) {
                 false
             } else {
                 acc.hasField = true
@@ -508,7 +522,14 @@ private class RcAnalyzer(
     private fun addDef(i: LocalInfo, e: MirExpr, p: Int) {
         if (i.firstDef < 0) i.firstDef = p
         val c = Chain(ArrayList(), false)
-        if (tr.owned(f, e) || !chainOf(e, c)) i.ownedDef = true else i.chains += c
+        // an array element read is an owned (+1) expression, but as the definition of a validated borrower it is read without the count
+        val read = isArrayRead(e)
+        if ((tr.owned(f, e) && !read) || !chainOf(e, c)) {
+            i.ownedDef = true
+        } else {
+            i.chains += c
+            if (read) readDefs += Pair(i, e)
+        }
     }
 
     private fun expr(e: MirExpr) {

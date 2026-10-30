@@ -375,6 +375,8 @@ MkDouble mk_string_parse_double(const MkString *s);
 MkObject *mk_sb_new(void);
 void mk_sb_append_string(MkObject *sb, const MkString *s);
 void mk_sb_append_char(MkObject *sb, MkChar c);
+void mk_sb_append_int(MkObject *sb, MkInt value);   /* decimal digits, written straight into the buffer */
+void mk_sb_append_long(MkObject *sb, MkLong value);
 MkInt mk_sb_length(MkObject *sb);
 MkChar mk_sb_char_at(MkObject *sb, MkInt index);
 void mk_sb_set_char_at(MkObject *sb, MkInt index, MkChar c);
@@ -518,19 +520,61 @@ MkObject *mk_array_new_long(MkInt length);
 MkObject *mk_array_new_double(MkInt length);
 MkObject *mk_array_new_boolean(MkInt length);
 MkObject *mk_array_new_char(MkInt length);
-MkInt mk_array_length(const MkObject *array);
-MkObject *mk_array_get_obj(const MkObject *array, MkInt index);
-void mk_array_set_obj(MkObject *array, MkInt index, MkObject *value);
-MkInt mk_array_get_int(const MkObject *array, MkInt index);
-void mk_array_set_int(MkObject *array, MkInt index, MkInt value);
-MkLong mk_array_get_long(const MkObject *array, MkInt index);
-void mk_array_set_long(MkObject *array, MkInt index, MkLong value);
-MkDouble mk_array_get_double(const MkObject *array, MkInt index);
-void mk_array_set_double(MkObject *array, MkInt index, MkDouble value);
-MkBoolean mk_array_get_boolean(const MkObject *array, MkInt index);
-void mk_array_set_boolean(MkObject *array, MkInt index, MkBoolean value);
-MkChar mk_array_get_char(const MkObject *array, MkInt index);
-void mk_array_set_char(MkObject *array, MkInt index, MkChar value);
+/* Element access is inline (hot loops): an unsigned compare covers both bounds, the failing path is an out-of-line
+ * mk_raise_index that leaves ArrayIndexOutOfBoundsException pending (callers test mk_pending_exception afterwards) and
+ * the access yields 0 / NULL. The elements start right behind the MkArray header. */
+#define MK_ARRAY_ELEMS(type, array) ((type *)(((MkArray *)(array)) + 1))
+#define MK_ARRAY_ACCESS(suffix, type, zero)                                                              \
+    static inline type mk_array_get_##suffix(const MkObject *array, MkInt index) {                        \
+        if (__builtin_expect((uint32_t)index >= (uint32_t)((const MkArray *)array)->length, 0)) {          \
+            mk_raise_index(index, ((const MkArray *)array)->length);                                       \
+            return (zero);                                                                                 \
+        }                                                                                                  \
+        return MK_ARRAY_ELEMS(type, array)[index];                                                         \
+    }                                                                                                      \
+    static inline void mk_array_set_##suffix(MkObject *array, MkInt index, type value) {                  \
+        if (__builtin_expect((uint32_t)index >= (uint32_t)((const MkArray *)array)->length, 0)) {          \
+            mk_raise_index(index, ((const MkArray *)array)->length);                                       \
+            return;                                                                                        \
+        }                                                                                                  \
+        MK_ARRAY_ELEMS(type, array)[index] = value;                                                        \
+    }
+MK_ARRAY_ACCESS(int, MkInt, 0)
+MK_ARRAY_ACCESS(long, MkLong, 0)
+MK_ARRAY_ACCESS(double, MkDouble, 0.0)
+MK_ARRAY_ACCESS(boolean, MkBoolean, false)
+MK_ARRAY_ACCESS(char, MkChar, 0)
+#undef MK_ARRAY_ACCESS
+static inline MkInt mk_array_length(const MkObject *array) { return ((const MkArray *)array)->length; }
+/* get_obj returns an owned reference; set_obj retains the new element and releases the old one. */
+static inline MkObject *mk_array_get_obj(const MkObject *array, MkInt index) {
+    if (__builtin_expect((uint32_t)index >= (uint32_t)((const MkArray *)array)->length, 0)) {
+        mk_raise_index(index, ((const MkArray *)array)->length);
+        return NULL;
+    }
+    MkObject *v = MK_ARRAY_ELEMS(MkObject *, array)[index];
+    mk_retain(v);
+    return v;
+}
+/* Borrowed read for the code generator (RcOpt proved the array keeps the slot alive while the result is used): no retain. */
+static inline MkObject *mk_array_get_obj_b(const MkObject *array, MkInt index) {
+    if (__builtin_expect((uint32_t)index >= (uint32_t)((const MkArray *)array)->length, 0)) {
+        mk_raise_index(index, ((const MkArray *)array)->length);
+        return NULL;
+    }
+    return MK_ARRAY_ELEMS(MkObject *, array)[index];
+}
+static inline void mk_array_set_obj(MkObject *array, MkInt index, MkObject *value) {
+    if (__builtin_expect((uint32_t)index >= (uint32_t)((const MkArray *)array)->length, 0)) {
+        mk_raise_index(index, ((const MkArray *)array)->length);
+        return;
+    }
+    MkObject **p = &MK_ARRAY_ELEMS(MkObject *, array)[index];
+    mk_retain(value);
+    MkObject *old = *p;
+    *p = value;
+    mk_release(old);
+}
 /* `string[index]`: the UTF-16 unit, or StringIndexOutOfBoundsException (pending) and 0. */
 MkChar mk_string_get_char(const MkString *string, MkInt index);
 

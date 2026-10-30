@@ -6,6 +6,8 @@
 package kotlin.text
 
 import mini.internal.sbAppendChar
+import mini.internal.sbAppendInt
+import mini.internal.sbAppendLong
 import mini.internal.sbAppendString
 import mini.internal.sbCharAt
 import mini.internal.sbLength
@@ -62,12 +64,12 @@ public class StringBuilder {
     }
 
     public fun append(value: Int): StringBuilder {
-        sbAppendString(buf, value.toString())
+        sbAppendInt(buf, value)
         return this
     }
 
     public fun append(value: Long): StringBuilder {
-        sbAppendString(buf, value.toString())
+        sbAppendLong(buf, value)
         return this
     }
 

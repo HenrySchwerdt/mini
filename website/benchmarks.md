@@ -127,6 +127,21 @@ The same eight programs (`binarytrees`, `nbody`, `fannkuch`, `spectralnorm`, `ma
 
 The allocator helps where objects are allocated and freed in large numbers (`binarytrees` -30 percent, `json` -26 percent) and changes nothing elsewhere.
 
+**Quick wins.** Inline array accessors (C and LLVM), borrowed array element reads in the reference-counting optimizer, and an `snprintf`-free integer to string conversion, Mini Managed, same host, best of 5, before and after:
+
+| benchmark | C | Mini-M before | Mini-M after | Mini-M-ll before | Mini-M-ll after |
+|---|---:|---:|---:|---:|---:|
+| binarytrees | 0.95 | 1.15 | 1.22 | 1.13 | 1.16 |
+| nbody | 0.99 | 1.72 | **1.03** | 1.88 | 1.25 |
+| fannkuch | 2.13 | 7.06 | **2.68** | 6.85 | 3.43 |
+| spectralnorm | 1.01 | 2.00 | **1.26** | 2.00 | 2.01 |
+| mandelbrot | 0.87 | 0.90 | 0.88 | 0.84 | 0.80 |
+| wordcount | 0.53 | 4.10 | 3.42 | 3.98 | 3.63 |
+| strbuild | 0.58 | 1.46 | **0.81** | 1.49 | 0.82 |
+| json | 0.82 | 1.36 | 1.37 | 1.25 | 1.33 |
+
+The LLVM backend did not gain on `spectralnorm` (cause not found). The table below the profiles describes the state before these changes.
+
 **Where the time goes** (profiles with `valgrind --tool=callgrind` on the current runtime; the full analysis is in `docs/benchmarks.md`):
 
 - `fannkuch`: 62 percent of the instructions are in the out-of-line array accessors `mk_array_get_int` and `mk_array_set_int`. With the accessors inlined (bounds check kept) it takes 2.65 s instead of 7.2 s.

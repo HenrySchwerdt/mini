@@ -73,6 +73,9 @@ class Conventions private constructor(
 
     // ---- queries -------------------------------------------------------------------------------------------
 
+    /** False for the baseline code generation (`--no-conv`): no convention-based optimisation at all. */
+    val enabledConventions: Boolean get() = enabled
+
     val any: Boolean get() = enabled && (rootMask.isNotEmpty() || borrowedRoots.isNotEmpty())
 
     /** Ownership mask (over the parameters of the callee including `this`) of function [cName], null = all borrowed. */

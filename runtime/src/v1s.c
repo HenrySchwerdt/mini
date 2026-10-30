@@ -159,6 +159,19 @@ void mk_sb_append_char(MkObject *o, MkChar c) {
     sb->chars[sb->length++] = c;
 }
 
+/* The digits go straight into the buffer: no temporary string. */
+void mk_sb_append_long(MkObject *o, MkLong value) {
+    MkSb *sb = sb_of(o);
+    sb_reserve(sb, MK_ITOA_MAX);
+    char buf[MK_ITOA_MAX];
+    size_t n = mk_itoa(value, buf);
+    MkChar *out = sb->chars + sb->length;
+    for (size_t i = 0; i < n; i++) out[i] = (MkChar)(unsigned char)buf[i];
+    sb->length += (MkInt)n;
+}
+
+void mk_sb_append_int(MkObject *o, MkInt value) { mk_sb_append_long(o, value); }
+
 MkInt mk_sb_length(MkObject *o) { return sb_of(o)->length; }
 
 MkChar mk_sb_char_at(MkObject *o, MkInt index) {
