@@ -297,9 +297,9 @@ private class Lowering<V : Any, B : Any>(
             // targets without TLS relocations in generated code (the in-process JIT): the runtime hands out the slot's address
             val f = declare("mk_pending_slot", TString, emptyList(), IrAttrs.PURE)
             val slot = call(TString, f, emptyList(), emptyList())
-            return b.load(IrType.PTR, slot, 0, "")
+            return b.loadTagged(IrType.PTR, slot, "pending exception", "")
         }
-        return b.load(IrType.PTR, b.global("mk_pending_exception"), 0, "")
+        return b.loadTagged(IrType.PTR, b.global("mk_pending_exception"), "pending exception", "")
     }
 
     fun newLabel(prefix: String): B {
@@ -389,6 +389,19 @@ private class Lowering<V : Any, B : Any>(
         openBlock()
         b.store(v, p, 0)
     }
+
+    /** [load] / [store] carrying the alias tag of a field or of an array part (see [IrBuilder.loadTagged]). */
+    fun loadTag(t: MirType, p: V, tag: String): V {
+        openBlock()
+        return b.loadTagged(ity(t), p, tag, "")
+    }
+
+    fun storeTag(v: V, p: V, tag: String) {
+        openBlock()
+        b.storeTagged(v, p, tag)
+    }
+
+    fun fieldTag(owner: String, field: String): String = "f " + owner + "." + field
 
     /** C interop: a load from memory the program does not own the layout of: any alignment (a C `bool` is a byte). */
     fun loadAt(t: MirType, p: V): V {
@@ -1012,17 +1025,18 @@ private class Lowering<V : Any, B : Any>(
                     val n = expr(s.value, true)
                     if (!ownedE(s.value) && !isStaticValue(s.value) && moved == null) retain(n)
                     val p = gep(expr(s.obj), off)
+                    val tag = fieldTag(s.owner, s.field)
                     if (fplan?.fresh?.contains(s) == true) {
-                        store(n, p)
+                        storeTag(n, p, tag)
                     } else {
-                        val old = load(TString, p)
-                        store(n, p)
+                        val old = loadTag(TString, p, tag)
+                        storeTag(n, p, tag)
                         rel(old)
                     }
                     if (moved != null && !closedFor(s, moved)) store(b.constNull(), slot(moved))
                 } else {
                     val v = expr(s.value, true)
-                    store(v, gep(expr(s.obj), off))
+                    storeTag(v, gep(expr(s.obj), off), fieldTag(s.owner, s.field))
                 }
             }
             is MirStmt.Store -> {
@@ -1286,7 +1300,8 @@ private class Lowering<V : Any, B : Any>(
 
     fun needsCheck(e: MirExpr): Boolean = when (e) {
         is MirExpr.Call -> e.cName in throwing.mayThrow
-        is MirExpr.RuntimeCall -> ThrowAnalysis.runtimeCallThrows(e.cName)
+        // the inlined array accessors leave the function themselves on the failing path (see arrayAccess), no test on the fast path
+        is MirExpr.RuntimeCall -> arrayAccessKind(e.cName) == null && ThrowAnalysis.runtimeCallThrows(e.cName)
         is MirExpr.VCall, is MirExpr.ICall -> throwing.dynamicMayThrow
         is MirExpr.New -> e.ctorCName in throwing.mayThrow
         is MirExpr.Unbox, is MirExpr.NotNull -> true
@@ -1382,7 +1397,7 @@ private class Lowering<V : Any, B : Any>(
             }
             is MirExpr.FieldGet -> {
                 val o = expr(e.obj)
-                load(e.type, gep(o, layouts.fieldOffset(e.owner, e.field)))
+                loadTag(e.type, gep(o, layouts.fieldOffset(e.owner, e.field)), fieldTag(e.owner, e.field))
             }
             is MirExpr.VCall -> {
                 val r = expr(e.receiver)
@@ -1472,63 +1487,55 @@ private class Lowering<V : Any, B : Any>(
 
     /**
      * The inline form of the accessors of minirt.h: the length is loaded, an unsigned compare covers both bounds, the failing path
-     * is a cold call of `mk_raise_index` (the pending exception is tested by the caller as for the runtime function) and the access
-     * yields zero / NULL. `get_obj` retains the element (unless [borrowedRead]: the result defines a borrowing local, see RcFunctionPlan.borrowedReads), `set_obj` retains the new and releases the old element.
+     * is a cold call of `mk_raise_index` that leaves the function (or goes to the handler) right away like a failed pending test would,
+     * so the fast path tests nothing and loads nothing but the length and the element. `get_obj` retains the element (unless [borrowedRead]: the result defines a borrowing local, see RcFunctionPlan.borrowedReads), `set_obj` retains the new and releases the old element.
      */
     fun arrayAccess(e: MirExpr.RuntimeCall, borrowedRead: Boolean): V {
         val kind = arrayAccessKind(e.cName)!!
         val arr = expr(e.args[0])
-        if (kind == "length") return load(TInt, gep(arr, layouts.headerSize))
+        if (kind == "length") return loadTag(TInt, gep(arr, layouts.headerSize), "array length")
         val isGet = e.cName.startsWith("mk_array_get_")
         val idx = expr(e.args[1])
         val value = if (isGet) null else expr(e.args[2])
         val elemSize = when (kind) { "int" -> 4; "long" -> 8; "double" -> 8; "boolean" -> 1; "char" -> 2; else -> pb }
         val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
-        val len = load(TInt, gep(arr, layouts.headerSize))
+        val len = loadTag(TInt, gep(arr, layouts.headerSize), "array length")
         val bad = icmp(IrCmp.UGE, idx, len)
         val badL = newLabel("oob")
         val okL = newLabel("aok")
-        val endL = newLabel("aend")
         condBr(bad, badL, okL, true)
         startBlock(badL)
         rt("mk_raise_index", TUnit, listOf(TInt, TInt), listOf(idx, len))
-        val badEnd = curBlock
-        br(endL)
+        exitStmt()
         startBlock(okL)
         openBlock()
         val off = b.bin(IrOp.ADD, b.bin(IrOp.MUL, b.cast(IrCast.SEXT, idx, IrType.I64, ""), c64(elemSize), ""), c64(elemOff), "")
         val p = b.gep(arr, off, true, "")
         var result: V = b.none
+        val tag = "array " + kind
         if (isGet) {
             result = when (kind) {
-                "boolean" -> b.cmp(IrCmp.INE, b.load(IrType.I8, p, 0, ""), b.constInt(IrType.I8, 0L), "")
-                "int" -> b.load(IrType.I32, p, 0, "")
-                "long" -> b.load(IrType.I64, p, 0, "")
-                "double" -> b.load(IrType.DOUBLE, p, 0, "")
-                "char" -> b.load(IrType.I16, p, 0, "")
-                else -> b.load(IrType.PTR, p, 0, "")
+                "boolean" -> b.cmp(IrCmp.INE, b.loadTagged(IrType.I8, p, tag, ""), b.constInt(IrType.I8, 0L), "")
+                "int" -> b.loadTagged(IrType.I32, p, tag, "")
+                "long" -> b.loadTagged(IrType.I64, p, tag, "")
+                "double" -> b.loadTagged(IrType.DOUBLE, p, tag, "")
+                "char" -> b.loadTagged(IrType.I16, p, tag, "")
+                else -> b.loadTagged(IrType.PTR, p, tag, "")
             }
             if (kind == "obj" && !borrowedRead) retain(result)
         } else {
             when (kind) {
-                "boolean" -> b.store(b.cast(IrCast.ZEXT, value!!, IrType.I8, ""), p, 0)
+                "boolean" -> b.storeTagged(b.cast(IrCast.ZEXT, value!!, IrType.I8, ""), p, tag)
                 "obj" -> {
                     retain(value!!)
-                    val old = b.load(IrType.PTR, p, 0, "")
-                    b.store(value, p, 0)
+                    val old = b.loadTagged(IrType.PTR, p, tag, "")
+                    b.storeTagged(value, p, tag)
                     rel(old)
                 }
-                else -> b.store(value!!, p, 0)
+                else -> b.storeTagged(value!!, p, tag)
             }
         }
-        val okEnd = curBlock
-        br(endL)
-        startBlock(endL)
-        if (!isGet) return b.none
-        openBlock()
-        val z = when (kind) { "int" -> c32(0); "long" -> b.constInt(IrType.I64, 0L); "double" -> b.constFloat(IrType.DOUBLE, 0.0)
-            "boolean" -> b.constInt(IrType.I1, 0L); "char" -> b.constInt(IrType.I16, 0L); else -> b.constNull() }
-        return b.phi(ity(e.type), result, okEnd, z, badEnd)
+        return result
     }
 
     fun conditional(e: MirExpr.Conditional): V {

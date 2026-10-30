@@ -144,6 +144,7 @@ const val LLVMAttributeFunctionIndex = -1
 @CName("LLVMGetInitializer") external fun LLVMGetInitializer(globalVar: LLVMValueRef): LLVMValueRef?
 @CName("LLVMSetGlobalConstant") external fun LLVMSetGlobalConstant(globalVar: LLVMValueRef, isConstant: Int)
 @CName("LLVMSetThreadLocal") external fun LLVMSetThreadLocal(globalVar: LLVMValueRef, isThreadLocal: Int)
+@CName("LLVMSetThreadLocalMode") external fun LLVMSetThreadLocalMode(globalVar: LLVMValueRef, mode: Int)
 @CName("LLVMGlobalGetValueType") external fun LLVMGlobalGetValueType(global: LLVMValueRef): LLVMTypeRef
 @CName("LLVMIsDeclaration") external fun LLVMIsDeclaration(global: LLVMValueRef): Int
 @CName("LLVMGetParam") external fun LLVMGetParam(fn: LLVMValueRef, index: Int): LLVMValueRef

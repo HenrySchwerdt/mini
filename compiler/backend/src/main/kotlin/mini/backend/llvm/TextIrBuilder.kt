@@ -279,6 +279,27 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         ins("store " + v.ty + " " + v.text + ", ptr " + ptr.text + (if (align > 0) ", align $align" else ""))
     }
 
+    private val tbaaTags = LinkedHashMap<String, Int>()
+
+    /** The metadata id of the access tag [tag]: tags are `!{!T, !T, i64 0}` over scalar type nodes `!T = !{!"name", !1, i64 0}` of the root `!1`, pairs from `!2` on. */
+    private fun tbaaId(tag: String): Int {
+        val known = tbaaTags[tag]
+        if (known != null) return known
+        val id = 3 + 2 * tbaaTags.size
+        tbaaTags[tag] = id
+        return id
+    }
+
+    override fun loadTagged(t: IrType, ptr: TextVal, tag: String, name: String): TextVal {
+        val r = result(name)
+        ins(r + " = load " + tyText(t) + ", ptr " + ptr.text + ", !tbaa !" + tbaaId(tag))
+        return TextVal(r, tyText(t))
+    }
+
+    override fun storeTagged(v: TextVal, ptr: TextVal, tag: String) {
+        ins("store " + v.ty + " " + v.text + ", ptr " + ptr.text + ", !tbaa !" + tbaaId(tag))
+    }
+
     override fun gep(base: TextVal, offset: TextVal, inbounds: Boolean, name: String): TextVal {
         val r = result(name)
         ins(r + " = getelementptr " + (if (inbounds) "inbounds " else "") + "i8, ptr " + base.text + ", i64 " + offset.text)
@@ -434,7 +455,7 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         out.append("\n")
         for ((n, body) in namedStructs) out.append("%$n = type $body\n")
         out.append("\n")
-        if (!target.pendingAccessor) out.append("@mk_pending_exception = external thread_local global ptr\n")
+        if (!target.pendingAccessor) out.append("@mk_pending_exception = external thread_local(initialexec) global ptr\n")
         for ((_, line) in externGlobals) out.append(line).append('\n')
         out.append('\n')
         for ((_, line) in externs) out.append(line).append('\n')
@@ -453,6 +474,13 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         out.append("attributes #2 = { noreturn nounwind }\n")
         if (usesPure) out.append("attributes #3 = { nounwind memory(none) }\n")
         out.append("\n!0 = !{!\"branch_weights\", i32 1, i32 2000}\n")
+        if (tbaaTags.isNotEmpty()) {
+            out.append("!1 = !{!\"mini tbaa\"}\n")
+            for ((name, id) in tbaaTags) {
+                out.append("!" + (id - 1) + " = !{!\"" + name + "\", !1, i64 0}\n")
+                out.append("!" + id + " = !{!" + (id - 1) + ", !" + (id - 1) + ", i64 0}\n")
+            }
+        }
         return out.toString()
     }
 }
