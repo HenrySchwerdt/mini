@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
 import diagnosticsSidebar from './diagnostics-sidebar.json'
+import { miniCellsPlugin } from './mini-cells.ts'
 
 // GitHub Pages serves the site under /mini/ (https://henryschwerdt.github.io/mini/).
 const base = '/mini/'
@@ -19,6 +20,10 @@ export default withMermaid(
     markdown: {
       theme: { light: 'github-light', dark: 'github-dark' },
       lineNumbers: false,
+      // every runnable Kotlin fence becomes a <MiniCell> (see theme/snippets.ts for the fence syntax)
+      config: (md) => {
+        md.use(miniCellsPlugin)
+      },
     },
     themeConfig: {
       logo: '/logo.svg',
