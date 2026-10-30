@@ -159,4 +159,20 @@ class EndToEndTest {
         assertTrue(p.err.contains("src/main.kt:2:13: error: ") && p.err.contains("could not compile `bad`"), p.err.toString())
         assertTrue(!p.err.contains("could not compile main.kt") && !p.err.contains("0 warnings"), p.err.toString()) // minic-native's own summary is dropped
     }
+
+    @Test
+    fun checkLooksAtEverySourceFile() {
+        if (!(TestPlatform.toolchainAvailable())) return
+        val p = TestPlatform.temp()
+        assertEquals(0, p.mini("new", "two", "--no-git"))
+        p.dir = File(p.root, "two")
+        p.write("src/main.kt", "fun main() {\n    println(helper())\n}\n")
+        p.write("src/helper.kt", "fun helper(): Int {\n    val x: String = 5\n    return 1\n}\n")
+        p.reset()
+        assertEquals(1, p.mini("check"), p.all())
+        assertTrue(p.err.contains("src/helper.kt:2:"), p.err.toString())
+        p.write("src/helper.kt", "fun helper(): Int = 1\n")
+        p.reset()
+        assertEquals(0, p.mini("check"), p.all())
+    }
 }

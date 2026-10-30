@@ -138,12 +138,12 @@ class Toolchain(
         return ExecResult(0, r.stdout + cr.stdout, r.stderr + cr.stderr, r.millis + cr.millis)
     }
 
-    /** The frontend and the memory checker for [file] only; [declarationOnly] files (the rest of the package) provide declarations. */
-    fun check(p: Platform, file: String, declarationOnly: List<String>, werror: Boolean): ExecResult {
+    /** The frontend and the memory checker for [files] (all of them are checked); [declarationOnly] files only provide declarations. */
+    fun check(p: Platform, files: List<String>, declarationOnly: List<String>, werror: Boolean): ExecResult {
         val args = ArrayList<String>()
         args += "--check"
         if (werror) args += "-Werror"
-        args += file
+        args += files
         args += "--stdlib"
         args += stdlibFiles(p)
         args += declarationOnly

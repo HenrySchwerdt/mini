@@ -157,7 +157,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         for (f in strict.drop(1)) {
             c.status("Checking", display(f.real))
             c.trace("minic-native --check " + f.path)
-            val r = tc.check(p, f.path, files.filter { it !== f }.map { it.path }, o.werror)
+            val r = tc.check(p, listOf(f.path), files.filter { it !== f }.map { it.path }, o.werror)
             if (r.exitCode != 0) { failed(root, r, files, what); return false }
             report(root, r, files)
         }
@@ -220,14 +220,11 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         if (files.isEmpty()) throw MiniError("package `${root.name}` has no Kotlin sources", "put code in ${display(root.sourceDir())}/")
         val start = p.nowMillis()
         c.status("Checking", "${root.id} (${display(root.dir).let { if (it == ".") "." else it }})")
-        val targets = files.filter { it.strict }.ifEmpty { listOf(files.first()) }
-        var ok = true
-        for (f in targets) {
-            c.trace("minic-native --check " + f.path)
-            val r = tc.check(p, f.path, files.filter { it !== f }.map { it.path }, o.werror)
-            if (r.exitCode != 0) { failed(root, r, files, "check"); ok = false; break }
-            report(root, r, files)
-        }
+        // every source file is a user file of one run: all of them are type-checked and (Strict ones) memory-checked
+        c.trace("minic-native --check " + files.joinToString(" ") { it.path })
+        val r = tc.check(p, files.map { it.path }, emptyList(), o.werror)
+        val ok = r.exitCode == 0
+        if (!ok) failed(root, r, files, "check") else report(root, r, files)
         return BuildResult(ok, null, millis = p.nowMillis() - start)
     }
 
