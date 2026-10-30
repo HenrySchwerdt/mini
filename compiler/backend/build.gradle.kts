@@ -17,5 +17,6 @@ tasks.test {
     useJUnitPlatform()
     systemProperty("mini.backendMain", file("src/main").absolutePath)
     systemProperty("mini.backendBuildFile", file("build.gradle.kts").absolutePath)
+    systemProperty("mini.repoRoot", rootProject.projectDir.parentFile.absolutePath)
     testLogging { events("passed", "failed", "skipped") }
 }

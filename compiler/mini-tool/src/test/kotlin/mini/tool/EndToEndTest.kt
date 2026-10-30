@@ -109,6 +109,8 @@ class EndToEndTest {
         assertTrue(p.err.contains("error[M0102]: allocation from `Heap` is never released"), p.err.toString())
         assertTrue(p.err.contains("--> src/main.kt:14:15"), p.err.toString()) // project-relative path, not the overlay copy
         assertTrue(p.err.contains("could not check `leaky`"), p.err.toString())
+        assertTrue(!p.err.contains("could not compile main.kt") && !p.err.contains("1 error, 0 warnings"), p.err.toString()) // minic-native's own summary is dropped
+        assertEquals(1, Regex("error\\[M0102\\]").findAll(p.err.toString()).count(), p.err.toString())
 
         // editors get the same as JSON lines
         p.reset()
@@ -157,5 +159,6 @@ class EndToEndTest {
         p.reset()
         assertEquals(1, p.mini("build"), p.all())
         assertTrue(p.err.contains("src/main.kt:2:13: error: ") && p.err.contains("could not compile `bad`"), p.err.toString())
+        assertTrue(!p.err.contains("could not compile main.kt") && !p.err.contains("0 warnings"), p.err.toString()) // minic-native's own summary is dropped
     }
 }

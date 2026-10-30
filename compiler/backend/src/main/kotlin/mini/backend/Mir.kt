@@ -238,6 +238,13 @@ enum class BinaryOp(val isComparison: Boolean = false, val isShift: Boolean = fa
 enum class UnaryOp { Neg, Not, Inv }
 
 sealed class MirStmt {
+    /**
+     * Where the statement came from (1-based line in [srcFile]); 0 when unknown. Only set when the producer is asked for
+     * line information (`--line-directives`): the C backend then writes `#line` directives. Not part of the MIR text.
+     */
+    var srcLine: Int = 0
+    var srcFile: String? = null
+
     /** `val`/`var`/temporary declaration. [init] is null for "declared, assigned later". */
     class Declare(val local: MirLocal, val init: MirExpr?) : MirStmt()
     class Assign(val local: MirLocal, val value: MirExpr) : MirStmt()

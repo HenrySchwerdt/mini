@@ -109,4 +109,4 @@ if [ -x "$MINI_HOME/bin/mini" ]; then
     say "    mini new hello && cd hello && mini run"
     say "or, for a single file:"
 fi
-say "    minic build hello.kt -o hello && ./hello"
+say "    minic run hello.kt"

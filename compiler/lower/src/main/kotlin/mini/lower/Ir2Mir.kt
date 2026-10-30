@@ -20,6 +20,8 @@ class UnsupportedConstruct(message: String) : Exception(message)
 class Ir2Mir {
     internal var labelCounter = 0
     internal lateinit var currentFile: IrFile
+    /** Record the source line of the statements of the user's files ([MirStmt.srcLine]) for `#line` directives. */
+    var lineDirectives = false
     internal val fileName: String get() = currentFile.name
 
     internal val classInfos = LinkedHashMap<IrClass, ClassInfo>()

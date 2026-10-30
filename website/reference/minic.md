@@ -8,7 +8,7 @@ There are three programs with similar names. Which one you have depends on how y
 
 | Program | You have it when | What it is |
 |---|---|---|
-| [`minic`](#minic-the-driver-of-a-release) | you [installed a release](/install) | a small shell driver: `minic build foo.kt -o foo` |
+| [`minic`](#minic-the-driver-of-a-release) | you [installed a release](/install) | a small shell driver: `minic run foo.kt`, `minic build foo.kt`, `minic check foo.kt` |
 | [`minic-native`](#minic-native-the-compiler) | the same install (`bin/minic-native`) | the self-hosted compiler: Kotlin to C, the memory checker, MIR and LLVM IR output |
 | [`./minic` of a checkout](#minic-in-a-source-checkout) | you cloned the repository | the JVM build of the same compiler, with a few more commands and options |
 
@@ -17,36 +17,39 @@ Everything below is what the code implements today.
 ## `minic`, the driver of a release
 
 ```text
-minic build <file.kt>... -o <out> [-O0|-O1|-O2|-O3|-Os] [--emit-c <out.c>] [--cc <compiler>]
-minic emit-c <file.kt>... -o <out.c>
-minic version
-```
-
-`minic build` compiles one or more `.kt` files (exactly one with `fun main()`) to a native executable. It runs `minic-native` to translate Kotlin and the standard library (`stdlib/` of the installation) to one C file, then your C compiler with the bundled `lib/libminirt.a` and `include/`:
-
-```text
-cc -std=c17 <opt> -w -I include out.c lib/libminirt.a -lm -o out
+minic run   <file.kt>... [-- <program args>]        build into a temporary directory, run, clean up
+minic build <file.kt>... [-o <out>]                 compile to an executable (default: ./<file name without .kt>)
+minic check <file.kt>...                            parse, type-check, memory-check; no C compiler needed
+minic emit-c <file.kt>... [-o <out.c>]              write the generated C file
+minic --version | --help | <command> --help
 ```
 
 | Option | Meaning |
 |---|---|
-| `-o <out>` | the output: the executable for `build`, the C file for `emit-c`. Required |
-| `-O0`, `-O1`, `-O2`, `-O3`, `-Os` | optimization level for the C compiler. Default `-O1` |
-| `--emit-c <out.c>` | keep the generated C file there (otherwise it is temporary and deleted) |
-| `--cc <compiler>` | the C compiler. Default: the `CC` environment variable, then `cc` |
+| `-O0` `-O1` `-O2` `-O3` | C optimization level. Default `-O2` for `build`, `-O1` for `run` (shorter build for a throw-away binary) |
+| `-g`, `--debug` | `-O0` with debug information; the generated C carries `#line` directives, so gdb/lldb, sanitizers and crash reports show `.kt` files and lines |
+| `--cc <compiler>` | C compiler; default `$CC`, then `cc`, `clang`, `gcc` |
+| `--emit-c <file>` | keep the generated C |
+| `-Werror` | memory-checker warnings fail the build |
+| `--no-rc-opt` | skip the reference-count optimization |
+| `-v`, `--time` | print the commands that run / how long the compiler, the C compiler and the linker took |
+| `--color=auto\|always\|never` | colored diagnostics; `auto` means "stderr is a terminal and `NO_COLOR` is not set" |
+| `--error-format=human\|json` | `json` prints one JSON object per diagnostic on stderr: `severity`, `code`, `message`, `file`, `line`, `col`, `endCol`, `label`, `secondary`, `help`, `docs` |
+| `--error-limit=<n>` | stop printing after n diagnostics (default 20, `0` = all) |
 
-`minic emit-c` stops after the translation. `minic version` prints the version of the installation.
+Unknown commands and options get a "did you mean" suggestion. Diagnostics have the form
 
-```sh
-minic build hello.kt -o hello
-minic build app.kt util.kt -o app -O2
-minic build hello.kt -o hello --emit-c hello.c --cc clang
-CC=gcc minic build hello.kt -o hello
+```text
+app.kt:3:13: error: unresolved reference 'y'
+   3 |     println(y)
+     |             ^
+
+error: could not compile app.kt (1 error, 0 warnings)
 ```
 
-Environment: `CC` selects the C compiler. The driver finds `bin/minic-native`, `lib/`, `include/` and `stdlib/` relative to itself, also through symlinks.
+and the memory-checker ones (`error[M0102]: ...`) end with a note naming each code once with a link to its [page](/reference/diagnostics/).
 
-This driver does not run the memory checker as a separate command; for that, use [`minic-native --check`](#checking-only) below. (The Strict-mode checker runs inside `minic-native` whenever it translates a program, so errors stop `minic build` too.)
+**Exit status:** 0 success, 1 compile error (or an unusable environment such as a missing C compiler), 2 usage error, 3 internal compiler error. `minic run` ends with the exit status of the program. If the C compiler rejects the C that `minic` generated, that is reported as an internal compiler error (exit 3) with a request to report it, and the C file is kept as `minic-ice-<name>.c`; it is never shown as a raw C error. A missing C compiler is explained with how to install one and how to select one (`CC`, `--cc`).
 
 ## `minic-native`, the compiler
 
@@ -160,9 +163,9 @@ Shows where reference counting remains in your program, function by function (`-
 | Code | Meaning |
 |---|---|
 | 0 | success |
-| 1 | compile error: a Kotlin error, an `unsupported construct`, a memory-checker error, or a C compiler failure |
+| 1 | compile error: a Kotlin error, an `unsupported construct` or a memory-checker error; also an unusable environment such as a missing C compiler |
 | 2 | usage error |
-| 3 | internal emitter error (checkout `minic`) |
+| 3 | internal compiler error, including C that the C compiler rejects (reported with a link to file an issue) |
 
 ## The standard library
 

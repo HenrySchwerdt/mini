@@ -29,6 +29,15 @@ minic build <file.kt>... -o <out> [--emit-c <path>] [--cc clang]
 minic check <file.kt>... [--extra-src <file.kt>]... [--brief] [-Werror] [--frontend=mini|k2]
 ```
 
+The release `minic` (`bin/minic`, no JDK; `scripts/minic.sh`) has the same core plus more commands: `minic run foo.kt [-- args]`,
+`minic build foo.kt` (output `./foo`, default `-O2`; `-O0..-O3`, `-g`/`--debug`), `minic check foo.kt` (no C compiler needed), `minic emit-c`, `--version`,
+`<command> --help`, "did you mean" for unknown commands and options, and diagnostics options `--color=auto|always|never` (`NO_COLOR` is respected),
+`--error-format=human|json` (one JSON object per diagnostic on stderr, for editors) and `--error-limit=N`. Exit status: 0 success, 1 compile error,
+2 usage error, 3 internal compiler error (also what a C compiler failure on the generated C is reported as, with the C kept as `minic-ice-<name>.c`).
+`minic build hello.kt` takes about 0.35 s (`--time` shows the split: ~185 ms parsing and analysing the stdlib plus the program, which is nearly all of the front end; ~120 ms
+for the C compiler at `-O2` and the link; the default `-O2` costs +2% on the self-host C and +6% on a mid-size program compared with `-O1`).
+The JVM `minic` above keeps clang at `-O1` and has no `run`. Reference: `website/reference/cli.md`.
+
 * Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.
 * The Mini standard library (`stdlib`, found next to `runtime/` or via `--stdlib <dir>`) is compiled from source together
   with the user files; only the reachable part ends up in the C file. `--no-stdlib` uses the JVM kotlin-stdlib jar instead
@@ -681,11 +690,14 @@ frontend after normalising local ids and `tmpN` numbers (41 lines of 96,774 diff
 
 | Asset | Contents |
 |---|---|
-| `mini-<version>-<target>.tar.gz` | `bin/mini` (the project tool, native, compiled by `bin/minic-native`), `bin/minic` (shell wrapper: `minic build foo.kt -o foo`, `emit-c`, `version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
+| `mini-<version>-<target>.tar.gz` | `bin/mini` (the project tool, native, compiled by `bin/minic-native`), `bin/minic` (shell driver `scripts/minic.sh`: `build`, `run`, `check`, `emit-c`, `--version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
 | `mini-<version>-bootstrap-c.tar.gz` | the generated C of the compiler (`minic.c`), `runtime/`, `build.sh`: `cc` alone builds a stage0 (`scripts/package-seed.sh`) |
 | `SHA256SUMS` | checksums of the above; `install.sh` verifies them |
 
-The `minic` wrapper is a shell script for v0: the native stdlib has no process API yet, so `minic-native` only emits C and the wrapper calls `cc`.
+The `minic` driver is a shell script (`scripts/minic.sh`, copied into the tarball with `VERSION` and `TARGET`): the native stdlib has no process API yet, so `minic-native` only
+emits C and the script calls `cc`, finds a C compiler (`--cc`, `CC`, `cc`, `clang`, `gcc`; otherwise it explains how to install one) and turns a C compiler error on the
+generated C into an "internal compiler error". `minic-native` itself prints diagnostics to stderr (`--color=`, `--error-format=`, `--error-limit=`; the stdlib has the
+intrinsics `stderrWrite` and `exitProcess` for that) and exits with 0, 1 (compile error), 2 (usage) or 3 (internal compiler error). `scripts/test-minic-cli.sh <MINI_HOME>` tests the CLI.
 
 `compiler/bootstrap.sh --stage0 <native minic>` replaces the JVM stage1 by a prebuilt native compiler (a release's `bin/minic-native` or the stage
 built from the seed): stage0 compiles the current sources, then stage1, stage2, stage3 follow and stage2 == stage3 is checked. It builds at -O0

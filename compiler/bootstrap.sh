@@ -168,7 +168,7 @@ echo "bootstrap OK: stage2 == stage3 (C and MIR byte-identical), work dir $WORK"
 
 # the native compiler runs the memory checker too: `--check` rejects a leak / use-after-free and accepts a clean program
 MEMDIR="$HERE/testdata/memory"
-if "$WORK/stage3" --check "$MEMDIR/uaf_simple.kt" --stdlib $STD > "$WORK/check-bad.txt" 2>/dev/null; then
+if "$WORK/stage3" --check "$MEMDIR/uaf_simple.kt" --stdlib $STD > "$WORK/check-bad.txt" 2>&1; then
     echo "native --check accepted memory/uaf_simple.kt" >&2; exit 1
 fi
 grep -q "M0101" "$WORK/check-bad.txt"

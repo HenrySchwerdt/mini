@@ -25,10 +25,11 @@ mini new hello && cd hello && mini run
 
 | I want to | Command |
 |---|---|
+| build and run one file | `minic run prog.kt` |
 | compile a program | `minic build prog.kt -o prog` |
 | optimize | `minic build prog.kt -o prog -O2` |
 | see the generated C | `minic build prog.kt -o prog --emit-c prog.c` |
-| run only the memory checker | `minic-native --check prog.kt --stdlib <stdlib files>` ([details](./minic#checking-only)), or `./minic check prog.kt` in a checkout |
+| run only the memory checker | `minic check prog.kt` |
 | count allocations and retains | `./minic build prog.kt -o prog --stats` in a checkout |
 | start a project | `mini new name` |
 | build and run a project | `mini run` |
