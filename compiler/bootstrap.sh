@@ -1,39 +1,35 @@
 #!/bin/bash
-# B3 bootstrap: the compiler (frontend, lower, backend, minic-native driver) builds itself without K2.
+# B3 bootstrap: the compiler (frontend, lower, backend, minic-native driver) builds itself, natively (no JVM, no Gradle).
 #
-#   stage1 = JVM minic --frontend=mini compiles the compiler sources            (own frontend on the JVM)
-#   stage2 = stage1 compiles the same sources to C, clang builds it
-#   stage3 = stage2 compiles the same sources to C, clang builds it
+#   stage0 = a native compiler given from outside (a release's bin/minic-native, or the C bootstrap seed)
+#   stage1 = stage0 compiles the compiler sources to C, the C compiler builds it
+#   stage2 = stage1 compiles the same sources to C, the C compiler builds it
+#   stage3 = stage2 compiles the same sources to C, the C compiler builds it
 #
-# Check: the C and MIR written by stage2 and stage3 are byte-identical. Wall times per stage are printed.
-# Needs `./gradlew installDist` (compiler/jvm-bridge/build/install/minic) and clang.
+# Check: the C and MIR written by stage2 and stage3 are byte-identical (stage0 may be an older compiler version, so stage1 is
+# not compared: stage2 == stage3 is the fixpoint). Wall times per stage are printed. Needs a C compiler (clang by default).
 #
-# Usage: compiler/bootstrap.sh [--stage0 <native-minic>] [work-dir]
+# Usage: compiler/bootstrap.sh [--stage0 <native minic>] [--backend=llvm|llvm-api [--reference <dir>]] [work-dir]
 #
-# With --stage0 the JVM is not needed at all: a prebuilt native compiler (a release's bin/minic-native, or the
-# stage2 of the bootstrap seed) takes the place of the JVM stage1 and compiles the current sources to C:
-#   stage0 (given, native) -> stage1 (native) -> stage2 -> stage3, and stage2 == stage3 is checked.
-# stage0 may come from an older compiler version, so stage1 is not compared (stage2 == stage3 is the fixpoint).
-# Environment: CC (default clang), BOOT_OPT (default -O1, -O0 with --stage0, the optimization level of the built stages).
-#
-#   compiler/bootstrap.sh [--backend=llvm|llvm-api [--reference <dir>]] [work-dir]
+# --stage0 defaults to $MINI_STAGE0, then build/native/bin/minic-native (scripts/build-mini.sh), then ~/.mini/bin/minic-native.
+# Environment: CC (default clang), BOOT_OPT (default -O0, the optimization level of the built stages: nothing is benchmarked here,
+# clang -O0 takes 9 s instead of 73 s per stage).
 #
 # --backend=llvm (docs/plan-kotlin.md 10g): every stage is built through the LLVM backend (MIR -> textual LLVM IR ->
-# clang) instead of C: stage1 = JVM minic --frontend=mini --backend=llvm; stage2 and stage3 are built from the .ll files
-# written by the previous stage (`--emit-ll`). Check: C, MIR and LLVM IR of stage2 and stage3 are byte-identical; with
+# clang) instead of C: every stage is built from the .ll file written by the previous one (`--emit-ll`). Check: C, MIR and LLVM IR of stage2 and stage3 are byte-identical; with
 # --reference <dir> (the work dir of a C bootstrap) the C and MIR of stage2 must also equal the C-built compiler's.
 #
 # --backend=llvm-api (docs/plan-kotlin.md 10g phase 2): the compiler that has the LLVM C API bound in (compiler/llvm-c, needs the LLVM 18
 # headers and libLLVM: `llvm-config`) builds itself with no text IR and no clang for the code: every stage compiles the sources to MIR,
 # builds the LLVM module in memory and writes the object file through the target machine (`--backend=llvm-api -o x.o`); only the final link
-# runs the system C compiler. stage1 = JVM minic builds the API compiler (llvm-c sources, mini.llvmapi.main instead of Main.kt); stage2 and
+# runs the system C compiler. stage1 = stage0 compiles the API compiler to C (llvm-c sources, mini.llvmapi.main instead of Main.kt); stage2 and
 # stage3 are built by the previous stage. Check: C, MIR, the LLVM module text and the object file of stage2 and stage3 are byte-identical.
 # Then stage3 builds the plain compiler (no llvm-c) through the API too; with --reference <dir> its C and MIR must equal the C-built chain's.
 set -e
-STAGE0=""
+STAGE0="${MINI_STAGE0:-}"
 if [ "$1" = "--stage0" ]; then
     if [ -z "$2" ] || [ ! -x "$2" ]; then echo "bootstrap.sh: --stage0 needs an executable native minic" >&2; exit 2; fi
-    STAGE0="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+    STAGE0="$2"
     shift 2
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -50,14 +46,21 @@ while [ $# -gt 0 ]; do
     esac
 done
 WORK="${1:-$(mktemp -d)}"
-MINIC="$HERE/jvm-bridge/build/install/minic/bin/minic"
 CC="${CC:-clang}"
-OPT="${BOOT_OPT:--O1}"
-[ -n "$STAGE0" ] && OPT="${BOOT_OPT:--O0}"  # nothing is benchmarked here: clang -O0 takes 9 s instead of 73 s per stage
-export JAVA_OPTS="${JAVA_OPTS:--Xss512m -Xmx6g}"
+OPT="${BOOT_OPT:--O0}"
+if [ -z "$STAGE0" ]; then
+    for cand in "$ROOT/build/native/bin/minic-native" "$HOME/.mini/bin/minic-native"; do
+        [ -x "$cand" ] && { STAGE0="$cand"; break; }
+    done
+fi
+if [ -z "$STAGE0" ] || [ ! -x "$STAGE0" ]; then
+    echo "bootstrap.sh: no native compiler to start from: pass --stage0 <minic-native>, set MINI_STAGE0, or run ./mini once (scripts/build-mini.sh)" >&2
+    exit 2
+fi
+STAGE0="$(cd "$(dirname "$STAGE0")" && pwd)/$(basename "$STAGE0")"
 mkdir -p "$WORK"
 
-SRCS=$(find "$HERE/minic-native/src/main/kotlin" "$HERE/lower/src/main/kotlin" "$HERE/frontend/src/main/kotlin" "$HERE/backend/src/main/kotlin" -name '*.kt' | sort)
+SRCS=$(find "$HERE/minic-native/src" "$HERE/lower/src" "$HERE/frontend/src" "$HERE/backend/src" -name '*.kt' | sort)
 STD=$(find "$ROOT/stdlib" -name '*.kt' | sort)
 RT=$(ls "$ROOT"/runtime/src/*.c)
 
@@ -67,13 +70,14 @@ elapsed() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f s", b - a }'; }
 if [ "$BACKEND" = llvm-api ]; then
     LLVM_INC="${LLVM_INC:-$(llvm-config --includedir)}"
     LLVM_LIB="${LLVM_LIB:-$(llvm-config --libdir)}"
-    APISRCS=$(find "$HERE/minic-native/src/main/kotlin" -name '*.kt' ! -name Main.kt | sort; find "$HERE/lower/src/main/kotlin" "$HERE/frontend/src/main/kotlin" "$HERE/backend/src/main/kotlin" "$HERE/llvm-c/src/main/kotlin" -name '*.kt' | sort)
+    APISRCS=$(find "$HERE/minic-native/src" -name '*.kt' ! -name Main.kt | sort; find "$HERE/lower/src" "$HERE/frontend/src" "$HERE/backend/src" "$HERE/llvm-c/src" -name '*.kt' | sort)
     t0=$(stamp)
-    "$MINIC" build $APISRCS -o "$WORK/stage1" --frontend=mini --cflag "-I$LLVM_INC" --cflag "-L$LLVM_LIB" --cflag -rdynamic --cflag -w
-    t1=$(stamp)
-    echo "stage1 (JVM minic --frontend=mini builds the compiler with the LLVM C API: $(elapsed $t0 $t1))"
+    "$STAGE0" -o "$WORK/stage1.c" $APISRCS --stdlib $STD
     mkdir -p "$WORK/rt"
     for f in $RT; do "$CC" -std=c17 -O1 -w -I "$ROOT/runtime/include" -c "$f" -o "$WORK/rt/$(basename "$f" .c).o"; done
+    "$CC" -std=c17 $OPT -w -I "$ROOT/runtime/include" -I"$LLVM_INC" "$WORK/stage1.c" "$WORK/rt"/*.o -o "$WORK/stage1" -L"$LLVM_LIB" -lLLVM-18 -rdynamic -lm
+    t1=$(stamp)
+    echo "stage1 (native stage0 compiles the compiler with the LLVM C API to C, no JVM: $(elapsed $t0 $t1))"
     prev="$WORK/stage1"
     t_prev=$t1
     for stage in 2 3; do
@@ -107,12 +111,13 @@ fi
 
 if [ "$BACKEND" = llvm ]; then
     t0=$(stamp)
-    "$MINIC" build $SRCS -o "$WORK/stage1" --frontend=mini --backend=llvm --emit-ll "$WORK/stage1.ll"
-    t1=$(stamp)
-    echo "stage1 (JVM minic --frontend=mini --backend=llvm builds the compiler): $(elapsed $t0 $t1)"
     # libminirt once; the compiler itself is built from the IR
     mkdir -p "$WORK/rt"
     for f in $RT; do "$CC" -std=c17 -O1 -w -I "$ROOT/runtime/include" -c "$f" -o "$WORK/rt/$(basename "$f" .c).o"; done
+    "$STAGE0" -o "$WORK/stage1.c" --emit-mir "$WORK/stage1.mir" --emit-ll "$WORK/stage1.ll" $SRCS --stdlib $STD
+    "$CC" -O1 -Wno-override-module "$WORK/stage1.ll" "$WORK/rt"/*.o -o "$WORK/stage1" -lm
+    t1=$(stamp)
+    echo "stage1 (native stage0 compiles the sources, clang on the .ll, no JVM): $(elapsed $t0 $t1)"
     prev="$WORK/stage1"
     t_prev=$t1
     for stage in 2 3; do
@@ -137,17 +142,11 @@ if [ "$BACKEND" = llvm ]; then
 fi
 
 t0=$(stamp)
-if [ -n "$STAGE0" ]; then
-    "$STAGE0" -o "$WORK/stage1.c" $SRCS --stdlib $STD
-    t0b=$(stamp)
-    "$CC" -std=c17 $OPT -w -I "$ROOT/runtime/include" "$WORK/stage1.c" $RT -o "$WORK/stage1" -lm
-    t1=$(stamp)
-    echo "stage1 (native stage0 $STAGE0 compiles the sources, no JVM: $(elapsed $t0 $t0b); clang: $(elapsed $t0b $t1))"
-else
-    "$MINIC" build $SRCS -o "$WORK/stage1" --frontend=mini --emit-c "$WORK/stage1.c"
-    t1=$(stamp)
-    echo "stage1 (JVM minic --frontend=mini builds the compiler): $(elapsed $t0 $t1)"
-fi
+"$STAGE0" -o "$WORK/stage1.c" $SRCS --stdlib $STD
+t0b=$(stamp)
+"$CC" -std=c17 $OPT -w -I "$ROOT/runtime/include" "$WORK/stage1.c" $RT -o "$WORK/stage1" -lm
+t1=$(stamp)
+echo "stage1 (native stage0 $STAGE0 compiles the sources: $(elapsed $t0 $t0b); clang: $(elapsed $t0b $t1))"
 
 "$WORK/stage1" -o "$WORK/stage2.c" --emit-mir "$WORK/stage2.mir" $SRCS --stdlib $STD
 t2=$(stamp)

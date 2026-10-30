@@ -110,10 +110,13 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         h.add(Mini.VERSION).add(tc.stamp(p)).add(o.profile).add(o.strict.toString()).add(o.werror.toString()).add(extra)
         for (pkg in root.closure()) {
             h.add(pkg.name).add(pkg.manifest.source)
+            for (cs in pkg.cSources()) h.add(cs).add(p.readText(cs) ?: "")
         }
         for (f in files.sortedBy { it.real }) h.add(f.real).add(f.strict.toString()).add(f.text)
         return h.hex()
     }
+
+    private fun cSourcesOf(root: Package): List<String> = root.closure().flatMap { it.cSources() }
 
     // ---- compiling ---------------------------------------------------------------------------------------------------
 
@@ -203,7 +206,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         }
         if (!checkEachStrict(root, files, "compile")) return BuildResult(false, null)
         c.trace("minic-native " + sources.joinToString(" ") + " -> " + binary)
-        val r = tc.compile(p, sources, emptyList(), binary, o.werror, o.release)
+        val r = tc.compile(p, sources, emptyList(), binary, o.werror, o.release, cSourcesOf(root))
         if (r.exitCode != 0) return failed(root, r, files, "compile")
         report(root, r, files)
         p.writeText(fpFile, fp + "\n")
@@ -236,7 +239,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         p.mkdirs(Paths.parent(binary)!!)
         if (!checkEachStrict(root, files, "build the tests of")) return BuildResult(false, null)
         c.trace("minic-native " + files.joinToString(" ") { it.path } + " -> " + binary)
-        val r = tc.compile(p, files.map { it.path } + extraSources, declarationOnly, binary, o.werror, o.release)
+        val r = tc.compile(p, files.map { it.path } + extraSources, declarationOnly, binary, o.werror, o.release, cSourcesOf(root))
         if (r.exitCode != 0) return failed(root, r, files, "build the tests of")
         report(root, r, files)
         p.writeText(fpFile, fp + "\n")

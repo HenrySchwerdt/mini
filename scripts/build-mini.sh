@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds the native `mini` project tool (and, when needed, the native compiler) from source, with no JVM and no Gradle:
 # `mini` is Kotlin compiled by Mini itself (compiler/mini-tool + compiler/frontend, with the native platform layer
-# compiler/mini-tool/src/native), exactly like the compiler's own self-host.
+# compiler/mini-tool/src/NativePlatform.kt + host/), exactly like the compiler's own self-host.
 #
-#   scripts/build-mini.sh [--out <dir>] [--minic-native <path> | --stage0 <path> | --jvm-minic <launcher>] [--opt -O1|-O2] [--quiet]
+#   scripts/build-mini.sh [--out <dir>] [--minic-native <path> | --stage0 <path>] [--opt -O1|-O2] [--quiet]
 #
 # Output (default <repo>/build/native), the layout of a release archive:
 #   bin/minic-native   the native compiler          bin/mini   the project tool
@@ -12,7 +12,6 @@
 # Where the compiler comes from, in this order:
 #   --minic-native P   P is a compiler of the current sources (a release build, a bootstrap stage): it is copied and used as it is.
 #   --stage0 P         P is any native compiler (e.g. the one of the latest release): it builds the current compiler (one stage).
-#   --jvm-minic L      L is the JVM launcher (compiler/jvm-bridge, `./gradlew :jvm-bridge:installDist`): it builds the current compiler.
 #   otherwise          <out>/bin/minic-native when it is up to date; else a stage0 from $MINI_STAGE0, <repo>/build/stage0 (the
 #                      latest release, see ./mini), ~/.mini, or PATH. Exit status 3 when there is none.
 # CC is the C compiler (default clang, else cc). Exit status: 0 ok, 3 no compiler to start from, else a build failure.
@@ -20,13 +19,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/build/native"
 OPT="-O1"
-GIVEN="" STAGE0="" JVM_MINIC="" QUIET=0
+GIVEN="" STAGE0="" QUIET=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --out) OUT="$(mkdir -p "$2" && cd "$2" && pwd)"; shift 2 ;;
         --minic-native) GIVEN="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
         --stage0) STAGE0="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
-        --jvm-minic) JVM_MINIC="$2"; shift 2 ;;
         --opt) OPT="$2"; shift 2 ;;
         --quiet) QUIET=1; shift ;;
         -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -38,9 +36,9 @@ mkdir -p "$OUT/bin" "$OUT/lib" "$OUT/include" "$OUT/work"
 OUT="$(cd "$OUT" && pwd)"
 say() { [ "$QUIET" = 1 ] || echo "build-mini: $*" >&2; }
 
-COMPILER_DIRS=("$ROOT/compiler/minic-native/src/main/kotlin" "$ROOT/compiler/lower/src/main/kotlin" "$ROOT/compiler/frontend/src/main/kotlin" "$ROOT/compiler/backend/src/main/kotlin")
-TOOL_DIRS=("$ROOT/compiler/mini-tool/src/main/kotlin" "$ROOT/compiler/mini-tool/src/native/kotlin" "$ROOT/compiler/frontend/src/main/kotlin")
-HOST_C="$ROOT/compiler/mini-tool/src/native/c"
+COMPILER_DIRS=("$ROOT/compiler/minic-native/src" "$ROOT/compiler/lower/src" "$ROOT/compiler/frontend/src" "$ROOT/compiler/backend/src")
+TOOL_DIRS=("$ROOT/compiler/mini-tool/src" "$ROOT/compiler/frontend/src")
+HOST_C="$ROOT/compiler/mini-tool/host"
 
 STD="$(find "$ROOT/stdlib" -name '*.kt' | LC_ALL=C sort)"
 COMPILER_SRCS="$(find "${COMPILER_DIRS[@]}" -name '*.kt' | LC_ALL=C sort)"
@@ -83,11 +81,6 @@ compiler_stale() { newer "$OUT/bin/minic-native" "${COMPILER_DIRS[@]}" "$ROOT/st
 
 if [ -n "$GIVEN" ]; then
     [ "$GIVEN" = "$OUT/bin/minic-native" ] || cp "$GIVEN" "$OUT/bin/minic-native"
-elif [ -n "$JVM_MINIC" ]; then
-    say "compiler: the JVM minic builds the compiler sources"
-    # shellcheck disable=SC2086
-    JAVA_OPTS="${JAVA_OPTS:--Xss512m -Xmx6g}" "$JVM_MINIC" build $COMPILER_SRCS -o "$OUT/work/stage0" --frontend=mini
-    compile_compiler "$OUT/work/stage0" "$OUT/bin/minic-native"
 elif [ -n "$STAGE0" ]; then
     compile_compiler "$STAGE0" "$OUT/bin/minic-native"
 elif compiler_stale; then
@@ -96,11 +89,6 @@ elif compiler_stale; then
         for cand in "$ROOT/build/stage0/bin/minic-native" "${MINI_HOME:-$HOME/.mini}/bin/minic-native" "$(command -v minic-native 2>/dev/null || true)"; do
             [ -n "$cand" ] && [ -x "$cand" ] && { s0="$cand"; break; }
         done
-    fi
-    if [ -z "$s0" ] && [ -x "$ROOT/compiler/jvm-bridge/build/install/minic/bin/minic" ]; then
-        say "compiler: no native compiler to start from, using the JVM build"
-        JAVA_OPTS="${JAVA_OPTS:--Xss512m -Xmx6g}" "$ROOT/compiler/jvm-bridge/build/install/minic/bin/minic" build $COMPILER_SRCS -o "$OUT/work/stage0" --frontend=mini
-        s0="$OUT/work/stage0"
     fi
     if [ -z "$s0" ]; then
         echo "build-mini.sh: no native compiler to start from (give --stage0 <minic-native>, set MINI_STAGE0, or install a release: see install.sh)" >&2
@@ -112,13 +100,13 @@ build_runtime
 
 # --- mini itself, compiled by the native compiler
 tool_stale() { newer "$OUT/bin/mini" "${TOOL_DIRS[@]}" "$HOST_C" "$ROOT/stdlib" "$ROOT/runtime/src" "$ROOT/runtime/include" "$OUT/bin/minic-native"; }
-if tool_stale || [ -n "$GIVEN" ] || [ -n "$STAGE0" ] || [ -n "$JVM_MINIC" ]; then
+if tool_stale || [ -n "$GIVEN" ] || [ -n "$STAGE0" ]; then
     say "mini: compiled by minic-native ($OPT)"
-    TOOL_SRCS="$(find "${TOOL_DIRS[@]}" -name '*.kt' -not -path '*/jvm/*' | LC_ALL=C sort)"
+    TOOL_SRCS="$(find "${TOOL_DIRS[@]}" -name '*.kt' | LC_ALL=C sort)"
     # shellcheck disable=SC2086
     "$OUT/bin/minic-native" -o "$OUT/work/mini.c" $TOOL_SRCS --stdlib $STD
-    "$CC" -std=gnu17 "$OPT" -w -I "$ROOT/runtime/include" -I "$ROOT/runtime/src" -c "$HOST_C/mini_host.c" -o "$OUT/work/mini_host.o"
-    "$CC" -std=c17 "$OPT" -w -I "$ROOT/runtime/include" -I "$HOST_C" -include mini_host.h "$OUT/work/mini.c" "$OUT/work/mini_host.o" "$OUT/lib/libminirt.a" -o "$OUT/bin/mini.tmp" -lm
+    "$CC" -std=gnu17 "$OPT" -w -I "$ROOT/runtime/include" -c "$HOST_C/mini_host.c" -o "$OUT/work/mini_host.o"
+    "$CC" -std=c17 "$OPT" -w -I "$ROOT/runtime/include" -I "$HOST_C" "$OUT/work/mini.c" "$OUT/work/mini_host.o" "$OUT/lib/libminirt.a" -o "$OUT/bin/mini.tmp" -lm
     mv "$OUT/bin/mini.tmp" "$OUT/bin/mini"
 fi
 say "ready: $OUT/bin/mini"

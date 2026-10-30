@@ -93,9 +93,9 @@ class Toolchain(
     /**
      * Kotlin to a native executable: `minic-native` writes C, the C compiler links it with `lib/libminirt.a`.
      * [sources] are the program (the first one names the module), [declarationOnly] files only declare (annotation classes,
-     * other packages' APIs). The result merges the output of both steps; a non-zero exit code names the failing one.
+     * other packages' APIs), [cSources] are compiled together with the generated C. The result merges the output of both steps; a non-zero exit code names the failing one.
      */
-    fun compile(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean): ExecResult {
+    fun compile(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean, cSources: List<String> = emptyList()): ExecResult {
         val cFile = "$out.c"
         val args = ArrayList<String>()
         args += listOf("-o", cFile)
@@ -120,7 +120,14 @@ class Toolchain(
         }
         for (d in dirs) { cmd += "-I"; cmd += d }
         cmd += if (release) "-O2" else "-g"
-        cmd += listOf(cFile, runtimeLib, "-o", out, "-lm")
+        // C files of the packages (`c-sources`): their directories are include paths too, so `@file:CInclude("x.h")` finds the header
+        for (cs in cSources) {
+            val d = Paths.parent(cs) ?: continue
+            if (d !in dirs) { cmd += "-I"; cmd += d; dirs += d }
+        }
+        cmd += listOf(cFile)
+        cmd += cSources
+        cmd += listOf(runtimeLib, "-o", out, "-lm")
         cmd += links
         val cr = p.exec(Exec(cmd))
         p.remove(cFile)

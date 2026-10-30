@@ -19,6 +19,9 @@ class Package(val manifest: Manifest, val info: PackageInfo, val origin: Origin)
     fun sources(p: Platform): List<String> = p.kotlinFiles(sourceDir())
     fun testSources(p: Platform): List<String> = p.kotlinFiles(testDir())
 
+    /** Absolute paths of the C files this package contributes (`c-sources` in `[package]`). */
+    fun cSources(): List<String> = info.cSources.map { Paths.join(dir, it) }
+
     /** The packages this one needs (itself last), dependencies before dependents, each once. */
     fun closure(): List<Package> {
         val out = ArrayList<Package>()

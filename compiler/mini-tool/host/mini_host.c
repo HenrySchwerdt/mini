@@ -8,8 +8,13 @@
  * Lists travel as one string with U+0001 between the items.
  */
 #define _GNU_SOURCE
-#include "internal.h"
+#include <stddef.h>
+
 #include "mini_host.h"
+
+/* defined in the runtime (runtime/src: utf.c, entry.c); not part of the installed minirt.h */
+char *mk_utf16_to_utf8(const MkChar *chars, size_t length, size_t *out_length);
+void mk_runtime_flush(void);
 
 #include <dirent.h>
 #include <errno.h>

@@ -32,6 +32,8 @@ class PackageInfo(
     val kind: Kind,
     val memory: MemoryDefault,
     val nameSpan: Span,
+    /** C files (relative to the package) that are compiled and linked into every binary that contains the package. */
+    val cSources: List<String> = emptyList(),
 )
 
 class WorkspaceInfo(val members: List<String>, val span: Span)
@@ -52,7 +54,7 @@ class ManifestException(val error: TomlError, val file: String, val source: Stri
 }
 
 object ManifestParser {
-    private val packageKeys = listOf("name", "version", "kind", "memory", "description", "authors", "license", "repository", "homepage")
+    private val packageKeys = listOf("name", "version", "kind", "memory", "description", "authors", "license", "repository", "homepage", "c-sources")
     private val topKeys = listOf("package", "dependencies", "workspace")
     private val depKeys = listOf("path", "git", "rev", "tag", "branch")
 
@@ -124,7 +126,12 @@ object ManifestParser {
                         ?: "`managed` uses reference counting, `strict` makes every allocation need a proven owner (docs/memory-model.md)",
                 )
             }
-            pkg = PackageInfo(name.value, version?.value ?: "0.1.0", kind, memory, name.span)
+            val cs = t["c-sources"]
+            val cSources = if (cs == null) emptyList() else {
+                val arr = cs as? TArray ?: throw TomlError("`c-sources` must be an array of paths", cs.span, "expected an array", "write `c-sources = [\"native/host.c\"]`")
+                arr.items.map { str(it, "a C source path", "\"native/host.c\"").value }
+            }
+            pkg = PackageInfo(name.value, version?.value ?: "0.1.0", kind, memory, name.span, cSources)
         }
 
         val deps = ArrayList<DepSpec>()

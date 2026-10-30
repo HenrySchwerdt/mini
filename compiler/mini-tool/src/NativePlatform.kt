@@ -1,4 +1,8 @@
+@file:CInclude("mini_host.h")
+
 package mini.tool.native
+
+import kotlinx.cinterop.CInclude
 
 import mini.internal.CSymbol
 import mini.internal.fileReadText
@@ -13,8 +17,8 @@ import mini.tool.Stream
 
 /*
  * The native implementation of [Platform]: `mini` compiled by Mini itself. Everything goes through the small C layer
- * compiler/mini-tool/src/native/c/mini_host.c (`@CSymbol`, see stdlib/mini/internal/CSymbol.kt) next to libminirt;
- * the JVM is not involved. The JVM implementation is mini.tool.jvm.JvmPlatform.
+ * compiler/mini-tool/host/mini_host.c (`@CSymbol`, see stdlib/mini/internal/CSymbol.kt) next to libminirt;
+ * the JVM is not involved.
  */
 
 @CSymbol("mh_env")
@@ -79,7 +83,7 @@ external fun hostExecError(): String?
 
 private const val SEP = '\u0001'
 
-class NativePlatform : Platform {
+open class NativePlatform : Platform {
     override val os: String = detectOs()
 
     override fun env(name: String): String? = hostEnv(name)
@@ -166,6 +170,3 @@ class NativePlatform : Platform {
     }
 }
 
-fun main(args: Array<String>) {
-    hostExit(Mini.run(args.toList(), NativePlatform()))
-}
