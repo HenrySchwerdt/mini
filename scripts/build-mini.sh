@@ -107,8 +107,9 @@ build_runtime
 stdlib_mlib_stale() { newer "$OUT/lib/stdlib.mlib" "$ROOT/stdlib" "$OUT/bin/minic-native" "$ROOT/VERSION"; }
 if stdlib_mlib_stale; then
     say "stdlib.mlib"
-    # shellcheck disable=SC2086
-    "$OUT/bin/minic-native" --emit-mlib "$OUT/lib/stdlib.mlib.tmp" --name stdlib --compiler-id "$(cat "$ROOT/VERSION")" --no-memory-check $STD
+    # relative paths (stdlib/kotlin/...): what diagnostics and debuggers show for library code, whatever the checkout is called
+    # shellcheck disable=SC2046
+    (cd "$ROOT" && "$OUT/bin/minic-native" --emit-mlib "$OUT/lib/stdlib.mlib.tmp" --name stdlib --compiler-id "$(cat VERSION)" --no-memory-check $(find stdlib -name '*.kt' | LC_ALL=C sort))
     mv "$OUT/lib/stdlib.mlib.tmp" "$OUT/lib/stdlib.mlib"
 fi
 

@@ -30,6 +30,7 @@ mini [OPTIONS] <COMMAND>
 | `mini build` | Compile the project to native code |
 | `mini run [-- ARGS...]` | Build and run the app; the exit code of the program is the exit code of `mini run` |
 | `mini check` | Type-check and run the memory checker, without producing a binary (needs no C compiler) |
+| `mini package` | Build the distributable `.mlib` of a library (API stubs and code in one file) |
 | `mini test [FILTER]` | Run the `@Test` functions of the project |
 | `mini clean` | Remove the `build/` directory (the lock file and the git cache are kept) |
 | `mini add [NAME]` | Add a dependency to `mini.toml` |

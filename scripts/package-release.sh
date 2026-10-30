@@ -66,8 +66,9 @@ cp "$ROOT/runtime/include/"*.h "$STAGE/include/"
 cp -R "$ROOT/stdlib" "$STAGE/stdlib"
 
 echo "== stdlib.mlib (the precompiled standard library, built by the minic-native above)"
+# relative paths (stdlib/kotlin/...), as in the release's stdlib/ directory
 # shellcheck disable=SC2046
-"$STAGE/bin/minic-native" --emit-mlib "$STAGE/lib/stdlib.mlib" --name stdlib --compiler-id "$VERSION" --no-memory-check $(find "$ROOT/stdlib" -name '*.kt' | LC_ALL=C sort)
+(cd "$ROOT" && "$STAGE/bin/minic-native" --emit-mlib "$STAGE/lib/stdlib.mlib" --name stdlib --compiler-id "$VERSION" --no-memory-check $(find stdlib -name '*.kt' | LC_ALL=C sort))
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$STAGE/"
 
 # the driver script lives in scripts/minic.sh (help, run/check/build, diagnostics options, C compiler discovery)

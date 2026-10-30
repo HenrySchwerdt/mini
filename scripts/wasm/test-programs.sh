@@ -11,6 +11,13 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 export MINIC="${MINIC:-$root/build/native/bin/minic-native}"
 STDLIB="$(cd "$root" && find stdlib -name '*.kt' | LC_ALL=C sort | sed "s|^|$root/|" | tr '\n' ' ')"
+# the precompiled standard library (docs/mlib.md) when the native toolchain has one: the same .mlib the native build uses (WASM_STDLIB=source: the sources)
+MLIB="$(dirname "$MINIC")/../lib/stdlib.mlib"
+if [ "${WASM_STDLIB:-mlib}" = mlib ] && [ -f "$MLIB" ]; then
+    STDLIB="--lib $MLIB --compiler-id $(cat "$(dirname "$MINIC")/../VERSION" 2>/dev/null || echo unknown)"
+else
+    STDLIB="--stdlib $STDLIB"
+fi
 export STDLIB
 export WASM_DIR="${WASM_DIR:-build/wasm}"
 export root
@@ -25,7 +32,7 @@ one() {
     local log="$w/$name.log"
     (
         # shellcheck disable=SC2086
-        "$MINIC" --emit-ll "$w/$name.ll" --target=wasm32 "$src" --stdlib $STDLIB >"$w/$name.compile" 2>&1 || { [ -f "compiler/testdata/$name.cerr" ] && exit 0; cat "$w/$name.compile"; exit 1; }
+        "$MINIC" --emit-ll "$w/$name.ll" --target=wasm32 "$src" $STDLIB >"$w/$name.compile" 2>&1 || { [ -f "compiler/testdata/$name.cerr" ] && exit 0; cat "$w/$name.compile"; exit 1; }
         $Y clang --target=wasm32-wasip1 -O1 -Wno-override-module -c "$w/$name.ll" -o "$w/$name.o" || exit 1
         $Y clang --target=wasm32-wasip1 "$w/$name.o" "$WASM_DIR/libminirt-wasm32.a" "$WASM_DIR/minirt-entry-wasm32.o" -o "$w/$name.wasm" || exit 1
         mkdir -p "$w/tmp"; node --no-warnings "$root/scripts/wasm/run-wasi.mjs" --dir "$w/tmp=/tmp" "$w/$name.wasm" >"$w/$name.stdout" 2>"$w/$name.stderr"

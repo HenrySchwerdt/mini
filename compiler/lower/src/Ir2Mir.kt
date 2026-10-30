@@ -121,9 +121,12 @@ class Ir2Mir {
                 unsupported(f, "main function with unsupported parameters (only `fun main()` and `fun main(args: Array<String>)`)")
             }
             var mangled = Mangling.function(file.packageFqName, f.name, params)
-            // overloads that differ only in a pointer type share the mangled name; the suffix comes from the full parameter types, not from
-            // the order of the declarations, so a library and the program compiled against its stubs agree (docs/mlib.md)
-            if (params.any { it is TPtr }) mangled += "_T" + MlibHasher().add(f.parameters.joinToString(",") { renderType(it.type) }).hex().substring(0, 8)
+            // Overloads that differ only in a pointer type or in a type argument (`Iterable<Int>.sum()`, `Iterable<Double>.sum()`) share the
+            // mangled name. The suffix comes from the full parameter types, not from the order of the declarations: a library and a program
+            // compiled against its (pruned) stubs must agree on every name (docs/mlib.md).
+            if (mangled != Mangling.MAIN && (params.any { it is TPtr } || f.parameters.any { (it.type as? ClassType)?.args?.isNotEmpty() == true })) {
+                mangled += "_T" + MlibHasher().add(f.parameters.joinToString(",") { renderType(it.type) }).hex().substring(0, 8)
+            }
             functionNames[f] = uniqueTopLevelName(mangled)
         }
         for (info in classInfos.values) {
