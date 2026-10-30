@@ -109,9 +109,10 @@ jobs:
               scripts/test-e2e.sh --suite llvm --suite llvm-leak --suite llvm-variants
               if [ "$RUNNER_OS" = Linux ]; then
                 # bootstrap through the LLVM backend, then through the LLVM C API; the API compiler runs the llvm-api suite
-                scripts/ci-stage0.sh "$RUNNER_TEMP/boot-llvm" --backend=llvm
-                scripts/ci-stage0.sh "$RUNNER_TEMP/boot-api" --backend=llvm-api
-                MINIC_API="$RUNNER_TEMP/boot-api/s0/stage3" scripts/test-e2e.sh --suite llvm-api
+                # (stage0 = the compiler of this checkout that the Toolchain step built from the release)
+                compiler/bootstrap.sh --backend=llvm "$RUNNER_TEMP/boot-llvm"
+                compiler/bootstrap.sh --backend=llvm-api "$RUNNER_TEMP/boot-api"
+                MINIC_API="$RUNNER_TEMP/boot-api/stage3" scripts/test-e2e.sh --suite llvm-api
               fi ;;
             # B3 from the latest release: native stage0 -> stage1 -> stage2 -> stage3, stage2 == stage3 byte for byte.
             # Then the native `mini` project tool is built by that stage3 compiler and smoke-tested:

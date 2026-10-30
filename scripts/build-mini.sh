@@ -111,4 +111,5 @@ if tool_stale || [ -n "$GIVEN" ] || [ -n "$STAGE0" ]; then
     "$CC" -std=c17 "$OPT" -w -I "$ROOT/runtime/include" -I "$HOST_C" "$OUT/work/mini.c" "$OUT/work/mini_host.o" "$OUT/lib/libminirt.a" -o "$OUT/bin/mini.tmp" -lm
     mv "$OUT/bin/mini.tmp" "$OUT/bin/mini"
 fi
+touch "$OUT/bin/mini"   # newer than every input: ./mini and ./minic use this to decide whether to rebuild
 say "ready: $OUT/bin/mini"

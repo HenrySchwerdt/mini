@@ -5,7 +5,7 @@
 #
 #   version   e.g. 0.4.0                         target  linux-x64 | linux-arm64 | macos-arm64 (any name)
 #   --work    a work dir of compiler/bootstrap.sh holding stage3.c; without it the bootstrap runs first
-#             (needs the JVM stage1: ./gradlew :jvm-bridge:installDist) and checks stage2 == stage3.
+#             (from a native stage0: scripts/ci-stage0.sh) and checks stage2 == stage3.
 #   --out     where the archives go (default dist/)
 #   --seed    also write mini-<version>-bootstrap-c.tar.gz (see scripts/package-seed.sh)
 #

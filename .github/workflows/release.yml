@@ -50,15 +50,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # stage1 (JVM, own frontend) -> stage2 -> stage3, stage2 == stage3 (the release is the checked fixpoint)
+      # the previous release's native compiler (stage0) -> stage1 -> stage2 -> stage3, stage2 == stage3 (the release is the checked fixpoint)
       - name: Bootstrap
-        working-directory: compiler
-        run: ./gradlew :jvm-bridge:installDist --console=plain && ./bootstrap.sh "$RUNNER_TEMP/boot"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-stage0.sh "$RUNNER_TEMP/boot0"
       - name: Package
         run: |
           flags=""
           if [ "${{ matrix.seed }}" = "true" ]; then flags="--seed"; fi
-          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot" --out dist $flags
+          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot0/s0" --out dist $flags
       - name: Smoke test the tarball
         run: |
           d="$(mktemp -d)"
