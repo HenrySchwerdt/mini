@@ -19,6 +19,18 @@ class ScaffoldTest {
     }
 
     @Test
+    fun newWasmLibTemplate() {
+        val p = TestPlatform.temp()
+        assertEquals(0, p.mini("new", "mathlib", "--template", "wasm-lib", "--no-git"))
+        for (f in listOf("mini.toml", "src/lib.kt", "tests/lib_test.kt", "index.html", "run.mjs")) assertTrue(p.file("mathlib/$f").isFile, f)
+        assertEquals(Kind.WasmLib, ManifestParser.parse("x", p.file("mathlib/mini.toml").readText()).pkg!!.kind)
+        assertTrue(p.file("mathlib/src/lib.kt").readText().contains("@WasmExport"))
+        assertTrue(p.file("mathlib/run.mjs").readText().contains("./build/wasm/mathlib.mjs"))
+        assertTrue(p.err.contains("Created WebAssembly library `mathlib`"), p.err.toString())
+        assertEquals(2, p.mini("new", "other", "--lib", "--template", "wasm-lib", "--no-git"))
+    }
+
+    @Test
     fun newLibUsesAPackage() {
         val p = TestPlatform.temp()
         assertEquals(0, p.mini("new", "geo-metry", "--lib", "--no-git"))

@@ -73,6 +73,14 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: scripts/build-wasm-toolchain.sh
 
+      # WebAssembly libraries (website/guide/wasm-library.md): `mini build` of a wasm-lib package with the host's clang + wasm-ld, called from Node
+      # (and from Chromium when Playwright is installed: not here, the script skips that part).
+      - name: Test WebAssembly libraries
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          scripts/wasm/install-wasm32.sh
+          scripts/wasm/test-wasm-lib.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: wasm-toolchain

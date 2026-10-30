@@ -145,7 +145,7 @@ json = { git = "https://github.com/me/json", tag = "v1.0.0" }     # or rev = "ab
 |---|---|
 | `name` | The package name (required) |
 | `version` | `MAJOR.MINOR.PATCH`, optionally with `-pre` or `+build` |
-| `kind` | `app` (default) or `lib` |
+| `kind` | `app` (default), `lib`, or `wasm-lib` (built to a WebAssembly module with JavaScript glue: [WebAssembly libraries](/guide/wasm-library)) |
 | `memory` | `managed` (default) or `strict`: the memory mode of the project's own code |
 | `description`, `authors`, `license`, `repository`, `homepage` | informational |
 
