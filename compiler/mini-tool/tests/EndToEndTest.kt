@@ -175,4 +175,30 @@ class EndToEndTest {
         p.reset()
         assertEquals(0, p.mini("check"), p.all())
     }
+
+    @Test
+    fun packageBuildsADistributableLibraryAndRebuildsOnlyOnChange() {
+        if (!(TestPlatform.toolchainAvailable())) return
+        val p = TestPlatform.temp()
+        assertEquals(0, p.mini("new", "geometry", "--lib", "--no-git"))
+        p.dir = File(p.root, "geometry")
+        p.reset()
+        assertEquals(0, p.mini("package"), p.all())
+        assertTrue(p.err.contains("Compiling geometry v0.1.0") && p.err.contains("Packaged geometry v0.1.0"), p.err.toString())
+        val mlib = p.file("build/package/geometry-0.1.0.mlib")
+        if (!mlib.exists()) return   // a toolchain without a precompiled standard library builds no packages
+        val text = mlib.readText()
+        assertTrue(text.startsWith("mini-mlib 1\n") && text.contains("\nname geometry\n") && text.contains("\nversion 0.1.0\n"), text.take(200))
+        assertTrue(text.contains("\nstub ") && text.contains("fun add"), "the API stubs are in the library")
+        // unchanged: the content-addressed library is reused
+        p.reset()
+        assertEquals(0, p.mini("package"), p.all())
+        assertTrue(!p.err.contains("Compiling"), p.err.toString())
+        // changed: rebuilt, and the hash in the header changes
+        p.write("src/lib.kt", "package geometry\n\nfun add(a: Int, b: Int): Int = a + b + 1\n")
+        p.reset()
+        assertEquals(0, p.mini("package"), p.all())
+        assertTrue(p.err.contains("Compiling geometry"), p.err.toString())
+        assertTrue(mlib.readText() != text)
+    }
 }

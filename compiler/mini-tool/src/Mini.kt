@@ -67,6 +67,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
             "build" -> build()
             "run" -> runApp()
             "check" -> check()
+            "package" -> packageLibrary()
             "test" -> test()
             "clean" -> clean()
             "add" -> add()
@@ -255,6 +256,23 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
             if (!r.success) return 1
         }
         c.status("Finished", "checking in ${formatDuration(p.nowMillis() - start)}, no errors")
+        return 0
+    }
+
+    private fun packageLibrary(): Int {
+        val project = loader.load(loadOptions())
+        val b = builder(project)
+        if (!b.useLibs) throw MiniError("`mini package` needs a toolchain with a precompiled standard library (lib/stdlib.mlib)", "install a release, or run scripts/build-mini.sh in a source checkout")
+        for (pkg in project.selected) {
+            if (pkg.info.kind != Kind.Lib) throw MiniError("`${pkg.name}` is an app: only libraries can be packaged", "set `kind = \"lib\"` in its mini.toml")
+            val built = b.libraryFile(pkg) ?: return 1
+            val out = Paths.join(project.buildDir, "package", "${pkg.name}-${pkg.info.version}.mlib")
+            p.mkdirs(Paths.parent(out)!!)
+            val text = p.readText(built) ?: throw MiniError("cannot read the built library $built")
+            p.writeText(out, text)
+            val hash = text.take(600).lines().firstOrNull { it.startsWith("hash ") }?.substring(5) ?: "?"
+            c.status("Packaged", "${pkg.id} -> ${b.display(out)} (hash $hash)")
+        }
         return 0
     }
 

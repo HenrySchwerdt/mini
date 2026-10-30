@@ -14,6 +14,7 @@
 #   bin/minic-native   the self-hosted native compiler (the C of stage3, built with -O2)
 #   bin/mini           the project tool (new, build, run, test, check, ...): Kotlin compiled by bin/minic-native, no JVM
 #   lib/libminirt.a    the runtime, prebuilt;  include/minirt.h
+#   lib/stdlib.mlib    the precompiled standard library (docs/mlib.md), used by default by minic and mini
 #   stdlib/            the standard library sources (compiled together with every program)
 #   LICENSE NOTICE README.md
 set -euo pipefail
@@ -63,6 +64,10 @@ done
 ar rcs "$STAGE/lib/libminirt.a" "$OBJ"/*.o
 cp "$ROOT/runtime/include/"*.h "$STAGE/include/"
 cp -R "$ROOT/stdlib" "$STAGE/stdlib"
+
+echo "== stdlib.mlib (the precompiled standard library, built by the minic-native above)"
+# shellcheck disable=SC2046
+"$STAGE/bin/minic-native" --emit-mlib "$STAGE/lib/stdlib.mlib" --name stdlib --compiler-id "$VERSION" --no-memory-check $(find "$ROOT/stdlib" -name '*.kt' | LC_ALL=C sort)
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$STAGE/"
 
 # the driver script lives in scripts/minic.sh (help, run/check/build, diagnostics options, C compiler discovery)
@@ -85,7 +90,7 @@ Kotlin compiled to native code. Needs a C compiler (clang or gcc) on the PATH; n
 * \`bin/minic\`         driver (\`build\`, \`run\`, \`check\`, \`emit-c\`, \`--version\`); runs \`bin/minic-native\`, then \`cc\` with \`lib/libminirt.a\`
 * \`bin/minic-native\`  the self-hosted compiler: \`minic-native [-o out.c] [--emit-mir out.mir] <user.kt>... --stdlib <files>...\`
 * \`lib/libminirt.a\`, \`include/\`  the C runtime
-* \`stdlib/\`           the standard library sources, compiled together with your program
+* \`lib/stdlib.mlib\`   the precompiled standard library (used by default); \`stdlib/\` holds its sources (\`MINIC_STDLIB=source\` compiles them with the program)
 
 Project: https://github.com/HenrySchwerdt/mini, documentation: https://henryschwerdt.github.io/mini/. Apache-2.0, see LICENSE and NOTICE.
 EOF
