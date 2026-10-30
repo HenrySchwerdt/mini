@@ -14,6 +14,27 @@ Every complete Kotlin example in the documentation is a live cell with a **Run**
 - **Share** puts the source, compressed, in the URL after the `#`. It is never sent to a server.
 - Kotlin code blocks that are not runnable cells have an **Open in playground** button.
 
+## Editing Kotlin
+
+Learn, notebook and playground use the same CodeMirror editor. Enter keeps the current block indentation, uses four spaces per level and splits matching braces onto separate lines. Closing a brace reindents its line. Matching brackets and quotes are inserted as you type.
+
+| Action | Shortcut |
+|---|---|
+| Indent at the cursor or shift selected lines | Tab |
+| Shift lines back one level | Shift+Tab |
+| Open Kotlin and document-word suggestions | Ctrl+Space |
+| Accept a suggestion | Tab or Enter |
+| Move between fields in a code template | Tab / Shift+Tab |
+| Find and replace in the current editor | Ctrl/Cmd+F |
+| Select the next occurrence for simultaneous editing | Ctrl/Cmd+D |
+| Toggle a line comment | Ctrl/Cmd+/ |
+| Move a line | Alt+↑ / Alt+↓ |
+| Duplicate a line | Shift+Alt+↑ / Shift+Alt+↓ |
+| Undo / redo | Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z |
+| Run the focused cell or program | Ctrl/Cmd+Enter |
+
+Suggestions include Kotlin keywords, common functions, names in the current editor and templates for functions, classes, loops and branching. They do not yet use compiler type information to resolve members or imports. Escape dismisses suggestions. To let Tab move focus out of the editor, toggle Tab focus mode with Ctrl+M (Shift+Alt+M on macOS).
+
 ## Notebook cells
 
 A notebook mixes Markdown cells with Kotlin code cells.

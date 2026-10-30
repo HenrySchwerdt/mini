@@ -16,7 +16,8 @@ Nothing here compiles anything. There is no interpreter, no server, and no preco
 | `toolchain.ts` | Main-thread `WorkerToolchain`: probes the manifest, starts the toolchain worker, routes `load/check/compile` to it and `run` to the runner worker. |
 | `runner.worker.ts`, `run-client.ts`, `wasi.ts` | Site-owned runner: one fresh worker per run, a WASI preview1 shim, limits enforced by terminating the worker. |
 | `session.ts` | Page state (availability, progress) and the build-and-run pipeline used by both pages. |
-| `editor.ts` | CodeMirror 6 setup: Kotlin highlighting, diagnostics (squiggles, gutter, hover), Cmd/Ctrl+Enter. |
+| `editor.ts` | Shared CodeMirror setup: diagnostics, selections, search, keyboard bindings and Cmd/Ctrl+Enter. |
+| `kotlin-editing.ts` | Four-space indentation, Kotlin/document completions, snippets and space-inserting Tab. |
 | `Playground.vue`, `Notebook.vue`, `CodeCell.vue`, `RunOutput.vue`, `ToolchainStatus.vue` | UI. |
 | `notebook.ts` | Notebook model, `.minb` format, splitting cells and assembling the program for a cell. |
 | `share.ts` | Share links (compressed text in the URL hash). |
@@ -35,7 +36,7 @@ order for the sidebar and previous/next links. The free-form `/notebook` keeps i
 own text and structural editing controls.
 
 Run `npm run docs:build && npm run test:learn` to check editing, reset, navigation,
-mobile overflow and sidebar geometry across all documentation groups. This UI test
+mobile overflow and sidebar geometry across all documentation groups. The same browser checks also exercise real editor keystrokes in Learn, notebook and playground: indentation, matching brackets, completion/snippets, undo, comments and search. This UI test
 does not require the wasm toolchain. Existing sample extraction still checks every
 lesson's assembled program and documented output.
 

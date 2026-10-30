@@ -6,6 +6,7 @@ import { createReadStream, existsSync, statSync, mkdirSync } from 'node:fs'
 import { extname, resolve, sep } from 'node:path'
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
+import { checkEditor } from './check-editor.mjs'
 import { learnChapters } from '../.vitepress/theme/learn-course.ts'
 
 const dist = resolve(import.meta.dirname, '../.vitepress/dist')
@@ -77,6 +78,14 @@ try {
   await page.locator('.mc .cm-editor').first().waitFor()
   if (shots) await page.screenshot({ path: resolve(shots, 'learn-mobile-dark.png') })
   console.log('ok mobile: no overflow, chapter drawer, navigation and dark mode')
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  for (const route of ['learn/hello', 'notebook', 'playground']) {
+    await page.goto(base + route)
+    const editor = page.locator('.cm-content').first()
+    await editor.waitFor()
+    await checkEditor(page, editor)
+    console.log(`ok editor keyboard: ${route}`)
+  }
   assert.deepEqual(errors, [], 'no browser errors')
 } finally {
   await browser.close()
