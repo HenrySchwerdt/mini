@@ -13,10 +13,14 @@ import {
 } from './notebook.ts'
 import { hashFor, readHash } from './share.ts'
 import { starterNotebook } from './starter.ts'
+import { digitNotebook } from './digit-notebook.ts'
+import { datasetUrl, fetchDataset, datasetSource } from './datasets.ts'
 import { availability, buildAndRun, cancelToolchain, probe, setSiteBase } from './session.ts'
 import type { Diagnostic, RunResult } from './types.ts'
 
-const STORAGE_KEY = 'mini-notebook'
+const props = defineProps<{ example?: 'digits' }>()
+const STORAGE_KEY = props.example === 'digits' ? 'mini-notebook-digits' : 'mini-notebook'
+const initialNotebook = () => props.example === 'digits' ? digitNotebook() : starterNotebook()
 const { site } = useData()
 
 interface CellOutput {
@@ -149,7 +153,7 @@ async function share() {
 
 function resetToStarter() {
   if (!confirm('Replace this notebook with the starter notebook? Unsaved changes are lost.')) return
-  setNotebook(starterNotebook())
+  setNotebook(initialNotebook())
   try {
     history.replaceState(null, '', location.pathname)
   } catch {
@@ -229,14 +233,32 @@ async function runCell(i: number): Promise<boolean> {
     out.note = 'Empty cell.'
     return true
   }
-  abort = new AbortController()
-  const outcome = await buildAndRun([asm.file], {
-    timeoutMs: 15000,
-    signal: abort.signal,
+  const controller = new AbortController()
+  abort = controller
+  let datasetText: string | undefined
+  let dataset: string | null
+  try {
+    dataset = datasetUrl(cell.source)
+    if (dataset) {
+      out.note = 'Downloading dataset…'
+      datasetText = await fetchDataset(dataset, controller.signal)
+      out.note = ''
+    }
+    controller.signal.throwIfAborted()
+  } catch (e) {
+    out.status = 'error'
+    out.note = `Dataset input failed: ${(e as Error).message}`
+    if (abort === controller) abort = undefined
+    return false
+  }
+  const files = datasetText === undefined ? [asm.file] : [asm.file, datasetSource(datasetText)]
+  const outcome = await buildAndRun(files, {
+    timeoutMs: dataset ? 120000 : 15000,
+    signal: controller.signal,
     onStdout: (s) => ((out.status = 'running'), pushOut(out, 'out', s)),
     onStderr: (s) => ((out.status = 'running'), pushOut(out, 'err', s)),
   })
-  abort = undefined
+  if (abort === controller) abort = undefined
   sinks.get(out)?.end()
   const mapped = mapDiagnostics(outcome.diagnostics, asm, i)
   out.problems = mapped
@@ -318,7 +340,7 @@ onMounted(async () => {
   setSiteBase(site.value.base)
   renderMd = createMarkdownRenderer(withBase)
   const fromHash = await loadFromHash()
-  setNotebook(fromHash ?? loadStored() ?? starterNotebook())
+  setNotebook(fromHash ?? loadStored() ?? initialNotebook())
   window.addEventListener('hashchange', onHashChange)
   void probe()
 })

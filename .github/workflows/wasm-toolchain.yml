@@ -21,6 +21,7 @@ on:
       - 'scripts/wasm/**'
       - 'scripts/build-wasm-toolchain.sh'
       - 'runtime/**'
+      - 'libs/**'
       - '.github/workflows/wasm-toolchain.yml'
 
 permissions:
@@ -41,7 +42,7 @@ jobs:
           path: |
             build/wasm-toolchain.tar.gz
             build/wasm-toolchain-site.tar.gz
-          key: wasm-toolchain-${{ hashFiles('compiler/*/src/**', 'compiler/*/mini.toml', 'stdlib/**', 'runtime/**', 'compiler/testdata/**', 'scripts/wasm/**', 'scripts/build-wasm-toolchain.sh') }}
+          key: wasm-toolchain-${{ hashFiles('compiler/*/src/**', 'compiler/*/mini.toml', 'stdlib/**', 'runtime/**', 'libs/**', 'compiler/testdata/**', 'scripts/wasm/**', 'scripts/build-wasm-toolchain.sh') }}
 
       - uses: ./.github/actions/setup
         if: steps.cache.outputs.cache-hit != 'true'

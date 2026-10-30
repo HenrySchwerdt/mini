@@ -227,3 +227,20 @@ npm test            # node:test, no browser needed (WASI shim with wabt, noteboo
 npm run typecheck   # tsc over the .ts files
 npm run docs:dev
 ```
+
+### HTTP datasets and interactive model output
+
+A notebook code cell can declare `// %dataset https://example.org/data.csv` on its own line.
+On an explicit Run, the host downloads the UTF-8 text (CORS must allow it), decompresses `.gz` files,
+and compiles a generated source module exposing `mini.notebook.datasetText(): String` alongside the cell.
+The directive applies to that cell only. Downloads omit credentials, time out after 30 seconds, can be stopped,
+and are limited to 2 MiB after decompression. The dataset is fetched again on each run, not saved in `.minb`.
+Cells using datasets have a 120-second execution budget; other cells retain 15 seconds.
+This is a notebook host facility, not a general Mini HTTP client; it requires no new compiler intrinsic.
+
+`application/vnd.mini.digit-classifier+json` is a data-only rich output for a 64 → 10 affine softmax model:
+`{ "version": 1, "weights": [640 finite numbers with magnitude ≤ 1e6, output-major], "bias": [10 finite numbers with magnitude ≤ 1e6] }`.
+The host validates the payload and renders a mouse/touch drawing pad, reduces its alpha channel to 8×8 values in [0,1],
+and evaluates `softmax(x @ weight.T + bias)` locally. No scripts from output are executed. This fast inference path
+uses the emitted Mini-trained parameters in JavaScript; training, evaluation and plotting run in Mini.
+The widget is a snapshot of one run, not a persistent Mini process. See `/libraries/digits` for the editable experiment.

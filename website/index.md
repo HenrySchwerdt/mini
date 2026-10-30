@@ -51,6 +51,12 @@ features:
 
 <div class="home-body">
 
+## Train it. Draw it. Try it.
+
+Teach a model to recognize handwritten digits, then test it with your own mouse or touch input. The [**digit lab**](/libraries/digits) downloads real data over HTTPS, trains with **mini.tensor**, and charts the learning curve with **mini.plot** — all in an editable Mini notebook in your browser.
+
+[Open the digit lab →](/libraries/digits) · [Explore the libraries](/libraries/)
+
 ## Leaks are compile errors
 
 Switch a file to Strict mode and the compiler tracks every allocation. This program forgets to release `buf` on the early-return path. Press **Check**: the checker runs in your browser.

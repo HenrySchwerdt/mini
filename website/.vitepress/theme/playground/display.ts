@@ -16,7 +16,7 @@ const ST = '\u001b\\'
 export const MAX_BUNDLE = 8 * 1024 * 1024
 
 /** What the host can render; everything else is shown as a note. */
-export const DISPLAY_MIMES = ['image/svg+xml', 'text/html', 'text/markdown', 'application/vnd.mini.table+json', 'text/plain'] as const
+export const DISPLAY_MIMES = ['image/svg+xml', 'text/html', 'text/markdown', 'application/vnd.mini.table+json', 'text/plain', 'application/vnd.mini.digit-classifier+json'] as const
 
 export interface DisplayBundle {
   mime: string

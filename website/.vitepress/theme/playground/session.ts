@@ -109,18 +109,24 @@ const hasErrors = (d: Diagnostic[]) => d.some((x) => x.severity === 'error')
 
 /** Compile, then run. The toolchain is loaded on demand. */
 export async function buildAndRun(files: SourceFile[], h: RunHandlers): Promise<BuildOutcome> {
+  const cancelled = (): BuildOutcome => ({ stage: 'done', diagnostics: [], timings: {}, run: { exitCode: 130, durationMs: 0 } })
+  if (h.signal?.aborted) return cancelled()
   let tc: WorkerToolchain
   try {
     tc = await ensureToolchain('full')
   } catch (e) {
     return { stage: 'load', diagnostics: [], timings: {}, failure: (e as Error).message }
   }
+  if (h.signal?.aborted) return cancelled()
   let res
   try {
-    res = await exclusive(() => tc.compile(files, h.compile))
+    res = await exclusive(() => h.signal?.aborted
+      ? Promise.resolve({ diagnostics: [], timings: {} })
+      : tc.compile(files, h.compile))
   } catch (e) {
     return { stage: 'compile', diagnostics: [], timings: {}, failure: `The compiler failed: ${(e as Error).message}` }
   }
+  if (h.signal?.aborted) return cancelled()
   const base = { diagnostics: res.diagnostics, mir: res.mir, llvmIr: res.llvmIr, timings: res.timings }
   if (!res.wasm || hasErrors(res.diagnostics)) return { stage: 'compile', ...base }
   const run = await tc.run(res.wasm, { stdin: h.stdin, onStdout: h.onStdout, onStderr: h.onStderr, timeoutMs: h.timeoutMs, signal: h.signal })
