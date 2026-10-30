@@ -22,3 +22,11 @@ public external fun fileKind(path: String): Int
 /** The sorted entry names of a directory joined with `\n` (empty string for an empty directory), or null when it is not a directory. */
 @CSymbol("mk_b1_list_dir")
 public external fun fileListDir(path: String): String?
+
+/** Creates the directory [path] and its missing parents; true when it exists afterwards. */
+@CSymbol("mk_b1_mkdirs")
+public external fun fileMkdirs(path: String): Boolean
+
+/** Removes a file or an empty directory; false when that fails. */
+@CSymbol("mk_b1_delete")
+public external fun fileDelete(path: String): Boolean

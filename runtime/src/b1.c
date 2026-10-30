@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 /* The path as a NUL-terminated UTF-8 buffer (malloc'ed). */
@@ -112,6 +113,29 @@ MkString *mk_b1_list_dir(const MkString *path) {
     MkString *s = mk_string_from_utf8(buf, len);
     free(buf);
     return s;
+}
+
+MkBoolean mk_b1_mkdirs(const MkString *path) {
+    char *p = path_to_c(path);
+    size_t n = strlen(p);
+    for (size_t i = 1; i <= n; i++) {
+        if (p[i] != '/' && p[i] != '\0') continue;
+        char saved = p[i];
+        p[i] = '\0';
+        if (mkdir(p, 0777) != 0 && errno != EEXIST) { free(p); return 0; }
+        p[i] = saved;
+    }
+    struct stat st;
+    int ok = stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+    free(p);
+    return ok ? 1 : 0;
+}
+
+MkBoolean mk_b1_delete(const MkString *path) {
+    char *p = path_to_c(path);
+    int rc = remove(p);
+    free(p);
+    return rc == 0 ? 1 : 0;
 }
 
 static int b1_argc = 0;

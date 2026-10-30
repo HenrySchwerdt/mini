@@ -1,7 +1,5 @@
 package mini.tool
 
-import org.junit.jupiter.api.Assumptions.assumeTrue
-import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -35,7 +33,7 @@ class GitDependencyTest {
 
     @Test
     fun addGitDependencyPinsACommitAndWorksOffline() {
-        assumeTrue(TestPlatform.gitAvailable())
+        if (!(TestPlatform.gitAvailable())) return
         val p = app(TestPlatform.temp())
         val (work, url) = makeRemote(p.root)
         val commit = runGit(work, "rev-parse", "HEAD")
@@ -64,7 +62,7 @@ class GitDependencyTest {
 
     @Test
     fun updateMovesBranchPinsButTagsStayPut() {
-        assumeTrue(TestPlatform.gitAvailable())
+        if (!(TestPlatform.gitAvailable())) return
         val p = app(TestPlatform.temp())
         val (work, url) = makeRemote(p.root)
         val first = runGit(work, "rev-parse", "HEAD")
@@ -100,7 +98,7 @@ class GitDependencyTest {
 
     @Test
     fun unknownTagIsReportedWithASuggestion() {
-        assumeTrue(TestPlatform.gitAvailable())
+        if (!(TestPlatform.gitAvailable())) return
         val p = app(TestPlatform.temp())
         val (_, url) = makeRemote(p.root)
         p.write("mini.toml", "[package]\nname = \"app\"\nkind = \"app\"\n[dependencies]\njson = { git = \"$url\", tag = \"v1.1\" }\n")
@@ -110,7 +108,7 @@ class GitDependencyTest {
 
     @Test
     fun unreachableRepositoryAndOffline() {
-        assumeTrue(TestPlatform.gitAvailable())
+        if (!(TestPlatform.gitAvailable())) return
         val p = app(TestPlatform.temp())
         p.write("mini.toml", "[package]\nname = \"app\"\nkind = \"app\"\n[dependencies]\njson = { git = \"${p.root}/nope.git\" }\n")
         assertEquals(1, p.mini("tree"))

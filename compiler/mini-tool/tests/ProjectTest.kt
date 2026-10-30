@@ -1,6 +1,5 @@
 package mini.tool
 
-import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -201,7 +200,7 @@ class ProjectTest {
     }
 
     @Test
-    fun testListFindsTestFunctionsWithoutBuilding() {
+    fun testListFindsTestFunctionsAndClassMethodsWithoutBuilding() {
         val p = TestPlatform.temp()
         p.write("mini.toml", "[package]\nname = \"t\"\n")
         p.write("src/main.kt", "fun main() {}\n")
@@ -209,7 +208,7 @@ class ProjectTest {
         p.write("tests/a_test.kt", "import kotlin.test.*\n\n@Test\nfun first() {}\n\n@Test @Ignore\nfun second() {}\n\nfun helper() {}\n")
         p.write("tests/b_test.kt", "package suite\n\nimport kotlin.test.Test\n\nclass K { @Test fun inClass() {} }\n\n@Test fun third() {}\n")
         assertEquals(0, p.mini("test", "--list"))
-        assertEquals(listOf("tests/a_test.kt::first", "tests/a_test.kt::second (ignored)", "tests/b_test.kt::third"), p.out.toString().trim().lines())
+        assertEquals(listOf("tests/a_test.kt::first", "tests/a_test.kt::second (ignored)", "tests/b_test.kt::K.inClass", "tests/b_test.kt::third"), p.out.toString().trim().lines())
         p.reset()
         assertEquals(0, p.mini("test", "--list", "thi"))
         assertEquals("tests/b_test.kt::third", p.out.toString().trim())

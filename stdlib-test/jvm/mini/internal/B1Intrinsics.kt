@@ -28,3 +28,7 @@ fun fileListDir(path: String): String? {
     val names = java.io.File(path).list() ?: return null
     return names.sorted().joinToString("\n")
 }
+
+fun fileMkdirs(path: String): Boolean = java.io.File(path).let { it.mkdirs() || it.isDirectory }
+
+fun fileDelete(path: String): Boolean = java.io.File(path).delete()

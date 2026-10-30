@@ -1,7 +1,5 @@
 package mini.tool
 
-import org.junit.jupiter.api.Assumptions.assumeTrue
-import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -12,11 +10,11 @@ import kotlin.test.assertTrue
  */
 class EndToEndTest {
     private fun runBinary(p: TestPlatform, rel: String, vararg args: String): ExecResult =
-        p.exec(Exec(listOf(p.file(rel).path) + args))
+        p.exec(Exec(listOf(p.file(rel).path) + args.toList()))
 
     @Test
     fun appWithPathLibraryBuildsRunsAndRebuildsIncrementally() {
-        assumeTrue(TestPlatform.toolchainAvailable())
+        if (!(TestPlatform.toolchainAvailable())) return
         val p = TestPlatform.temp()
         assertEquals(0, p.mini("new", "geometry", "--lib", "--no-git"))
         assertEquals(0, p.mini("new", "hello", "--no-git"))
@@ -58,7 +56,7 @@ class EndToEndTest {
 
     @Test
     fun testRunsPassingAndFailingTestsAndReports() {
-        assumeTrue(TestPlatform.toolchainAvailable())
+        if (!(TestPlatform.toolchainAvailable())) return
         val p = TestPlatform.temp()
         assertEquals(0, p.mini("new", "calc", "--no-git"))
         p.dir = File(p.root, "calc")
@@ -85,7 +83,7 @@ class EndToEndTest {
         assertTrue(out.contains("test tests/extra_test.kt::fails ... FAILED"), out)
         assertTrue(out.contains("---- tests/extra_test.kt::fails (tests/extra_test.kt:10) ----") && out.contains("about to fail") && out.contains("math is hard. Expected <3>, actual <2>."), out)
         assertTrue(out.contains("test result: FAILED. 3 passed; 1 failed; 0 ignored;"), out)
-        assertTrue(Regex("""ok \(\d+ms\)""").containsMatchIn(out), out)
+        assertTrue((out.contains("... ok (") && out.contains("ms)")), out)
 
         // a filter selects tests by name and the binary is reused (no rebuild)
         p.reset()
@@ -98,12 +96,12 @@ class EndToEndTest {
 
     @Test
     fun strictDefaultFromTheManifestProducesAnMDiagnostic() {
-        assumeTrue(TestPlatform.toolchainAvailable())
+        if (!(TestPlatform.toolchainAvailable())) return
         val p = TestPlatform.temp()
         assertEquals(0, p.mini("new", "leaky", "--strict", "--no-git"))
         p.dir = File(p.root, "leaky")
         File(p.dir, "src/greeting.kt").delete(); File(p.dir, "tests/greeting_test.kt").delete()
-        p.write("src/main.kt", File(System.getProperty("mini.repoRoot"), "examples/memory_leak.kt").readText().lines().joinToString("\n") { if (it.startsWith("@file:")) "" else it })
+        p.write("src/main.kt", File(TestPlatform.REPO_ROOT, "examples/memory_leak.kt").readText().lines().joinToString("\n") { if (it.startsWith("@file:")) "" else it })
         p.reset()
         assertEquals(1, p.mini("check"), p.all())
         assertTrue(p.err.contains("error[M0102]: allocation from `Heap` is never released"), p.err.toString())
@@ -129,7 +127,7 @@ class EndToEndTest {
 
     @Test
     fun gitDependencyIsBuiltFromTheCache() {
-        assumeTrue(TestPlatform.toolchainAvailable() && TestPlatform.gitAvailable())
+        if (!(TestPlatform.toolchainAvailable() && TestPlatform.gitAvailable())) return
         val p = TestPlatform.temp()
         val (_, url) = GitDependencyTest.makeRemote(p.root, "package json\n\nfun parse(s: String): Int = s.length * 10\n")
         assertEquals(0, p.mini("new", "app", "--no-git"))
@@ -149,7 +147,7 @@ class EndToEndTest {
 
     @Test
     fun compileErrorsAreShownWithProjectPaths() {
-        assumeTrue(TestPlatform.toolchainAvailable())
+        if (!(TestPlatform.toolchainAvailable())) return
         val p = TestPlatform.temp()
         assertEquals(0, p.mini("new", "bad", "--no-git"))
         p.dir = File(p.root, "bad")

@@ -597,6 +597,10 @@ MkBoolean mk_b1_write_file(const MkString *path, const MkString *text);
 MkInt mk_b1_file_kind(const MkString *path);
 /* The entries of a directory (without "." and ".."), sorted, joined with '\n'; NULL when it is not a readable directory. */
 MkString *mk_b1_list_dir(const MkString *path);
+/* Creates the directory and its missing parents (mode 0777 & umask); true when it exists afterwards. */
+MkBoolean mk_b1_mkdirs(const MkString *path);
+/* Removes a file or an empty directory; false when that fails. */
+MkBoolean mk_b1_delete(const MkString *path);
 /* Stores the process arguments (called by the runtime entry point before mk_main). */
 void mk_b1_set_args(int argc, char **argv);
 /* `Array<String>` of the command line arguments without the program name (for `fun main(args)`). */

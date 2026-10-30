@@ -1,7 +1,9 @@
 package mini.io
 
+import mini.internal.fileDelete
 import mini.internal.fileKind
 import mini.internal.fileListDir
+import mini.internal.fileMkdirs
 import mini.internal.fileReadText
 import mini.internal.fileWriteText
 
@@ -53,4 +55,20 @@ private fun walkInto(dir: String, suffix: String, out: ArrayList<String>) {
             1 -> if (name.endsWith(suffix)) out.add(path)
         }
     }
+}
+
+/** Creates the directory [path] with its missing parents; throws [IllegalStateException] when that fails. */
+public fun createDirectories(path: String) {
+    if (!fileMkdirs(path)) throw IllegalStateException("cannot create directory: " + path)
+}
+
+/** Deletes the file or empty directory [path]; false when it did not exist or could not be removed. */
+public fun deletePath(path: String): Boolean = fileDelete(path)
+
+/** Deletes [path] and everything below it (a missing path is fine). */
+public fun deleteRecursively(path: String) {
+    if (isDirectory(path)) {
+        for (name in listDirectory(path)) deleteRecursively(if (path.endsWith("/")) path + name else path + "/" + name)
+    }
+    fileDelete(path)
 }

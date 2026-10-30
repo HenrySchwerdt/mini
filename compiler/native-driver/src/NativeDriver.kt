@@ -13,9 +13,8 @@ import mini.io.writeTextFile
  *
  *   native-driver <in.mir> -o <out.c>
  *
- * Pure Kotlin on top of the backend and mini.io; the same source runs on the JVM (Gradle `run`) and,
- * compiled by minic, as a native binary. Errors are reported by throwing (an uncaught exception ends the
- * program with status 1 in both worlds).
+ * Pure Kotlin on top of the backend and mini.io. Errors are reported by throwing (an uncaught exception ends the
+ * program with status 1).
  */
 
 const val USAGE = "usage: native-driver <in.mir> -o <out.c|out.ll> [--no-rc-opt] [--no-strict] [--no-conv] [--backend=c|llvm] [--stats] [--target=wasm32]"
@@ -28,7 +27,8 @@ fun mirToC(mirText: String, rcOpt: Boolean = true, strict: Boolean = true, conve
 fun mirToLl(mirText: String, rcOpt: Boolean = true, strict: Boolean = true, conventions: Boolean = true, stats: Boolean = false, wasm32: Boolean = false): String =
     LlvmEmitter.emit(MirReader.read(mirText), rcOpt, strict, conventions, stats, if (wasm32) LlvmTarget.WASM32 else LlvmTarget.HOST)
 
-fun main(args: Array<String>) {
+/** The driver proper (the entry point is `main` in Main.kt, so tests can call it). */
+fun run(args: Array<String>) {
     var input: String? = null
     var output: String? = null
     var rcOpt = true
