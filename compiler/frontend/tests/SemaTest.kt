@@ -2,18 +2,20 @@ import mini.frontend.sema.Sema
 import mini.frontend.sema.SourceInput
 import mini.frontend.sema.analyzeSources
 import mini.frontend.sema.dumpText
-import org.junit.jupiter.api.Test
-import java.io.File
+import mini.io.readTextFile
+import mini.io.walkFiles
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+// `mini test` runs a test in the package directory (compiler/frontend)
+private const val repoRoot = "../.."
+
 /** Unit tests of the semantic analysis (the agreement with K2 is tested by `SemaOracleTest` in frontend-oracle). */
 class SemaTest {
-    private val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
 
     private val stdlib: List<SourceInput> by lazy {
-        File(repoRoot, "stdlib").walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
-            .map { SourceInput(it.path, it.readText()) }.toList()
+        walkFiles("$repoRoot/stdlib", ".kt").map { SourceInput(it, readTextFile(it)) }
     }
 
     private class Run(val sema: Sema, val dump: String, val diags: List<String>)
@@ -128,9 +130,8 @@ class SemaTest {
     /** a file's result may not depend on which unrelated files are analysed with it */
     @Test
     fun resultsDoNotDependOnUnrelatedFiles() {
-        val files = listOf("compiler/backend/src/main", "compiler/frontend/src/main/kotlin").flatMap { d ->
-            File(repoRoot, d).walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
-                .map { SourceInput(it.path, it.readText()) }.toList()
+        val files = listOf("compiler/backend/src", "compiler/frontend/src").flatMap { d ->
+            walkFiles("$repoRoot/$d", ".kt").map { SourceInput(it, readTextFile(it)) }
         }
         val base = stdlib + files
         val extra = SourceInput("extra/Unrelated.kt", "package extra\nclass Zed<T>(val v: T) { fun f() = listOf(v).map { it.hashCode() } }\nfun <T> id(x: T): T = x\n")

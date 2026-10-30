@@ -18,3 +18,13 @@ fun fileWriteText(path: String, text: String): Boolean = try {
 } catch (e: java.io.IOException) {
     false
 }
+
+fun fileKind(path: String): Int {
+    val f = java.io.File(path)
+    return if (f.isDirectory) 2 else if (f.isFile) 1 else 0
+}
+
+fun fileListDir(path: String): String? {
+    val names = java.io.File(path).list() ?: return null
+    return names.sorted().joinToString("\n")
+}

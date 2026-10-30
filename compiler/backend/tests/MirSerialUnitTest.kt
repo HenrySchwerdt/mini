@@ -43,7 +43,7 @@ class MirSerialUnitTest {
         val back = roundTripConstants(samples.map { MirExpr.DoubleConst(it) })
         for ((a, b) in samples.zip(back)) {
             val d = (b as MirExpr.DoubleConst).value
-            if (a.isNaN()) assertTrue(d.isNaN()) else assertEquals(a.toRawBits(), d.toRawBits(), "double $a")
+            if (a.isNaN()) assertTrue(d.isNaN()) else assertEquals(a.toString(), d.toString(), "double $a")
         }
     }
 

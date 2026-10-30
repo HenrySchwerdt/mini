@@ -1,11 +1,14 @@
 /* B1: file access and program arguments for the self-hosted backend driver
  * (stdlib/mini/internal/B1Intrinsics.kt). Convention: arguments are borrowed,
  * reference results are owned (+1). */
+#define _POSIX_C_SOURCE 200809L
 #include "internal.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* The path as a NUL-terminated UTF-8 buffer (malloc'ed). */
 static char *path_to_c(const MkString *path) {
@@ -56,6 +59,59 @@ MkBoolean mk_b1_write_file(const MkString *path, const MkString *text) {
     int ok = written == len;
     if (fclose(f) != 0) ok = 0;
     return ok ? 1 : 0;
+}
+
+MkInt mk_b1_file_kind(const MkString *path) {
+    char *p = path_to_c(path);
+    struct stat st;
+    int rc = stat(p, &st);
+    free(p);
+    if (rc != 0) return 0;
+    return S_ISDIR(st.st_mode) ? 2 : 1;
+}
+
+static int b1_cmp_names(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+MkString *mk_b1_list_dir(const MkString *path) {
+    char *p = path_to_c(path);
+    DIR *d = opendir(p);
+    free(p);
+    if (d == NULL) return NULL;
+    size_t cap = 64, n = 0, total = 0;
+    char **names = malloc(cap * sizeof(char *));
+    if (names == NULL) mk_panic("OutOfMemoryError");
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        if (n == cap) {
+            cap *= 2;
+            char **nn = realloc(names, cap * sizeof(char *));
+            if (nn == NULL) mk_panic("OutOfMemoryError");
+            names = nn;
+        }
+        size_t l = strlen(e->d_name);
+        names[n] = malloc(l + 1);
+        if (names[n] == NULL) mk_panic("OutOfMemoryError");
+        memcpy(names[n], e->d_name, l + 1);
+        total += l + 1;
+        n++;
+    }
+    closedir(d);
+    qsort(names, n, sizeof(char *), b1_cmp_names);
+    char *buf = malloc(total + 1);
+    if (buf == NULL) mk_panic("OutOfMemoryError");
+    size_t len = 0;
+    for (size_t i = 0; i < n; i++) {
+        size_t l = strlen(names[i]);
+        memcpy(buf + len, names[i], l);
+        len += l;
+        if (i + 1 < n) buf[len++] = '\n';
+        free(names[i]);
+    }
+    free(names);
+    MkString *s = mk_string_from_utf8(buf, len);
+    free(buf);
+    return s;
 }
 
 static int b1_argc = 0;

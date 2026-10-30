@@ -1,22 +1,24 @@
-import java.io.File
+import mini.io.isDirectory
+import mini.io.walkFiles
 
-/** All Kotlin sources of the repository: compiler modules, testdata, stdlib, stdlib-test, examples, selfhost. */
+/**
+ * All Kotlin sources of the repository: compiler modules, testdata, stdlib, stdlib-test, examples, selfhost.
+ * `mini test` runs a test in the directory of its package (compiler/frontend), so the repository root is `../..`.
+ */
 object Corpus {
-    val repoRoot = File(System.getProperty("mini.repoRoot") ?: error("mini.repoRoot not set"))
+    const val repoRoot = "../.."
 
-    val files: List<File> by lazy {
-        val roots = listOf("compiler", "stdlib", "stdlib-test", "examples", "runtime", "docs")
-        val out = ArrayList<File>()
+    /** Paths (starting with [repoRoot]) of all `.kt` files, sorted. */
+    val files: List<String> by lazy {
+        val roots = listOf("compiler", "stdlib", "stdlib-test", "examples", "runtime", "docs", "tools")
+        val out = ArrayList<String>()
         for (r in roots) {
-            val dir = File(repoRoot, r)
-            if (!dir.isDirectory) continue
-            dir.walkTopDown()
-                .onEnter { it.name != "build" && it.name != ".gradle" && it.name != ".git" }
-                .filter { it.isFile && it.extension == "kt" }
-                .forEach { out.add(it) }
+            val dir = "$repoRoot/$r"
+            if (!isDirectory(dir)) continue
+            out.addAll(walkFiles(dir, ".kt"))
         }
-        out.sortedBy { it.path }
+        out.sorted()
     }
 
-    fun rel(f: File): String = f.relativeTo(repoRoot).path
+    fun rel(f: String): String = f.removePrefix("$repoRoot/")
 }

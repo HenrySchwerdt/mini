@@ -48,8 +48,8 @@ class ConventionsTest {
         return c.substring(start, end + 3)
     }
 
-    private fun retains(c: String) = Regex("mk_retain\\(|MKH_RETAIN\\(").findAll(c).count()
-    private fun releases(c: String) = Regex("mk_release\\(|MKH_REL\\(").findAll(c).count()
+    private fun retains(c: String) = occurrences(c, "mk_retain(", "MKH_RETAIN(")
+    private fun releases(c: String) = occurrences(c, "mk_release(", "MKH_REL(")
 
     private fun p(id: Int, name: String, t: MirType = a) = MirLocal(id, name, t)
 
@@ -76,7 +76,7 @@ class ConventionsTest {
         val ctor = MirFunction("kc_A_C", "kc_A_C", listOf(p(0, "this")), TUnit, emptyList(), "kc_A")
         val on = cOf(CEmitter.emit(module(ctor, sink, f)), "f")
         assertEquals(0, retains(on), on) // moved into the callee
-        assertFalse(Regex("(MKH_REL|mk_release)\\(\\(?(\\(MkObject \\*\\))?v_t_1\\)?\\)").containsMatchIn(on), on)
+        assertFalse(releasesLocal(on, "v_t_1"), on)
         val sinkC = cOf(CEmitter.emit(module(ctor, sink, f)), "sink")
         assertEquals(0, retains(sinkC), sinkC) // and moved on into the field
         // without conventions: the callee borrows, the caller keeps its reference and the field store retains

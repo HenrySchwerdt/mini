@@ -29,6 +29,9 @@ class RcOptTest {
     private fun fn(name: String, params: List<MirLocal>, ret: MirType, vararg body: MirStmt, ctorOf: String? = null) =
         MirFunction(name, name, params, ret, body.toList(), ctorOf)
 
+    private fun fnOf(name: String, params: List<MirLocal>, ret: MirType, body: List<MirStmt>) =
+        MirFunction(name, name, params, ret, body, null)
+
     private fun module(vararg f: MirFunction) = MirModule("rcopt.kt", f.toList())
 
     /** The C text of function [name]. */
@@ -40,10 +43,10 @@ class RcOptTest {
     }
 
     /** True when [c] clears local [name] with a statement of its own (not the NULL initialisation of its declaration). */
-    private fun clears(c: String, name: String) = Regex("(?m)^\\s+$name = NULL;").containsMatchIn(c)
+    private fun clears(c: String, name: String) = clearsLocal(c, name)
 
-    private fun retains(c: String) = Regex("mk_retain\\(|MKH_RETAIN\\(").findAll(c).count()
-    private fun releases(c: String) = Regex("mk_release\\(|MKH_REL\\(").findAll(c).count()
+    private fun retains(c: String) = occurrences(c, "mk_retain(", "MKH_RETAIN(")
+    private fun releases(c: String) = occurrences(c, "mk_release(", "MKH_REL(")
 
     private fun releasesOf(c: String, v: String) = "mk_release((MkObject *)$v)" in c || "MKH_REL($v)" in c
 
@@ -218,7 +221,7 @@ class RcOptTest {
                 listOf(callRead(q), MirStmt.Assign(q, fieldNext(q))),
             ),
         )
-        val f = fn("f", listOf(p), TUnit, *body.toTypedArray())
+        val f = fnOf("f", listOf(p), TUnit, body)
         val on = cOf(CEmitter.emit(module(read, f), rcOpt = true), "f")
         assertEquals(0, retains(on) + releases(on), on)
     }

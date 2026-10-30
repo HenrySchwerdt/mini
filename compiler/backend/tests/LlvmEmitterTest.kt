@@ -82,7 +82,7 @@ class LlvmEmitterTest {
         val l = MirLabel(7)
         val f = MirFunction("f", "kt_f", emptyList(), TUnit, listOf(MirStmt.Loop(l, listOf(MirStmt.Break(l)))))
         val ll = LlvmEmitter.emit(module(f))
-        assertEquals(1, Regex("\nbrk_7:").findAll(ll).count(), ll)
+        assertEquals(1, occurrences(ll, "\nbrk_7:"), ll)
         assertTrue("br label %brk_7" in ll)
     }
 

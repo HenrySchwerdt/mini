@@ -1,16 +1,15 @@
 import mini.frontend.*
-import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
-import org.junit.jupiter.api.function.ThrowingSupplier
-import java.io.File
-import java.time.Duration
-import java.util.Random
+import mini.io.readTextFile
+import mini.io.walkFiles
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** Malformed inputs: errors at the right positions, no hangs, no crashes, and the CST stays lossless. */
 class NegativeTest {
-    private fun <T> timed(msg: String, f: () -> T): T = assertTimeoutPreemptively(Duration.ofSeconds(20), ThrowingSupplier { f() }, msg)
+    /** (the JUnit version enforced a 20 s limit per parse; a hang here is caught by the CI job timeout) */
+    @Suppress("UNUSED_PARAMETER")
+    private fun <T> timed(msg: String, f: () -> T): T = f()
 
     private fun firstError(src: String): String {
         val r = parseKotlin(src)
@@ -79,7 +78,7 @@ class NegativeTest {
 
     private val junk = listOf("{", "}", "(", ")", "[", "]", "<", ">", ",", ".", "?", "!", "=", "->", "::", "@", "\"", "'", "`", "\${", "fun", "class", "val", "if", "else", "when", "in", "is", "as", ";", ":", "\n")
 
-    private fun mutate(src: String, r: Random): String {
+    private fun mutate(src: String, r: JavaRandom): String {
         val lex = lexKotlin(src)
         val toks = significant(lex)
         if (toks.isEmpty()) return src
@@ -101,26 +100,25 @@ class NegativeTest {
         return s
     }
 
-    private fun files(): List<File> {
-        val dir = File(System.getProperty("mini.testdata") ?: error("mini.testdata not set"))
-        return dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.toList()
-    }
+    private fun files(): List<String> = walkFiles("../testdata", ".kt")
+
+    private fun nameOf(path: String): String = path.substringAfterLast("/")
 
     @Test
     fun randomTokenDeletionsAndInsertionsTerminate() {
-        val r = Random(42)
+        val r = JavaRandom(42)
         val all = files()
         assertTrue(all.size > 50)
         var runs = 0
         var withErrors = 0
         for (round in 0 until 6) {
             for (f in all) {
-                val text = f.readText()
+                val text = readTextFile(f)
                 val m = mutate(text, r)
-                val res = timed("parser did not terminate on a mutation of ${f.name}") {
+                val res = timed("parser did not terminate on a mutation of ${nameOf(f)}") {
                     parseKotlin(m)
                 }
-                assertEquals(m, printCst(res.root, res.tokens, m), "lossless after mutation of ${f.name}")
+                assertEquals(m, printCst(res.root, res.tokens, m), "lossless after mutation of ${nameOf(f)}")
                 runs++
                 if (res.errors.isNotEmpty()) withErrors++
             }
@@ -131,13 +129,13 @@ class NegativeTest {
 
     @Test
     fun truncatedFilesTerminate() {
-        val r = Random(7)
+        val r = JavaRandom(7)
         var runs = 0
         for (f in files()) {
-            val text = f.readText()
+            val text = readTextFile(f)
             for (k in 0 until 4) {
                 val cut = text.substring(0, r.nextInt(text.length + 1))
-                val res = timed("truncation of ${f.name}") { parseKotlin(cut) }
+                val res = timed("truncation of ${nameOf(f)}") { parseKotlin(cut) }
                 assertEquals(cut, printCst(res.root, res.tokens, cut))
                 runs++
             }

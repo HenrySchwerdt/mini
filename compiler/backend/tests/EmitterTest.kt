@@ -83,7 +83,7 @@ class EmitterTest {
             ),
         )
         val c = CEmitter.emit(module(main))
-        assertEquals(1, Regex("MK_STRING_LITERAL\\(").findAll(c).count())
+        assertEquals(1, occurrences(c, "MK_STRING_LITERAL("))
         assertTrue("u\"a\\\"b\\\\\\x00E9\" u\"" in c, c)
         assertTrue("\\x000A" in c)
     }

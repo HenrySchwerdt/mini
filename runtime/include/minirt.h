@@ -593,6 +593,10 @@ const MkString *mk_array_content_to_string(const MkObject *array);
 MkString *mk_b1_read_file(const MkString *path);
 /* Writes `text` as UTF-8 (create/truncate); false when it cannot be written. */
 MkBoolean mk_b1_write_file(const MkString *path, const MkString *text);
+/* 0 = does not exist, 1 = regular file, 2 = directory (stat, symbolic links followed). */
+MkInt mk_b1_file_kind(const MkString *path);
+/* The entries of a directory (without "." and ".."), sorted, joined with '\n'; NULL when it is not a readable directory. */
+MkString *mk_b1_list_dir(const MkString *path);
 /* Stores the process arguments (called by the runtime entry point before mk_main). */
 void mk_b1_set_args(int argc, char **argv);
 /* `Array<String>` of the command line arguments without the program name (for `fun main(args)`). */

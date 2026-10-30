@@ -65,7 +65,7 @@ class StrictEmitTest {
         return c.substring(start, end + 3)
     }
 
-    private fun counts(c: String) = Regex("mk_retain\\(|MKH_RETAIN\\(").findAll(c).count() to Regex("mk_release\\(|MKH_REL\\(").findAll(c).count()
+    private fun counts(c: String) = occurrences(c, "mk_retain(", "MKH_RETAIN(") to occurrences(c, "mk_release(", "MKH_REL(")
 
     private val p = MirLocal(0, "p", node)
     private val ar = MirLocal(1, "a", arena)
@@ -126,8 +126,8 @@ class StrictEmitTest {
         val k = cOf(c, "kc_Node_C")
         assertTrue("f_label" in k, k)
         // `name` is stored with a count (moved into the field by RcOpt or retained), `label` and the tracked `next` are plain stores
-        assertFalse(Regex("MKH_RETAIN\\(.*label").containsMatchIn(k), k)
-        assertEquals(0, Regex("mk_retain|MKH_RETAIN").findAll(k.substringAfter("f_name")).count(), k)
+        assertFalse(lineHasInOrder(k, "MKH_RETAIN(", "label"), k)
+        assertEquals(0, occurrences(k.substringAfter("f_name"), "mk_retain", "MKH_RETAIN"), k)
     }
 
     @Test
@@ -147,8 +147,8 @@ class StrictEmitTest {
         val g = cOf(c, "g")
         assertTrue("mk_free_dealloc(v_y_1)" in g, g)
         // the auto local x keeps a count that is released at the end of the scope, the alias y has none
-        assertTrue(Regex("(MKH_REL|mk_release)\\(\\(?v_x_0\\)?\\)|mk_release\\(\\(MkObject \\*\\)v_x_0\\)").containsMatchIn(g), g)
-        assertFalse(g.contains("(v_y_1)") && Regex("(MKH_REL|mk_release).*v_y_1").containsMatchIn(g), g)
+        assertTrue(releasesLocal(g, "v_x_0"), g)
+        assertFalse(g.contains("(v_y_1)") && (lineHasInOrder(g, "MKH_REL", "v_y_1") || lineHasInOrder(g, "mk_release", "v_y_1")), g)
         val off = cOf(CEmitter.emit(module(f), strict = false), "g")
         assertFalse("mk_free_dealloc" in off, off)
     }

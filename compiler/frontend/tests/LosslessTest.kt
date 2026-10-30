@@ -1,4 +1,5 @@
 import mini.frontend.*
+import mini.io.readTextFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -8,13 +9,13 @@ class LosslessTest {
     fun lexerIsLosslessOnAllRepoSources() {
         var n = 0
         for (f in Corpus.files) {
-            val text = f.readText()
+            val text = readTextFile(f)
             val r = lexKotlin(text)
             val sb = StringBuilder()
             var pos = 0
             for (t in r.tokens) {
                 assertEquals(pos, t.start, "gap before token $t in ${Corpus.rel(f)}")
-                sb.append(text, t.start, t.end)
+                sb.append(text.substring(t.start, t.end))
                 pos = t.end
             }
             assertEquals(text.length, pos)
@@ -31,7 +32,7 @@ class LosslessTest {
         var n = 0
         val failures = ArrayList<String>()
         for (f in Corpus.files) {
-            val text = f.readText()
+            val text = readTextFile(f)
             val r = parseKotlin(text)
             val printed = printCst(r.root, r.tokens, text)
             if (printed != text) failures.add("${Corpus.rel(f)}: CST print differs from the source")

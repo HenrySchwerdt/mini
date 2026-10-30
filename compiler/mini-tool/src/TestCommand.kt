@@ -1,5 +1,7 @@
 package mini.tool
 
+import mini.frontend.ClassDecl
+import mini.frontend.ClassKind
 import mini.frontend.FunDecl
 import mini.frontend.UserType
 import mini.frontend.parseKotlin
@@ -100,10 +102,13 @@ object TestDiscovery {
             if (!f.text.contains("Test")) continue
             val r = parseKotlin(f.text)
             val needsImport = ArrayList<Pair<String, Int>>()
-            for (d in r.file.declarations) {
-                if (d !is FunDecl || d.name == null) continue
+            val pkgParts = (r.file.packageName?.split('.')?.map { "`$it`" } ?: emptyList())
+            val rel = Paths.relativize(pkg.dir, f.real)
+            val hasImport = r.file.imports.any { it.path.startsWith("kotlin.test") } || r.file.packageName == "kotlin.test"
+            // [owner] is the class (or object) a method belongs to; its instance is created per test (like JUnit/kotlin.test)
+            fun add(d: FunDecl, owner: ClassDecl?) {
                 val names = annotationNames(d.mods)
-                if ("Test" !in names) continue
+                if ("Test" !in names) return
                 // the line of `fun name` (the annotation may be on the line above)
                 val funAt = indexOfWordFun(f.text, d.start).let { if (it < 0) d.start else it }
                 val line = lineOf(f.text, funAt)
@@ -113,11 +118,23 @@ object TestDiscovery {
                 if (d.mods?.has("private") == true) {
                     throw MiniError("${f.display}:$line: test function `${d.name}` is private", "tests are called by the generated runner: remove `private`")
                 }
-                if (r.file.imports.none { it.path.startsWith("kotlin.test") } && r.file.packageName != "kotlin.test") needsImport += Pair(d.name!!, line)
+                if (!hasImport) needsImport += Pair(d.name!!, line)
                 val fn = d.name!!.trimChars('`')
-                val q = (r.file.packageName?.split('.')?.map { "`$it`" } ?: emptyList()) + "`$fn`"
-                val rel = Paths.relativize(pkg.dir, f.real)
-                out += TestCase("$rel::$fn", q.joinToString("."), rel, line, "Ignore" in names)
+                if (owner == null) {
+                    out += TestCase("$rel::$fn", (pkgParts + "`$fn`").joinToString("."), rel, line, "Ignore" in names)
+                } else {
+                    val cn = owner.name!!
+                    val inst = if (owner.kind == ClassKind.OBJECT) "`$cn`" else "`$cn`()"
+                    out += TestCase("$rel::$cn.$fn", (pkgParts + inst + "`$fn`").joinToString("."), rel, line, "Ignore" in names)
+                }
+            }
+            for (d in r.file.declarations) {
+                if (d is FunDecl && d.name != null) add(d, null)
+                else if (d is ClassDecl && d.name != null && d.kind != ClassKind.INTERFACE && d.mods?.has("private") != true && d.mods?.has("abstract") != true) {
+                    // classes with constructor parameters cannot be instantiated by the runner: their tests are ignored
+                    if (d.primaryCtor != null && d.primaryCtor.params.isNotEmpty()) continue
+                    for (m in d.members) if (m is FunDecl && m.name != null) add(m, d)
+                }
             }
             if (needsImport.isNotEmpty()) {
                 val (n, l) = needsImport.first()
