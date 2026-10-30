@@ -175,8 +175,8 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
             i += 1
         } else if (a.startsWith("--error-limit=")) {
             val v = a.substring("--error-limit=".length)
-            val n = v.toIntOrNull()
-            if (n == null || n < 0) throw UsageError("--error-limit takes a number, 0 for no limit (got '" + v + "')\n" + USAGE)
+            val n = v.toIntOrNull() ?: -1
+            if (n < 0) throw UsageError("--error-limit takes a number, 0 for no limit (got '" + v + "')\n" + USAGE)
             diag.limit = n
             i += 1
         } else if (a == "--line-directives") {

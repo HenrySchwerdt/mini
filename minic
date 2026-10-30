@@ -4,6 +4,9 @@
 #   ./minic check examples/memory_leak.kt
 set -euo pipefail
 root="$(cd "$(dirname "$0")" && pwd)"
+case "${1:-}" in
+    --version|-V|version) echo "minic $(git -C "$root" describe --tags --always --dirty 2>/dev/null || echo dev) (source checkout, JVM bridge; the release minic also has run)"; exit 0 ;;
+esac
 bin="$root/compiler/jvm-bridge/build/install/minic/bin/minic"
 if [ ! -x "$bin" ] || [ -n "$(find "$root/compiler" -name '*.kt' -path '*/src/main/*' -newer "$bin" -print -quit)" ]; then
     (cd "$root/compiler" && ./gradlew -q installDist) >&2

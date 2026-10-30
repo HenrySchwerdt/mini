@@ -104,4 +104,4 @@ case ":$PATH:" in
 esac
 say ""
 say "minic needs a C compiler (clang or gcc). Try:"
-say "    minic build hello.kt -o hello && ./hello"
+say "    minic run hello.kt"

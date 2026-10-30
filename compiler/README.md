@@ -33,6 +33,8 @@ The release `minic` (`bin/minic`, no JDK; `scripts/minic.sh`) has the same core 
 `<command> --help`, "did you mean" for unknown commands and options, and diagnostics options `--color=auto|always|never` (`NO_COLOR` is respected),
 `--error-format=human|json` (one JSON object per diagnostic on stderr, for editors) and `--error-limit=N`. Exit status: 0 success, 1 compile error,
 2 usage error, 3 internal compiler error (also what a C compiler failure on the generated C is reported as, with the C kept as `minic-ice-<name>.c`).
+`minic build hello.kt` takes about 0.35 s (`--time` shows the split: ~185 ms parsing and analysing the stdlib plus the program, which is nearly all of the front end; ~120 ms
+for the C compiler at `-O2` and the link; the default `-O2` costs +2% on the self-host C and +6% on a mid-size program compared with `-O1`).
 The JVM `minic` above keeps clang at `-O1` and has no `run`. Reference: `website/reference/cli.md`.
 
 * Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.

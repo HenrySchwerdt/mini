@@ -23,6 +23,11 @@ const outDir = join(root, 'website/reference/diagnostics')
 const meta = JSON.parse(readFileSync(join(here, 'diagnostics-meta.json'), 'utf8'))
 const repoUrl = 'https://github.com/HenrySchwerdt/mini/blob/main'
 
+// the one-line titles the compiler prints with a code (compiler/backend/.../memory/DiagFormat.kt) must be the page titles
+const compilerTitles = new Map()
+for (const m of readFileSync(join(root, 'compiler/backend/src/main/kotlin/mini/backend/memory/DiagFormat.kt'), 'utf8').matchAll(/"(M\d{4})" -> "([^"]*)"/g)) {
+  compilerTitles.set(m[1], m[2])
+}
 const codes = Object.keys(meta).filter((k) => !k.startsWith('_')).sort()
 
 // code -> [{ name, line, col }]
@@ -63,6 +68,7 @@ const rows = []
 
 for (const code of codes) {
   const m = meta[code]
+  if (compilerTitles.get(code) !== m.title) problems.push(`${code}: title in DiagFormat.kt ("${compilerTitles.get(code)}") differs from diagnostics-meta.json ("${m.title}")`)
   const entries = corpusByCode.get(code) ?? []
   let page = `---\ntitle: ${JSON.stringify(code + " " + m.title)}\n---\n\n# ${code}: ${m.title}\n\n`
   page += `<span class="diag-badge ${m.severity}">${m.severity}</span>`
@@ -121,7 +127,8 @@ for (const r of rows) {
   const sev = r.status === 'planned' ? `${r.severity} (planned)` : r.severity
   idx += `| [${r.code}](./${r.code}) | ${sev} | ${r.title} | ${r.n} |\n`
 }
-idx += `\n## Output format\n\n\`\`\`text\n<severity>[<code>]: <message>\n  --> <file>:<line>:<col>   <label>\n   <line> | <source line>\n          | <caret under the primary position>\n  help: <text>\n\`\`\`\n\n`
+idx += `\n## Output format\n\n\`\`\`text\n<severity>[<code>]: <message>\n  --> <file>:<line>:<col>   <label>\n   <line> | <source line>\n          | <caret under the primary position>\n  help: <text>\n\nnote: <code> (<title>): <link to its page>\n\`\`\`\n\n`
+idx += `Every code that was reported is named once at the end with its title and the link to its page. For editors and tools, the released \`minic\` (the self-hosted one; not the JVM bridge of a source checkout) prints, with \`--error-format=json\`, one JSON object per diagnostic on stderr (\`severity\`, \`code\`, \`message\`, \`file\`, \`line\`, \`col\`, \`endCol\`, \`label\`, \`secondary\`, \`help\`, \`docs\`); \`--color=always|never|auto\` and \`NO_COLOR\` control colors and \`--error-limit=N\` stops printing after N diagnostics.\n\n`
 idx += `With \`./minic check --brief file.kt\` the compiler prints only \`line:col: CODE\` lines on stdout; this is what the test corpus compares.\n`
 writeFileSync(join(outDir, 'index.md'), idx)
 
