@@ -272,6 +272,10 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
         LLVMPositionBuilderBefore(allocaBuilder, ph)
     }
 
+    override fun exportCurrentFunction(name: String) {
+        throw IllegalStateException("wasm exports need the text backend (--emit-ll)")
+    }
+
     override fun param(i: Int): ApiVal = ApiVal(LLVMGetParam(fn!!, i))
 
     override fun entryBlock(): ApiBlock = entry!!

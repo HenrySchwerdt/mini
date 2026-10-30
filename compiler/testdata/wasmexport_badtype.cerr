@@ -1,0 +1,1 @@
+@WasmExport function 'half': parameter 'x' has the type 'Int?', which cannot cross the boundary

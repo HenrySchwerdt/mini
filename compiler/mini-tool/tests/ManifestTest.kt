@@ -79,6 +79,8 @@ class ManifestTest {
     @Test
     fun invalidKindAndMemory() {
         assertEquals("did you mean `lib`?", fail("[package]\nname = \"x\"\nkind = \"libb\"\n").error.hint)
+        assertEquals("did you mean `wasm-lib`?", fail("[package]\nname = \"x\"\nkind = \"wasm_lib\"\n").error.hint)
+        assertEquals(Kind.WasmLib, ManifestParser.parse("x", "[package]\nname = \"x\"\nkind = \"wasm-lib\"\n").pkg!!.kind)
         val e = fail("[package]\nname = \"x\"\nmemory = \"stric\"\n")
         assertEquals("invalid memory mode `stric`", e.error.msg)
         assertEquals("did you mean `strict`?", e.error.hint)

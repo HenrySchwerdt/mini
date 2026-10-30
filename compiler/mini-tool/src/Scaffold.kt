@@ -6,7 +6,7 @@ object Templates {
         append("[package]\n")
         append("name = \"$name\"\n")
         append("version = \"0.1.0\"\n")
-        append("kind = \"${kind.text}\"          # \"app\" builds an executable, \"lib\" is a source package for other projects\n")
+        append("kind = \"${kind.text}\"          # \"app\" builds an executable, \"lib\" is a source package for other projects, \"wasm-lib\" a WebAssembly module for JavaScript\n")
         append("memory = \"${if (strict) "strict" else "managed"}\"    # \"managed\": reference counting; \"strict\": every allocation needs a proven owner\n")
         append("\n[dependencies]\n")
         append("# geometry = { path = \"../geometry\" }\n")
@@ -41,11 +41,75 @@ fun addsNumbers() {
 }
 """
 
+    fun wasmLibKt(): String = """import mini.wasm.WasmExport
+
+/** Functions marked @WasmExport can be called from JavaScript (see the generated the .d.ts file in build/wasm). */
+@WasmExport
+fun add(a: Int, b: Int): Int = a + b
+
+@WasmExport
+fun greet(name: String): String = "Hello, " + name + "!"
+
+/** Classes cross the boundary as opaque handles: JavaScript gets an object with dispose(). */
+class Counter(private var value: Int) {
+    fun next(): Int {
+        value += 1
+        return value
+    }
+}
+
+@WasmExport
+fun newCounter(start: Int): Counter = Counter(start)
+
+@WasmExport
+fun nextValue(counter: Counter): Int = counter.next()
+"""
+
+    fun wasmLibTest(): String = """import kotlin.test.*
+
+@Test
+fun addsNumbers() {
+    assertEquals(5, add(2, 3))
+}
+
+@Test
+fun countsUp() {
+    val c = newCounter(10)
+    assertEquals(11, nextValue(c))
+    assertEquals(12, nextValue(c))
+}
+"""
+
+    fun wasmLibHtml(name: String): String = """<!doctype html>
+<meta charset="utf-8">
+<title>$name</title>
+<pre id="out">loading...</pre>
+<script type="module">
+  // serve this directory over HTTP (for example `npx serve .`), then open the page
+  import { load } from './build/wasm/${name}.mjs'
+  const lib = await load()
+  document.getElementById('out').textContent = lib.greet('browser') + ' 2 + 3 = ' + lib.add(2, 3)
+</script>
+"""
+
+    fun wasmLibRunMjs(name: String): String = """import { load } from './build/wasm/${name}.mjs'
+
+const lib = await load()
+console.log(lib.greet('Node'), lib.add(2, 3))
+const counter = lib.newCounter(10)
+console.log(lib.nextValue(counter), lib.nextValue(counter))
+counter.dispose()
+"""
+
     fun gitignore(): String = "/build/\n"
 
     fun readme(name: String, kind: Kind): String = buildString {
         append("# $name\n\n")
-        if (kind == Kind.App) {
+        if (kind == Kind.WasmLib) {
+            append("A Mini library for WebAssembly: Kotlin functions marked `@WasmExport` that JavaScript can call.\n\n")
+            append("```sh\nmini test                  # run the tests in tests/ natively\nmini build                 # build/wasm/$name.wasm + $name.mjs + $name.d.ts\nnode run.mjs               # call it from Node\n```\n\n")
+            append("`index.html` loads the same module in a browser (serve the directory over HTTP). Needs a wasm32 toolchain: see `mini doctor`.\n")
+        } else if (kind == Kind.App) {
             append("A Mini (Kotlin to native) application.\n\n```sh\nmini run        # build and run\nmini test       # run the tests in tests/\nmini build --release\n```\n")
         } else {
             append("A Mini library (source package).\n\n```sh\nmini test       # run the tests in tests/\nmini build      # compile the library to check it\n```\n\n")

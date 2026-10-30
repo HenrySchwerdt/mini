@@ -10,6 +10,9 @@ import mini.backend.MirFunction
 import mini.backend.MirLabel
 import mini.backend.MirLocal
 import mini.backend.MirModule
+import mini.backend.MirWasmExport
+import mini.backend.WasmAbi
+import mini.backend.WasmKind
 import mini.backend.MirStmt
 import mini.backend.MirType
 import mini.backend.NativeConventions
@@ -78,6 +81,7 @@ object LlvmLowering {
 }
 
 private const val USER_MAIN = "mkh_user_main"
+private const val WASM_INIT_FACADES = "mini_wasm_init_facades"
 
 private class Scope(val locals: List<MirLocal>, val loop: MirLabel?)
 private class Handler<B : Any>(val label: B, val scopeIndex: Int)
@@ -142,7 +146,10 @@ private class Lowering<V : Any, B : Any>(
         predeclare()
         for (f in module.functions) emitFunction(f)
         val userMain = module.functions.firstOrNull { it.cName == Mangling.MAIN }
-        if (userMain != null) emitMainWrapper(userMain)
+        if (target.wasmLib) {
+            if (userMain != null) throw EmitError("a wasm library has no entry point: remove `main`")
+            emitWasmLib()
+        } else if (userMain != null) emitMainWrapper(userMain)
         emitClasses()
         emitPrelude()
     }
@@ -884,6 +891,99 @@ private class Lowering<V : Any, B : Any>(
                 unreachable()
             }
         }
+        b.endFunction()
+        b.blankLine(IrSection.FUNCTIONS)
+    }
+
+    // ---- WebAssembly libraries (WasmLib.kt) --------------------------------------------------------
+
+    /** The carrier MIR type of the wasm value [k] (what [ity] turns into the IR type of the wasm parameter or result). */
+    fun wasmCarrier(k: WasmKind): MirType = when (k) {
+        WasmKind.I32, WasmKind.BOOL -> TInt
+        WasmKind.I64 -> TLong
+        WasmKind.F32 -> TFloat
+        WasmKind.F64 -> TDouble
+        WasmKind.UNIT -> TUnit
+        else -> TString
+    }
+
+    fun emitWasmLib() {
+        b.comment(IrSection.FUNCTIONS, "WebAssembly library: the exported functions (the wrappers convert arguments and results, see WasmLib.kt)")
+        for (x in module.wasmExports) emitWasmExport(x)
+        emitWasmInit()
+    }
+
+    fun emitWasmExport(x: MirWasmExport) {
+        val f = sig[x.cName] ?: throw EmitError("exported function " + x.cName + " is missing")
+        val pnames = ArrayList<String>()
+        val ptypes = ArrayList<IrType>()
+        val pexts = ArrayList<IrExt>()
+        val kinds = ArrayList<WasmKind>()
+        for ((i, p) in f.params.withIndex()) {
+            val k = WasmAbi.kindOf(p.type) ?: throw EmitError("exported function " + x.name + ": parameter " + p.name + " has the type " + p.type.displayName + " which cannot be exported")
+            kinds.add(k)
+            if (WasmAbi.wasmParams(k) == 2) {
+                pnames.add("w" + i + "p"); ptypes.add(IrType.PTR); pexts.add(IrExt.NONE)
+                pnames.add("w" + i + "n"); ptypes.add(IrType.I32); pexts.add(IrExt.NONE)
+            } else {
+                val c = wasmCarrier(k)
+                pnames.add("w" + i); ptypes.add(ity(c)); pexts.add(ext(c))
+            }
+        }
+        val rk = WasmAbi.kindOf(f.returnType) ?: throw EmitError("exported function " + x.name + ": the result type " + f.returnType.displayName + " cannot be exported")
+        val carrier = wasmCarrier(rk)
+        beginGenerated(IrSection.FUNCTIONS, "mkw_" + x.name, carrier, pnames, ptypes, pexts, IrLinkage.EXTERNAL)
+        b.exportCurrentFunction(x.name)
+        val args = ArrayList<V>()
+        val created = ArrayList<V>()
+        var pi = 0
+        for ((i, p) in f.params.withIndex()) {
+            val k = kinds[i]
+            when {
+                k == WasmKind.STRING -> {
+                    val s = rt("mk_string_from_utf8", TString, listOf(TString, TInt), listOf(b.param(pi), b.param(pi + 1)))
+                    args.add(s); created.add(s)
+                }
+                WasmAbi.isArray(k) -> {
+                    val a = rt("mk_wasm_array_in", TString, listOf(TInt, TString, TInt), listOf(b.constInt(IrType.I32, WasmAbi.arrayCode(k).toLong()), b.param(pi), b.param(pi + 1)))
+                    args.add(a); created.add(a)
+                }
+                k == WasmKind.BOOL -> args.add(icmp(IrCmp.INE, b.param(pi), b.constInt(IrType.I32, 0L)))
+                else -> args.add(b.param(pi))
+            }
+            pi += WasmAbi.wasmParams(k)
+        }
+        val r = call(f.returnType, b.global(fname(f.cName)), f.params.map { it.type }, args)
+        for (c in created) relCall(c)
+        val failed = rt("mk_wasm_failed", TBoolean, emptyList(), emptyList())
+        val bad = b.newBlock("failed")
+        val good = b.newBlock("ok")
+        condBr(failed, bad, good, true)
+        startBlock(bad)
+        if (rk == WasmKind.UNIT) retVoid() else ret(zero(carrier))
+        startBlock(good)
+        when {
+            rk == WasmKind.UNIT -> retVoid()
+            rk == WasmKind.BOOL -> ret(cvt(IrCast.ZEXT, r, IrType.I32))
+            rk == WasmKind.STRING -> ret(rt("mk_wasm_string_out", TString, listOf(TString), listOf(r)))
+            WasmAbi.isArray(rk) -> ret(rt("mk_wasm_array_out", TString, listOf(TString, TInt), listOf(r, b.constInt(IrType.I32, WasmAbi.arrayCode(rk).toLong()))))
+            else -> ret(r)
+        }
+        b.endFunction()
+        b.blankLine(IrSection.FUNCTIONS)
+    }
+
+    /** `mini_init`: initialises the runtime and runs the top-level property initialisers (the part of `main` that is not user code). */
+    fun emitWasmInit() {
+        beginGenerated(IrSection.FUNCTIONS, "mkw_init", TUnit, emptyList(), emptyList(), emptyList(), IrLinkage.EXTERNAL)
+        b.exportCurrentFunction("mini_init")
+        rt("mk_runtime_init", TUnit, emptyList(), emptyList())
+        val facades = module.functions.firstOrNull { it.cName == WASM_INIT_FACADES }
+        if (facades != null) {
+            call(TUnit, b.global(fname(facades.cName)), emptyList(), emptyList())
+            rt("mk_wasm_failed", TBoolean, emptyList(), emptyList())
+        }
+        retVoid()
         b.endFunction()
         b.blankLine(IrSection.FUNCTIONS)
     }

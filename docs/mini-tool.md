@@ -82,7 +82,7 @@ verify it.
 [package]
 name = "hello"          # a-z, 0-9, _ and -; starts with a letter
 version = "0.1.0"       # MAJOR.MINOR.PATCH (default 0.1.0)
-kind = "app"            # "app" (default) or "lib"
+kind = "app"            # "app" (default), "lib" or "wasm-lib" (WebAssembly module + JS glue)
 memory = "managed"      # default memory mode of the package: "managed" (default) or "strict"
 c-sources = ["host/x.c"]  # optional: C files (relative to the package) compiled and linked into every binary that contains the package
 

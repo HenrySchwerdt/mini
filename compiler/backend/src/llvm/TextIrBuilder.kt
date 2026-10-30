@@ -248,6 +248,10 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         fnHeader = "define " + linkageText(linkage) + rextText(retExt) + tyText(ret) + " " + gname(name) + "(" + ps + ")" + (if (a.isEmpty()) "" else " $a") + " {\nentry:\n"
     }
 
+    override fun exportCurrentFunction(name: String) {
+        fnHeader = fnHeader.replace(" {\nentry:\n", " \"wasm-export-name\"=\"" + name + "\" {\nentry:\n")
+    }
+
     override fun param(i: Int): TextVal = fnParams[i]
 
     override fun entryBlock(): String = "entry"

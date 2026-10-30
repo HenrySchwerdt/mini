@@ -133,6 +133,7 @@ class Ir2Mir {
             setFile(info.file ?: continue)
             registerMembers(info)
         }
+        val wasmExports = collectWasmExports(tops)
         // pass 3: bodies
         val functions = ArrayList<MirFunction>()
         for ((file, f) in tops) {
@@ -152,6 +153,7 @@ class Ir2Mir {
             setFile(info.file ?: continue)
             functions += convertMembers(info)
         }
+        if (wasmExports.isNotEmpty()) wasmInitFunction()?.let { functions += it }
         val classes = ArrayList<MirClass>()
         classes += builtinMirClasses()
         val (facadeClasses, facadeFunctions) = buildFacades()
@@ -177,7 +179,7 @@ class Ir2Mir {
         for (c in classInfos.keys.toList()) visit(c)
         classes += extraClasses
         functions += extraFunctions
-        return MirModule(sourceName, functions, classes, cExterns, interopFileAnnotations(module, "kotlinx.cinterop.CInclude"), interopFileAnnotations(module, "kotlinx.cinterop.CLink"))
+        return MirModule(sourceName, functions, classes, cExterns, interopFileAnnotations(module, "kotlinx.cinterop.CInclude"), interopFileAnnotations(module, "kotlinx.cinterop.CLink"), wasmExports)
     }
 
     /**

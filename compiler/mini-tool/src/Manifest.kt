@@ -1,6 +1,7 @@
 package mini.tool
 
-enum class Kind(val text: String) { App("app"), Lib("lib") }
+/** `wasm-lib`: a library that is built to a WebAssembly module with JavaScript glue (website/guide/wasm-library.md). */
+enum class Kind(val text: String) { App("app"), Lib("lib"), WasmLib("wasm-lib") }
 enum class MemoryDefault(val text: String) { Managed("managed"), Strict("strict") }
 
 /** How a git dependency selects its commit. */
@@ -111,9 +112,10 @@ object ManifestParser {
             val kind = when (kindV?.value) {
                 null, "app" -> Kind.App
                 "lib" -> Kind.Lib
+                "wasm-lib" -> Kind.WasmLib
                 else -> throw TomlError(
-                    "invalid kind `${kindV.value}`", kindV.span, "expected `app` or `lib`",
-                    suggest(kindV.value, listOf("app", "lib"))?.let { "did you mean `$it`?" } ?: "`app` builds an executable, `lib` is a source package for other projects",
+                    "invalid kind `${kindV.value}`", kindV.span, "expected `app`, `lib` or `wasm-lib`",
+                    suggest(kindV.value, listOf("app", "lib", "wasm-lib"))?.let { "did you mean `$it`?" } ?: "`app` builds an executable, `lib` is a source package for other projects, `wasm-lib` builds a WebAssembly module for JavaScript",
                 )
             }
             val memV = t["memory"]?.let { str(it, "`memory`", "`memory = \"managed\"` or `memory = \"strict\"`") }

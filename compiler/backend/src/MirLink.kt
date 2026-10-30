@@ -35,7 +35,7 @@ object MirLink {
             for (h in m.includes) if (!includes.contains(h)) includes.add(h)
             for (l in m.links) if (!links.contains(l)) links.add(l)
         }
-        return MirModule(program.sourceName, functions, classes, externs, includes, links)
+        return MirModule(program.sourceName, functions, classes, externs, includes, links, program.wasmExports)
     }
 
     /** [module] without what the functions named in [roots] cannot reach. */
@@ -62,7 +62,7 @@ object MirLink {
             for (f in m.functions) if (liveF.contains(f.cName)) fs.add(f)
             val cs = ArrayList<MirClass>()
             for (c in m.classes) if (liveC.contains(c.cName)) cs.add(c)
-            return MirModule(m.sourceName, fs, cs, m.externs, m.includes, m.links)
+            return MirModule(m.sourceName, fs, cs, m.externs, m.includes, m.links, m.wasmExports)
         }
 
         fun fn(name: String?) {
