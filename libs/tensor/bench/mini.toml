@@ -1,0 +1,7 @@
+[package]
+name = "tensor-bench"
+kind = "app"
+c-sources = ["native/clock.c"]
+
+[dependencies]
+mini-tensor = { path = ".." }

@@ -36,10 +36,25 @@ internal fun gemmKotlin(a: DoubleArray, aOff: Int, b: DoubleArray, bOff: Int, c:
         for (i in 0 until m) {
             val ci = cOff + i * n
             val ai = aOff + i * k
-            for (p in p0 until p1) {
+            var p = p0
+            // four rows of B per pass over the row of C: one load/store of C per four multiply-adds
+            while (p + 3 < p1) {
+                val a0 = a[ai + p]
+                val a1 = a[ai + p + 1]
+                val a2 = a[ai + p + 2]
+                val a3 = a[ai + p + 3]
+                val b0 = bOff + p * n
+                val b1 = b0 + n
+                val b2 = b1 + n
+                val b3 = b2 + n
+                for (j in 0 until n) c[ci + j] += a0 * b[b0 + j] + a1 * b[b1 + j] + a2 * b[b2 + j] + a3 * b[b3 + j]
+                p += 4
+            }
+            while (p < p1) {
                 val av = a[ai + p]
                 val bi = bOff + p * n
                 for (j in 0 until n) c[ci + j] += av * b[bi + j]
+                p++
             }
         }
         p0 = p1
