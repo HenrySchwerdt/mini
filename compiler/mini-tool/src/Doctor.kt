@@ -23,7 +23,7 @@ class Doctor(val p: Platform, val c: Console) {
     }
 
     fun run(): Int {
-        c.println(c.out.bold("mini ${Mini.VERSION} doctor") + "  (${p.os})")
+        c.println(c.out.bold("mini ${Mini.version(p)} doctor") + "  (${p.os})")
         c.println()
 
         val root = Toolchain.findRoot(p)

@@ -2,7 +2,14 @@ package mini.tool
 
 /** Entry point of the core: `Mini.run(args, platform)` returns the process exit code. */
 object Mini {
-    const val VERSION = "0.1.0"
+    /** Shown when the installation has no `VERSION` file (a bare compiler binary). */
+    const val UNKNOWN_VERSION = "unknown"
+
+    /** The toolchain version: the `VERSION` file of the installation (a release archive, or `build/native` of a checkout). */
+    fun version(p: Platform): String {
+        val root = Toolchain.findRoot(p) ?: return UNKNOWN_VERSION
+        return p.readText(Paths.join(root, "VERSION"))?.trim()?.takeIf { it.isNotEmpty() } ?: UNKNOWN_VERSION
+    }
 
     fun run(args: List<String>, p: Platform): Int {
         // Colour and verbosity must be known before the full parse so that usage errors are coloured too.
@@ -51,7 +58,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
     private val loader = ProjectLoader(p, c)
 
     fun dispatch(): Int {
-        if (a.has("version")) { c.println("mini ${Mini.VERSION}"); return 0 }
+        if (a.has("version")) { c.println("mini ${Mini.version(p)}"); return 0 }
         if (a.has("help") && a.command.name != "help") { c.print(CommandLine.commandHelp(a.command, c.out)); return 0 }
         return when (a.command.name) {
             "help" -> help()
@@ -77,7 +84,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
 
     private fun help(): Int {
         if (a.has("help") && a.positionals.isEmpty() || a.positionals.isEmpty()) {
-            c.print(CommandLine.topHelp(c.out, Mini.VERSION))
+            c.print(CommandLine.topHelp(c.out, Mini.version(p)))
             return 0
         }
         val name = a.positionals[0]

@@ -7,6 +7,7 @@
 #
 # Output (default <repo>/build/native), the layout of a release archive:
 #   bin/minic-native   the native compiler          bin/mini   the project tool          bin/minic  the driver script (scripts/minic.sh)
+#   VERSION            the toolchain version (the VERSION file of the repository)
 #   lib/libminirt.a    the runtime                  include/   minirt.h        stdlib/  (a link to <repo>/stdlib)
 #
 # Where the compiler comes from, in this order:
@@ -55,6 +56,7 @@ rm -rf "$OUT/stdlib"
 ln -s "$ROOT/stdlib" "$OUT/stdlib"
 cp "$ROOT/runtime/include/"*.h "$OUT/include/"
 cp "$ROOT/scripts/minic.sh" "$OUT/bin/minic"
+cp "$ROOT/VERSION" "$OUT/VERSION"
 chmod +x "$OUT/bin/minic"
 
 build_runtime() {

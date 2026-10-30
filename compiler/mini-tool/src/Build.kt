@@ -107,7 +107,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
 
     fun fingerprint(root: Package, files: List<SourceFile>, extra: String): String {
         val h = Hasher()
-        h.add(Mini.VERSION).add(tc.stamp(p)).add(o.profile).add(o.strict.toString()).add(o.werror.toString()).add(extra)
+        h.add(Mini.version(p)).add(tc.stamp(p)).add(o.profile).add(o.strict.toString()).add(o.werror.toString()).add(extra)
         for (pkg in root.closure()) {
             h.add(pkg.name).add(pkg.manifest.source)
             for (cs in pkg.cSources()) h.add(cs).add(p.readText(cs) ?: "")
