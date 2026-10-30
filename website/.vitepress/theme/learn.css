@@ -1,0 +1,40 @@
+/* Learn uses the notebook's code/output rhythm while prose and chapter order stay authored. */
+.learn-notebook .VPDoc.has-aside .content-container,
+.learn-notebook .VPDoc .content-container { max-width: 920px; }
+.learn-notebook .VPDoc .content { padding-bottom: 32px; }
+.learn-notebook .VPDoc .container { max-width: 1120px; }
+.learn-notebook .vp-doc { padding-left: 46px; }
+.learn-notebook .vp-doc h1 { font-size: clamp(28px, 3.2vw, 40px); line-height: 1.2; letter-spacing: -0.035em; max-width: 780px; margin-bottom: 28px; }
+.learn-notebook .vp-doc h2 { margin-top: 54px; padding-top: 28px; font-size: 23px; letter-spacing: -0.025em; }
+.learn-notebook .vp-doc p, .learn-notebook .vp-doc li { line-height: 1.8; }
+.learn-notebook .vp-doc p { color: var(--vp-c-text-2); }
+.learn-notebook .vp-doc strong { color: var(--vp-c-text-1); }
+.learn-notebook .vp-doc .mc { position: relative; margin: 26px 0; border-radius: 6px; overflow: visible; background: var(--vp-c-bg); }
+.learn-notebook .mc::before { content: attr(data-cell); position: absolute; left: -46px; top: 14px; width: 34px; text-align: right; color: var(--vp-c-text-3); font: 11px var(--vp-font-family-mono); }
+.learn-notebook .mc-code { overflow: hidden; border-radius: 6px 6px 0 0; }
+.learn-notebook .mc-out { overflow: hidden; border-radius: 0 0 6px 6px; }
+.learn-notebook .mc-bar { background: var(--vp-c-bg-soft); border-radius: 0 0 6px 6px; }
+.learn-notebook .mc-editor .cm-editor { background: var(--vp-c-bg); }
+.learn-notebook .mc-editor .cm-scroller { padding: 10px 0; }
+.learn-notebook .mc-editor .cm-gutters { background: var(--vp-c-bg); border-right: 0; }
+.learn-notebook .ra { margin-left: 46px; border: 0; padding: 10px 0 18px; border-bottom: 1px solid var(--vp-c-divider); border-radius: 0; background: transparent; }
+.learn-notebook .VPSidebarItem.level-0 { padding-bottom: 12px; }
+.learn-notebook .VPSidebarItem.level-0 > .item .text { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--vp-c-text-3); }
+.learn-notebook .VPSidebarItem.level-1 .item { border-left: 2px solid transparent; padding-left: 10px; }
+.learn-notebook .VPSidebarItem.level-1.is-active .item { border-left-color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); border-radius: 0 4px 4px 0; }
+.learn-notebook .VPDocFooter .prev-next { display: none; }
+.learn-heading { margin: 0 0 22px 46px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; color: var(--vp-c-text-3); font-size: 12px; }
+.learn-home { color: var(--vp-c-brand-1); font-weight: 700; font-size: 11px; letter-spacing: 0.12em; }
+.learn-time { margin-left: auto; }
+.learn-pagination { margin: 48px 0 0 46px; border-top: 1px solid var(--vp-c-divider); padding-top: 24px; display: flex; justify-content: space-between; gap: 24px; }
+.learn-pagination a { max-width: 48%; font-size: 14px; color: var(--vp-c-text-1); }
+.learn-pagination a:last-child { text-align: right; margin-left: auto; }
+.learn-pagination span { display: block; font-size: 12px; color: var(--vp-c-text-3); margin-bottom: 5px; }
+.learn-pagination a:hover { color: var(--vp-c-brand-1); }
+@media (max-width: 767px) {
+  .learn-notebook .vp-doc { padding-left: 24px; }
+  .learn-notebook .mc::before { left: -30px; width: 23px; font-size: 10px; }
+  .learn-notebook .ra, .learn-heading, .learn-pagination { margin-left: 24px; }
+  .learn-notebook .vp-doc h2 { margin-top: 38px; }
+  .learn-time { margin-left: 0; }
+}

@@ -7,7 +7,7 @@
 //
 //   <out-dir>/manifest.json                   ToolchainManifest (version = hash of all files)
 //   <out-dir>/<version>/mini-toolchain.worker.js   the module worker (esbuild bundle of scripts/wasm/worker)
-//   <out-dir>/<version>/{minic.wasm,stdlib.json,libminirt-wasm32.a,minirt-entry-wasm32.o}
+//   <out-dir>/<version>/{minic.wasm,stdlib.json,libs.json (optional: preinstalled libraries, pack-libs.mjs),libminirt-wasm32.a,minirt-entry-wasm32.o}
 //   <out-dir>/<version>/{llvm.core.wasm,llvm.core2.wasm,llvm.core3.wasm,llvm.core4.wasm,llvm-resources.tar}   (@yowasp/clang, next to the worker)
 //
 // Everything below <version>/ is immutable for that version; only manifest.json changes.
@@ -36,6 +36,7 @@ const clangGen = join(here, 'node_modules/@yowasp/clang/gen')
 const sources = [
     ['minic.wasm', join(dist, 'minic.wasm'), 'check'],
     ['stdlib.json', join(dist, 'stdlib.json'), 'check'],
+    ...(existsSync(join(dist, 'libs.json')) ? [['libs.json', join(dist, 'libs.json'), 'check']] : []),
     ['libminirt-wasm32.a', join(dist, 'libminirt-wasm32.a'), 'full'],
     ['minirt-entry-wasm32.o', join(dist, 'minirt-entry-wasm32.o'), 'full'],
     ...['llvm.core.wasm', 'llvm.core2.wasm', 'llvm.core3.wasm', 'llvm.core4.wasm', 'llvm-resources.tar'].map(f => [f, join(clangGen, f), 'full']),

@@ -9,7 +9,8 @@ import {
   availability, buildAndRun, cancelToolchain, checkOnly, ensureToolchain, loadedLevel, probe, setSiteBase,
 } from './session.ts'
 import type { Diagnostic, RunResult } from './types.ts'
-import RunOutput, { type Segment } from './RunOutput.vue'
+import RunOutput from './RunOutput.vue'
+import { OutputSink, type Segment } from './display.ts'
 import ToolchainStatus from './ToolchainStatus.vue'
 
 const FILE = 'main.kt'
@@ -60,10 +61,9 @@ const timingText = computed(() =>
 )
 const docsUrl = (code: string) => withBase(`/reference/diagnostics/${code}`)
 
+let sink = new OutputSink(segments.value)
 function pushOut(type: 'out' | 'err', text: string) {
-  const last = segments.value[segments.value.length - 1]
-  if (last && last.type === type) last.text += text
-  else segments.value.push({ type, text })
+  sink.push(type, text)
 }
 
 function applyDiagnostics(d: Diagnostic[]) {
@@ -110,6 +110,7 @@ async function run() {
   clearTimeout(checkTimer)
   runSeq++
   segments.value = []
+  sink = new OutputSink(segments.value)
   runResult.value = null
   note.value = ''
   mir.value = ''
@@ -133,6 +134,7 @@ async function run() {
   })
   busy.value = ''
   abort = undefined
+  sink.end()
   mir.value = outcome.mir ?? ''
   llvmIr.value = outcome.llvmIr ?? ''
   timings.value = outcome.timings

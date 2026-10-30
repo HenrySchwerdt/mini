@@ -4,7 +4,7 @@ title: "mini: the project tool"
 
 # `mini`: the project tool
 
-`mini` is to Mini what `cargo` is to Rust: it creates projects, builds them, runs and tests them, and manages dependencies, driven by a `mini.toml` file. It calls `minic` for the real work, through a process boundary only.
+`mini` is to Mini what `cargo` is to Rust: it creates projects, builds them, runs and tests them, and manages dependencies, driven by a `mini.toml` file. It invokes `minic-native` and the C compiler for compilation. You do not need to run `minic` separately.
 
 ::: warning Status
 `mini` is a native program, compiled from Kotlin by Mini itself, and ships in the [release archive](/install) next to `minic`: no JDK and no Gradle. It drives the native compiler `minic-native` and the C compiler. In a source checkout, the `mini` script in the repository root builds it natively on first use. For a single file, [`minic`](./minic) is all you need.
@@ -38,7 +38,7 @@ mini [OPTIONS] <COMMAND>
 | `mini update [NAME...]` | Move the pins of git dependencies in `mini.lock` to the newest commits |
 | `mini tree` | Print the dependency tree |
 | `mini explain [CODE]` | Explain a diagnostic code such as `M0102`; `--list` lists all codes |
-| `mini doctor` | Check the toolchain (C compiler, JDK, git, libuv) and suggest fixes |
+| `mini doctor` | Check the native toolchain (compiler engine, C compiler, git, optional libuv) and suggest fixes |
 | `mini completions <SHELL>` | Print a completion script for `bash`, `zsh` or `fish` |
 | `mini help [COMMAND]` | Show help for a command |
 

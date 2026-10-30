@@ -1,0 +1,6 @@
+[package]
+name = "example-xor"
+kind = "app"
+
+[dependencies]
+mini-tensor = { path = "../.." }

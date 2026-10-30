@@ -8,7 +8,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useData, useRoute, withBase } from 'vitepress'
 import './playground/playground.css'
-import RunOutput, { type Segment } from './playground/RunOutput.vue'
+import RunOutput from './playground/RunOutput.vue'
+import { OutputSink, type Segment } from './playground/display.ts'
 import { availability, buildAndRun, checkOnly, loadError, loadedLevel, probe, progress, setSiteBase } from './playground/session.ts'
 import { hashFor } from './playground/share.ts'
 import type { MiniEditor } from './playground/editor.ts'
@@ -20,7 +21,13 @@ import { describeExpectation, meetsExpectation, programFor, sameOutput, type Cel
 const props = defineProps<{ spec: CellSpec }>()
 const spec = props.spec
 const route = useRoute()
-const { site } = useData()
+const pagePath = route.path
+const { site, frontmatter } = useData()
+const learnNotebook = computed(() => frontmatter.value.learnNotebook === true)
+const root = ref<HTMLElement>()
+let observer: IntersectionObserver | undefined
+let disposed = false
+let editorGeneration = 0
 
 const mounted = ref(false)
 const source = ref(spec.source)
@@ -37,7 +44,7 @@ const target = ref(0)
 const ran = ref<'' | 'run' | 'check'>('')
 const failure = ref('')
 const verdict = ref<'' | 'match' | 'differs'>('')
-let stdout = ''
+let sink = new OutputSink([])
 let abort: AbortController | undefined
 
 const modified = computed(() => source.value !== spec.source)
@@ -65,16 +72,28 @@ onMounted(() => {
   mounted.value = true
   setSiteBase(site.value.base)
   void probe()
-  registerCell(route.path, handle)
+  registerCell(pagePath, handle)
+  // Long lessons keep static, server-rendered code until the cell approaches the viewport.
+  if (learnNotebook.value && root.value) {
+    observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        observer?.disconnect()
+        void startEdit(false)
+      }
+    }, { rootMargin: '200px' })
+    observer.observe(root.value)
+  }
 })
 onBeforeUnmount(() => {
+  disposed = true
+  observer?.disconnect()
   abort?.abort()
   editor.value?.destroy()
-  unregisterCell(route.path, handle)
+  unregisterCell(pagePath, handle)
 })
 
 function context() {
-  const handles = cellsOf(route.path)
+  const handles = cellsOf(pagePath)
   const k = handles.findIndex((h) => h.spec.index === spec.index)
   if (k < 0) return { specs: [spec], sources: [source.value], k: 0 }
   return { specs: handles.map((h) => h.spec), sources: handles.map((h) => (h.spec.index === spec.index ? source.value : h.getSource())), k }
@@ -87,14 +106,11 @@ function clearOutput() {
   failure.value = ''
   verdict.value = ''
   ran.value = ''
-  stdout = ''
+  sink = new OutputSink(segments.value)
 }
 
 function push(type: 'out' | 'err', text: string) {
-  if (type === 'out') stdout += text
-  const last = segments.value[segments.value.length - 1]
-  if (last && last.type === type) last.text += text
-  else segments.value = [...segments.value, { type, text }]
+  sink.push(type, text)
 }
 
 /** Resolves to whether the cell ended as documented (no error for a run cell, the expected diagnostics for a check cell). */
@@ -137,6 +153,7 @@ async function go(kind: 'run' | 'check'): Promise<boolean> {
       timeoutMs: 10000,
       signal: abort.signal,
     })
+    sink.end()
     diags.value = prog.map(out.diagnostics)
     if (out.failure) {
       failure.value = out.failure
@@ -145,7 +162,7 @@ async function go(kind: 'run' | 'check'): Promise<boolean> {
     result.value = out.run ?? null
     if (!out.run) return false
     if (spec.expected !== undefined && out.run.exitCode === (spec.exit ?? 0)) {
-      if (sameOutput(stdout, spec.expected)) verdict.value = 'match'
+      if (sameOutput(sink.stdout, spec.expected)) verdict.value = 'match'
       else if (!modified.value) verdict.value = 'differs'
     }
     return out.run.exitCode === (spec.exit ?? 0)
@@ -160,12 +177,13 @@ const check = () => go('check')
 const primary = () => (isCheck ? check() : run())
 const stop = () => abort?.abort()
 
-async function startEdit() {
+async function startEdit(focus = true) {
   if (editing.value) return
   editing.value = true
+  const generation = ++editorGeneration
   await nextTick()
   const { createEditor } = await import('./playground/editor.ts')
-  if (!host.value || !editing.value) return
+  if (disposed || generation !== editorGeneration || !host.value || !editing.value) return
   editor.value = createEditor({
     parent: host.value,
     doc: source.value,
@@ -173,18 +191,20 @@ async function startEdit() {
     docsUrl,
     placeholderLabel: 'Editable Mini code',
     onChange: (t) => (source.value = t),
-    onRun: () => void primary(),
+    onRun: () => void onRun(isCheck.value ? 'check' : 'run'),
   })
-  editor.value.focus()
+  if (focus) editor.value.focus()
 }
 
 function reset() {
+  editorGeneration++
   abort?.abort()
   editor.value?.destroy()
   editor.value = undefined
   editing.value = false
   source.value = spec.source
   clearOutput()
+  if (learnNotebook.value && !disposed) void startEdit(false)
 }
 
 function prefetchEditor() {
@@ -239,7 +259,7 @@ const showPanel = computed(
 </script>
 
 <template>
-  <div class="mc" :class="{ 'mc-check': isCheck, 'mc-exercise': spec.exercise, 'mc-editing': editing }">
+  <div ref="root" class="mc" :data-cell="`[${spec.index + 1}]`" :class="{ 'mc-check': isCheck, 'mc-exercise': spec.exercise, 'mc-editing': editing }">
     <div class="mc-code">
       <div v-show="!editing" class="mc-static"><slot /></div>
       <div v-if="editing" ref="host" class="mc-editor"></div>
@@ -259,7 +279,7 @@ const showPanel = computed(
         Check
       </button>
       <button v-else type="button" class="mc-btn" :disabled="unavailable || busy" title="Run only the type and memory checker" @click="onRun('check')">Check</button>
-      <button v-if="!editing" type="button" class="mc-btn" title="Edit this code" @click="startEdit">Edit</button>
+      <button v-if="!editing" type="button" class="mc-btn" title="Edit this code" @click="startEdit()">Edit</button>
       <button v-if="editing" type="button" class="mc-btn" title="Back to the original code" @click="reset">Reset</button>
       <span v-if="status" class="mc-status">{{ status }}<template v-if="status.startsWith('Loading')"> (first use)</template></span>
       <span v-else-if="isCheck && spec.exercise" class="mc-hint">Goal: no diagnostics</span>

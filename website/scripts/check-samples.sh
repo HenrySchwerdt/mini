@@ -16,6 +16,9 @@
 # program each block runs in the browser (with the same .out / .run / .check files); they are listed as `page:<name>`.
 #
 # Usage: website/scripts/check-samples.sh [substring-filter]
+# Rich output (docs/display.md): a program that prints display bundles is compared with the bundles replaced by `[display: <mime>]`
+# lines (scripts/normalize-display.mjs, which also checks that an SVG is an SVG). Programs that use a library of libs/ (`import mini.plot.*`)
+# are built together with its sources, like a path dependency.
 # Requires: a C compiler and `npm ci` in website/ (snippet extraction). `./minic` builds the compiler on first use (native, no JVM).
 set -uo pipefail
 
@@ -37,6 +40,20 @@ pass=0
 fail=0
 failed=()
 
+# lib_sources <program.kt>: the sources of every libs/<name>/src whose package the program mentions
+lib_sources() {
+    local lib pkg
+    for lib in "$root"/libs/*/; do
+        [ -d "$lib/src" ] || continue
+        while IFS= read -r pkg; do
+            if grep -qE "(^|[^.[:alnum:]_])${pkg//./\\.}([^[:alnum:]_]|$)" "$1"; then
+                find "$lib/src" -name '*.kt' | LC_ALL=C sort
+                return
+            fi
+        done < <(grep -rh '^package ' "$lib/src" | sed 's/^package //' | sort -u)
+    done
+}
+
 report_fail() {
     echo "FAIL  $1: $2"
     fail=$((fail + 1))
@@ -51,13 +68,15 @@ while IFS= read -r kt; do
     name="${rel%.kt}"
     if [ -f "$base.out" ] || [ -f "$base.run" ]; then
         exe="$tmp/$(echo "$name" | tr '/:' '__')"
-        if ! ./minic build "$kt" -o "$exe" >"$tmp/build.log" 2>&1; then
+        # shellcheck disable=SC2046
+        if ! ./minic build "$kt" $(lib_sources "$kt") -o "$exe" >"$tmp/build.log" 2>&1; then
             report_fail "$name" "build failed"
             head -5 "$tmp/build.log" | sed 's/^/        /'
             continue
         fi
-        "$exe" >"$tmp/actual.out" 2>"$tmp/actual.err"
+        "$exe" >"$tmp/raw.out" 2>"$tmp/actual.err"
         status=$?
+        node "$root/website/scripts/normalize-display.mjs" <"$tmp/raw.out" >"$tmp/actual.out" 2>>"$tmp/actual.err" || status=97
         want_status=0
         [ -f "$base.run" ] && want_status="$(tr -d ' \n' <"$base.run")"
         [ -n "$want_status" ] || want_status=0

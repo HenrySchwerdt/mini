@@ -3,7 +3,7 @@
 Mini is a Kotlin compiler. You write `.kt` files, `minic` turns them into C17 and `clang` links the result with a small C runtime into a native executable.
 
 ::: tip Just want to use Mini?
-[Install a prebuilt release](/install) with one command (no JDK needed), or try the compiler in your browser in the [tutorial](/learn/). This page is the workflow in a **source checkout** of the repository, which is what you use to work on the compiler.
+[Install a prebuilt release](/install) with one command (no JDK needed), or try the compiler in your browser in the [tutorial](/learn/). Start with the [installation guide](/install#mini-or-minic) if you want to choose between a project and a standalone file. The checkout instructions below are for working on Mini itself.
 :::
 
 ## Requirements
@@ -11,8 +11,7 @@ Mini is a Kotlin compiler. You write `.kt` files, `minic` turns them into C17 an
 | Needed | Why |
 |---|---|
 | clang (or gcc) | compiles the generated C |
-| A release (`install.sh`) or a checkout of the repository | the compiler finds `runtime/` and `stdlib/` next to itself |
-| JDK 21 | not needed; only the optional K2 cross-checks in `tools/k2-oracle` use one |
+| A release (`install.sh`) or a checkout of the repository | the tools locate their bundled runtime and standard library from the toolchain installation |
 | libuv (optional) | only needed to run the runtime test suite, not to compile programs |
 
 Supported platforms are Linux (x64, arm64) and macOS (Apple silicon). Windows is [planned](/roadmap).
@@ -25,9 +24,9 @@ export PATH="$HOME/.mini/bin:$PATH"
 mini new hello && cd hello && mini run
 ```
 
-`mini` is the native project tool (no JVM, no Gradle), `minic` the compiler it calls; the [command line reference](/reference/cli#the-mini-project-tool) lists its commands. In a checkout, `./mini new hello` builds the tool and the native compiler on first use without Gradle.
+`mini` is the native project tool (no JVM, no Gradle), `minic` the driver for explicit source files; the [command line reference](/reference/cli#the-mini-project-tool) lists its commands. In a checkout, `./mini new hello` builds the tool and the native compiler on first use without Gradle.
 
-## Build the JVM compiler from a checkout
+## Build the native toolchain from a checkout
 
 ```sh
 git clone https://github.com/HenrySchwerdt/mini
@@ -64,7 +63,7 @@ Output, produced by building and running exactly this file in CI:
 
 `check` runs the front end and the Strict-mode ownership checker and stops there: no C is generated and nothing is linked. It prints diagnostics on stderr and exits with status 1 if there is an error. `--brief` prints only `line:col: CODE` lines on stdout. `minic build` runs the same checker before code generation, so an error stops the build too.
 
-A file is only checked if it opts in with `@file:MemoryMode(Mode.Strict)`; ordinary files have nothing to report. The [memory guide](/memory/) explains what is checked.
+Every file is parsed and type-checked. A file opting in with `@file:MemoryMode(Mode.Strict)` also has tracked ownership obligations checked; Managed code can still report ordinary syntax and type errors. The [memory guide](/memory/) explains what is checked.
 
 ## Where to go next
 

@@ -6,6 +6,7 @@
 #   libminirt-wasm32.a      the runtime for wasm32-wasip1
 #   minirt-entry-wasm32.o   the C `main` that calls mk_main (linked next to the program)
 #   stdlib.json             {"files": [{"path", "text"}...]} the stdlib sources, in compilation order
+#   libs.json               {"libs": [{"name", "packages", "files": [{"path", "text"}]}]} the preinstalled libraries (libs/*/src)
 #   toolchain.json          versions, sizes and the command lines the browser runs
 #   build/site/toolchain/   the same, laid out for website/public/toolchain (manifest.json, <version>/mini-toolchain.worker.js, wasm files, @yowasp/clang modules)
 #
@@ -35,6 +36,7 @@ fi
 rm -rf "$dist"; mkdir -p "$dist"
 cp "$w/minic.wasm" "$w/libminirt-wasm32.a" "$w/minirt-entry-wasm32.o" "$dist/"
 node scripts/wasm/pack-stdlib.mjs stdlib "$dist/stdlib.json"
+node scripts/wasm/pack-libs.mjs libs "$dist/libs.json"   # preinstalled libraries (mini.plot, ...), compiled with the program that imports them
 clang_version="$(node -p "require('./scripts/wasm/package.json').dependencies['@yowasp/clang']")"
 node -e '
 const fs = require("fs")
@@ -44,7 +46,7 @@ fs.writeFileSync(`${dist}/toolchain.json`, JSON.stringify({
   format: 1,
   commit,
   clang: { package: "@yowasp/clang", version: clangVersion, target: "wasm32-wasip1" },
-  files: Object.fromEntries(["minic.wasm", "libminirt-wasm32.a", "minirt-entry-wasm32.o", "stdlib.json"].map(f => [f, size(f)])),
+  files: Object.fromEntries(["minic.wasm", "libminirt-wasm32.a", "minirt-entry-wasm32.o", "stdlib.json", "libs.json"].map(f => [f, size(f)])),
   // what the browser runs, in order (all paths relative to the virtual working directory)
   pipeline: {
     check: ["minic.wasm --check --brief prog.kt --stdlib <stdlib files>"],

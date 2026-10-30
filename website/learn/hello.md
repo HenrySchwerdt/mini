@@ -1,6 +1,8 @@
 ---
 title: "1. Hello, Mini"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
 # 1. Hello, Mini
@@ -18,9 +20,11 @@ Hello, Mini!
 
 Press **Run**. The code is compiled to WebAssembly by Mini's own compiler (the same one you [install](/install) on your machine, built for the browser) and run on the spot.
 
+**By the end:** explain what `main` does, print values with string templates, and distinguish an independent program from a shared notebook fragment. Start by changing one string rather than several parts of a program at once.
+
 ## Change it
 
-Press **Edit** and change the text. Compile errors show up with a position and a message instead of output. Try breaking it on purpose: delete a closing quote and press **Check**.
+Click into the code and change the text. Compile errors show up with a position and a message instead of output. Try breaking it on purpose: delete a closing quote and press **Check**, then use **Reset** to restore the example.
 
 ## String templates
 
@@ -57,6 +61,14 @@ minic build hello.kt -o hello
 
 `minic` translates Kotlin to C17, and your C compiler links the result with a small runtime. There is no JVM and no garbage collector at run time. The [installation page](/install) has the details, and [How it works](/internals/) explains the pipeline.
 
+## Checkpoint
+
+If a fragment prints a value declared above it, must you run the earlier cell first? Does changing a variable during one run preserve it for the next run?
+
+::: details Reasoning
+No. The notebook compiles the earlier declarations into the new program. Every execution starts a fresh program, so runtime mutations do not persist.
+:::
+
 ## Exercise
 
 ::: tip Exercise: greet everyone
@@ -91,4 +103,4 @@ Hello, Linus!
 ```
 :::
 
-Next: [Values, functions and control flow](./basics).
+Language reference: [Kotlin basic syntax](https://kotlinlang.org/docs/basic-syntax.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

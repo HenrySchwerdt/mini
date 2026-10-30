@@ -1,12 +1,14 @@
 import { EditorState, StateEffect, StateField, type Text } from '@codemirror/state'
 import {
   Decoration, EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers,
+  rectangularSelection, crosshairCursor, highlightSpecialChars,
   type DecorationSet,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { StreamLanguage, HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
-import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
-import { kotlin } from '@codemirror/legacy-modes/mode/clike'
+import { defaultKeymap, history, historyKeymap, indentLess } from '@codemirror/commands'
+import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
+import { acceptCompletion, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
+import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search'
+import { insertIndent, kotlinEditing } from './kotlin-editing.ts'
 import { lintGutter, setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint'
 import { tags as t } from '@lezer/highlight'
 import type { Diagnostic } from './types.ts'
@@ -61,6 +63,11 @@ const baseTheme = EditorView.theme({
   '.cm-activeLine': { backgroundColor: 'var(--mp-active-line)' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--mp-active-line)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'var(--mp-selection) !important' },
+  '.cm-selectionMatch': { backgroundColor: 'var(--mp-selection)' },
+  '.cm-searchMatch': { backgroundColor: 'var(--vp-c-yellow-soft)' },
+  '.cm-searchMatch.cm-searchMatch-selected': { outline: '1px solid var(--vp-c-brand-1)' },
+  '.cm-panels': { backgroundColor: 'var(--vp-c-bg-soft)', color: 'var(--mp-fg)' },
+  '.cm-search input, .cm-search button': { font: 'inherit', color: 'inherit' },
   '.cm-matchingBracket': { backgroundColor: 'var(--mp-selection)', outline: 'none' },
   '.cm-tooltip': { border: '1px solid var(--vp-c-divider)', backgroundColor: 'var(--vp-c-bg-elv)', color: 'var(--vp-c-text-1)', borderRadius: '6px', boxShadow: 'var(--vp-shadow-3)' },
   '.cm-tooltip.cm-tooltip-lint': { maxWidth: '520px' },
@@ -185,11 +192,20 @@ export function createEditor(opts: EditorOptions): MiniEditor {
       highlightActiveLine(),
       history(),
       drawSelection(),
+      rectangularSelection(),
+      crosshairCursor(),
+      highlightSpecialChars(),
+      EditorState.allowMultipleSelections.of(true),
+      search({ top: true }),
+      highlightSelectionMatches(),
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
-      keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
-      StreamLanguage.define(kotlin),
+      keymap.of([
+        ...closeBracketsKeymap, ...searchKeymap, ...defaultKeymap, ...historyKeymap,
+        { key: 'Tab', run: (view) => acceptCompletion(view) || insertIndent(view), shift: indentLess },
+      ]),
+      kotlinEditing(),
       syntaxHighlighting(highlight),
       lintGutter(),
       secondaryField,
