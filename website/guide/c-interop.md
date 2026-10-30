@@ -4,9 +4,7 @@ Mini calls C directly: no wrapper layer, no generated glue, no runtime shim. The
 
 <<< @/samples/guide/cinterop.kt{kotlin}
 
-```text
-<<< @/samples/guide/cinterop.out
-```
+<<< @/samples/guide/cinterop.out{text}
 
 ## Calling C functions
 

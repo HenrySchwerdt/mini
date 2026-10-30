@@ -23,12 +23,31 @@ All of these compile to native code and are covered by programs under `compiler/
 ## Differences you will notice
 
 - **No JVM and no JDK classes.** `java.*` does not exist. The standard library is a Mini port of Kotlin's, plus `mini.*` packages (`mini.memory`, `mini.io`).
+- **Matrix operator `@`.** Mini adds one operator Kotlin does not have, see [below](#matrix-operator). Programs that use it are not valid Kotlin and K2 cannot read them.
 - **Memory.** Objects are reference counted by default. Reference cycles leak because there is no cycle collector yet. Strict mode and allocators are Mini additions; see the [memory guide](/memory/).
 - **Uncaught exceptions.** An exception that escapes `main` prints `Exception in thread "main" <toString>` on stderr and exits with status 1. There are no stack traces.
 - **Initialization order.** Top-level properties are initialized eagerly, in textual order, before `main`, as on the JVM.
 - **Unicode.** Strings are UTF-16 like Kotlin, but character classification and case conversion only cover ASCII and Latin-1.
 - **Single-threaded stdlib.** `lazy` is not synchronized. The only threading API is `mini.memory.spawn`, see [Threads](/memory/threads).
 - **Hash iteration order** of `HashMap`/`HashSet` replicates `java.util.HashMap`, so programs print the same output as on the JVM.
+
+## Matrix operator `@` {#matrix-operator}
+
+Mini extends Kotlin's operator conventions with a binary `@` in the spirit of Python's `@` ([PEP 465](https://peps.python.org/pep-0465/)). Nothing in the standard library defines it; you give your own types a `matmul` operator:
+
+- `a @ b` is `a.matmul(b)`. The function must be declared `operator fun matmul(other: X): R`, as a member or as an extension, and takes exactly one parameter.
+- `a @= b` calls `a.matmulAssign(b)` (it must return `Unit`) if there is one, otherwise it means `a = a @ b` for a `var`, the same rules as `*=` and `timesAssign`. On a `var` for which both functions apply the assignment is ambiguous and rejected, as in Kotlin.
+- `@` has the precedence of `*`, `/` and `%` and is left-associative: `a + b @ c` is `a + (b @ c)` and `a @ b @ c` is `(a @ b) @ c`.
+- A type without an `operator fun matmul` gives the error `no operator matmul for T`.
+- The call is an ordinary call: it works in every memory mode (in Strict mode the owned result of `a @ b` is tracked like the result of any other call) and on every backend.
+
+<<< @/samples/guide/matmul.kt{kotlin}
+
+Output:
+
+<<< @/samples/guide/matmul.out{text}
+
+**How `@` is told apart from annotations and labels.** `@` is the binary operator only after a complete operand and with whitespace on both sides (`a @ b`; `a @= b` for the assignment). `@Name` with no whitespace after the `@` is always an annotation (`@Ann expr`, `@get:Ann`, `@file:Ann`), and `name@` / `return@label` / `this@Outer` / `break@loop` keep their Kotlin meaning. `a @b` is never a product (it is a syntax error).
 
 ## Known gaps
 
