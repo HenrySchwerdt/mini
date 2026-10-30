@@ -20,7 +20,13 @@ import { describeExpectation, meetsExpectation, programFor, sameOutput, type Cel
 const props = defineProps<{ spec: CellSpec }>()
 const spec = props.spec
 const route = useRoute()
-const { site } = useData()
+const pagePath = route.path
+const { site, frontmatter } = useData()
+const learnNotebook = computed(() => frontmatter.value.learnNotebook === true)
+const root = ref<HTMLElement>()
+let observer: IntersectionObserver | undefined
+let disposed = false
+let editorGeneration = 0
 
 const mounted = ref(false)
 const source = ref(spec.source)
@@ -65,16 +71,28 @@ onMounted(() => {
   mounted.value = true
   setSiteBase(site.value.base)
   void probe()
-  registerCell(route.path, handle)
+  registerCell(pagePath, handle)
+  // Long lessons keep static, server-rendered code until the cell approaches the viewport.
+  if (learnNotebook.value && root.value) {
+    observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        observer?.disconnect()
+        void startEdit(false)
+      }
+    }, { rootMargin: '200px' })
+    observer.observe(root.value)
+  }
 })
 onBeforeUnmount(() => {
+  disposed = true
+  observer?.disconnect()
   abort?.abort()
   editor.value?.destroy()
-  unregisterCell(route.path, handle)
+  unregisterCell(pagePath, handle)
 })
 
 function context() {
-  const handles = cellsOf(route.path)
+  const handles = cellsOf(pagePath)
   const k = handles.findIndex((h) => h.spec.index === spec.index)
   if (k < 0) return { specs: [spec], sources: [source.value], k: 0 }
   return { specs: handles.map((h) => h.spec), sources: handles.map((h) => (h.spec.index === spec.index ? source.value : h.getSource())), k }
@@ -160,12 +178,13 @@ const check = () => go('check')
 const primary = () => (isCheck ? check() : run())
 const stop = () => abort?.abort()
 
-async function startEdit() {
+async function startEdit(focus = true) {
   if (editing.value) return
   editing.value = true
+  const generation = ++editorGeneration
   await nextTick()
   const { createEditor } = await import('./playground/editor.ts')
-  if (!host.value || !editing.value) return
+  if (disposed || generation !== editorGeneration || !host.value || !editing.value) return
   editor.value = createEditor({
     parent: host.value,
     doc: source.value,
@@ -173,18 +192,20 @@ async function startEdit() {
     docsUrl,
     placeholderLabel: 'Editable Mini code',
     onChange: (t) => (source.value = t),
-    onRun: () => void primary(),
+    onRun: () => void onRun(isCheck.value ? 'check' : 'run'),
   })
-  editor.value.focus()
+  if (focus) editor.value.focus()
 }
 
 function reset() {
+  editorGeneration++
   abort?.abort()
   editor.value?.destroy()
   editor.value = undefined
   editing.value = false
   source.value = spec.source
   clearOutput()
+  if (learnNotebook.value && !disposed) void startEdit(false)
 }
 
 function prefetchEditor() {
@@ -239,7 +260,7 @@ const showPanel = computed(
 </script>
 
 <template>
-  <div class="mc" :class="{ 'mc-check': isCheck, 'mc-exercise': spec.exercise, 'mc-editing': editing }">
+  <div ref="root" class="mc" :data-cell="`[${spec.index + 1}]`" :class="{ 'mc-check': isCheck, 'mc-exercise': spec.exercise, 'mc-editing': editing }">
     <div class="mc-code">
       <div v-show="!editing" class="mc-static"><slot /></div>
       <div v-if="editing" ref="host" class="mc-editor"></div>
@@ -259,7 +280,7 @@ const showPanel = computed(
         Check
       </button>
       <button v-else type="button" class="mc-btn" :disabled="unavailable || busy" title="Run only the type and memory checker" @click="onRun('check')">Check</button>
-      <button v-if="!editing" type="button" class="mc-btn" title="Edit this code" @click="startEdit">Edit</button>
+      <button v-if="!editing" type="button" class="mc-btn" title="Edit this code" @click="startEdit()">Edit</button>
       <button v-if="editing" type="button" class="mc-btn" title="Back to the original code" @click="reset">Reset</button>
       <span v-if="status" class="mc-status">{{ status }}<template v-if="status.startsWith('Loading')"> (first use)</template></span>
       <span v-else-if="isCheck && spec.exercise" class="mc-hint">Goal: no diagnostics</span>

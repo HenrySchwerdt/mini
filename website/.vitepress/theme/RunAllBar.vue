@@ -1,32 +1,37 @@
 <script setup lang="ts">
 /** Shown on notebook pages (`notebook: true`): runs every cell of the page from top to bottom. */
 import { computed, ref } from 'vue'
-import { useRoute } from 'vitepress'
+import { useData, useRoute } from 'vitepress'
 import { availability } from './playground/session.ts'
 import { cellsOf } from './cell-registry.ts'
 
 const route = useRoute()
+const { frontmatter } = useData()
 const running = ref(false)
 const done = ref(0)
 const failedAt = ref(-1)
 const cells = computed(() => cellsOf(route.path))
-const total = computed(() => cells.value.length)
+const examples = computed(() => cells.value.filter((h) => !h.spec.exercise))
+const total = computed(() => examples.value.length)
 
 async function runAll() {
   if (running.value) return
   running.value = true
   done.value = 0
   failedAt.value = -1
-  const list = cells.value.filter((h) => !h.spec.exercise)
-  for (let i = 0; i < list.length; i++) {
-    const ok = await list[i].run()
-    done.value = i + 1
-    if (!ok) {
-      failedAt.value = list[i].spec.index
-      break
+  const list = examples.value
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const ok = await list[i].run()
+      done.value = i + 1
+      if (!ok) {
+        failedAt.value = list[i].spec.index
+        break
+      }
     }
+  } finally {
+    running.value = false
   }
-  running.value = false
 }
 
 function resetAll() {
@@ -39,7 +44,8 @@ function resetAll() {
 <template>
   <div v-if="total > 0" class="ra" role="group" aria-label="Notebook controls">
     <span class="ra-info">
-      <strong>Notebook page.</strong> Cells share declarations from top to bottom; edit any cell and run it.
+      <template v-if="frontmatter.learnNotebook"><strong>Code notebook</strong> · Edit code, then Run or Check. Ctrl/Cmd+Enter runs the focused cell.</template>
+      <template v-else><strong>Notebook page.</strong> Cells share declarations from top to bottom; edit any cell and run it.</template>
     </span>
     <span class="ra-actions">
       <button type="button" class="ra-btn primary" :disabled="running || availability === 'unavailable'" @click="runAll">

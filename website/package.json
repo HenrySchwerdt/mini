@@ -10,7 +10,8 @@
     "diagnostics": "node scripts/gen-diagnostics.mjs",
     "samples": "bash scripts/check-samples.sh",
     "test": "node --test 'tests/*.test.ts'",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test:learn": "node scripts/e2e-learn.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "14.2.0",

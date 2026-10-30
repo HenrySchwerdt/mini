@@ -1,15 +1,20 @@
 ---
-title: "7. Allocators and arenas"
+title: "10. Allocators and arenas"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 7. Allocators and arenas
+# 10. Allocators and arenas
 
 In Managed code every `Foo(...)` allocates with reference counting. To decide *where* objects come from, you put an **allocator** in scope and the compiler uses it for every allocation site inside.
 
 ::: info These cells are Check cells
 Programs that use allocator objects are checked by the compiler today, and native code generation for them is still in progress (see the [roadmap](/roadmap)). So the cells in this chapter and the next have a **Check** button instead of **Run**: it runs the same memory checker as `minic check`, in your browser.
 :::
+
+
+**By the end:** distinguish allocation strategy from memory-checking mode, read an allocator context and explain why an arena object cannot escape its region. A value copied out of an object and a reference to that object have different lifetime requirements.
 
 ## Allocators are ordinary classes
 
@@ -61,6 +66,14 @@ Allocating in a loop inside an arena is legal, but nothing is reclaimed before t
 <<< @/samples/memory/arena_loop.kt{kotlin}
 
 Warnings do not fail a build unless you pass `-Werror`.
+
+## Checkpoint
+
+Who decides the lifetime of objects returned by a function requiring `context(a: Arena)`? Why is returning `point.x` different from returning `point`?
+
+::: details Reasoning
+The caller supplies the arena and its region. Returning a primitive coordinate copies a value that does not depend on the arena; returning the point keeps a reference into that region. An arena created and closed inside the function cannot supply a valid escaping object.
+:::
 
 ## Exercise
 

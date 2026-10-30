@@ -1,9 +1,14 @@
 ---
 title: "4. Lambdas, collections and strings"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
 # 4. Lambdas, collections and strings
+
+
+**By the end:** read a function type, follow a lambda capture, transform a collection and identify where a pipeline may allocate. The dedicated [generics chapter](./generics) will develop the type contracts behind these APIs.
 
 ## Lambdas
 
@@ -25,7 +30,7 @@ println("${c1()} ${c1()} ${c1()} ${c2()}")
 
 `n` is captured by the lambda and lives as long as the lambda does. Under the hood it is a shared, reference-counted cell; the [closures chapter of How it works](/internals/closures) shows the generated C.
 
-`inline` functions are expanded at the call site, so their lambdas cost nothing and may `return` from the enclosing function:
+`inline` functions are expanded at the call site, which can remove function-object and call overhead for their inline lambdas. The work inside the lambda still has a cost. Eligible inline lambdas may `return` from the enclosing function:
 
 ```kotlin
 inline fun twice(action: () -> Unit) {
@@ -141,6 +146,14 @@ Box(n=20)
 zebra
 ```
 
+## Checkpoint
+
+What does `(Int) -> String` promise? Which names are shared by two calls of `makeCounter`? Does `filter().map()` necessarily fuse into one loop?
+
+::: details Reasoning
+The function takes an `Int` and returns a `String`. Each call to `makeCounter` creates its own captured counter; calls of the same returned function share that counter. Eager list operations usually create intermediate collections; do not assume fusion without checking the implementation.
+:::
+
 ## Exercise
 
 ::: tip Exercise: word lengths
@@ -186,3 +199,5 @@ dog: 3
 :::
 
 Next: [Null safety and exceptions](./errors).
+
+Language reference: [Kotlin collections](https://kotlinlang.org/docs/collections-overview.html) and [higher-order functions](https://kotlinlang.org/docs/lambdas.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

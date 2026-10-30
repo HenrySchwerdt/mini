@@ -25,6 +25,20 @@ Nothing here compiles anything. There is no interpreter, no server, and no preco
 | `../../../public/mini-sw.js` | Cache-first service worker for `toolchain/` files. |
 | `../../../tests/*.test.ts` | `npm test` (node:test): WASI shim on hand-written wasm, notebook splitting/assembly, `.minb`, share links. |
 
+## Learn notebooks
+
+The `/learn/` pages use the same cell compiler and editor through `MiniCell.vue`.
+`notebook: true` enables declaration sharing; `learnNotebook: true` adds the course
+layout and opens code editors when cells approach the viewport. Markdown remains
+server-rendered and has no editing controls. `learn-course.ts` is the shared chapter
+order for the sidebar and previous/next links. The free-form `/notebook` keeps its
+own text and structural editing controls.
+
+Run `npm run docs:build && npm run test:learn` to check editing, reset, navigation,
+mobile overflow and sidebar geometry across all documentation groups. This UI test
+does not require the wasm toolchain. Existing sample extraction still checks every
+lesson's assembled program and documented output.
+
 ## The interface
 
 ```ts

@@ -1,9 +1,14 @@
 ---
 title: "2. Values, functions and control flow"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
 # 2. Values, functions and control flow
+
+
+**By the end:** choose between a read-only binding and a mutable variable, write a function with a clear result type, use branching as an expression and recognize the boundaries of a range. The exercises reuse these ideas instead of introducing new syntax at the last moment.
 
 ## `val` and `var`
 
@@ -124,6 +129,14 @@ println()
 1*1; 1*2; 1*3; 2*1; 
 ```
 
+## Checkpoint
+
+What does `7 / 2` return? How is `0 until size` different from `0..size`? Why should a function accept a parameter rather than read a mutable top-level variable?
+
+::: details Reasoning
+Integer division returns `3`. `until` excludes the end, so `0 until size` covers valid indices; `0..size` includes one index too many. Parameters make a function's dependencies explicit and make different inputs easier to test.
+:::
+
 ## Exercise
 
 ::: tip Exercise: FizzBuzz
@@ -190,3 +203,5 @@ FizzBuzz
 :::
 
 Next: [Classes, data and sealed types](./classes). The [language tour](/tour/basics) has the full listing for this chapter.
+
+Language reference: [Kotlin basic syntax](https://kotlinlang.org/docs/basic-syntax.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

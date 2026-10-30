@@ -1,11 +1,16 @@
 ---
-title: "10. Performance"
+title: "13. Performance"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 10. Performance
+# 13. Performance
 
 Mini compiles Kotlin to C17 (or LLVM IR) and lets clang optimize it. There is no virtual machine, no garbage collector and no warm-up. A hello-world starts in about a millisecond and the binary is 80 to 210 KiB.
+
+
+**By the end:** separate compile time from runtime, compare equivalent algorithms and use native counters to investigate allocation costs. A browser timing is a useful experiment in that browser, not a native benchmark.
 
 ## Measure something
 
@@ -43,7 +48,7 @@ In the browser this runs as WebAssembly. Compiled natively with `minic build -O2
 - **`--stats`.** Builds the program so that it prints allocation and reference-count counters to stderr at exit: allocations, frees, live objects at exit and the peak, and retain/release calls split into non-atomic, atomic and no-ops. Use it to find where counting remains.
 - **`--emit-c file.c`.** Keeps the generated C. It is readable; the [How it works](/internals/) pages walk through it.
 - **Backends.** The default backend writes C. `--backend=llvm` writes textual LLVM IR, and a build of the compiler with the LLVM C API bound in has `--backend=llvm-api`, which emits object files directly and can **run a program in memory with a JIT** (`--run`). See the [command line reference](/reference/minic).
-- **Allocators.** Arenas allocate by bumping a pointer and free everything at once, with no per-object counting. For a workload with many small objects of one lifetime (a request, a compiler phase, a frame) that is the biggest single lever. [Chapter 7](./memory-allocators) shows the syntax.
+- **Allocators.** Arenas allocate by bumping a pointer and free everything at once, with no per-object counting. For a workload with many small objects of one lifetime (a request, a compiler phase, a frame) that is the biggest single lever. [Chapter 10](./memory-allocators) shows the syntax.
 
 ## Numbers
 
@@ -57,6 +62,14 @@ The project measures eight programs against C, Rust, Go, Kotlin/JVM and Kotlin/N
 | json | 1.67 | wordcount | 6.5 |
 
 Mini is on par with C where the program is numeric and within a factor of about 1.3 on five of the eight. It is clearly slower on `wordcount` (a generic `HashMap` with boxed counts) and `json`. The [benchmarks page](/benchmarks) has the full tables with all languages, the memory use, the profiles of where the time goes and the commands to reproduce them. Numbers on a shared VM are good to about 5 percent.
+
+## Checkpoint
+
+Does a faster browser Run prove a faster native binary? What should you check before replacing a pipeline with a loop?
+
+::: details Reasoning
+No. Targets, compilation, sandbox overhead and workloads differ. First verify identical results and representative input, then compare native runs under the same build settings. Inspect allocation and reference-count counters if those are your suspected cost.
+:::
 
 ## Exercise
 

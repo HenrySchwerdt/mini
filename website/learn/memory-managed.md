@@ -1,9 +1,11 @@
 ---
-title: "6. Memory: managed by default"
+title: "9. Memory: managed by default"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
-# 6. Memory: managed by default
+# 9. Memory: managed by default
 
 From here on Mini differs from Kotlin. Kotlin on the JVM has a garbage collector. Mini has none: it has a **memory model with three tiers** and you choose the tier per file.
 
@@ -15,9 +17,12 @@ From here on Mini differs from Kotlin. Kotlin on the JVM has a garbage collector
 
 This chapter is the first tier, the one you have been using since chapter 1.
 
+
+**By the end:** draw a small reference graph, explain why sharing is different from copying, and recognize a cycle that ordinary reference counting cannot release. You do not need to introduce explicit allocators to write useful Mini programs.
+
 ## Reference counting
 
-Every object has a counter in its header. Storing a reference increments it, dropping one decrements it, and at zero the object releases what it holds and returns its memory. No pauses, no tracing, and memory is returned the moment the last reference goes.
+Every object has a counter in its header. Storing a reference increments it, dropping one decrements it, and at zero the object releases what it holds and returns its memory. There is no tracing collection cycle. Releasing a large object graph still takes time, so automatic reference counting is not a promise of pause-free execution.
 
 This program has two references to every `Account`. Clearing the list does not free them, because the map still holds them:
 
@@ -62,7 +67,7 @@ println("${x.other?.name} ${y.other?.name}")
 y x
 ```
 
-The program is correct and prints what you expect; it just never returns those two objects. There is no cycle collector yet. The usual fixes are a non-owning back reference (`@Borrowed`) or putting the objects in an arena, which frees all of them at once. Both are in the next chapters.
+The visible output is correct, but the cycle is a memory leak. There is no cycle collector yet. Redesign the graph to avoid a strong cycle, break a link when its logical lifetime ends, or investigate an arena for objects with one shared lifetime. The explicit ownership model also has borrowed references; they need a lifetime contract rather than an annotation pasted onto an arbitrary Managed graph. Both are in the next chapters.
 
 ## Choosing a tier per file
 
@@ -75,6 +80,14 @@ A file opts into a tier with an annotation on its first line:
 Without it the file is Managed. Tiers mix: a Strict file can call Managed code and the other way around, with rules at the boundary. You can also opt a single class back out of Strict:
 
 <<< @/samples/memory/mixed_modes.kt{kotlin}
+
+## Checkpoint
+
+Why can clearing a list leave its elements alive? Can a two-object cycle remain allocated after both local names disappear? Does Managed mode mean your program cannot leak?
+
+::: details Reasoning
+Other references, such as a map, may keep the elements alive. A cycle keeps its own counts above zero even after outside references vanish. Managed code handles ordinary release automatically, but reference cycles and unintentionally retained objects can still leak.
+:::
 
 ## Exercise
 

@@ -1,9 +1,14 @@
 ---
 title: "5. Null safety and exceptions"
 notebook: true
+learnNotebook: true
+aside: false
 ---
 
 # 5. Null safety and exceptions
+
+
+**By the end:** represent absence with a nullable type, narrow a type with a check, and decide between a missing result and an exception. A failed conversion of user input is usually a case to handle, not a reason to add `!!`.
 
 ## Null safety
 
@@ -46,7 +51,7 @@ something else
 
 ## Extension functions
 
-Add functions to types you do not own. They are resolved statically and cost nothing at run time.
+Add functions to types you do not own. They are resolved statically. The extension syntax adds no dynamic dispatch; the function body can still allocate or perform expensive work.
 
 ```kotlin
 fun Int.isEven(): Boolean = this % 2 == 0
@@ -112,6 +117,14 @@ fun main() {
 
 Press Run: the output panel shows `before`, the message on stderr and `exit code 1`. There are no stack traces yet. Mini implements exceptions with `setjmp`/`longjmp` in the generated C; [How it works](/internals/exceptions) shows how.
 
+## Checkpoint
+
+When does `?.` return null? Is `?:` a fallback for every exception? Does `!!` prove a value is present?
+
+::: details Reasoning
+A safe call skips the call and returns null for a null receiver. Elvis supplies an alternative for a null result; it does not catch exceptions. `!!` asserts non-null at runtime and can throw, so it is not a substitute for validating input.
+:::
+
 ## Exercise
 
 ::: tip Exercise: safe parsing
@@ -148,4 +161,6 @@ sum = 12
 ```
 :::
 
-Next: [Memory: managed by default](./memory-managed), where Mini starts to differ from Kotlin. More listings: [exceptions](/tour/exceptions) and [extensions and null safety](/tour/extensions).
+Next: [Generics and type contracts](./generics). After extensions and the project, continue with [Managed memory](./memory-managed). More listings: [exceptions](/tour/exceptions) and [extensions and null safety](/tour/extensions).
+
+Language reference: [Kotlin null safety](https://kotlinlang.org/docs/null-safety.html). Mini-specific behavior is documented in the [compatibility guide](/guide/mini-vs-kotlin).

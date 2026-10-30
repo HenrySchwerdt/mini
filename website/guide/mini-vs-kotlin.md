@@ -1,6 +1,6 @@
 # Mini and Kotlin/JVM
 
-Mini accepts Kotlin source and uses the real Kotlin K2 frontend (pinned to Kotlin 2.4.21) to read it, so the grammar, name resolution and type checking are Kotlin's. What differs is everything after the frontend: there is no JVM, no JDK, no garbage collector, and the standard library is Kotlin source compiled together with your program.
+Mini accepts Kotlin source. Its own parser, type checker and lowering are the default frontend, checked against Kotlin K2 as an oracle. The JVM compiler driver can also select K2 with `--frontend=k2`. What differs is everything after the frontend: there is no JVM, no JDK, no garbage collector, and the standard library is Kotlin source compiled together with your program.
 
 ## What works
 
@@ -55,13 +55,13 @@ These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus wh
 
 - No coroutines or `suspend` functions (planned, on top of libuv).
 - No property references (`::prop`), except `::lateinitProp.isInitialized`.
-- No `Byte`, `Short` or `Float` in the backend, no `value class`, no unsigned types.
+- `Byte`, `Short` and `Float` are supported as unboxed scalars for C interop; nullable or boxed uses are restricted. General `value class` support and unsigned types are not available.
 - Annotations with arguments are not supported by the backend (the `mini.memory` annotations are handled by the checker).
 - Not supported: enum entries with bodies, local `object` declarations, nested classes inside local classes, `Unit?`; type aliases are ignored (no code is generated for them).
 - A lambda parameter of an `inline` function may only be invoked or passed on to another inline function; use `noinline` to store it.
 - `entries` of an enum class did not resolve in the sample on the [types page](/tour/types), so it uses `values()` instead.
 - No regular expressions, no `String.format`, no reflection beyond `KClass` names.
-- No C interop (`external`/`@CName`), no networking or async IO yet. These are [planned](/roadmap).
+- Native [C interop](/guide/c-interop) supports `external`/`@CName`, pointers, callbacks and scoped C memory. It cannot run against host libraries in the browser. Networking and async IO are still [planned](/roadmap).
 - The generated C uses GNU statement expressions, so it needs clang or gcc (not MSVC).
 - Reference cycles leak under reference counting, for example a closure stored in a field of the object it captures.
 
