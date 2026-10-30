@@ -43,6 +43,12 @@ jobs:
       - name: Rust
         run: rustup toolchain install stable --profile minimal && rustc --version
 
+      # the benchmarks compare with Kotlin/JVM (the JDK is only needed for that comparison, not for Mini)
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Kotlin/JVM and Kotlin/Native compilers
         run: |
           set -euo pipefail
@@ -55,9 +61,10 @@ jobs:
           echo "$HOME/kotlin-tools/kotlinc/bin" >> "$GITHUB_PATH"
           echo "$HOME/kotlin-tools/kotlin-native-prebuilt-linux-x86_64-${KOTLIN_VERSION}/bin" >> "$GITHUB_PATH"
 
-      - name: Build the Mini compiler
-        working-directory: compiler
-        run: ./gradlew installDist --console=plain
+      - name: Build the Mini toolchain (native, from the latest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-toolchain.sh
 
       - name: Run the suite
         run: |

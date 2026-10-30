@@ -131,8 +131,9 @@ libuv is only needed for the runtime tests.
 ./mini new hello && cd hello && ../mini run
 ```
 
-The bare compiler wrapper `./minic` (`./minic build examples/hello.kt -o build/hello`, `./minic check examples/memory_leak.kt`)
-still runs the JVM build (K2 frontend, JDK 21, Gradle); it is only needed for the K2 comparison and the Gradle test suites.
+The bare compiler wrapper `./minic` (`./minic run examples/hello.kt`, `./minic check examples/memory_leak.kt`) is native too (the
+driver script `scripts/minic.sh` over `build/native/bin/minic-native`). The K2 cross-checks (official Kotlin compiler on the JVM)
+are a separate optional tool, [tools/k2-oracle](tools/k2-oracle/README.md).
 
 ### Create a project
 
@@ -155,24 +156,22 @@ Without `PATH` use `./mini new hello && cd hello && ../mini run`. `mini` is a na
 
 ### Self-hosting in one minute
 
-`minic` compiles its own backend (pure Kotlin) to a native binary and uses it to generate C:
+`minic` compiles itself (frontend, lowering, backend: pure Kotlin) to a native binary, and that binary compiles itself again to
+the identical C:
 
 ```sh
-# minic builds its own backend natively (~20 s)
-./minic build $(find compiler/native-driver/src/main/kotlin compiler/backend/src/main/kotlin -name '*.kt') -o build/minic-backend
-./minic emit-mir examples/shapes.kt -o build/shapes.mir   # frontend (K2, still on the JVM)
-build/minic-backend build/shapes.mir -o build/shapes.c     # backend, native
-clang -std=c17 -O2 -Iruntime/include build/shapes.c runtime/src/*.c -lm -o build/shapes && build/shapes
+compiler/bootstrap.sh          # stage0 (a native compiler) -> stage1 -> stage2 -> stage3; stage2 and stage3 are byte-identical
 ```
 
 ## Repository layout
 
 | Directory | Contents |
 |---|---|
-| `compiler/` | `minic`: K2 frontend, Kotlin IR, MIR, C17, clang, plus the ownership checker and the own frontend. [README](compiler/README.md) |
+| `compiler/` | the compiler and the `mini` tool as flat Mini projects (`mini.toml`, `src/`, `tests/`): own frontend, lowering, MIR, C17/LLVM backends, ownership checker. [README](compiler/README.md) |
+| `tools/k2-oracle/` | optional cross-checks against the official Kotlin compiler on the JVM (the only Gradle build; nightly CI). [README](tools/k2-oracle/README.md) |
 | `runtime/` | libminirt (C17): object model, refcounting, strings, allocators. [README](runtime/README.md) |
 | `stdlib/` | Mini stdlib as Kotlin source (ported from the Kotlin stdlib, Apache-2.0) |
-| `stdlib-test/` | stdlib tests that run on the JVM against the real Kotlin stdlib |
+| `stdlib-test/` | stdlib tests that run on the JVM against the real Kotlin stdlib (run by `tools/k2-oracle`) |
 | `examples/` | example programs |
 | `website/` | the [documentation site](https://henryschwerdt.github.io/mini/) (VitePress), its checked code samples and generators |
 | `docs/` | [plan and roadmap](docs/plan-kotlin.md), [memory model](docs/memory-model.md), [stdlib](docs/stdlib.md), [benchmarks](docs/benchmarks.md) |
@@ -181,10 +180,14 @@ clang -std=c17 -O2 -Iruntime/include build/shapes.c runtime/src/*.c -lm -o build
 
 ```sh
 runtime/run_tests.sh                 # runtime under ASan/UBSan/TSan (set LIBUV_ROOT if needed)
-(cd compiler && ./gradlew test)      # compiler: end-to-end, leak check, memory-model corpus, stdlib
+scripts/check-purity.sh              # the compiler packages use no JVM API
+(cd compiler && ../mini test)        # unit tests of backend, frontend, native-driver, mini-tool (mini-tool is slow: real builds)
+scripts/test-e2e.sh                  # compiler/testdata: C backend, ASan/LSan/UBSan leak check, memory-model corpus (--suite llvm ...)
+compiler/bootstrap.sh                # stage2 == stage3 (also --backend=llvm and llvm-api)
 ```
 
-Expected outputs always come from real Kotlin on the JVM. CI runs both suites on Linux and macOS.
+Expected outputs of `compiler/testdata` come from real Kotlin on the JVM. CI runs these suites on Linux and macOS per pull
+request without a JDK; the K2 cross-checks (`tools/k2-oracle`) run nightly. See [docs/no-gradle.md](docs/no-gradle.md).
 
 ## History
 

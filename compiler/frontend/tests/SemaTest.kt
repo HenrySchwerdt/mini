@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 // `mini test` runs a test in the package directory (compiler/frontend)
 private const val repoRoot = "../.."
 
-/** Unit tests of the semantic analysis (the agreement with K2 is tested by `SemaOracleTest` in frontend-oracle). */
+/** Unit tests of the semantic analysis (the agreement with K2 is tested by `SemaOracleTest` in tools/k2-oracle/frontend-oracle). */
 class SemaTest {
 
     private val stdlib: List<SourceInput> by lazy {

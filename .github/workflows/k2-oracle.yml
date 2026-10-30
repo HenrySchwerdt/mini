@@ -1,0 +1,60 @@
+name: K2 oracle
+# The cross-checks against the official Kotlin compiler on the JVM (tools/k2-oracle). Not part of the per-PR build: the main
+# build is native (build.yml). Nightly, and on manual dispatch (e.g. for a change to the frontend or the lowering).
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    strategy:
+      fail-fast: false
+      matrix:
+        # jvm-e2e: the K2 CLI over compiler/testdata (C backend, sanitizers); jvm-llvm: LLVM backends; selfhost: the K2-built compiler compiles itself;
+        # bridge: all other jvm-bridge tests (stdlib vs the real kotlin-stdlib, K2 vs own frontend, memory checker); oracle: parser and sema vs K2;
+        # *-selfhost: the frontend compiled by minic; spec: memory-model corpus on the JVM; selfcompare: MIR from K2 vs own frontend;
+        # bootstrap: JVM-started bootstrap reaches the same fixpoint as the native one.
+        shard: [jvm-e2e, jvm-llvm, selfhost, bridge, oracle, frontend-selfhost, sema-selfhost, spec, selfcompare, bootstrap]
+    name: k2-oracle (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: tools/k2-oracle
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Run (${{ matrix.shard }})
+        run: |
+          case "${{ matrix.shard }}" in
+            jvm-e2e)           args=(:jvm-bridge:test --tests EndToEndTest) ;;
+            jvm-llvm)
+              sudo apt-get install -y -qq llvm-18-dev >/dev/null
+              export PATH="/usr/lib/llvm-18/bin:$PATH"
+              args=(:jvm-bridge:test --tests LlvmEndToEndTest --tests LlvmApiEndToEndTest) ;;
+            selfhost)          args=(:jvm-bridge:test --tests SelfHostTest) ;;
+            bridge)            args=(:jvm-bridge:test -PtestExclude=EndToEndTest,SelfHostTest,LlvmEndToEndTest,LlvmApiEndToEndTest) ;;
+            oracle)            args=(:frontend-oracle:test -PtestExclude=FrontendSelfHostTest,SemaSelfHostTest) ;;
+            frontend-selfhost) args=(:frontend-oracle:test --tests FrontendSelfHostTest) ;;
+            sema-selfhost)     args=(:frontend-oracle:test --tests SemaSelfHostTest) ;;
+            spec)              args=(:memory-spec:test) ;;
+            # MIR of the compiler sources: own frontend vs K2; the normalised diff must not exceed selfcompare-baseline.txt.
+            selfcompare)       ./gradlew :jvm-bridge:installDist --console=plain && python3 selfcompare.py; exit ;;
+            # the original B3 bootstrap started by the JVM compiler; same fixpoint as the native chain
+            bootstrap)
+              ./gradlew :jvm-bridge:installDist --console=plain
+              ../../scripts/ci-stage0.sh "$RUNNER_TEMP/native-boot"
+              ./bootstrap-k2.sh --reference "$RUNNER_TEMP/native-boot/s0" "$RUNNER_TEMP/k2-boot"; exit ;;
+          esac
+          ./gradlew "${args[@]}" --console=plain

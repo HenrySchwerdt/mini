@@ -1,8 +1,8 @@
 package mini.internal
 
 /*
- * JVM implementation of mini/internal/B1Intrinsics.kt. Besides the stdlib unit tests, the Gradle module
- * compiler/native-driver compiles this file so that the driver also runs on the JVM.
+ * JVM implementation of mini/internal/B1Intrinsics.kt. Besides the stdlib unit tests, the Gradle modules
+ * of tools/k2-oracle compile this file so that the driver also runs on the JVM.
  * Signatures must match the native file (B1IntrinsicsSyncTest).
  */
 

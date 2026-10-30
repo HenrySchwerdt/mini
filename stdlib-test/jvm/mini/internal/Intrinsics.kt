@@ -2,7 +2,7 @@ package mini.internal
 
 /*
  * JVM implementation of mini/internal/Intrinsics.kt, used only by the stdlib unit tests
- * (compiler/jvm-bridge StdlibJvmTest): the stdlib sources are compiled with this file instead of the
+ * (tools/k2-oracle StdlibJvmTest): the stdlib sources are compiled with this file instead of the
  * native one, so their logic can be tested on the JVM. Signatures must match the native file
  * (a test checks this).
  */

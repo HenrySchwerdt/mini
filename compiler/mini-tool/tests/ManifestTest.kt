@@ -11,6 +11,14 @@ class ManifestTest {
     private fun fail(text: String): ManifestException = assertFailsWith { parse(text) }
 
     @Test
+    fun cSourcesAreListedRelativeToThePackage() {
+        val m = parse("[package]\nname = \"host\"\nc-sources = [\"native/a.c\", \"b.c\"]\n")
+        assertEquals(listOf("native/a.c", "b.c"), m.pkg!!.cSources)
+        assertEquals(emptyList(), parse("[package]\nname = \"x\"\n").pkg!!.cSources)
+        assertTrue(fail("[package]\nname = \"x\"\nc-sources = \"a.c\"\n").error.msg.contains("array"))
+    }
+
+    @Test
     fun parsesAFullManifest() {
         val m = parse(
             """

@@ -1,4 +1,4 @@
-// GENERATED from docs/memory-model.md section 7 by :mini-tool:generateExplainData. Do not edit.
+// GENERATED from docs/memory-model.md section 7 by scripts/gen-explain.py. Do not edit.
 package mini.tool
 
 internal object ExplainData {

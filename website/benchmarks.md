@@ -5,7 +5,7 @@ These numbers come from `docs/benchmarks.md` in the repository (milestone D1, "d
 ## How to measure
 
 - **Counters.** `minic build --stats prog.kt -o prog` compiles runtime and program with `-DMK_STATS`. At exit the program prints four `mk-stats:` lines to stderr: allocations, frees, live objects at exit and peak, bytes (total, live, peak), and `retain`/`release` calls split into non-atomic, atomic (shared objects) and no-ops (null, static or stack objects). In a `--stats` build every retain and release is a runtime call so the counters see all of them.
-- **Benchmark driver.** `compiler/bench/run.sh [--reps N] [--configs "base opt"] [--only name]`, or `gradle -p compiler bench`. For every benchmark it builds both configurations (`base` = `--no-rc-opt`, `opt` = RC elision), checks that the output is identical, and takes the best time of N runs. Results go to `compiler/build/bench/results.md`.
+- **Benchmark driver.** `compiler/bench/run.sh [--reps N] [--configs "base opt"] [--only name]`. For every benchmark it builds both configurations (`base` = `--no-rc-opt`, `opt` = RC elision), checks that the output is identical, and takes the best time of N runs. Results go to `compiler/build/bench/results.md`.
 - **Benchmarks** (`compiler/bench/micro/*.kt`): `arraylist`, `hashmap`, `stringbuilder`, `mapfilter` (map/filter/fold chains), `tree` (binary-tree building), `templates` (string templates). Plus the **self-hosted backend** `minic-backend` turning a MIR file into C: `selfhost-small` and `selfhost-large` (the MIR of the backend itself, the largest input there is).
 
 ## Results
@@ -55,7 +55,7 @@ The rules that remove them are in [Reference counting and RcOpt](/internals/refc
 ## Reproducing
 
 ```sh
-cd compiler && ./gradlew installDist && cd ..
+./mini --version
 bash compiler/bench/run.sh --reps 7           # about 8 minutes; --only tree for one benchmark
 cat compiler/build/bench/results.md
 ./minic build prog.kt -o prog --stats         # counters for any program; --no-rc-opt for the baseline
@@ -153,4 +153,4 @@ The LLVM backend did not gain on `spectralnorm` (cause not found). The table bel
 
 Common causes are that the runtime is a separate translation unit without LTO (so no accessor is inlined) and that array element reads are not borrowed by the reference-counting optimizer. Both are fixable in the backend; `-flto` alone already helps `nbody` by 24 percent and `json` by 12 percent.
 
-To reproduce: `cd compiler && ./gradlew installDist && cd .. && bench/run.sh --reps 5 --stats` (results in `bench/results/`).
+To reproduce: `./mini --version && bench/run.sh --reps 5 --stats` (results in `bench/results/`).

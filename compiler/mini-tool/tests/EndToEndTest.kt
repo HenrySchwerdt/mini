@@ -108,7 +108,7 @@ class EndToEndTest {
         assertTrue(p.err.contains("--> src/main.kt:14:15"), p.err.toString()) // project-relative path, not the overlay copy
         assertTrue(p.err.contains("could not check `leaky`"), p.err.toString())
         assertTrue(!p.err.contains("could not compile main.kt") && !p.err.contains("1 error, 0 warnings"), p.err.toString()) // minic-native's own summary is dropped
-        assertEquals(1, Regex("error\\[M0102\\]").findAll(p.err.toString()).count(), p.err.toString())
+        assertEquals(1, (p.err.toString().split("error[M0102]").size - 1), p.err.toString())
 
         // editors get the same as JSON lines
         p.reset()
