@@ -8,7 +8,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useData, useRoute, withBase } from 'vitepress'
 import './playground/playground.css'
-import RunOutput, { type Segment } from './playground/RunOutput.vue'
+import RunOutput from './playground/RunOutput.vue'
+import { OutputSink, type Segment } from './playground/display.ts'
 import { availability, buildAndRun, checkOnly, loadError, loadedLevel, probe, progress, setSiteBase } from './playground/session.ts'
 import { hashFor } from './playground/share.ts'
 import type { MiniEditor } from './playground/editor.ts'
@@ -37,7 +38,7 @@ const target = ref(0)
 const ran = ref<'' | 'run' | 'check'>('')
 const failure = ref('')
 const verdict = ref<'' | 'match' | 'differs'>('')
-let stdout = ''
+let sink = new OutputSink([])
 let abort: AbortController | undefined
 
 const modified = computed(() => source.value !== spec.source)
@@ -87,14 +88,11 @@ function clearOutput() {
   failure.value = ''
   verdict.value = ''
   ran.value = ''
-  stdout = ''
+  sink = new OutputSink(segments.value)
 }
 
 function push(type: 'out' | 'err', text: string) {
-  if (type === 'out') stdout += text
-  const last = segments.value[segments.value.length - 1]
-  if (last && last.type === type) last.text += text
-  else segments.value = [...segments.value, { type, text }]
+  sink.push(type, text)
 }
 
 /** Resolves to whether the cell ended as documented (no error for a run cell, the expected diagnostics for a check cell). */
@@ -137,6 +135,7 @@ async function go(kind: 'run' | 'check'): Promise<boolean> {
       timeoutMs: 10000,
       signal: abort.signal,
     })
+    sink.end()
     diags.value = prog.map(out.diagnostics)
     if (out.failure) {
       failure.value = out.failure
@@ -145,7 +144,7 @@ async function go(kind: 'run' | 'check'): Promise<boolean> {
     result.value = out.run ?? null
     if (!out.run) return false
     if (spec.expected !== undefined && out.run.exitCode === (spec.exit ?? 0)) {
-      if (sameOutput(stdout, spec.expected)) verdict.value = 'match'
+      if (sameOutput(sink.stdout, spec.expected)) verdict.value = 'match'
       else if (!modified.value) verdict.value = 'differs'
     }
     return out.run.exitCode === (spec.exit ?? 0)

@@ -3,7 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { useData, withBase } from 'vitepress'
 import './playground.css'
 import CodeCell from './CodeCell.vue'
-import RunOutput, { type Segment } from './RunOutput.vue'
+import RunOutput from './RunOutput.vue'
+import { OutputSink, type Segment } from './display.ts'
 import ToolchainStatus from './ToolchainStatus.vue'
 import { createMarkdownRenderer } from './markdown.ts'
 import {
@@ -209,10 +210,11 @@ function toEditorDiagnostics(ds: MappedDiagnostic[], cell: number): Diagnostic[]
     .map((d) => ({ ...d, secondary: (d.secondary ?? []).filter((s) => s.cell === cell) }))
 }
 
+const sinks = new WeakMap<CellOutput, OutputSink>()
 function pushOut(o: CellOutput, type: 'out' | 'err', text: string) {
-  const last = o.segments[o.segments.length - 1]
-  if (last && last.type === type) last.text += text
-  else o.segments.push({ type, text })
+  let s = sinks.get(o)
+  if (!s) sinks.set(o, (s = new OutputSink(o.segments)))
+  s.push(type, text)
 }
 
 /** Runs one cell. Returns true when it finished without errors. */
@@ -235,6 +237,7 @@ async function runCell(i: number): Promise<boolean> {
     onStderr: (s) => ((out.status = 'running'), pushOut(out, 'err', s)),
   })
   abort = undefined
+  sinks.get(out)?.end()
   const mapped = mapDiagnostics(outcome.diagnostics, asm, i)
   out.problems = mapped
   // Diagnostics of this run replace the markers of all cells up to this one.
