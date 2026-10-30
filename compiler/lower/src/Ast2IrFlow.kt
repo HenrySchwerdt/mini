@@ -180,7 +180,52 @@ fun Ast2Ir.incDec(target0: Expr, inc: Boolean, prefix: Boolean, node: Expr, r: E
     val sym = tr.callee
     val t = irType(tr.type)
     val unit = sema.unitType
-    if (target is IndexExpr) fail(target, "increment of an indexed element")
+    if (target is IndexExpr) {
+        // `a[i]++`: evaluate receiver and indices once, get, inc/dec, set; the value is the old (postfix) or new (prefix) element
+        val setInfo = (r.extra as? CompoundInfo)?.set ?: fail(target, "set is not resolved")
+        val getInfo = tr.call ?: fail(target, "get is not resolved")
+        val stmts = ArrayList<IrStatement>()
+        val arr = IrVariable("<array>", irType(rec(target.receiver)!!.type), false)
+        arr.origin = "IR_TEMPORARY_VARIABLE"
+        arr.parent = ctx?.fn
+        arr.initializer = convert(target.receiver)
+        stmts.add(arr)
+        val idxVars = ArrayList<IrVariable>()
+        var k = 0
+        for (i in target.indices) {
+            val iv = IrVariable("<index" + k + ">", irType(rec(i)!!.type), false)
+            iv.origin = "IR_TEMPORARY_VARIABLE"
+            iv.parent = ctx?.fn
+            iv.initializer = convert(i)
+            stmts.add(iv)
+            idxVars.add(iv)
+            k++
+        }
+        val getArgs = ArrayList<IrExpression>()
+        for (iv in idxVars) getArgs.add(getValue(iv))
+        val got = callOperator(getInfo, getValue(arr), getArgs, t, origin)
+        val old = IrVariable("<unary>", t, false)
+        old.origin = "IR_TEMPORARY_VARIABLE"
+        old.parent = ctx?.fn
+        old.initializer = got
+        stmts.add(old)
+        val op = callOperator(info, getValue(old), emptyList(), irType(info.ret ?: t), origin)
+        val result: IrVariable
+        if (prefix) {
+            val nv = IrVariable("<unary>", t, false)
+            nv.origin = "IR_TEMPORARY_VARIABLE"
+            nv.parent = ctx?.fn
+            nv.initializer = op
+            stmts.add(nv)
+            result = nv
+        } else result = old
+        val setArgs = ArrayList<IrExpression>()
+        for (iv in idxVars) setArgs.add(getValue(iv))
+        setArgs.add(if (prefix) getValue(result) else op)
+        stmts.add(callOperator(setInfo, getValue(arr), setArgs, unit, origin))
+        stmts.add(getValue(result))
+        return IrBlock(stmts, t, origin)
+    }
     if (sym is VarSym && !sym.isField) {
         val v = varMap[sym] ?: fail(target, "variable " + sym.name + " is not declared in the IR")
         val stmts = ArrayList<IrStatement>()

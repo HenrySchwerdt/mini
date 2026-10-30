@@ -1,0 +1,6 @@
+[package]
+name = "example-linear-regression"
+kind = "app"
+
+[dependencies]
+mini-tensor = { path = "../.." }

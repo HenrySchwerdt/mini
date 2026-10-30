@@ -1,0 +1,8 @@
+epoch 0 loss 7.051489
+epoch 50 loss 0.013241742
+epoch 100 loss 0.010564062
+epoch 150 loss 0.01056173
+epoch 200 loss 0.010561727
+w = 3.0047245, b = 1.9926536
+normal equation: tensor([[3.0047],
+        [1.9927]])

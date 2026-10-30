@@ -1,0 +1,7 @@
+[package]
+name = "mini-tensor"
+version = "0.1.0"
+kind = "lib"
+description = "Tensors, linear algebra and autograd with a PyTorch-like API"
+license = "Apache-2.0"
+c-sources = ["native/mt_blas.c"]
