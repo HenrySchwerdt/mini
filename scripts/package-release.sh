@@ -48,6 +48,10 @@ if [ -z "$WORK" ]; then
 fi
 [ -f "$WORK/stage3.c" ] || { echo "package-release.sh: $WORK/stage3.c missing (run compiler/bootstrap.sh first)" >&2; exit 1; }
 [ -x "$WORK/stage3" ] || { echo "package-release.sh: $WORK/stage3 missing (run compiler/bootstrap.sh --backend=llvm-api first)" >&2; exit 1; }
+if [ "$SEED" = 1 ] && [ ! -f "$WORK/plain.c" ]; then
+    echo "package-release.sh: $WORK/plain.c missing (the portable seed needs the plain compiler from the LLVM API bootstrap)" >&2
+    exit 1
+fi
 [ -f "$LLVM_LICENSE" ] || { echo "package-release.sh: pass --llvm-license <LLVM 18 LICENSE.TXT>" >&2; exit 1; }
 [ -f "$ZSTD_LICENSE" ] || { echo "package-release.sh: pass --zstd-license <zstd BSD license/copyright>" >&2; exit 1; }
 
@@ -115,5 +119,6 @@ tar -C "$(dirname "$STAGE")" -czf "$OUT/$NAME.tar.gz" "$NAME"
 echo "wrote $OUT/$NAME.tar.gz"
 
 if [ "$SEED" = 1 ]; then
-    "$ROOT/scripts/package-seed.sh" "$VERSION" "$WORK/stage3.c" "$OUT"
+    # stage3.c includes the LLVM API bindings; plain.c is the bootstrap-verified compiler requiring only C.
+    "$ROOT/scripts/package-seed.sh" "$VERSION" "$WORK/plain.c" "$OUT"
 fi
