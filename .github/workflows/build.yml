@@ -113,6 +113,8 @@ jobs:
                 compiler/bootstrap.sh --backend=llvm "$RUNNER_TEMP/boot-llvm"
                 compiler/bootstrap.sh --backend=llvm-api "$RUNNER_TEMP/boot-api"
                 MINIC_API="$RUNNER_TEMP/boot-api/stage3" scripts/test-e2e.sh --suite llvm-api
+                MINIC_API="$RUNNER_TEMP/boot-api/stage3" compiler/llvm-c/tests/repl-session.sh
+                MINIC_API="$RUNNER_TEMP/boot-api/stage3" compiler/llvm-c/tests/session-api-smoke.sh
               fi ;;
             # B3 from the latest release: native stage0 -> stage1 -> stage2 -> stage3, stage2 == stage3 byte for byte.
             # Then the native `mini` project tool is built by that stage3 compiler and smoke-tested:

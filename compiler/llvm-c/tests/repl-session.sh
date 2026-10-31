@@ -19,6 +19,17 @@ val initialized = initializer()
 initialized
 initialized
 initRuns
+var held: String = ""
+fun keepOwned(@kotlin.internal.TakesOwnership value: String) { held = value }
+fun makeAndKeep() { val owner = "kept " + "alive"; val borrowed = owner; keepOwned(borrowed) }
+:do makeAndKeep()
+held
+val strings = ArrayList<String>()
+fun appendNew() { val owner = "list " + "value"; val borrowed = owner; strings.add(borrowed) }
+:do appendNew()
+strings.toString()
+strings[0]
+strings[0]
 val broken: Int = "not an Int"
 nextAnswer()
 val answer = 8
@@ -38,11 +49,15 @@ initialized once
 7
 7
 1
+kept alive
+[list value]
+list value
+list value
 42
 42
 EXPECTED
 diff -u "$WORK/expected" "$WORK/out"
-grep -q 'could not compile ReplCell12.kt' "$WORK/err"
+grep -Eq 'could not compile ReplCell[0-9]+\.kt' "$WORK/err"
 grep -q "redefinition of 'answer'" "$WORK/err"
 
 cat > "$WORK/args.kt" <<'SOURCE'
@@ -61,4 +76,22 @@ if "$MINIC_API" "$WORK/throws.kt" --backend=llvm-api --run --stdlib $STDLIB > "$
     exit 1
 fi
 grep -q 'ORC exception smoke' "$WORK/throws.err"
+
+# An overlong input is rejected as a whole and drained through its newline; neither the prefix nor the tail can execute.
+{
+    printf ':do println("oversize prefix");'
+    awk 'BEGIN { for (i = 0; i < 65537; i++) printf " " }'
+    printf ':do println("oversize suffix")\n1\n:quit\n'
+} > "$WORK/long-input"
+# shellcheck disable=SC2086
+"$MINIC_API" --backend=llvm-api --repl --stdlib $STDLIB < "$WORK/long-input" > "$WORK/long.out" 2> "$WORK/long.err"
+printf 'Mini native REPL. Enter `val`/`var`/`fun` declarations or expressions; `:do <statement>`, `:help`, `:quit`.\n1\n' > "$WORK/long.expected"
+diff -u "$WORK/long.expected" "$WORK/long.out"
+grep -q 'REPL input exceeds 65536 bytes; input discarded' "$WORK/long.err"
+
+if "$MINIC_API" "$WORK/args.kt" --backend=llvm-api --repl --stdlib $STDLIB > "$WORK/positional.out" 2> "$WORK/positional.err"; then
+    echo "expected --repl to reject positional source files" >&2
+    exit 1
+fi
+grep -q -- '--repl does not accept source files' "$WORK/positional.err"
 echo "REPL session regression OK"

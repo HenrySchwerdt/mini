@@ -9,6 +9,8 @@ import kotlinx.cinterop.*
 import mini.backend.MirModule
 import mini.backend.MirClass
 import mini.backend.MirFunction
+import mini.backend.RcOpt
+import mini.backend.Tracking
 import mini.backend.llvm.IrStrings
 import mini.llvm.*
 
@@ -24,6 +26,8 @@ external class MkTimespec : CStructVar {
 /** The runtime this process already runs (the compiler is a Mini program): flushing its stdout buffer and setting `main`'s `args`. */
 @CName("mk_runtime_flush") external fun mkRuntimeFlush()
 @CName("mk_b1_set_args") external fun mkB1SetArgs(argc: Int, argv: CPointer<CPointerVar<ByteVar>>)
+@CName("dlopen") external fun cDlopen(filename: CPointer<ByteVar>?, flags: Int): COpaquePointer?
+@CName("dlsym") external fun cDlsym(handle: COpaquePointer?, name: CPointer<ByteVar>): COpaquePointer?
 
 fun nowNanos(): Long = memScoped {
     val ts = alloc<MkTimespec>()
@@ -54,6 +58,8 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
     private val optimizationLevel = optLevel
     private val machine = LlvmApiEmitter.createMachine(optLevel)
     private val knownFunctions = HashMap<String, MirFunction>()
+    private val knownOwnedMasks = HashMap<String, BooleanArray>()
+    private val knownBorrowedFunctions = HashSet<String>()
     private val knownClasses = HashSet<String>()
     private val jit: LLVMOrcLLJITRef = try {
         createJit()
@@ -90,13 +96,21 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
         val sessionClasses = module.classes.map { c -> if (knownClasses.contains(c.cName)) externalClass(c) else c }
         val sessionModule = MirModule(module.sourceName, freshFunctions, sessionClasses, module.externs, module.includes, module.links, module.wasmExports)
         val externalSignatures = knownFunctions.values.toList()
-        val context = LLVMContextCreate()
-        val tsc = LLVMOrcCreateNewThreadSafeContextFromLLVMContext(context)
+        val externalOwnedMasks = knownOwnedMasks.mapValues { (_, mask) -> BooleanArray(mask.size) { mask[it] } }
+        val externalBorrowedFunctions = knownBorrowedFunctions.toSet()
+        var context: LLVMContextRef? = null
+        val tsc = memScoped {
+            val contextOut = alloc<COpaquePointerVar>()
+            val result = newOrcContext(contextOut.ptr)
+            context = contextOut.value
+            result
+        }
+        val contextRef = context ?: throw IllegalStateException("LLVM ORC returned no context")
         var mod: LLVMModuleRef? = null
         try {
             val codeEntry = entrySymbol ?: "mk_main"
             val userMain = "mkh_user_main_" + codeEntry
-            mod = LlvmApiEmitter.buildModule(sessionModule, context, machine, rcOpt, true, true, false, true, true, true, codeEntry, userMain, externalSignatures)
+            mod = LlvmApiEmitter.buildModule(sessionModule, contextRef, machine, rcOpt, true, true, false, true, true, true, codeEntry, userMain, externalSignatures, externalOwnedMasks, externalBorrowedFunctions)
             if (entrySymbol != null && memScoped { LLVMGetNamedFunction(mod!!, entrySymbol.cstr.ptr) } == null) {
                 throw IllegalArgumentException("module has no mk_main entry point")
             }
@@ -115,11 +129,13 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
                         out.value
                     }
                     for (f in freshFunctions) if (f.cName != "mk_main") knownFunctions[f.cName] = f
+                    rememberOwnedMasks(module, rcOpt)
                     for (c in module.classes) knownClasses.add(c.cName)
                     LLVMOrcReleaseResourceTracker(tracker)
                     return address
                 }
                 for (f in freshFunctions) if (f.cName != "mk_main") knownFunctions[f.cName] = f
+                rememberOwnedMasks(module, rcOpt)
                 for (c in module.classes) knownClasses.add(c.cName)
                 LLVMOrcReleaseResourceTracker(tracker)
                 return null
@@ -140,6 +156,34 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
         c.qualifiedName, c.cName, c.isInterface, c.superCName, c.fields, c.interfaces, c.vtable, c.itables,
         c.objectCtor, true, c.strict,
     )
+
+    private fun rememberOwnedMasks(module: MirModule, rcOpt: Boolean) {
+        if (!rcOpt) return
+        val plan = RcOpt.analyze(module, Tracking(module, true), true)
+        for (f in module.functions) {
+            val mask = plan.ownedMask(f.cName) ?: continue
+            knownOwnedMasks[f.cName] = BooleanArray(mask.size) { mask[it] }
+        }
+        for (f in module.functions) if (plan.returnsBorrowed(f.cName)) knownBorrowedFunctions.add(f.cName)
+    }
+
+    /** LLVM 18 has GetContext but not FromLLVMContext; newer releases have the inverse pair. */
+    private fun newOrcContext(contextOut: CPointer<COpaquePointerVar>): LLVMOrcThreadSafeContextRef = memScoped {
+        val handle = cDlopen(null, 1) ?: throw IllegalStateException("cannot inspect LLVM ORC context APIs")
+        val fromContext = cDlsym(handle, "LLVMOrcCreateNewThreadSafeContextFromLLVMContext".cstr.ptr)
+        if (fromContext != null) {
+            val context = LLVMContextCreate()
+            val create = fromContext.reinterpret<CFunction<(LLVMContextRef) -> LLVMOrcThreadSafeContextRef>>()
+            contextOut.pointed.value = context
+            return create(context)
+        }
+        val getContext = cDlsym(handle, "LLVMOrcThreadSafeContextGetContext".cstr.ptr)
+            ?: throw IllegalStateException("LLVM ORC exposes neither supported thread-safe context API")
+        val tsc = LLVMOrcCreateNewThreadSafeContext()
+        val get = getContext.reinterpret<CFunction<(LLVMOrcThreadSafeContextRef) -> LLVMContextRef>>()
+        contextOut.pointed.value = get(tsc)
+        tsc
+    }
 
     /** Add [module] and call its no-argument `Unit` entry point. */
     fun runModule(module: MirModule, rcOpt: Boolean, entrySymbol: String = "mk_main") {

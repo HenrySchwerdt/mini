@@ -78,9 +78,11 @@ object LlvmLowering {
         entrySymbol: String = "mk_main",
         userMainSymbol: String = "mkh_user_main",
         externalFunctionSignatures: List<MirFunction> = emptyList(),
+        externalFunctionOwnedMasks: Map<String, BooleanArray> = emptyMap(),
+        externalBorrowedFunctions: Set<String> = emptySet(),
     ) {
         val tr = Tracking(module, strict)
-        val plan = if (rcOpt) RcOpt.analyze(module, tr, conventions) else null
+        val plan = if (rcOpt) RcOpt.analyze(module, tr, conventions, externalFunctionSignatures, externalFunctionOwnedMasks, externalBorrowedFunctions) else null
         Lowering(module, plan, tr, stats, target, builder, externalClasses, externalFunctions, entrySymbol, userMainSymbol, externalFunctionSignatures).run()
     }
 }

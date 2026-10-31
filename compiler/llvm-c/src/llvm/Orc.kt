@@ -31,7 +31,6 @@ typealias LLVMOrcResourceTrackerRef = COpaquePointer
 @CName("LLVMOrcLLJITLookup") external fun LLVMOrcLLJITLookup(j: LLVMOrcLLJITRef, result: CPointer<LongVar>, name: CPointer<ByteVar>): LLVMErrorRef?
 
 @Owned(free = "LLVMOrcDisposeThreadSafeContext") @CName("LLVMOrcCreateNewThreadSafeContext") external fun LLVMOrcCreateNewThreadSafeContext(): LLVMOrcThreadSafeContextRef
-@CName("LLVMOrcCreateNewThreadSafeContextFromLLVMContext") external fun LLVMOrcCreateNewThreadSafeContextFromLLVMContext(context: LLVMContextRef): LLVMOrcThreadSafeContextRef
 @CName("LLVMOrcDisposeThreadSafeContext") external fun LLVMOrcDisposeThreadSafeContext(tsCtx: LLVMOrcThreadSafeContextRef)
 /** Takes the module (and, with the JIT, the context lives on in [tsCtx]). */
 @CName("LLVMOrcCreateNewThreadSafeModule") external fun LLVMOrcCreateNewThreadSafeModule(m: LLVMModuleRef, tsCtx: LLVMOrcThreadSafeContextRef): LLVMOrcThreadSafeModuleRef

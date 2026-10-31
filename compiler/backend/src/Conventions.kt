@@ -50,23 +50,36 @@ class Conventions private constructor(
         if (ra != rb) parent[ra] = rb
     }
 
-    private fun build() {
-        for (f in module.functions) byName[f.cName] = f
+    private fun build(
+        externalFunctions: List<MirFunction>,
+        externalOwned: Map<String, BooleanArray>,
+        externalBorrowed: Set<String>,
+    ) {
+        val functions = module.functions + externalFunctions
+        val externalNames = externalFunctions.map { it.cName }.toHashSet()
+        for (f in functions) byName[f.cName] = f
         for ((key, fns) in groups.groupKeys()) for (n in fns) union(key, n)
-        for (f in module.functions) {
+        for (f in functions) {
             val r = find(f.cName)
             members.getOrPut(r) { ArrayList() } += f
-            if (f.ownsParams.isNotEmpty()) {
+            val externalMask = externalOwned[f.cName]
+            if (f.ownsParams.isNotEmpty() || externalMask != null) {
                 var m = rootMask[r]
-                if (m == null || m.size < f.params.size) {
-                    val n = BooleanArray(f.params.size)
+                val size = maxOf(f.params.size, externalMask?.size ?: 0)
+                if (m == null || m.size < size) {
+                    val n = BooleanArray(size)
                     if (m != null) for (i in m.indices) n[i] = m[i]
                     m = n
                     rootMask[r] = m
                 }
                 for (i in f.ownsParams) if (i < m.size) m[i] = true
+                if (externalMask != null) for (i in externalMask.indices) if (externalMask[i] && i < m.size) m[i] = true
             }
-            if (f.returnsBorrowed && f.returnType.isRef) requested += r
+            if (f.returnType.isRef) {
+                if (f.cName in externalNames) {
+                    if (f.cName in externalBorrowed) borrowedRoots += r
+                } else if (f.returnsBorrowed) requested += r
+            }
         }
         borrowedRoots += requested
     }
@@ -139,9 +152,15 @@ class Conventions private constructor(
 
     companion object {
         /** Conventions of [module]; with [enabled] false nothing is requested (baseline code generation). */
-        fun build(module: MirModule, enabled: Boolean): Conventions {
+        fun build(
+            module: MirModule,
+            enabled: Boolean,
+            externalFunctions: List<MirFunction> = emptyList(),
+            externalOwned: Map<String, BooleanArray> = emptyMap(),
+            externalBorrowed: Set<String> = emptySet(),
+        ): Conventions {
             val c = Conventions(module, HashMap(), DispatchGroups(module), enabled)
-            if (enabled) c.build()
+            if (enabled) c.build(externalFunctions, externalOwned, externalBorrowed)
             return c
         }
     }
