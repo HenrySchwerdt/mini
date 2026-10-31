@@ -257,7 +257,9 @@ object Cli {
             val inputs = miniInputs(sources, stdlibFiles, extra)
             try {
                 // the memory checker (all user files) runs between the analysis and the code generation, like on the K2 path
-                return mini.lower.lowerToMir(inputs, sourceName) { rep -> MemoryCheck.gate(MemoryCheck.resultOf(rep), sourceName, werror) }
+                return mini.lower.lowerToMir(inputs, sourceName, memoryGate = { rep ->
+                    MemoryCheck.gate(MemoryCheck.resultOf(rep), sourceName, werror)
+                })
             } catch (e: mini.lower.LowerDiagnostics) {
                 // like K2's frontend errors: `file.kt:l:c: error: message` lines as they are
                 throw FrontendDriver.FrontendFailure(e.message ?: "compilation failed")
