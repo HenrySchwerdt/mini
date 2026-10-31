@@ -39,8 +39,10 @@ const sources = [
     existsSync(join(dist, 'stdlib.mlib'))
         ? ['stdlib.mlib', join(dist, 'stdlib.mlib'), 'check']
         : ['stdlib.json', join(dist, 'stdlib.json'), 'check'],
+    ...(existsSync(join(dist, 'stdlib.wasm.o')) ? [['stdlib.wasm.o', join(dist, 'stdlib.wasm.o'), 'full']] : []),
     ...(existsSync(join(dist, 'libs.json')) ? [['libs.json', join(dist, 'libs.json'), 'check']] : []),
     ...libraries.filter(l => typeof l.path === 'string').map(l => [l.path, join(dist, l.path), 'check', true]),
+    ...libraries.filter(l => typeof l.objectPath === 'string').map(l => [l.objectPath, join(dist, l.objectPath), 'full', true]),
     ['libminirt-wasm32.a', join(dist, 'libminirt-wasm32.a'), 'full'],
     ['minirt-entry-wasm32.o', join(dist, 'minirt-entry-wasm32.o'), 'full'],
     ...['llvm.core.wasm', 'llvm.core2.wasm', 'llvm.core3.wasm', 'llvm.core4.wasm', 'llvm-resources.tar'].map(f => [f, join(clangGen, f), 'full']),

@@ -31,6 +31,7 @@ scripts/wasm/build-minic-wasm.sh "$w"
 
 if [ "$skip_test" -eq 0 ]; then
     scripts/wasm/test-programs.sh
+    scripts/wasm/test-mlib-object-inheritance.sh "$w" build/native/bin/minic-native
     scripts/wasm/test-minic-wasm.sh "$w"
 fi
 
@@ -38,24 +39,26 @@ rm -rf "$dist"; mkdir -p "$dist"
 cp "$w/minic.wasm" "$w/libminirt-wasm32.a" "$w/minirt-entry-wasm32.o" "$dist/"
 cp build/native/lib/stdlib.mlib "$dist/stdlib.mlib"
 node scripts/wasm/pack-mlibs.mjs . "$dist/libs.json" build/native/bin/minic-native build/native/lib/stdlib.mlib
+node scripts/wasm/pack-mlib-objects.mjs "$dist" build/native/bin/minic-native
 clang_version="$(node -p "require('./scripts/wasm/package.json').dependencies['@yowasp/clang']")"
 node -e '
 const fs = require("fs")
 const [dist, clangVersion, commit] = process.argv.slice(1)
 const size = f => fs.statSync(`${dist}/${f}`).size
-const libAssets = JSON.parse(fs.readFileSync(`${dist}/libs.json`, "utf8")).libs.map(l => l.path).filter(Boolean)
+const libMeta = JSON.parse(fs.readFileSync(`${dist}/libs.json`, "utf8")).libs
+const libAssets = libMeta.flatMap(l => [l.path, l.objectPath]).filter(Boolean)
 fs.writeFileSync(`${dist}/toolchain.json`, JSON.stringify({
   format: 1,
   commit,
   clang: { package: "@yowasp/clang", version: clangVersion, target: "wasm32-wasip1" },
-  files: Object.fromEntries(["minic.wasm", "libminirt-wasm32.a", "minirt-entry-wasm32.o", "stdlib.mlib", "libs.json", ...libAssets].map(f => [f, size(f)])),
+  files: Object.fromEntries(["minic.wasm", "libminirt-wasm32.a", "minirt-entry-wasm32.o", "stdlib.mlib", "stdlib.wasm.o", "libs.json", ...libAssets].map(f => [f, size(f)])),
   // what the browser runs, in order (all paths relative to the virtual working directory)
   pipeline: {
     check: ["minic.wasm --check --brief prog.kt --lib stdlib.mlib"],
     compile: [
-      "minic.wasm --emit-ll prog.ll prog.kt --lib stdlib.mlib --lib <used preinstalled libraries>",
+      "minic.wasm --wasm-separate-mlibs --emit-ll prog.ll prog.kt --lib stdlib.mlib --lib <used preinstalled libraries>",
       "clang --target=wasm32-wasip1 -O1 -Wno-override-module -c prog.ll -o prog.o",
-      "clang --target=wasm32-wasip1 prog.o libminirt-wasm32.a minirt-entry-wasm32.o -o prog.wasm"
+      "clang --target=wasm32-wasip1 prog.o stdlib.wasm.o <used library objects> libminirt-wasm32.a minirt-entry-wasm32.o -o prog.wasm"
     ],
     run: "prog.wasm as a WASI command"
   }

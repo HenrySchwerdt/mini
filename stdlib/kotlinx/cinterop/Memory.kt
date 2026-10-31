@@ -12,7 +12,7 @@ package kotlinx.cinterop
 
 import kotlin.native.CName
 
-@CName("calloc")
+@CName("mk_cinterop_calloc")
 internal external fun libcCalloc(count: Long, size: Long): NativePtr?
 
 @CName("free")

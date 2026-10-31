@@ -2,6 +2,8 @@ import mini.backend.BinaryOp
 import mini.backend.EmitError
 import mini.backend.MirExpr
 import mini.backend.MirFunction
+import mini.backend.MirClass
+import mini.backend.MirField
 import mini.backend.MirLabel
 import mini.backend.MirLocal
 import mini.backend.MirModule
@@ -97,6 +99,22 @@ class LlvmEmitterTest {
         val wasm = LlvmEmitter.emit(m, target = LlvmTarget.WASM32)
         assertTrue("target triple = \"wasm32-unknown-wasi\"" in wasm)
         assertTrue("%MkTypeInfo = type <{ ptr, i32, ptr, ptr, ptr, i32, ptr, i32 }>" in wasm, wasm)
+    }
+
+    @Test
+    fun externalLibraryClassKeepsItsLayoutWithoutRedefiningItsTypeInfo() {
+        val base = MirClass("dep.Base", "kc_Base", false, null, listOf(MirField("base", TInt)), emptyList(), emptyList(), emptyList())
+        val child = MirClass("app.Child", "kc_Child", false, "kc_Base", listOf(MirField("child", TInt)), emptyList(), emptyList(), emptyList())
+        val ll = LlvmEmitter.emit(
+            MirModule("app.kt", emptyList(), listOf(base, child)),
+            target = LlvmTarget.WASM32,
+            externalClassNames = setOf("kc_Base"),
+            exportedClassNames = setOf("kc_Child"),
+        )
+        assertTrue("@kc_Base_ti = external global %MkTypeInfo" in ll, ll)
+        assertFalse("@kc_Base_name" in ll || "@kc_Base_vt" in ll, ll)
+        assertTrue("@kc_Child_ti = constant %MkTypeInfo" in ll, ll)
+        assertTrue("i32 20" in ll, "the dependency's field layout must be retained for the subclass\n$ll")
     }
 
     @Test

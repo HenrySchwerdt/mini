@@ -59,14 +59,19 @@ async function load(id, level, manifestUrl) {
         }
         // preinstalled libraries (mini.plot, ...): optional, absent from older toolchains
         assets.libs = []
+        assets.stdlibObjectMeta = null
         if (manifest.files.some(f => f.path.endsWith('/libs.json'))) {
             const libs = await fetchBytes(file('libs.json'), 'Loading the libraries', 'libs', id, state)
-            assets.libs = JSON.parse(new TextDecoder().decode(libs)).libs
+            const metadata = JSON.parse(new TextDecoder().decode(libs))
+            assets.libs = metadata.libs
+            assets.stdlibObjectMeta = metadata.stdlibObject ?? null
         }
     }
     if (level === 'full' && !assets.libminirt) {
         assets.libminirt = await fetchBytes(file('libminirt-wasm32.a'), 'Loading the Mini runtime', 'runtime', id, state)
         assets.entry = await fetchBytes(file('minirt-entry-wasm32.o'), 'Loading the Mini runtime', 'runtime', id, state)
+        const stdlibObject = manifest.files.find(f => f.path.endsWith('/stdlib.wasm.o'))
+        if (stdlibObject) assets.stdlibObject = await fetchBytes(new URL(stdlibObject.path, baseUrl).href, 'Loading the standard library object', 'stdlib-object', id, state)
         // clang + wasm-ld: the package downloads and compiles its own modules on the first command; run a no-op one to preload
         const clangBytes = manifest.files.filter(f => f.stage === 'full' && /llvm\./.test(f.path)).reduce((n, f) => n + f.bytes, 0)
         await commands.clang(['--version'], {}, {
@@ -80,7 +85,8 @@ async function load(id, level, manifestUrl) {
     }
     loaded = level === 'full' ? 'full' : loaded ?? 'check'
     core = createCore({
-        minic: assets.minic, stdlib: assets.stdlib, stdlibMlib: assets.stdlibMlib, libs: assets.libs,
+        minic: assets.minic, stdlib: assets.stdlib, stdlibMlib: assets.stdlibMlib,
+        stdlibObject: assets.stdlibObject, stdlibObjectMeta: assets.stdlibObjectMeta, libs: assets.libs,
         clang: loaded === 'full' ? commands.clang : undefined, libminirt: assets.libminirt, entry: assets.entry,
     })
     return {
@@ -89,7 +95,7 @@ async function load(id, level, manifestUrl) {
     }
 }
 
-async function ensureLibraries(files) {
+async function ensureLibraries(files, id, objectOptLevel = null) {
     for (const name of core.requiredLibraries(files)) {
         const lib = assets.libs.find(l => l.name === name)
         const asset = manifest.files.find(f => f.path.endsWith('/' + lib.path))
@@ -98,6 +104,17 @@ async function ensureLibraries(files) {
         if (!response.ok) throw new Error(`Loading ${name}: ${response.status} ${response.statusText}`)
         const text = new TextDecoder().decode(await response.arrayBuffer())
         core.addLibraryMlib(name, text)
+    }
+    // Object packs are optimization-level-specific. Do not fetch O1 objects for
+    // O0/O2/Os builds that toolchain-core will compile monolithically anyway.
+    if (objectOptLevel !== null) for (const name of core.requiredLibraryObjects(files)) {
+        const lib = assets.libs.find(l => l.name === name)
+        if (lib.objectPath && core.canLoadLibraryObject(name, objectOptLevel)) {
+            const objectAsset = manifest.files.find(f => f.path.endsWith('/' + lib.objectPath))
+            if (!objectAsset) throw new Error(`toolchain is missing preinstalled library object '${name}'`)
+            const object = await fetchBytes(new URL(objectAsset.path, baseUrl).href, `Loading ${name} object`, 'library-object', id, { done: 0, total: objectAsset.bytes })
+            core.addLibraryObject(name, object)
+        }
     }
 }
 
@@ -108,11 +125,11 @@ self.onmessage = async ev => {
             post(msg.id, 'result', { value: await load(msg.id, msg.level, msg.manifestUrl) })
         } else if (msg.type === 'check') {
             if (!core) throw new Error('the toolchain is not loaded')
-            await ensureLibraries(msg.files)
+            await ensureLibraries(msg.files, msg.id)
             post(msg.id, 'result', { value: await core.check(msg.files) })
         } else if (msg.type === 'compile') {
             if (!core) throw new Error('the toolchain is not loaded')
-            await ensureLibraries(msg.files)
+            await ensureLibraries(msg.files, msg.id, msg.opts?.optLevel ?? '1')
             const value = await core.compile(msg.files, msg.opts ?? {})
             self.postMessage({ id: msg.id, type: 'result', value }, value.wasm ? [value.wasm.buffer] : [])
         }

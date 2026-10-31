@@ -34,6 +34,9 @@ import mini.lower.checkMemory
 import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
 import mini.lower.lowerToMirAgainstLibs
+import mini.lower.mlibObjectInput
+import mini.lower.effectiveMlibAbi
+import mini.lower.validateMlibFailures
 
 /*
  *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--target=wasm32] [--emit=wasm-lib] [--emit-c out.c] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
@@ -45,6 +48,7 @@ import mini.lower.lowerToMirAgainstLibs
  *                (a module without entry point that exports the `@WasmExport` functions; WasmLib.kt, website/guide/wasm-library.md)
  *   libraries:   [--lib <x.mlib>]...   declarations from the stubs and code from the MIR of precompiled libraries (docs/mlib.md)
  *                --emit-mlib <out.mlib> [--name <n>] [--lib-version <v>] [--compiler-id <id>] [--no-memory-check] <user.kt>...   builds a library from the files
+ *                --target=wasm32 --mlib-object <x.mlib> --emit-mlib-object-ll <out.ll> [--lib <dependency.mlib>]... emits one library's wasm object IR
  *   diagnostics: [--color=auto|always|never] [--error-format=human|json] [--error-limit=N]
  *   debugging:   [--line-directives]   `#line` directives in the C file, so debuggers and crash reports point to the .kt source
  *
@@ -135,6 +139,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     var rcOpt = true
     var wasm32 = false
     var wasmLib = false
+    var separateMlibs = false
     var jsOut: String? = null
     var dtsOut: String? = null
     var wasmFile: String? = null
@@ -154,6 +159,8 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     val inputs = ArrayList<LowerInput>()
     var stdlib = false
     var mlibOut: String? = null
+    var libraryPath: String? = null
+    var libraryLlOut: String? = null
     var noMemCheck = false
     var libName: String? = null
     var libVersion = "0.0.0"
@@ -175,11 +182,18 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
             if (i + 1 >= args.size) throw UsageError("missing value for --emit-ll\n" + USAGE)
             llOut = args[i + 1]
             i += 2
+        } else if (a == "--emit-mlib-object-ll" || a == "--mlib-object") {
+            if (i + 1 >= args.size) throw UsageError("missing value for " + a + "\n" + USAGE)
+            if (a == "--emit-mlib-object-ll") libraryLlOut = args[i + 1] else libraryPath = args[i + 1]
+            i += 2
         } else if (a == "--target=wasm32") {
             wasm32 = true
             i += 1
         } else if (a == "--emit=wasm-lib") {
             wasmLib = true
+            i += 1
+        } else if (a == "--wasm-separate-mlibs") {
+            separateMlibs = true
             i += 1
         } else if (a == "--emit-js" || a == "--emit-dts" || a == "--wasm-file") {
             if (i + 1 >= args.size) throw UsageError("missing value for " + a + "\n" + USAGE)
@@ -297,12 +311,19 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         throw UsageError("--repl cannot be combined with build, check, or one-shot run options\n" + USAGE)
     }
     if (wasmLib && !wasm32) throw UsageError("--emit=wasm-lib needs --target=wasm32\n" + USAGE)
+    if (separateMlibs && (!wasm32 || llOut == null || wasmLib || api || output != null || cOut != null || exe != null || run)) {
+        throw UsageError("--wasm-separate-mlibs needs --target=wasm32 and --emit-ll <user.ll>\n" + USAGE)
+    }
     if (wasmLib && (api || output != null || cOut != null || exe != null || run)) throw UsageError("--emit=wasm-lib writes LLVM IR: use --emit-ll <file.ll> (and --emit-js / --emit-dts for the JavaScript side)\n" + USAGE)
     if (!wasmLib && (jsOut != null || dtsOut != null)) throw UsageError("--emit-js and --emit-dts need --emit=wasm-lib\n" + USAGE)
     if (api && llvm == null) throw UsageError("--backend=llvm-api needs the build of minic-native with the LLVM C API (compiler/llvm-c)")
     if ((run || exe != null) && !api) throw UsageError("--run and --exe need --backend=llvm-api\n" + USAGE)
-    if (firstName == null && args.size > 0 && inputs.isEmpty() && !repl) throw UsageError("no input files\n" + USAGE)
-    if (!repl && (firstName == null || (!check && !wasmLib && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null))) throw UsageError(USAGE)
+    if (firstName == null && args.size > 0 && inputs.isEmpty() && !repl && libraryLlOut == null) throw UsageError("no input files\n" + USAGE)
+    if (libraryLlOut != null && (!wasm32 || libraryPath == null || !inputs.isEmpty() || llOut != null || mlibOut != null || check || repl)) {
+        throw UsageError("--emit-mlib-object-ll needs --target=wasm32 and --mlib-object <library.mlib>, without source files or other outputs\n" + USAGE)
+    }
+    if (libraryPath != null && libraryLlOut == null) throw UsageError("--mlib-object needs --emit-mlib-object-ll\n" + USAGE)
+    if (!repl && libraryLlOut == null && (firstName == null || (!check && !wasmLib && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null))) throw UsageError(USAGE)
     val name: String = firstName ?: ""
     val libs = ArrayList<Mlib>()
     for (lp in libPaths) {
@@ -314,6 +335,29 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         libs.add(MlibFormat.read(text, lp))
     }
     val ordered = MlibFormat.order(libs, compilerId)
+    if (libraryLlOut != null) {
+        val path = libraryPath!!
+        val text = try {
+            readTextFile(path)
+        } catch (e: IllegalStateException) {
+            throw MlibError("cannot read library " + path + ": no such file or not readable")
+        }
+        val library = MlibFormat.read(text, path)
+        val all = MlibFormat.order(ordered + library, compilerId)
+        val deps = all.filter { it.name != library.name }
+        val input = mlibObjectInput(library, deps)
+        val ir = LlvmEmitter.emit(
+            input.module, rcOpt = rcOpt, target = LlvmTarget.WASM32,
+            externalClassNames = input.externalClassNames,
+            exportedClassNames = input.exportedClassNames,
+            externalFunctionSignatures = input.externalFunctions,
+            externalFunctionOwnedMasks = input.externalFunctionOwnedMasks,
+            externalBorrowedFunctions = input.externalBorrowedFunctions,
+            externalFunctions = true,
+        )
+        writeTextFile(libraryLlOut!!, ir)
+        return
+    }
     if (repl) {
         runRepl(llvm!!, ordered, inputs.filter { it.isStdlib }, compilerId, optLevel, rcOpt, werror, diag)
         return
@@ -342,7 +386,11 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         return
     }
     val module = try {
-        lowerToMirWithLibs(inputs, ordered, name, lineDirs) { report -> reportMemory(report, name, werror, false, diag) }
+        if (separateMlibs && ordered.isNotEmpty()) {
+            val userModule = lowerToMirAgainstLibs(inputs, ordered, name, lineDirs, { report -> reportMemory(report, name, werror, false, diag) })
+            validateMlibFailures(userModule, ordered)
+            userModule
+        } else lowerToMirWithLibs(inputs, ordered, name, lineDirs) { report -> reportMemory(report, name, werror, false, diag) }
     } catch (e: LowerDiagnostics) {
         reportFrontend(e, name, diag)
         throw DriverExit(1)
@@ -386,7 +434,32 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         return
     }
     if (output != null) writeTextFile(output, CEmitter.emit(module, rcOpt, lineFile = if (lineDirs) output else null))
-    if (llOut != null) writeTextFile(llOut, LlvmEmitter.emit(module, rcOpt, target = if (wasm32) LlvmTarget.WASM32 else LlvmTarget.HOST))
+    if (llOut != null) {
+        if (separateMlibs && ordered.isNotEmpty()) {
+            val classNames = LinkedHashSet<String>()
+            val allFunctions = ArrayList<MirFunction>()
+            val classByName = LinkedHashMap<String, mini.backend.MirClass>()
+            for ((index, lib) in ordered.withIndex()) {
+                val library = mlibObjectInput(lib, ordered.subList(0, index))
+                classNames.addAll(library.exportedClassNames)
+                for (c in library.module.classes) if (!classByName.containsKey(c.cName)) classByName[c.cName] = c
+                allFunctions.addAll(MirReader.read(lib.mir).functions)
+            }
+            val abi = effectiveMlibAbi(ordered)
+            val classes = ArrayList<mini.backend.MirClass>()
+            classes.addAll(classByName.values)
+            for (c in module.classes) if (!classByName.containsKey(c.cName)) classes.add(c)
+            val withLibraryClasses = MirModule(module.sourceName, module.functions, classes, module.externs, module.includes, module.links, module.wasmExports)
+            writeTextFile(llOut, LlvmEmitter.emit(
+                withLibraryClasses, rcOpt, target = LlvmTarget.WASM32,
+                externalClassNames = classNames,
+                externalFunctionSignatures = allFunctions,
+                externalFunctionOwnedMasks = abi.first,
+                externalBorrowedFunctions = abi.second,
+                externalFunctions = true,
+            ))
+        } else writeTextFile(llOut, LlvmEmitter.emit(module, rcOpt, target = if (wasm32) LlvmTarget.WASM32 else LlvmTarget.HOST))
+    }
 }
 
 /**

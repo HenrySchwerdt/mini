@@ -17,12 +17,20 @@ const WORK = '/work'
  * @param {{name: string, packages: string[], files?: {path: string, text: string}[], mlib?: string}[]} [a.libs]
  *        preinstalled libraries (libs.json): source entries support legacy manifests; mlib entries link precompiled MIR
  */
-export function createCore({ minic, stdlib = [], stdlibMlib, clang, libminirt, entry, libs = [] }) {
+export function createCore({ minic, stdlib = [], stdlibMlib, stdlibObject, stdlibObjectMeta, clang, libminirt, entry, libs = [] }) {
     const stdlibPaths = stdlib.map(f => `${WORK}/stdlib/${f.path}`)
     const stdlibBytes = stdlib.map(f => enc.encode(f.text))
     const stdlibMlibPath = `${WORK}/stdlib.mlib`
     const stdlibMlibBytes = stdlibMlib ? enc.encode(stdlibMlib) : null
     const libMlibBytes = new Map(libs.filter(l => typeof l.mlib === 'string').map(l => [l.name, enc.encode(l.mlib)]))
+    const libObjectBytes = new Map(libs.filter(l => l.objectBytes instanceof Uint8Array).map(l => [l.name, l.objectBytes]))
+    const mlibHash = bytes => {
+        if (!(bytes instanceof Uint8Array)) return null
+        const header = new TextDecoder().decode(bytes.subarray(0, 2048))
+        return /^hash ([0-9a-f]+)$/m.exec(header)?.[1] ?? null
+    }
+    const compatibleObject = (meta, mlibBytes, level) => meta?.target === 'wasm32-wasip1' &&
+        meta.optLevel === level && meta.rcOpt === true && meta.mlibHash === mlibHash(mlibBytes)
 
     const safeName = n => n.replace(/^\/+/, '').replace(/\.\.\//g, '')
 
@@ -83,11 +91,28 @@ export function createCore({ minic, stdlib = [], stdlibMlib, clang, libminirt, e
         requiredLibraries(files) {
             return requiredLibraryNames(files).filter(name => libs.find(l => l.name === name)?.path && !libMlibBytes.has(name))
         },
+        requiredLibraryObjects(files) {
+            return requiredLibraryNames(files).filter(name => {
+                const lib = libs.find(l => l.name === name)
+                return lib?.objectPath && lib.objectMeta && !libObjectBytes.has(name)
+            })
+        },
+        canLoadLibraryObject(name, level) {
+            const lib = libs.find(item => item.name === name)
+            return !!lib?.objectPath && compatibleObject(lib.objectMeta, libMlibBytes.get(name), level)
+        },
         addLibraryMlib(name, text) {
             const lib = libs.find(l => l.name === name && l.path)
             if (!lib) throw new Error(`unknown preinstalled library '${name}'`)
             lib.mlib = text
             libMlibBytes.set(name, enc.encode(text))
+        },
+        addLibraryObject(name, bytes) {
+            const lib = libs.find(l => l.name === name && l.objectPath && l.objectMeta)
+            if (!lib) throw new Error(`preinstalled library '${name}' has no wasm object`)
+            const object = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+            lib.objectBytes = object
+            libObjectBytes.set(name, object)
         },
         async check(files) {
             const r = await runMinic(files, ['--check'])
@@ -97,7 +122,15 @@ export function createCore({ minic, stdlib = [], stdlibMlib, clang, libminirt, e
         async compile(files, opts = {}) {
             const timings = {}
             const t0 = Date.now()
+            const level = opts.optLevel ?? '1'
+            const usedLibraries = requiredLibraryNames(files)
+            const hasObjects = compatibleObject(stdlibObjectMeta, stdlibMlibBytes, level) && stdlibObject instanceof Uint8Array &&
+                usedLibraries.every(name => {
+                const lib = libs.find(item => item.name === name)
+                return compatibleObject(lib?.objectMeta, libMlibBytes.get(name), level) && libObjectBytes.has(name)
+            })
             const flags = ['--emit-ll', `${WORK}/out.ll`, '--target=wasm32']
+            if (hasObjects) flags.push('--wasm-separate-mlibs')
             if (opts.emitMir) flags.push('--emit-mir', `${WORK}/out.mir`)
             const r = await runMinic(files, flags, [`${WORK}/out.ll`, `${WORK}/out.mir`])
             timings.minic = Date.now() - t0
@@ -110,7 +143,6 @@ export function createCore({ minic, stdlib = [], stdlibMlib, clang, libminirt, e
                 return result
             }
             if (!clang) throw new Error('the toolchain level "full" is not loaded')
-            const level = opts.optLevel ?? '1'
             const t1 = Date.now()
             const compiled = await runClang(clang, ['--target=wasm32-wasip1', `-O${level}`, '-Wno-override-module', '-c', 'prog.ll', '-o', 'prog.o'], { 'prog.ll': ll })
             timings.clang = Date.now() - t1
@@ -120,8 +152,19 @@ export function createCore({ minic, stdlib = [], stdlibMlib, clang, libminirt, e
                 return result
             }
             const t2 = Date.now()
-            const linked = await runClang(clang, ['--target=wasm32-wasip1', 'prog.o', 'libminirt-wasm32.a', 'minirt-entry-wasm32.o', '-o', 'prog.wasm'],
-                { 'prog.o': compiled.files['prog.o'], 'libminirt-wasm32.a': libminirt, 'minirt-entry-wasm32.o': entry })
+            const linkFiles = { 'prog.o': compiled.files['prog.o'], 'libminirt-wasm32.a': libminirt, 'minirt-entry-wasm32.o': entry }
+            const linkArgs = ['--target=wasm32-wasip1', 'prog.o']
+            if (hasObjects) {
+                linkFiles['stdlib.wasm.o'] = stdlibObject
+                linkArgs.push('stdlib.wasm.o')
+                for (const name of usedLibraries) {
+                    const objectPath = `${name}.wasm.o`
+                    linkFiles[objectPath] = libObjectBytes.get(name)
+                    linkArgs.push(objectPath)
+                }
+            }
+            linkArgs.push('libminirt-wasm32.a', 'minirt-entry-wasm32.o', '-o', 'prog.wasm')
+            const linked = await runClang(clang, linkArgs, linkFiles)
             timings.link = Date.now() - t2
             if (!linked.ok) {
                 result.diagnostics.push(internalError('linking failed', linked.stderr, files))
