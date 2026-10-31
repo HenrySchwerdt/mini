@@ -115,14 +115,14 @@ jobs:
         if: github.event_name != 'pull_request'
         working-directory: website
         run: |
-          npm run docs:preview -- --host 127.0.0.1 > "$RUNNER_TEMP/vitepress-preview.log" 2>&1 &
+          npm run docs:dev -- --host 127.0.0.1 --port 4173 > "$RUNNER_TEMP/vitepress-dev.log" 2>&1 &
           for i in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:4173/mini/libraries/digits > /dev/null; then break; fi
             sleep 1
           done
           curl --fail --silent http://127.0.0.1:4173/mini/libraries/digits > /dev/null
           npm run test:digits -- http://127.0.0.1:4173/mini/
-          npm run test:compile-cache -- http://127.0.0.1:4173/mini/ --compile-edit
+          npm run test:compile-cache -- --compile-edit
 
       - name: Upload the end-to-end screenshots
         if: ${{ !cancelled() && github.event_name != 'pull_request' }}
