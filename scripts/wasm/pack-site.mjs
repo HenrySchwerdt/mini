@@ -33,10 +33,14 @@ await build({
 })
 
 const clangGen = join(here, 'node_modules/@yowasp/clang/gen')
+const libraries = existsSync(join(dist, 'libs.json')) ? JSON.parse(readFileSync(join(dist, 'libs.json'), 'utf8')).libs ?? [] : []
 const sources = [
     ['minic.wasm', join(dist, 'minic.wasm'), 'check'],
-    ['stdlib.json', join(dist, 'stdlib.json'), 'check'],
+    existsSync(join(dist, 'stdlib.mlib'))
+        ? ['stdlib.mlib', join(dist, 'stdlib.mlib'), 'check']
+        : ['stdlib.json', join(dist, 'stdlib.json'), 'check'],
     ...(existsSync(join(dist, 'libs.json')) ? [['libs.json', join(dist, 'libs.json'), 'check']] : []),
+    ...libraries.filter(l => typeof l.path === 'string').map(l => [l.path, join(dist, l.path), 'check', true]),
     ['libminirt-wasm32.a', join(dist, 'libminirt-wasm32.a'), 'full'],
     ['minirt-entry-wasm32.o', join(dist, 'minirt-entry-wasm32.o'), 'full'],
     ...['llvm.core.wasm', 'llvm.core2.wasm', 'llvm.core3.wasm', 'llvm.core4.wasm', 'llvm-resources.tar'].map(f => [f, join(clangGen, f), 'full']),
@@ -54,9 +58,9 @@ rmSync(vdir, { recursive: true, force: true })
 mkdirSync(vdir, { recursive: true })
 copyFileSync(join(tmp, 'mini-toolchain.worker.js'), join(vdir, 'mini-toolchain.worker.js'))
 const files = []
-for (const [name, p, stage] of sources) {
+for (const [name, p, stage, lazy] of sources) {
     copyFileSync(p, join(vdir, name))
-    files.push({ path: `${version}/${name}`, bytes: statSync(p).size, stage })
+    files.push({ path: `${version}/${name}`, bytes: statSync(p).size, stage, ...(lazy ? { lazy: true } : {}) })
 }
 rmSync(tmp, { recursive: true, force: true })
 const manifest = {

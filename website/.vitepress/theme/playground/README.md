@@ -54,8 +54,8 @@ interface MiniToolchain {
 The authoritative definitions, with comments, are in `types.ts`.
 
 - **`load`** downloads and initializes. It is idempotent, and a later `full` upgrades an earlier `check`.
-  - Level **`check`**: only `minic.wasm` (a few MB): parse, type check, memory checker. Enough for `check`.
-  - Level **`full`**: additionally the stdlib bundle, the `clang` and `wasm-ld` wasm build, and
+  - Level **`check`**: `minic.wasm` (a few MB), the precompiled stdlib and small browser library metadata. Imported library MIR loads on first use.
+  - Level **`full`**: additionally the `clang` and `wasm-ld` wasm build and
     `libminirt-wasm32.a`. Needed for `compile`. This is the big download, so it must report byte progress.
   - The playground loads `check` when the page opens (if a manifest exists) for live diagnostics, and `full` on the first Run.
   - It rejects with `ToolchainUnavailableError` when there is no manifest (the front end handles that before calling).
@@ -82,7 +82,9 @@ The compiler pipeline runs inside the toolchain worker, which the toolchain buil
 (the front end does not depend on it):
 
 1. `minic.wasm` (our self-hosted compiler, wasm32-wasi) runs with an **in-memory file system** that holds
-   the sources and the stdlib bundle: parse, check, emit LLVM IR (and MIR text when asked). This stage also
+   the user sources and precompiled `.mlib` libraries: parse, check, emit LLVM IR (and MIR text when asked). The libraries contain
+   source API stubs and target-independent MIR, so edits do not parse and lower their full source again. Older source manifests remain
+   supported. This stage also
    produces the diagnostics for `check`.
 2. The wasm build of `clang` (`@yowasp/clang`, pinned) compiles the `.ll` to an object file; `wasm-ld`
    links it with `libminirt-wasm32.a`. Each tool is a WASI program run through a WASI shim with the same
@@ -126,7 +128,7 @@ so that VitePress copies it to `/mini/toolchain/`:
 ```
 toolchain/manifest.json     tiny, fetched with cache: 'no-cache'
 toolchain/<worker>.js       module worker named by manifest.worker
-toolchain/...               minic.wasm, stdlib bundle, clang/wasm-ld wasm, libminirt-wasm32.a
+toolchain/...               minic.wasm, stdlib.mlib, lazy per-library .mlib files, clang/wasm-ld wasm, libminirt-wasm32.a
 ```
 
 ```jsonc
@@ -251,7 +253,7 @@ The digit lab uses short declaration cells and a final executable cell. Its **Ru
 
 Successful WASM builds are cached by SHA-256 of the complete ordered source files (including the HTTP dataset), compile options and toolchain version. The version covers the compiler, runtime and libraries. Memory and optional Cache Storage caches hold at most eight entries each, at most 8 MiB per entry. Cache hits still execute a fresh worker; outputs, training runs and predictions are never cached. Failed compilations are not cached. Storage failure falls back to local compilation.
 
-The toolchain build also runs `scripts/wasm/precompile-examples.mjs`. This compiles the exact default digit experiment once and adds an optional `programs` entry to the manifest. The browser only uses it when the entire source/dataset/options/version fingerprint matches. It can then run the real training without loading clang. Edits fall back to local compilation and are cached afterwards. The examples are shipped in the toolchain artifact, not committed as binaries.
+Every program runs through the browser compiler. Successful compilations are cached on-device by the complete ordered source files (including any HTTP dataset), compile options and toolchain version. The first run loads and initializes the compiler; repeat runs reuse the in-memory or Cache Storage result and still execute the program in a fresh worker. Edits and compile-option changes produce a new key and compile normally. The site ships compiler and library artifacts, not precompiled program WASM.
 
 Only the small checker stage preloads automatically. Loading and initializing clang waits for a real cache miss. Browser compilation retains `-O1`: measurements on the digit lab found `-O0` slower both to compile and to execute.
 

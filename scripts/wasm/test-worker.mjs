@@ -87,6 +87,8 @@ assert.equal(diags.length, 2); assert.equal(diags[0].line, 2); assert.equal(diag
 
 diags = await call('check', { files: [{ name: 'main.kt', text: 'fun main() { println("hi") }\n' }] })
 assert.deepEqual(diags, [])
+diags = await call('check', { files: [{ name: 'main.kt', text: 'import mini.plot.*\nfun main() { plt.plot(listOf(0.0), listOf(1.0)) }\n' }] })
+assert.deepEqual(diags, [], 'plot .mlib loads lazily on first import')
 
 await assert.rejects(() => call('compile', { files: [{ name: 'main.kt', text: 'fun main() {}' }], opts: {} }), /./)
 
@@ -104,6 +106,13 @@ assert.ok(r.llvmIr.includes('target triple = "wasm32'), 'LLVM IR returned'); ass
 const ran = await run(r.wasm)
 assert.equal(ran.code, 0)
 assert.equal(ran.out, 'Hello, Mini!\n1 * 1 = 1\n2 * 2 = 4\n3 * 3 = 9\n')
+
+const tensor = await call('compile', { files: [{ name: 'main.kt', text: 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n' }], opts: {} })
+assert.deepEqual(tensor.diagnostics, [])
+assert.ok(tensor.wasm instanceof Uint8Array)
+const tensorRan = await run(tensor.wasm)
+assert.equal(tensorRan.code, 0)
+assert.equal(tensorRan.out, '14.0\n')
 
 const bad = await call('compile', { files: [{ name: 'main.kt', text: 'fun main() { val x: Int = "a" }' }], opts: {} })
 assert.equal(bad.wasm, undefined); assert.equal(bad.diagnostics.length, 1)
