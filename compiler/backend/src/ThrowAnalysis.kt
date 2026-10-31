@@ -70,7 +70,8 @@ internal class ThrowAnalysis(private val module: MirModule) {
         is MirExpr.Binary -> expr(e.left) || expr(e.right) || divThrows(e)
         is MirExpr.Unary -> expr(e.operand)
         is MirExpr.Convert -> expr(e.operand)
-        is MirExpr.Call -> e.args.any { expr(it) } || e.cName in mayThrow
+        // A function absent from this MIR module is an incremental/JIT external; assume it can throw.
+        is MirExpr.Call -> e.args.any { expr(it) } || e.cName in mayThrow || !byName.containsKey(e.cName)
         is MirExpr.RuntimeCall -> e.args.any { expr(it) } || runtimeCallThrows(e.cName)
         is MirExpr.Conditional -> expr(e.cond) || expr(e.thenValue) || expr(e.elseValue)
         is MirExpr.Box -> expr(e.operand)

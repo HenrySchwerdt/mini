@@ -219,6 +219,24 @@ fun libInputs(libs: List<Mlib>): List<LowerInput> {
 }
 
 /**
+ * Lower one new module against declarations from already materialized libraries, without linking their MIR bodies again.
+ * Used by incremental execution backends: the prior library code is already resident, so this module must emit references
+ * to its stable C names rather than duplicate their definitions.
+ */
+fun lowerToMirAgainstLibs(
+    inputs: List<LowerInput>,
+    libs: List<Mlib>,
+    sourceName: String,
+    lineDirectives: Boolean = false,
+    memoryGate: ((MemoryReport) -> Unit)? = null,
+    nameTag: String = "",
+): MirModule {
+    val all = ArrayList<LowerInput>(inputs)
+    all.addAll(libInputs(libs))
+    return lowerToMir(all, sourceName, lineDirectives, memoryGate, nameTag)
+}
+
+/**
  * Compiles [sources] (user files, all of them are library code) against [libs] (already ordered) into a library: stubs of the sources
  * plus their complete, unpruned MIR.
  */

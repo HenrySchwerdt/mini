@@ -33,5 +33,22 @@ class LlvmApiImpl : LlvmApi {
     override fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean, timing: Boolean): Int =
         LlvmJit.run(module, programArgs, optLevel, rcOpt, timing)
 
+    override fun createSession(optLevel: Int): mini.minicnative.LlvmApiSession = SessionAdapter(LlvmJitSession(optLevel))
+
+    private class SessionAdapter(private val jit: LlvmJitSession) : mini.minicnative.LlvmApiSession {
+        private var nextEntry = 0
+
+        override fun add(module: MirModule, rcOpt: Boolean, entrySymbol: String?) {
+            jit.addModule(module, rcOpt, entrySymbol)
+        }
+
+        override fun run(module: MirModule, rcOpt: Boolean, entrySymbol: String) {
+            val symbol = if (entrySymbol.isEmpty()) "mini_repl_entry_${nextEntry++}" else entrySymbol
+            jit.runModule(module, rcOpt, symbol)
+        }
+
+        override fun close() = jit.close()
+    }
+
     private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 }

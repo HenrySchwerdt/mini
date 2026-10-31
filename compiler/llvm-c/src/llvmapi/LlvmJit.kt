@@ -7,6 +7,8 @@ package mini.llvmapi
 import kotlin.native.CName
 import kotlinx.cinterop.*
 import mini.backend.MirModule
+import mini.backend.MirClass
+import mini.backend.MirFunction
 import mini.backend.llvm.IrStrings
 import mini.llvm.*
 
@@ -40,70 +42,155 @@ fun eprintln(text: String) {
 fun utf8Size(s: String): Long = IrStrings.utf8(s).size.toLong()
 
 /**
- * The ORC JIT (docs/plan-kotlin.md section 10g): the module is built in memory by [LlvmApiEmitter] with the same lowering as the object
- * file path, handed to an LLJIT and `mk_main` is called in this process. No file is written, nothing is linked.
+ * Owns an ORC LLJIT for the lifetime of a native compiler session. Modules are added to its main JITDylib and
+ * remain loaded until [close]. Each module's entry point is looked up explicitly, so callers can retain the JIT
+ * while adding later inputs. `mk_main` is still the conventional symbol used by [run].
  *
- * The runtime is the one this compiler binary contains (libminirt is linked into every Mini program, and the compiler is one):
- * JIT'd code finds the `mk_*` functions and type infos through the process symbol table (the compiler is linked with `-rdynamic`).
- * The thread-local `mk_pending_exception` cannot be referenced by JIT'd code (the ORC loader has no TLS relocations for it), so
- * the module is generated with [mini.backend.llvm.LlvmTarget.pendingAccessor]: the code calls the runtime's `mk_pending_slot()`.
+ * A failed build/verification happens before the module is handed to ORC and does not alter the session. Each module
+ * has a resource tracker, so failed materialization removes that module's symbols before the error is returned.
  */
-object LlvmJit {
+class LlvmJitSession(optLevel: Int) : AutoCloseable {
+    private var closed = false
+    private val optimizationLevel = optLevel
+    private val machine = LlvmApiEmitter.createMachine(optLevel)
+    private val knownFunctions = HashMap<String, MirFunction>()
+    private val knownClasses = HashSet<String>()
+    private val jit: LLVMOrcLLJITRef = try {
+        createJit()
+    } catch (e: Throwable) {
+        LLVMDisposeTargetMachine(machine)
+        throw e
+    }
+
     private fun fail(what: String, err: COpaquePointer?) {
         val text = LlvmApiEmitter.errorText(err)
         if (text != null) throw IllegalStateException("$what: $text")
     }
 
-    /** Compiles and runs [module]; returns the exit status (0: `mk_main` returned; an uncaught exception ends the process like in a binary). */
+    private fun createJit(): LLVMOrcLLJITRef = memScoped {
+        val jitp = alloc<COpaquePointerVar>()
+        fail("cannot create the JIT", LLVMOrcCreateLLJIT(jitp.ptr, null))
+        val result = jitp.value ?: throw IllegalStateException("cannot create the JIT")
+        try {
+            val gen = alloc<COpaquePointerVar>()
+            fail("cannot reflect the process symbols", LLVMOrcCreateDynamicLibrarySearchGeneratorForProcess(gen.ptr, LLVMOrcLLJITGetGlobalPrefix(result), null, null))
+            val generator = gen.value ?: throw IllegalStateException("cannot reflect the process symbols")
+            LLVMOrcJITDylibAddGenerator(LLVMOrcLLJITGetMainJITDylib(result), generator)
+            result
+        } catch (e: Throwable) {
+            fail("cannot dispose the JIT after initialization failed", LLVMOrcDisposeLLJIT(result))
+            throw e
+        }
+    }
+
+    /** Add [module] to this JIT and return the address of [entrySymbol], or null for a declaration-only module. */
+    fun addModule(module: MirModule, rcOpt: Boolean, entrySymbol: String? = "mk_main"): Long? {
+        check(!closed) { "the JIT session is closed" }
+        val freshFunctions = module.functions.filter { it.cName == "mk_main" || !knownFunctions.containsKey(it.cName) }
+        val sessionClasses = module.classes.map { c -> if (knownClasses.contains(c.cName)) externalClass(c) else c }
+        val sessionModule = MirModule(module.sourceName, freshFunctions, sessionClasses, module.externs, module.includes, module.links, module.wasmExports)
+        val externalSignatures = knownFunctions.values.toList()
+        val context = LLVMContextCreate()
+        val tsc = LLVMOrcCreateNewThreadSafeContextFromLLVMContext(context)
+        var mod: LLVMModuleRef? = null
+        try {
+            val codeEntry = entrySymbol ?: "mk_main"
+            val userMain = "mkh_user_main_" + codeEntry
+            mod = LlvmApiEmitter.buildModule(sessionModule, context, machine, rcOpt, true, true, false, true, true, true, codeEntry, userMain, externalSignatures)
+            if (entrySymbol != null && memScoped { LLVMGetNamedFunction(mod!!, entrySymbol.cstr.ptr) } == null) {
+                throw IllegalArgumentException("module has no mk_main entry point")
+            }
+            LlvmApiEmitter.optimize(mod, machine, optimizationLevel)
+            val tsm = LLVMOrcCreateNewThreadSafeModule(mod, tsc)
+            mod = null
+            val jd = LLVMOrcLLJITGetMainJITDylib(jit)
+            val tracker = LLVMOrcJITDylibCreateResourceTracker(jd)
+            try {
+                // The thread-safe module retains the context after this handle is disposed; the tracker owns its code and globals.
+                fail("cannot add the module to the JIT", LLVMOrcLLJITAddLLVMIRModuleWithRT(jit, tracker, tsm))
+                if (entrySymbol != null) {
+                    val address = memScoped {
+                        val out = alloc<LongVar>()
+                        fail("cannot compile the module", LLVMOrcLLJITLookup(jit, out.ptr, entrySymbol.cstr.ptr))
+                        out.value
+                    }
+                    for (f in freshFunctions) if (f.cName != "mk_main") knownFunctions[f.cName] = f
+                    for (c in module.classes) knownClasses.add(c.cName)
+                    LLVMOrcReleaseResourceTracker(tracker)
+                    return address
+                }
+                for (f in freshFunctions) if (f.cName != "mk_main") knownFunctions[f.cName] = f
+                for (c in module.classes) knownClasses.add(c.cName)
+                LLVMOrcReleaseResourceTracker(tracker)
+                return null
+            } catch (e: Throwable) {
+                // ORC may have accepted definitions before lookup discovers an unresolved symbol. Roll this input back.
+                val removeError = LLVMOrcResourceTrackerRemove(tracker)
+                if (removeError != null) LlvmApiEmitter.errorText(removeError)
+                LLVMOrcReleaseResourceTracker(tracker)
+                throw e
+            }
+        } finally {
+            if (mod != null) LLVMDisposeModule(mod!!)
+            LLVMOrcDisposeThreadSafeContext(tsc)
+        }
+    }
+
+    private fun externalClass(c: MirClass): MirClass = MirClass(
+        c.qualifiedName, c.cName, c.isInterface, c.superCName, c.fields, c.interfaces, c.vtable, c.itables,
+        c.objectCtor, true, c.strict,
+    )
+
+    /** Add [module] and call its no-argument `Unit` entry point. */
+    fun runModule(module: MirModule, rcOpt: Boolean, entrySymbol: String = "mk_main") {
+        val address = addModule(module, rcOpt, entrySymbol)
+            ?: throw IllegalStateException("no entry point")
+        val entry = address.toCPointer<CFunction<() -> Unit>>()
+            ?: throw IllegalStateException("no entry point")
+        entry()
+        mkRuntimeFlush()
+    }
+
+    /** Dispose the LLJIT and all modules it owns. Safe to call more than once. */
+    override fun close() {
+        if (closed) return
+        closed = true
+        val err = LLVMOrcDisposeLLJIT(jit)
+        LLVMDisposeTargetMachine(machine)
+        fail("cannot dispose the JIT", err)
+    }
+}
+
+/** The ORC JIT (docs/plan-kotlin.md section 10g): lower in memory and call the generated `mk_main` in this process. */
+object LlvmJit {
+    /** Compiles and runs [module]; returns the exit status (0: `mk_main` returned). */
     fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean, timing: Boolean): Int {
         val t0 = nowNanos()
-        val machine = LlvmApiEmitter.createMachine(optLevel)
-        val tsc = LLVMOrcCreateNewThreadSafeContext()
-        val context = LLVMOrcThreadSafeContextGetContext(tsc)
-        val mod = LlvmApiEmitter.buildModule(module, context, machine, rcOpt, true, true, false, true)
-        val t1 = nowNanos()
-        LlvmApiEmitter.optimize(mod, machine, optLevel)
-        val t2 = nowNanos()
-        val tsm = LLVMOrcCreateNewThreadSafeModule(mod, tsc)
-        val entry: Long = memScoped {
-            val jitp = alloc<COpaquePointerVar>()
-            fail("cannot create the JIT", LLVMOrcCreateLLJIT(jitp.ptr, null))
-            val jit = jitp.value
-            if (jit == null) throw IllegalStateException("cannot create the JIT")
-            val jd = LLVMOrcLLJITGetMainJITDylib(jit)
-            val gen = alloc<COpaquePointerVar>()
-            fail("cannot reflect the process symbols", LLVMOrcCreateDynamicLibrarySearchGeneratorForProcess(gen.ptr, LLVMOrcLLJITGetGlobalPrefix(jit), null, null))
-            val g = gen.value
-            if (g == null) throw IllegalStateException("cannot reflect the process symbols")
-            LLVMOrcJITDylibAddGenerator(jd, g)
-            fail("cannot add the module to the JIT", LLVMOrcLLJITAddLLVMIRModule(jit, jd, tsm))
-            val addr = alloc<LongVar>()
-            fail("cannot compile the module", LLVMOrcLLJITLookup(jit, addr.ptr, "mk_main".cstr.ptr))
-            addr.value
+        val session = LlvmJitSession(optLevel)
+        try {
+            val t1 = nowNanos()
+            val entry = session.addModule(module, rcOpt) ?: throw IllegalStateException("no entry point")
+            val t2 = nowNanos()
+            setProgramArgs(module.sourceName, programArgs)
+            val main = entry.toCPointer<CFunction<() -> Unit>>()
+            if (main == null) throw IllegalStateException("no entry point")
+            main()
+            mkRuntimeFlush()
+            val t3 = nowNanos()
+            if (timing) eprintln("jit: build module " + ms(t1 - t0) + " ms, optimize and machine code " + ms(t2 - t1) + " ms, run " + ms(t3 - t2) + " ms, total " + ms(t3 - t0) + " ms")
+            return 0
+        } finally {
+            session.close()
         }
-        val t3 = nowNanos()
-        val program = module.sourceName
-        setProgramArgs(program, programArgs)
-        val main = entry.toCPointer<CFunction<() -> Unit>>()
-        if (main == null) throw IllegalStateException("no entry point")
-        main()
-        mkRuntimeFlush()
-        val t4 = nowNanos()
-        if (timing) {
-            eprintln("jit: build module " + ms(t1 - t0) + " ms, optimize " + ms(t2 - t1) + " ms, machine code " + ms(t3 - t2) + " ms, run " + ms(t4 - t3) + " ms, total " + ms(t4 - t0) + " ms")
-        }
-        // the JIT and its code stay until the process ends (the compiler exits right after the run)
-        LLVMOrcDisposeThreadSafeContext(tsc)
-        return 0
     }
 
     private fun ms(nanos: Long): String {
         val tenth = nanos / 100000L
-        return (tenth / 10L).toString() + "." + (tenth % 10L).toString()
+        return (tenth / 10L).toString() + "." + (tenth % 10L)
     }
 
     /** `main(args)` reads the process's arguments through the runtime: [program] and [args] replace the compiler's own. */
-    private fun setProgramArgs(program: String, args: List<String>) {
+    fun setProgramArgs(program: String, args: List<String>) {
         val argv = nativeHeap.allocArray<CPointerVar<ByteVar>>(args.size + 2)
         argv[0] = copyString(program)
         for (i in args.indices) argv[i + 1] = copyString(args[i])

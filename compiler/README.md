@@ -738,7 +738,8 @@ core uses hand-written patterns (`Text.kt`); `ExplainData.kt` is generated from 
 
 `compiler/backend/.../llvm` (package `mini.backend.llvm`, pure Kotlin, scanned by `PurityTest`, compiled by minic like the rest of the backend) is the
 second code generator: MIR to **textual LLVM IR** (`.ll`), an alternative to `CEmitter` (docs/plan-kotlin.md section 10g, phase 1). Phase 2
-(not done) replaces the text by the in-process LLVM C API and ORC JIT and reuses the lowering.
+adds the in-process LLVM C API and ORC JIT in `compiler/llvm-c`; it reuses the same lowering for object files and `--run`.
+The API build also has an incremental native REPL (`minic-native --backend=llvm-api --repl`); see [native-repl.md](../docs/native-repl.md).
 
 ```
 MIR ─► RcOpt (RcPlan) ─► LlvmEmitter ─► prog.ll ─► clang (-c) ─► prog.o ─► clang + libminirt (runtime/src/*.c) ─► binary
