@@ -94,4 +94,9 @@ if "$MINIC_API" "$WORK/args.kt" --backend=llvm-api --repl --stdlib $STDLIB > "$W
     exit 1
 fi
 grep -q -- '--repl does not accept source files' "$WORK/positional.err"
+if "$MINIC_API" --backend=llvm-api --repl --stdlib $STDLIB -- ignored > "$WORK/repl-args.out" 2> "$WORK/repl-args.err"; then
+    echo "expected --repl to reject program arguments" >&2
+    exit 1
+fi
+grep -q -- '--repl does not accept program arguments' "$WORK/repl-args.err"
 echo "REPL session regression OK"

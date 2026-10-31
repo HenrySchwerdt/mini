@@ -61,6 +61,7 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
     private val knownOwnedMasks = HashMap<String, BooleanArray>()
     private val knownBorrowedFunctions = HashSet<String>()
     private val knownClasses = HashSet<String>()
+    private var sessionRcOpt: Boolean? = null
     private val jit: LLVMOrcLLJITRef = try {
         createJit()
     } catch (e: Throwable) {
@@ -92,6 +93,10 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
     /** Add [module] to this JIT and return the address of [entrySymbol], or null for a declaration-only module. */
     fun addModule(module: MirModule, rcOpt: Boolean, entrySymbol: String? = "mk_main"): Long? {
         check(!closed) { "the JIT session is closed" }
+        val establishedRcOpt = sessionRcOpt
+        require(establishedRcOpt == null || establishedRcOpt == rcOpt) {
+            "the JIT session cannot change reference-count optimization mode"
+        }
         val freshFunctions = module.functions.filter { it.cName == "mk_main" || !knownFunctions.containsKey(it.cName) }
         val sessionClasses = module.classes.map { c -> if (knownClasses.contains(c.cName)) externalClass(c) else c }
         val sessionModule = MirModule(module.sourceName, freshFunctions, sessionClasses, module.externs, module.includes, module.links, module.wasmExports)
@@ -129,14 +134,16 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
                         out.value
                     }
                     for (f in freshFunctions) if (f.cName != "mk_main") knownFunctions[f.cName] = f
-                    rememberOwnedMasks(module, rcOpt)
+                    rememberOwnedMasks(sessionModule, freshFunctions, rcOpt, externalSignatures, externalOwnedMasks, externalBorrowedFunctions)
                     for (c in module.classes) knownClasses.add(c.cName)
+                    sessionRcOpt = rcOpt
                     LLVMOrcReleaseResourceTracker(tracker)
                     return address
                 }
                 for (f in freshFunctions) if (f.cName != "mk_main") knownFunctions[f.cName] = f
-                rememberOwnedMasks(module, rcOpt)
+                rememberOwnedMasks(sessionModule, freshFunctions, rcOpt, externalSignatures, externalOwnedMasks, externalBorrowedFunctions)
                 for (c in module.classes) knownClasses.add(c.cName)
+                sessionRcOpt = rcOpt
                 LLVMOrcReleaseResourceTracker(tracker)
                 return null
             } catch (e: Throwable) {
@@ -157,14 +164,22 @@ class LlvmJitSession(optLevel: Int) : AutoCloseable {
         c.objectCtor, true, c.strict,
     )
 
-    private fun rememberOwnedMasks(module: MirModule, rcOpt: Boolean) {
+    private fun rememberOwnedMasks(
+        module: MirModule,
+        functions: List<MirFunction>,
+        rcOpt: Boolean,
+        externalSignatures: List<MirFunction>,
+        externalOwnedMasks: Map<String, BooleanArray>,
+        externalBorrowedFunctions: Set<String>,
+    ) {
         if (!rcOpt) return
-        val plan = RcOpt.analyze(module, Tracking(module, true), true)
-        for (f in module.functions) {
+        // Match the exact inputs used by emission; constructor conventions can be inferred by forwarding into prior cells.
+        val plan = RcOpt.analyze(module, Tracking(module, true), true, externalSignatures, externalOwnedMasks, externalBorrowedFunctions)
+        for (f in functions) {
             val mask = plan.ownedMask(f.cName) ?: continue
             knownOwnedMasks[f.cName] = BooleanArray(mask.size) { mask[it] }
         }
-        for (f in module.functions) if (plan.returnsBorrowed(f.cName)) knownBorrowedFunctions.add(f.cName)
+        for (f in functions) if (plan.returnsBorrowed(f.cName)) knownBorrowedFunctions.add(f.cName)
     }
 
     /** LLVM 18 has GetContext but not FromLLVMContext; newer releases have the inverse pair. */
