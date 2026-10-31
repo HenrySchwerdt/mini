@@ -108,7 +108,40 @@ const ran = await run(r.wasm)
 assert.equal(ran.code, 0)
 assert.equal(ran.out, 'Hello, Mini!\n1 * 1 = 1\n2 * 2 = 4\n3 * 3 = 9\n')
 
-const tensor = await call('compile', { files: [{ name: 'main.kt', text: 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n' }], opts: { emitLlvmIr: true } })
+const cinteropSource = `import kotlinx.cinterop.*
+fun main() {
+    val heap = nativeHeap.alloc<IntVar>()
+    heap.value = 42
+    println(heap.value)
+    nativeHeap.free(heap)
+    memScoped {
+        val scoped = alloc<IntVar>()
+        scoped.value = 17
+        println(scoped.value)
+    }
+}
+`
+const cinteropSplit = await call('compile', { files: [{ name: 'memory.kt', text: cinteropSource }], opts: { emitLlvmIr: true } })
+assert.deepEqual(cinteropSplit.diagnostics, [])
+assert.ok(cinteropSplit.llvmIr.length < 250_000, 'C interop app uses the stdlib library object')
+const cinteropSplitRan = await run(cinteropSplit.wasm)
+assert.equal(cinteropSplitRan.code, 0)
+assert.equal(cinteropSplitRan.out, '42\n17\n')
+const cinteropMono = await call('compile', { files: [{ name: 'memory.kt', text: cinteropSource }], opts: { optLevel: '0', emitLlvmIr: true } })
+assert.deepEqual(cinteropMono.diagnostics, [])
+const cinteropMonoRan = await run(cinteropMono.wasm)
+assert.equal(cinteropMonoRan.code, 0)
+assert.equal(cinteropMonoRan.out, cinteropSplitRan.out, 'C heap and memScoped allocation output matches monolithic compilation')
+
+const tensorSource = 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n'
+const objectFetchesBeforeO0 = events.filter(e => e.stage === 'library-object').length
+const tensorO0First = await call('compile', { files: [{ name: 'main.kt', text: tensorSource }], opts: { optLevel: '0', emitLlvmIr: true } })
+assert.deepEqual(tensorO0First.diagnostics, [])
+assert.ok(tensorO0First.llvmIr.length > 250_000, 'fresh O0 compile uses monolithic library IR')
+assert.equal(events.filter(e => e.stage === 'library-object').length, objectFetchesBeforeO0,
+    'fresh O0 compile does not download unused O1 library objects')
+
+const tensor = await call('compile', { files: [{ name: 'main.kt', text: tensorSource }], opts: { emitLlvmIr: true } })
 assert.deepEqual(tensor.diagnostics, [])
 assert.ok(events.some(e => e.stage === 'library-object'), 'compile loads the selected library object after its .mlib was already available')
 assert.ok(tensor.wasm instanceof Uint8Array)

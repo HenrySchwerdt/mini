@@ -88,6 +88,11 @@ extern const MkTypeInfo mk_type_String;
 
 /* ---- Allocators (mini.memory) ----------------------------------------------- */
 
+/* C interop calloc wrapper. Kotlin Long arguments are always 64-bit, while C
+ * size_t is 32-bit on wasm32. Reject negative or overflowing sizes before
+ * converting to size_t, then call the platform calloc with its native ABI. */
+void *mk_cinterop_calloc(int64_t count, int64_t size);
+
 /* Capability traits of an allocator (plan section 4.1). The compiler derives its
  * checks from them; the runtime uses them to decide what mk_free may do. */
 enum {

@@ -95,7 +95,7 @@ async function load(id, level, manifestUrl) {
     }
 }
 
-async function ensureLibraries(files, id, loadObjects = false) {
+async function ensureLibraries(files, id, objectOptLevel = null) {
     for (const name of core.requiredLibraries(files)) {
         const lib = assets.libs.find(l => l.name === name)
         const asset = manifest.files.find(f => f.path.endsWith('/' + lib.path))
@@ -105,9 +105,12 @@ async function ensureLibraries(files, id, loadObjects = false) {
         const text = new TextDecoder().decode(await response.arrayBuffer())
         core.addLibraryMlib(name, text)
     }
-    if (loadObjects) for (const name of core.requiredLibraryObjects(files)) {
+    // Object packs are optimization-level-specific. Do not fetch O1 objects for
+    // O0/O2/Os builds that toolchain-core will compile monolithically anyway.
+    if (objectOptLevel !== null) for (const name of core.requiredLibraryObjects(files)) {
         const lib = assets.libs.find(l => l.name === name)
-        if (lib.objectPath && lib.objectMeta) {
+        if (lib.objectPath && lib.objectMeta?.target === 'wasm32-wasip1' &&
+            lib.objectMeta.optLevel === objectOptLevel && lib.objectMeta.rcOpt === true) {
             const objectAsset = manifest.files.find(f => f.path.endsWith('/' + lib.objectPath))
             if (!objectAsset) throw new Error(`toolchain is missing preinstalled library object '${name}'`)
             const object = await fetchBytes(new URL(objectAsset.path, baseUrl).href, `Loading ${name} object`, 'library-object', id, { done: 0, total: objectAsset.bytes })
@@ -127,7 +130,7 @@ self.onmessage = async ev => {
             post(msg.id, 'result', { value: await core.check(msg.files) })
         } else if (msg.type === 'compile') {
             if (!core) throw new Error('the toolchain is not loaded')
-            await ensureLibraries(msg.files, msg.id, true)
+            await ensureLibraries(msg.files, msg.id, msg.opts?.optLevel ?? '1')
             const value = await core.compile(msg.files, msg.opts ?? {})
             self.postMessage({ id: msg.id, type: 'result', value }, value.wasm ? [value.wasm.buffer] : [])
         }
