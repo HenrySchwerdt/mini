@@ -3,10 +3,13 @@
  * download progress, and the build-and-run pipeline. One toolchain instance per page load.
  */
 import { ref, shallowRef } from 'vue'
-import { WorkerToolchain, probeToolchain } from './toolchain.ts'
+import { WorkerToolchain, probeToolchain, toolchainBase } from './toolchain.ts'
+import { CompileCache } from './compile-cache.ts'
+import { runInWorker } from './run-client.ts'
 import {
   ToolchainUnavailableError,
   type CompileOptions,
+  type CompileResult,
   type Diagnostic,
   type LoadProgress,
   type LoadStage,
@@ -70,6 +73,8 @@ async function loadNow(level: LoadStage): Promise<WorkerToolchain> {
   }
 }
 
+const programCache = new CompileCache(typeof caches === 'undefined' ? undefined : caches)
+
 let busy: Promise<unknown> = Promise.resolve()
 
 /** The toolchain worker handles one request at a time: compile and check calls from different cells queue up here. */
@@ -109,21 +114,61 @@ const hasErrors = (d: Diagnostic[]) => d.some((x) => x.severity === 'error')
 
 /** Compile, then run. The toolchain is loaded on demand. */
 export async function buildAndRun(files: SourceFile[], h: RunHandlers): Promise<BuildOutcome> {
-  let tc: WorkerToolchain
+  const cancelled = (): BuildOutcome => ({ stage: 'done', diagnostics: [], timings: {}, run: { exitCode: 130, durationMs: 0 } })
+  if (h.signal?.aborted) return cancelled()
+  const options: CompileOptions = { ...h.compile, optLevel: h.compile?.optLevel ?? '1' }
+  await probe()
+  let key: string | undefined
+  let res: CompileResult | undefined
+  const cacheStarted = performance.now()
   try {
-    tc = await ensureToolchain('full')
-  } catch (e) {
-    return { stage: 'load', diagnostics: [], timings: {}, failure: (e as Error).message }
+    if (manifest.value) {
+      key = await programCache.key(manifest.value.version, files, options)
+      res = await programCache.get(key)
+    }
+  } catch { /* A missing hashing/storage API only disables caching. */ }
+  if (!res && key) {
+    const example = manifest.value?.programs?.find(p => p.key === key)
+    if (example && example.bytes <= 8 * 1024 * 1024) {
+      try {
+        const response = await fetch(toolchainBase(siteBase) + example.path, { signal: h.signal })
+        if (response.ok) {
+          const wasm = new Uint8Array(await response.arrayBuffer())
+          if (wasm.length === example.bytes && WebAssembly.validate(wasm)) {
+            res = { wasm, diagnostics: example.diagnostics, timings: {} }
+            await programCache.put(key, res)
+          }
+        }
+      } catch { /* Optional prebuilt artifact missing: use the local compiler. */ }
+    }
   }
-  let res
-  try {
-    res = await exclusive(() => tc.compile(files, h.compile))
-  } catch (e) {
-    return { stage: 'compile', diagnostics: [], timings: {}, failure: `The compiler failed: ${(e as Error).message}` }
+  if (h.signal?.aborted) return cancelled()
+  if (res) res.timings = { cacheHit: 1, total: performance.now() - cacheStarted }
+  if (!res) {
+    let tc: WorkerToolchain
+    try {
+      tc = await ensureToolchain('full')
+    } catch (e) {
+      return { stage: 'load', diagnostics: [], timings: {}, failure: (e as Error).message }
+    }
+    if (h.signal?.aborted) return cancelled()
+    try {
+      res = await exclusive(async () => {
+        if (h.signal?.aborted) return { diagnostics: [], timings: {} }
+        const queued = key ? await programCache.get(key) : undefined
+        if (queued) return { ...queued, timings: { cacheHit: 1, total: 0 } }
+        const compiled = await tc.compile(files, options)
+        if (key && !h.signal?.aborted) await programCache.put(key, compiled)
+        return compiled
+      })
+    } catch (e) {
+      return { stage: 'compile', diagnostics: [], timings: {}, failure: `The compiler failed: ${(e as Error).message}` }
+    }
   }
+  if (h.signal?.aborted) return cancelled()
   const base = { diagnostics: res.diagnostics, mir: res.mir, llvmIr: res.llvmIr, timings: res.timings }
   if (!res.wasm || hasErrors(res.diagnostics)) return { stage: 'compile', ...base }
-  const run = await tc.run(res.wasm, { stdin: h.stdin, onStdout: h.onStdout, onStderr: h.onStderr, timeoutMs: h.timeoutMs, signal: h.signal })
+  const run = await runInWorker(res.wasm, { stdin: h.stdin, onStdout: h.onStdout, onStderr: h.onStderr, timeoutMs: h.timeoutMs, signal: h.signal })
   return { stage: 'done', ...base, run }
 }
 

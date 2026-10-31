@@ -49,6 +49,10 @@ displayHtml("<h3>HTML</h3><p>Rendered in a <b>sandboxed</b> frame, <i>without</i
 [display: text/html]
 ```
 
+## Interactive model output
+
+The [digit lab](/libraries/digits) uses `display("application/vnd.mini.digit-classifier+json", json)` to show a drawing pad after training. The payload contains a version, 640 weights and 10 biases for a 64 → 10 classifier. The host validates these parameters and uses them to score your drawing locally. No scripts from the output run in the page.
+
 ## The protocol
 
 ```text

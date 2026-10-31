@@ -11,7 +11,9 @@
     "samples": "bash scripts/check-samples.sh",
     "test": "node --test 'tests/*.test.ts'",
     "typecheck": "tsc -p tsconfig.json",
-    "test:learn": "node scripts/e2e-learn.mjs"
+    "test:learn": "node scripts/e2e-learn.mjs",
+    "test:digits": "node scripts/e2e-digits.mjs",
+    "test:compile-cache": "node scripts/e2e-compile-cache.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "14.2.0",

@@ -111,6 +111,19 @@ jobs:
         run: |
           node scripts/e2e-playground.mjs --shots "$RUNNER_TEMP/e2e-shots"
 
+      - name: Compiled program cache browser regression
+        if: github.event_name != 'pull_request'
+        working-directory: website
+        run: |
+          npm run docs:dev -- --host 127.0.0.1 --port 4173 > "$RUNNER_TEMP/vitepress-dev.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/mini/libraries/digits > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:4173/mini/libraries/digits > /dev/null
+          npm run test:digits -- http://127.0.0.1:4173/mini/
+          npm run test:compile-cache -- --compile-edit
+
       - name: Upload the end-to-end screenshots
         if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4

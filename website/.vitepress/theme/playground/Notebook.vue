@@ -8,15 +8,19 @@ import { OutputSink, type Segment } from './display.ts'
 import ToolchainStatus from './ToolchainStatus.vue'
 import { createMarkdownRenderer } from './markdown.ts'
 import {
-  assembleProgram, deleteCell, insertCell, mapDiagnostics, moveCell, newCell, parseNotebook, serializeNotebook,
+  assembleProgram, deleteCell, insertCell, mapDiagnostics, moveCell, newCell, parseNotebook, serializeNotebook, runAllCellIndices,
   type Notebook, type MappedDiagnostic,
 } from './notebook.ts'
 import { hashFor, readHash } from './share.ts'
 import { starterNotebook } from './starter.ts'
+import { digitNotebook } from './digit-notebook.ts'
+import { notebookDatasetUrl, fetchDataset, datasetSource } from './datasets.ts'
 import { availability, buildAndRun, cancelToolchain, probe, setSiteBase } from './session.ts'
 import type { Diagnostic, RunResult } from './types.ts'
 
-const STORAGE_KEY = 'mini-notebook'
+const props = defineProps<{ example?: 'digits' }>()
+const STORAGE_KEY = props.example === 'digits' ? 'mini-notebook-digits-v2' : 'mini-notebook'
+const initialNotebook = () => props.example === 'digits' ? digitNotebook() : starterNotebook()
 const { site } = useData()
 
 interface CellOutput {
@@ -42,6 +46,7 @@ const dragging = ref(false)
 let abort: AbortController | undefined
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let renderMd: (s: string) => string = (s) => s
+const lastCodeIndex = computed(() => nb.value.cells.findLastIndex(c => c.type === 'code'))
 const unavailable = computed(() => availability.value === 'unavailable')
 const docsUrl = (code: string) => withBase(`/reference/diagnostics/${code}`)
 const mdHtml = (src: string) => renderMd(src) || '<p class="mp-empty">Empty text cell. Double-click to edit.</p>'
@@ -149,7 +154,7 @@ async function share() {
 
 function resetToStarter() {
   if (!confirm('Replace this notebook with the starter notebook? Unsaved changes are lost.')) return
-  setNotebook(starterNotebook())
+  setNotebook(initialNotebook())
   try {
     history.replaceState(null, '', location.pathname)
   } catch {
@@ -229,15 +234,34 @@ async function runCell(i: number): Promise<boolean> {
     out.note = 'Empty cell.'
     return true
   }
-  abort = new AbortController()
-  const outcome = await buildAndRun([asm.file], {
-    timeoutMs: 15000,
-    signal: abort.signal,
+  const controller = new AbortController()
+  abort = controller
+  let datasetText: string | undefined
+  let dataset: string | null
+  try {
+    dataset = notebookDatasetUrl(nb.value.cells, i)
+    if (dataset) {
+      out.note = 'Downloading dataset…'
+      datasetText = await fetchDataset(dataset, controller.signal)
+      out.note = ''
+    }
+    controller.signal.throwIfAborted()
+  } catch (e) {
+    out.status = 'error'
+    out.note = `Dataset input failed: ${(e as Error).message}`
+    if (abort === controller) abort = undefined
+    return false
+  }
+  const files = datasetText === undefined ? [asm.file] : [asm.file, datasetSource(datasetText)]
+  const outcome = await buildAndRun(files, {
+    timeoutMs: dataset ? 120000 : 15000,
+    signal: controller.signal,
     onStdout: (s) => ((out.status = 'running'), pushOut(out, 'out', s)),
     onStderr: (s) => ((out.status = 'running'), pushOut(out, 'err', s)),
   })
-  abort = undefined
+  if (abort === controller) abort = undefined
   sinks.get(out)?.end()
+  if (outcome.timings.cacheHit) out.note = 'Reused compiled program; executed again locally.\n'
   const mapped = mapDiagnostics(outcome.diagnostics, asm, i)
   out.problems = mapped
   // Diagnostics of this run replace the markers of all cells up to this one.
@@ -272,10 +296,12 @@ async function runAll() {
   if (running.value || unavailable.value) return
   running.value = true
   clearOutputs()
+  const targets = new Set(runAllCellIndices(nb.value.cells))
   const codeCells = nb.value.cells.map((c, i) => [c, i] as const).filter(([c]) => c.type === 'code')
-  for (const [c] of codeCells) outputs[c.id] = reactive({ status: 'queued', segments: [], result: null, problems: [], note: '' })
+  for (const [c, i] of codeCells) outputs[c.id] = reactive({ status: targets.has(i) ? 'queued' : 'ok', segments: [], result: null, problems: [], note: targets.has(i) ? '' : 'Definitions included in the next program.' })
   try {
     for (const [, i] of codeCells) {
+      if (!targets.has(i)) continue
       if (!(await runCell(i))) {
         if (!abort?.signal.aborted) say(`Stopped at cell ${i + 1}: it failed.`, 'bad')
         break
@@ -318,7 +344,7 @@ onMounted(async () => {
   setSiteBase(site.value.base)
   renderMd = createMarkdownRenderer(withBase)
   const fromHash = await loadFromHash()
-  setNotebook(fromHash ?? loadStored() ?? starterNotebook())
+  setNotebook(fromHash ?? loadStored() ?? initialNotebook())
   window.addEventListener('hashchange', onHashChange)
   void probe()
 })
@@ -349,6 +375,7 @@ onBeforeUnmount(() => {
       >
         Run all
       </button>
+      <button v-if="props.example === 'digits'" class="mp-btn primary" :disabled="unavailable || running || lastCodeIndex < 0" @click="runOne(lastCodeIndex)">Run experiment</button>
       <button v-if="running" class="mp-btn" @click="stop">Stop</button>
       <button class="mp-btn" @click="add(nb.cells.length, 'code')">+ Code</button>
       <button class="mp-btn" @click="add(nb.cells.length, 'markdown')">+ Text</button>

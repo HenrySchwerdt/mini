@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** A small pill in the corner of every page: the in-browser compiler is loading (with percent) or ready. */
+/** A small pill in the corner of every page: the in-browser checker/compiler is loading or ready. */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useData } from 'vitepress'
 import { loadError, loadedLevel, progress } from './playground/session.ts'
@@ -24,19 +24,23 @@ const pct = computed(() => {
 
 const state = computed<'hidden' | 'loading' | 'ready' | 'error'>(() => {
   if (loadError.value) return 'error'
-  if (loadedLevel.value === 'full') return 'ready'
   if (preloadState.value === 'loading' || progress.value) return 'loading'
+  if (loadedLevel.value) return 'ready'
   return 'hidden'
 })
+const readyLabel = computed(() => loadedLevel.value === 'full' ? 'Compiler ready' : 'Checker ready')
 const label = computed(() => {
-  if (state.value === 'loading') return pct.value === null ? 'Loading compiler' : `Loading compiler ${pct.value}%`
-  if (state.value === 'ready') return 'Compiler ready'
+  if (state.value === 'loading') {
+    const target = loadedLevel.value === 'check' ? 'compiler' : 'checker'
+    return pct.value === null ? `Loading ${target}` : `Loading ${target} ${pct.value}%`
+  }
+  if (state.value === 'ready') return readyLabel.value
   return 'Compiler failed to load'
 })
 </script>
 
 <template>
-  <div v-if="state !== 'hidden'" class="tc-badge" :class="[state, { settled: state === 'ready' && settled }]" role="status" aria-live="polite" :title="state === 'ready' ? 'The Mini compiler runs in your browser. Code cells can run now.' : label">
+  <div v-if="state !== 'hidden'" class="tc-badge" :class="[state, { settled: state === 'ready' && settled }]" role="status" aria-live="polite" :title="state === 'ready' ? (loadedLevel === 'full' ? 'The Mini compiler runs in your browser. Code cells can run now.' : 'The Mini checker is ready. Compiling code will load the compiler when needed.') : label">
     <span class="dot" aria-hidden="true"></span>
     <span class="text">{{ label }}</span>
     <span v-if="state === 'loading'" class="bar" aria-hidden="true"><i :style="{ width: (pct ?? 20) + '%' }" :class="{ indeterminate: pct === null }"></i></span>

@@ -26,6 +26,7 @@ ESC ] 5379 ; mini-display ; <mime> ; <base64> BEL
 | `image/svg+xml` | Inlined if every element and attribute is on a strict allowlist (`sanitize.ts`; then `currentColor` follows the theme), otherwise `<img src="data:...">` (inert). |
 | `text/html` | `<iframe sandbox="" srcdoc=...>` with a CSP of `default-src 'none'`: no scripts, no network, no same-origin access. |
 | `application/vnd.mini.table+json` | `{"columns": ["a", "b"], "rows": [["1", "2"]]}` as a table. |
+| `application/vnd.mini.digit-classifier+json` | Validated 64 → 10 classifier parameters rendered as an interactive drawing pad. |
 | `text/markdown`, `text/plain` | Preformatted text. |
 | anything else | A note that names the type. |
 
@@ -44,3 +45,13 @@ files offer them directly (`plt.savefig("plot.svg")`). To extract bundles from a
 Documented output of a docs cell shows a bundle as a line `[display: <mime>]`. `website/scripts/normalize-display.mjs`
 (native samples) and `run-snippets-wasm.mjs` (browser toolchain) apply that replacement and check that SVG and table
 payloads are well formed.
+
+## Digit classifier output
+
+The digit lab emits `application/vnd.mini.digit-classifier+json` with
+`{"version":1,"weights":[...],"bias":[...]}`. The weights contain 640 numbers in output-major order
+(`[10,64]`); the bias contains 10. Values must be finite and have magnitude at most 1e6.
+The renderer downsamples a mouse/touch drawing to 64 alpha values in [0,1] and computes
+`softmax(x @ weight.T + bias)` using these exact parameters. It executes no supplied code.
+Training and held-out evaluation run in Mini; interactive inference runs in the host.
+Malformed payloads are treated as unknown output. See the editable example at `website/libraries/digits.md`.

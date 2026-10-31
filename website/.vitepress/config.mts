@@ -116,6 +116,8 @@ export default withMermaid(
             text: 'Libraries',
             items: [
               { text: 'Overview', link: '/libraries/' },
+              { text: 'The digit lab', link: '/libraries/digits' },
+              { text: 'mini.tensor', link: '/libraries/tensor' },
               { text: 'mini.plot', link: '/libraries/plot' },
               { text: 'Rich output (mini.display)', link: '/libraries/display' },
             ],

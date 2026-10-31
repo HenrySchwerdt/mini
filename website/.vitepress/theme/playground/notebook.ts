@@ -447,3 +447,19 @@ export function mapDiagnostics(diags: Diagnostic[], asm: Assembled, target: numb
     }
   })
 }
+
+/** Pure helper definitions need no separate process: the next program compiles them too. */
+export function runAllCellIndices(cells: Cell[]): number[] {
+  const indices = cells.map((c, i) => c.type === 'code' ? i : -1).filter(i => i >= 0)
+  const last = indices.at(-1)
+  return indices.filter(i => i === last || !splitCell(cells[i].source).every(chunk => {
+    const code = scanLines(chunk.lines.join('\n')).map(l => l.code).join('\n').trim()
+    if (!code) return true
+    if (chunk.kind === 'import' || chunk.kind === 'fileAnnotation') return true
+    if (chunk.kind !== 'decl' || chunk.isMain) return false
+    // Be conservative: properties, objects, constructors and class initializers may have effects.
+    return /^(?:(?:public|private|internal|protected|inline|tailrec|suspend|operator|infix)\s+)*fun\b/.test(code)
+      || /^typealias\b/.test(code)
+      || (/^data\s+class\b/.test(code) && !code.includes('{'))
+  }))
+}

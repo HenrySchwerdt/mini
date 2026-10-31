@@ -34,6 +34,10 @@ TESTDATA="$ROOT/compiler/testdata"
 CC="${CC:-}"
 if [ -z "$CC" ]; then if command -v clang >/dev/null 2>&1; then CC=clang; else CC=cc; fi; fi
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+TIMEOUT_CMD=""
+if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="$(command -v timeout)"
+elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="$(command -v gtimeout)"
+fi
 SUITES=()
 FILTER=""
 LIST=0
@@ -84,9 +88,33 @@ SAN_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -g -fno-
 build_rt() { # <dir> <cc> <flags...>
     local dir="$1" cc="$2"; shift 2
     mkdir -p "$dir"
-    for f in "$ROOT"/runtime/src/*.c; do
-        echo "$cc -std=c17 -O1 -w -I $INCLUDE $* -c $f -o $dir/$(basename "$f" .c).o"
-    done | xargs -P "$JOBS" -I{} sh -c '{}'
+    export RT_BUILD_DIR="$dir" RT_BUILD_CC="$cc" RT_BUILD_FLAGS="$*"
+    export ROOT INCLUDE
+    find "$ROOT/runtime/src" -maxdepth 1 -name '*.c' -print0 |
+        xargs -0 -P "$JOBS" /bin/sh -c '
+            for f do
+                "$RT_BUILD_CC" -std=c17 -O1 -w -I "$INCLUDE" $RT_BUILD_FLAGS -c "$f" -o "$RT_BUILD_DIR/$(basename "$f" .c).o" || exit
+            done
+        ' sh
+}
+
+run_with_timeout() { # <seconds> <command> [args...]
+    local seconds="$1"; shift
+    if [ -n "$TIMEOUT_CMD" ]; then
+        "$TIMEOUT_CMD" "$seconds" "$@"
+    else
+        python3 - "$seconds" "$@" <<'PY'
+import subprocess
+import sys
+
+seconds = int(sys.argv[1])
+try:
+    result = subprocess.run(sys.argv[2:], timeout=seconds)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+sys.exit(result.returncode)
+PY
+    fi
 }
 
 want_suite() { local s; for s in "${SUITES[@]}"; do [ "$s" = "$1" ] && return 0; done; return 1; }
@@ -109,7 +137,7 @@ c_extra() { # <src>: the C test library for the interop programs
 
 run_and_compare() { # <name> <src> <exe> <label>: run, compare stdout with .out, stderr with .err, exit status
     local name="$1" src="$2" exe="$3" label="$4" out="$W/$1.stdout" err="$W/$1.stderr" code
-    ( cd "$W" && timeout 60 "$exe" > "$out" 2> "$err" ); code=$?
+    ( cd "$W" && run_with_timeout 60 "$exe" > "$out" 2> "$err" ); code=$?
     if [ $code -eq 124 ]; then echo "$label: timed out"; return 1; fi
     if grep -q "threads are not supported yet" "$err" 2>/dev/null && [ "$5" = skip-threads ]; then return 77; fi
     if ! cmp -s "$(sib "$src" out)" "$out"; then echo "$label: stdout differs from $(sib "$src" out)"; diff "$(sib "$src" out)" "$out" | head -10; return 1; fi
@@ -141,7 +169,7 @@ t_c() { # <src> [asan]
         # shellcheck disable=SC2086
         "$SANCC" -std=c17 -O1 -w $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$c" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "sanitizer build failed:"; head -20 "$W/$name.cc"; return 1; }
         local out="$W/$name.stdout" err="$W/$name.stderr" code
-        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
+        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
         [ $code -eq 0 ] || { echo "failed under sanitizers (exit $code; leak or memory error):"; head -30 "$err"; return 1; }
         cmp -s "$(sib "$src" out)" "$out" || { echo "stdout differs under sanitizers"; diff "$(sib "$src" out)" "$out" | head; return 1; }
         return 0
@@ -168,7 +196,7 @@ t_llvm() { # <src> [asan]
         # shellcheck disable=SC2086
         "$SANCC" $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$W/$name.o" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links >> "$W/$name.cc" 2>&1 || { echo "sanitizer link failed:"; head -20 "$W/$name.cc"; return 1; }
         local out="$W/$name.stdout" err="$W/$name.stderr" code
-        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
+        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
         [ $code -eq 0 ] || { echo "failed under sanitizers (exit $code):"; head -30 "$err"; return 1; }
         cmp -s "$(sib "$src" out)" "$out" || { echo "stdout differs under sanitizers"; return 1; }
         return 0
@@ -188,7 +216,7 @@ t_llvm_variant() { # <flag>: rc_stress through native-driver with the flag
     [ "$flag" = --stats ] && rt="$W/rt-stats/*.o"
     # shellcheck disable=SC2086
     clang -O1 -w -Wno-override-module -I "$INCLUDE" "$W/$name.ll" $rt -o "$W/$name.exe" -lm > "$W/$name.cc" 2>&1 || { echo "clang failed:"; head "$W/$name.cc"; return 1; }
-    ( cd "$W" && timeout 60 "$W/$name.exe" > "$W/$name.stdout" 2> "$W/$name.stderr" ) || { echo "exit status"; head "$W/$name.stderr"; return 1; }
+    ( cd "$W" && run_with_timeout 60 "$W/$name.exe" > "$W/$name.stdout" 2> "$W/$name.stderr" ) || { echo "exit status"; head "$W/$name.stderr"; return 1; }
     cmp -s "$(sib "$src" out)" "$W/$name.stdout" || { echo "stdout differs"; return 1; }
     if [ "$flag" = --stats ]; then grep -q "mk-stats:" "$W/$name.stderr" || { echo "no MK_STATS summary on stderr"; return 1; }; fi
     return 0
@@ -318,7 +346,8 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_multifile t_allfiles t_mlib_chain t_mlib_errors
+export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_multifile t_allfiles t_mlib_chain t_mlib_errors run_with_timeout
+export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
 LISTFILE="$W/tests.txt"

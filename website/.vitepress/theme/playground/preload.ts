@@ -2,7 +2,7 @@
  * Starts loading the in-browser toolchain in the background once a docs page has been shown, so that the first Run
  * on any page does not wait for a download. Cheap by design:
  *  - nothing happens before the page's `load` event and an idle moment (first paint and LCP are not affected);
- *  - the small checker stage (minic.wasm, a few MB) loads first, the compiler stage (clang, wasm-ld, runtime) after it;
+ *  - the small checker stage (minic.wasm, a few MB) loads first, the compiler stage (clang, wasm-ld, runtime) waits for an actual cache miss;
  *  - Save-Data and slow connections (2g/3g) skip the preload; the toolchain then loads on the first Run, as before;
  *  - the files are versioned by the manifest and cached by the service worker (cache-first), so later visits cost nothing.
  */
@@ -65,7 +65,7 @@ export async function startPreload(siteBase: string) {
     registerServiceWorker(siteBase, manifest.value.version)
     await serviceWorkerReady(1500)
     await ensureToolchain('check')
-    await ensureToolchain('full')
+    // clang is large and expensive to initialize. Cached/prebuilt runs do not need it.
     preloadState.value = 'ready'
   } catch {
     preloadState.value = 'error'

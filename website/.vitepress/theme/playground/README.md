@@ -227,3 +227,32 @@ npm test            # node:test, no browser needed (WASI shim with wabt, noteboo
 npm run typecheck   # tsc over the .ts files
 npm run docs:dev
 ```
+
+### HTTP datasets and interactive model output
+
+A notebook code cell can declare `// %dataset https://example.org/data.csv` on its own line.
+On an explicit Run, the host downloads the UTF-8 text (CORS must allow it), decompresses `.gz` files,
+and compiles a generated source module exposing `mini.notebook.datasetText(): String` alongside the cell.
+The closest directive at or above a code cell supplies its input, until a later directive replaces it. Markdown cells are ignored. Downloads omit credentials, time out after 30 seconds, can be stopped,
+and are limited to 2 MiB after decompression. The dataset is fetched again on each run, not saved in `.minb`.
+Cells using datasets have a 120-second execution budget; other cells retain 15 seconds.
+This is a notebook host facility, not a general Mini HTTP client; it requires no new compiler intrinsic.
+
+`application/vnd.mini.digit-classifier+json` is a data-only rich output for a 64 → 10 affine softmax model:
+`{ "version": 1, "weights": [640 finite numbers with magnitude ≤ 1e6, output-major], "bias": [10 finite numbers with magnitude ≤ 1e6] }`.
+The host validates the payload and renders a mouse/touch drawing pad, reduces its alpha channel to 8×8 values in [0,1],
+and evaluates `softmax(x @ weight.T + bias)` locally. No scripts from output are executed. This fast inference path
+uses the emitted Mini-trained parameters in JavaScript; training, evaluation and plotting run in Mini.
+The widget is a snapshot of one run, not a persistent Mini process. See `/libraries/digits` for the editable experiment.
+
+The digit lab uses short declaration cells and a final executable cell. Its **Run experiment** button runs the last code cell, which assembles all earlier declarations; **Run all** bundles pure helper declarations into the next executable cell; properties, objects, mains and other cells with possible effects still run individually. The final cell always runs so trailing declarations are checked. The second preset version uses `mini-notebook-digits-v2` storage, leaving the original saved notebook untouched.
+
+### Compiled program cache and fast default examples
+
+Successful WASM builds are cached by SHA-256 of the complete ordered source files (including the HTTP dataset), compile options and toolchain version. The version covers the compiler, runtime and libraries. Memory and optional Cache Storage caches hold at most eight entries each, at most 8 MiB per entry. Cache hits still execute a fresh worker; outputs, training runs and predictions are never cached. Failed compilations are not cached. Storage failure falls back to local compilation.
+
+The toolchain build also runs `scripts/wasm/precompile-examples.mjs`. This compiles the exact default digit experiment once and adds an optional `programs` entry to the manifest. The browser only uses it when the entire source/dataset/options/version fingerprint matches. It can then run the real training without loading clang. Edits fall back to local compilation and are cached afterwards. The examples are shipped in the toolchain artifact, not committed as binaries.
+
+Only the small checker stage preloads automatically. Loading and initializing clang waits for a real cache miss. Browser compilation retains `-O1`: measurements on the digit lab found `-O0` slower both to compile and to execute.
+
+Verify cold default, warm, Run all, reload and edited-source behavior with `node scripts/e2e-compile-cache.mjs <base-url> --compile-edit`.

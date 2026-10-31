@@ -168,12 +168,15 @@ await step('preload: the toolchain starts loading on a docs page without a click
     assert.equal(await p.locator('.cm-editor').count(), 0, 'the editor is not loaded before the first Edit')
     await p.screenshot({ path: join(shots, 'docs-preload-loading.png') })
     await p.locator('.tc-badge.ready').waitFor({ timeout: 240000 })
-    assert.ok(urls.some(u => u.endsWith('llvm.core.wasm')), 'the compiler stage was preloaded too')
+    assert.ok(!urls.some(u => u.endsWith('llvm.core.wasm')), 'clang remains unloaded until a cache miss needs compilation')
     // a plain fenced snippet (no sample file behind it): Run and the output right below it
     const cell = p.locator('.mc').first()
     await cell.getByRole('button', { name: 'Run', exact: true }).click()
     await cell.locator('.mp-output').waitFor({ timeout: 60000 })
     await p.waitForFunction(() => /exit code 0/.test(document.querySelector('.mc .mp-output')?.textContent ?? ''), null, { timeout: 60000 })
+    const compileStart = Date.now()
+    while (!urls.some(u => u.endsWith('llvm.core.wasm')) && Date.now() - compileStart < 240000) await p.waitForTimeout(100)
+    assert.ok(urls.some(u => u.endsWith('llvm.core.wasm')), 'the compiler loads when a cache miss compiles this snippet')
     assert.match(await cell.locator('.mp-output').innerText(), /^Hello, Mini!\n/)
     assert.equal(await cell.locator('.mc-verdict.ok').count(), 1, 'the output matches the documented output')
     // the output panel is below the code
