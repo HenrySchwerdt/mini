@@ -17,6 +17,7 @@ typealias LLVMOrcJITDylibRef = COpaquePointer
 typealias LLVMOrcThreadSafeContextRef = COpaquePointer
 typealias LLVMOrcThreadSafeModuleRef = COpaquePointer
 typealias LLVMOrcDefinitionGeneratorRef = COpaquePointer
+typealias LLVMOrcResourceTrackerRef = COpaquePointer
 
 @CName("LLVMOrcCreateLLJITBuilder") external fun LLVMOrcCreateLLJITBuilder(): LLVMOrcLLJITBuilderRef
 /** Takes the builder; the JIT is written to [result]. NULL on success. */
@@ -25,12 +26,12 @@ typealias LLVMOrcDefinitionGeneratorRef = COpaquePointer
 @CName("LLVMOrcLLJITGetMainJITDylib") external fun LLVMOrcLLJITGetMainJITDylib(j: LLVMOrcLLJITRef): LLVMOrcJITDylibRef
 @CName("LLVMOrcLLJITGetGlobalPrefix") external fun LLVMOrcLLJITGetGlobalPrefix(j: LLVMOrcLLJITRef): Byte
 @CName("LLVMOrcLLJITAddLLVMIRModule") external fun LLVMOrcLLJITAddLLVMIRModule(j: LLVMOrcLLJITRef, jd: LLVMOrcJITDylibRef, tsm: LLVMOrcThreadSafeModuleRef): LLVMErrorRef?
+@CName("LLVMOrcLLJITAddLLVMIRModuleWithRT") external fun LLVMOrcLLJITAddLLVMIRModuleWithRT(j: LLVMOrcLLJITRef, tracker: LLVMOrcResourceTrackerRef, tsm: LLVMOrcThreadSafeModuleRef): LLVMErrorRef?
 /** Looks [name] up (initializing the JIT'd code on first use); the address of the symbol is written to [result]. */
 @CName("LLVMOrcLLJITLookup") external fun LLVMOrcLLJITLookup(j: LLVMOrcLLJITRef, result: CPointer<LongVar>, name: CPointer<ByteVar>): LLVMErrorRef?
 
 @Owned(free = "LLVMOrcDisposeThreadSafeContext") @CName("LLVMOrcCreateNewThreadSafeContext") external fun LLVMOrcCreateNewThreadSafeContext(): LLVMOrcThreadSafeContextRef
 @CName("LLVMOrcDisposeThreadSafeContext") external fun LLVMOrcDisposeThreadSafeContext(tsCtx: LLVMOrcThreadSafeContextRef)
-@CName("LLVMOrcThreadSafeContextGetContext") external fun LLVMOrcThreadSafeContextGetContext(tsCtx: LLVMOrcThreadSafeContextRef): LLVMContextRef
 /** Takes the module (and, with the JIT, the context lives on in [tsCtx]). */
 @CName("LLVMOrcCreateNewThreadSafeModule") external fun LLVMOrcCreateNewThreadSafeModule(m: LLVMModuleRef, tsCtx: LLVMOrcThreadSafeContextRef): LLVMOrcThreadSafeModuleRef
 
@@ -39,3 +40,6 @@ external fun LLVMOrcCreateDynamicLibrarySearchGeneratorForProcess(result: CPoint
 @CName("LLVMOrcCreateDynamicLibrarySearchGeneratorForPath")
 external fun LLVMOrcCreateDynamicLibrarySearchGeneratorForPath(result: CPointer<COpaquePointerVar>, fileName: CPointer<ByteVar>, globalPrefix: Byte, filter: COpaquePointer?, filterCtx: COpaquePointer?): LLVMErrorRef?
 @CName("LLVMOrcJITDylibAddGenerator") external fun LLVMOrcJITDylibAddGenerator(jd: LLVMOrcJITDylibRef, dg: LLVMOrcDefinitionGeneratorRef)
+@CName("LLVMOrcJITDylibCreateResourceTracker") external fun LLVMOrcJITDylibCreateResourceTracker(jd: LLVMOrcJITDylibRef): LLVMOrcResourceTrackerRef
+@CName("LLVMOrcResourceTrackerRemove") external fun LLVMOrcResourceTrackerRemove(tracker: LLVMOrcResourceTrackerRef): LLVMErrorRef?
+@CName("LLVMOrcReleaseResourceTracker") external fun LLVMOrcReleaseResourceTracker(tracker: LLVMOrcResourceTrackerRef)

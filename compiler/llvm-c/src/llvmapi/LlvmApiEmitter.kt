@@ -2,6 +2,7 @@ package mini.llvmapi
 
 import kotlinx.cinterop.*
 import mini.backend.MirModule
+import mini.backend.MirFunction
 import mini.backend.llvm.LlvmLowering
 import mini.backend.llvm.LlvmTarget
 import mini.io.writeTextFile
@@ -86,6 +87,13 @@ object LlvmApiEmitter {
         conventions: Boolean,
         stats: Boolean,
         pendingAccessor: Boolean,
+        externalClasses: Boolean = false,
+        externalFunctions: Boolean = false,
+        entrySymbol: String = "mk_main",
+        userMainSymbol: String = "mkh_user_main",
+        externalFunctionSignatures: List<MirFunction> = emptyList(),
+        externalFunctionOwnedMasks: Map<String, BooleanArray> = emptyMap(),
+        externalBorrowedFunctions: Set<String> = emptySet(),
     ): LLVMModuleRef {
         val mod = memScoped { LLVMModuleCreateWithNameInContext(module.sourceName.cstr.ptr, context) }
         val dl = LLVMCreateTargetDataLayout(machine)
@@ -95,7 +103,7 @@ object LlvmApiEmitter {
         memScoped { LLVMSetTarget(mod, triple.cstr.ptr) }
         val builder = ApiIrBuilder(context, mod)
         try {
-            LlvmLowering.lower(module, builder, rcOpt, strict, conventions, stats, LlvmTarget(8, null, null, pendingAccessor))
+            LlvmLowering.lower(module, builder, rcOpt, strict, conventions, stats, LlvmTarget(8, null, null, pendingAccessor), externalClasses, externalFunctions, entrySymbol, userMainSymbol, externalFunctionSignatures, externalFunctionOwnedMasks, externalBorrowedFunctions)
         } catch (e: Throwable) {
             builder.dispose()
             LLVMDisposeModule(mod)

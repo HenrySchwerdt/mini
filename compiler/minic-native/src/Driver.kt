@@ -4,6 +4,12 @@ import mini.backend.CEmitter
 import mini.backend.Mangling
 import mini.backend.WasmGlue
 import mini.backend.MirModule
+import mini.backend.MirReader
+import mini.backend.MirFunction
+import mini.backend.MirExpr
+import mini.backend.MirStmt
+import mini.backend.TUnit
+import mini.backend.TObject
 import mini.backend.MirWriter
 import mini.backend.llvm.LlvmEmitter
 import mini.backend.llvm.LlvmTarget
@@ -27,11 +33,13 @@ import mini.lower.lowerToMirWithLibs
 import mini.lower.checkMemory
 import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
+import mini.lower.lowerToMirAgainstLibs
 
 /*
  *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--target=wasm32] [--emit=wasm-lib] [--emit-c out.c] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
  *   minic-native --backend=llvm-api -o out.o [--exe prog [--link-arg a]...] [--opt=O1] ...       (LLVM C API build only)
  *   minic-native --backend=llvm-api --run [--opt=O1] <user.kt>... --stdlib <std.kt>... [-- program args]
+ *   minic-native --backend=llvm-api --repl [--opt=O0..O3] [--stdlib <stdlib.kt>...]
  *   minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
  *   wasm library: --target=wasm32 --emit=wasm-lib --emit-ll <lib.ll> [--emit-js <lib.mjs> [--wasm-file <lib.wasm>]] [--emit-dts <lib.d.ts>] <user.kt>... [--stdlib ...]
  *                (a module without entry point that exports the `@WasmExport` functions; WasmLib.kt, website/guide/wasm-library.md)
@@ -53,7 +61,7 @@ import mini.lower.lowerToMir
  * 10g phase 2): [runDriver] gets an [LlvmApi] there, `null` in the plain build.
  */
 
-const val USAGE = "usage: minic-native [--color=auto|always|never] [--error-format=human|json] [--error-limit=N] [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--target=wasm32] [--emit-c <out.c>] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]\n       minic-native --backend=llvm-api -o <out.o> [--exe <prog> [--link-arg <arg>]...] [--opt=O0..O3] [--no-rc-opt] <user.kt>... --stdlib <stdlib.kt>...\n       minic-native --backend=llvm-api --run [--time] [--opt=O0..O3] <user.kt>... --stdlib <stdlib.kt>... [-- <program args>]\n       minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]"
+const val USAGE = "usage: minic-native [--color=auto|always|never] [--error-format=human|json] [--error-limit=N] [-o <out.c>] [--emit-mir <out.mir>] [--emit-ll <out.ll>] [--target=wasm32] [--emit-c <out.c>] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]\n       minic-native --backend=llvm-api -o <out.o> [--exe <prog> [--link-arg <arg>]...] [--opt=O0..O3] [--no-rc-opt] <user.kt>... --stdlib <stdlib.kt>...\n       minic-native --backend=llvm-api --run [--time] [--opt=O0..O3] <user.kt>... --stdlib <stdlib.kt>... [-- <program args>]\n       minic-native --backend=llvm-api --repl [--opt=O0..O3] [--stdlib <stdlib.kt>...]\n       minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]"
 
 /** What the build of the compiler with the LLVM C API bound in (compiler/llvm-c) adds: object files, linking, the ORC JIT. */
 interface LlvmApi {
@@ -65,6 +73,14 @@ interface LlvmApi {
 
     /** Compiles [module] in memory, adds it to an ORC JIT and runs its `main` in this process; the exit status of the program. */
     fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean, timing: Boolean): Int
+
+    /** Creates one persistent ORC session for incremental compilation. */
+    fun createSession(optLevel: Int): LlvmApiSession
+}
+
+interface LlvmApiSession : AutoCloseable {
+    fun add(module: MirModule, rcOpt: Boolean, entrySymbol: String?)
+    fun run(module: MirModule, rcOpt: Boolean, entrySymbol: String)
 }
 
 /** The command line is wrong (exit status 2). */
@@ -131,6 +147,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     var exe: String? = null
     var cc = "cc"
     var run = false
+    var repl = false
     var timing = false
     val linkArgs = ArrayList<String>()
     val programArgs = ArrayList<String>()
@@ -223,6 +240,9 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         } else if (a == "--run") {
             run = true
             i += 1
+        } else if (a == "--repl") {
+            repl = true
+            i += 1
         } else if (a == "--") {
             for (k in i + 1 until args.size) programArgs.add(args[k])
             i = args.size
@@ -270,14 +290,20 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         }
     }
     val api = backend == "llvm-api"
+    if (repl && !api) throw UsageError("--repl needs --backend=llvm-api\n" + USAGE)
+    if (repl && inputs.any { !it.isStdlib }) throw UsageError("--repl does not accept source files; enter declarations interactively\n" + USAGE)
+    if (repl && programArgs.isNotEmpty()) throw UsageError("--repl does not accept program arguments\n" + USAGE)
+    if (repl && (run || check || wasmLib || output != null || exe != null || mlibOut != null || cOut != null || mirOut != null || llOut != null)) {
+        throw UsageError("--repl cannot be combined with build, check, or one-shot run options\n" + USAGE)
+    }
     if (wasmLib && !wasm32) throw UsageError("--emit=wasm-lib needs --target=wasm32\n" + USAGE)
     if (wasmLib && (api || output != null || cOut != null || exe != null || run)) throw UsageError("--emit=wasm-lib writes LLVM IR: use --emit-ll <file.ll> (and --emit-js / --emit-dts for the JavaScript side)\n" + USAGE)
     if (!wasmLib && (jsOut != null || dtsOut != null)) throw UsageError("--emit-js and --emit-dts need --emit=wasm-lib\n" + USAGE)
     if (api && llvm == null) throw UsageError("--backend=llvm-api needs the build of minic-native with the LLVM C API (compiler/llvm-c)")
     if ((run || exe != null) && !api) throw UsageError("--run and --exe need --backend=llvm-api\n" + USAGE)
-    if (firstName == null && args.size > 0 && inputs.isEmpty()) throw UsageError("no input files\n" + USAGE)
-    if (firstName == null || (!check && !wasmLib && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null)) throw UsageError(USAGE)
-    val name: String = firstName
+    if (firstName == null && args.size > 0 && inputs.isEmpty() && !repl) throw UsageError("no input files\n" + USAGE)
+    if (!repl && (firstName == null || (!check && !wasmLib && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null))) throw UsageError(USAGE)
+    val name: String = firstName ?: ""
     val libs = ArrayList<Mlib>()
     for (lp in libPaths) {
         val text = try {
@@ -288,6 +314,10 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         libs.add(MlibFormat.read(text, lp))
     }
     val ordered = MlibFormat.order(libs, compilerId)
+    if (repl) {
+        runRepl(llvm!!, ordered, inputs.filter { it.isStdlib }, compilerId, optLevel, rcOpt, werror, diag)
+        return
+    }
     if (mlibOut != null) {
         for (inp in inputs) if (inp.isStdlib) throw UsageError("--emit-mlib compiles all given files into the library; pass the sources of the library without --stdlib\n" + USAGE)
         val libNameOf = libName ?: name.removeSuffix(".kt")
@@ -357,6 +387,151 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     }
     if (output != null) writeTextFile(output, CEmitter.emit(module, rcOpt, lineFile = if (lineDirs) output else null))
     if (llOut != null) writeTextFile(llOut, LlvmEmitter.emit(module, rcOpt, target = if (wasm32) LlvmTarget.WASM32 else LlvmTarget.HOST))
+}
+
+/**
+ * A deliberately small native REPL: each declaration is compiled once as a library cell, and each expression/statement is
+ * compiled as a fresh entry module against the accumulated declaration stubs. Accepted MIR is never replayed; the ORC session
+ * keeps its code and top-level facade objects alive until EOF or `:quit`.
+ */
+private fun runRepl(
+    llvm: LlvmApi,
+    initialLibs: List<Mlib>,
+    stdlibSources: List<LowerInput>,
+    compilerId: String,
+    optLevel: Int,
+    rcOpt: Boolean,
+    werror: Boolean,
+    diag: DiagOptions,
+) {
+    val session = llvm.createSession(optLevel)
+    val libraries = ArrayList<Mlib>()
+    val declaredNames = HashSet<String>()
+    var nextCell = 0
+    var nextEntry = 0
+    val program = "<repl>"
+    try {
+        for (lib in initialLibs) {
+            session.add(MirReader.read(lib.mir), rcOpt, null)
+            libraries.add(lib)
+        }
+        if (stdlibSources.isNotEmpty()) {
+            val stdlib = try {
+                buildMlib(stdlibSources, libraries, "repl-stdlib", "0.0.0", compilerId)
+            } catch (e: LowerDiagnostics) {
+                reportFrontend(e, "<stdlib>", diag)
+                return
+            }
+            session.add(MirReader.read(stdlib.mir), rcOpt, null)
+            libraries.add(stdlib)
+        }
+        println("Mini native REPL. Enter `val`/`var`/`fun` declarations or expressions; `:do <statement>`, `:help`, `:quit`.")
+        while (true) {
+            if (replIsInteractive()) {
+                print("mini> ")
+                flushReplStdout()
+            }
+            val input = readReplLine()
+            if (input === ReplLine.EndOfInput) break
+            if (input === ReplLine.TooLong) {
+                printGeneral(diag, "REPL input exceeds 65536 bytes; input discarded")
+                continue
+            }
+            val raw = (input as ReplLine.Input).text
+            val line = raw.trim()
+            if (line.isEmpty()) continue
+            if (line == ":quit" || line == ":q") break
+            if (line == ":help") {
+                println("Supports top-level val/var/fun declarations, expression evaluation, and `:do <statement>`. Each input must fit on one line. Classes, imports, and declarations that redefine an accepted name are not supported yet.")
+                continue
+            }
+            val isStatement = line.startsWith(":do ")
+            val sourceBody = if (isStatement) line.substring(4).trim() else line
+            if (sourceBody.isEmpty()) {
+                printGeneral(diag, "expected a statement after :do")
+                continue
+            }
+            val declaration = declarationName(sourceBody)
+            if (declaration != null) {
+                val name = declaration
+                if (name == "main") {
+                    printGeneral(diag, "top-level main is reserved by the REPL; use :do or an expression instead")
+                    continue
+                }
+                if (declaredNames.contains(name)) {
+                    printGeneral(diag, "redefinition of '$name' is not supported; use a new name")
+                    continue
+                }
+                val cellNo = nextCell++
+                val path = "ReplCell$cellNo.kt"
+                try {
+                    val cell = buildMlib(listOf(LowerInput(path, sourceBody, false)), libraries, "repl-cell-$cellNo", "0.0.0", compilerId) {
+                        reportMemory(it, path, werror, false, diag)
+                    }
+                    val module = MirReader.read(cell.mir)
+                    val facade = module.classes.firstOrNull { it.objectCtor != null }
+                    if (facade != null) {
+                        val forceFacade = MirFunction(
+                            "mini.repl.initialize.$cellNo", Mangling.MAIN, emptyList(), TUnit,
+                            listOf(MirStmt.Eval(MirExpr.ObjectGet(facade.cName, TObject(facade.qualifiedName, facade.cName, false)))),
+                        )
+                        val initialized = MirModule(module.sourceName, module.functions + forceFacade, module.classes, module.externs, module.includes, module.links)
+                        session.run(initialized, rcOpt, "mini_repl_entry_${nextEntry++}")
+                    } else {
+                        session.add(module, rcOpt, null)
+                    }
+                    libraries.add(cell)
+                    declaredNames.add(name)
+                } catch (e: LowerDiagnostics) {
+                    reportFrontend(e, path, diag)
+                } catch (e: MlibError) {
+                    printGeneral(diag, e.message ?: "library error")
+                } catch (e: UnsupportedConstruct) {
+                    printGeneral(diag, e.message ?: "unsupported construct")
+                } catch (e: Throwable) {
+                    printGeneral(diag, "could not add REPL declaration: " + (e.message ?: e.toString()))
+                }
+                continue
+            }
+            if (sourceBody.startsWith("class ") || sourceBody.startsWith("object ") || sourceBody.startsWith("interface ") || sourceBody.startsWith("import ") || sourceBody.startsWith("package ")) {
+                printGeneral(diag, "REPL currently supports top-level val, var, and fun declarations; classes, imports, and package declarations are not supported")
+                continue
+            }
+            val cellNo = nextCell++
+            val path = "ReplEval$cellNo.kt"
+            val programSource = if (isStatement) "fun main() { $sourceBody }" else "fun main() { println($sourceBody) }"
+            try {
+                val module = lowerToMirAgainstLibs(
+                    listOf(LowerInput(path, programSource, false)), libraries, path, false,
+                    { reportMemory(it, path, werror, false, diag) }, "repl_$cellNo",
+                )
+                session.run(module, rcOpt, "mini_repl_entry_${nextEntry++}")
+            } catch (e: LowerDiagnostics) {
+                reportFrontend(e, path, diag)
+            } catch (e: UnsupportedConstruct) {
+                printGeneral(diag, e.message ?: "unsupported construct")
+            } catch (e: Throwable) {
+                printGeneral(diag, "could not evaluate REPL input: " + (e.message ?: e.toString()))
+            }
+        }
+    } finally {
+        session.close()
+    }
+}
+
+private fun declarationName(source: String): String? {
+    val text = source.trimStart()
+    val keyword = when {
+        text.startsWith("val ") -> "val"
+        text.startsWith("var ") -> "var"
+        text.startsWith("fun ") -> "fun"
+        else -> return null
+    }
+    var i = keyword.length
+    while (i < text.length && text[i].isWhitespace()) i++
+    val start = i
+    while (i < text.length && (text[i].isLetterOrDigit() || text[i] == '_')) i++
+    return if (i > start) text.substring(start, i) else ""
 }
 
 private fun fileNameOf(path: String): String {

@@ -73,14 +73,20 @@ object LlvmLowering {
         conventions: Boolean = true,
         stats: Boolean = false,
         target: LlvmTarget = LlvmTarget.HOST,
+        externalClasses: Boolean = false,
+        externalFunctions: Boolean = false,
+        entrySymbol: String = "mk_main",
+        userMainSymbol: String = "mkh_user_main",
+        externalFunctionSignatures: List<MirFunction> = emptyList(),
+        externalFunctionOwnedMasks: Map<String, BooleanArray> = emptyMap(),
+        externalBorrowedFunctions: Set<String> = emptySet(),
     ) {
         val tr = Tracking(module, strict)
-        val plan = if (rcOpt) RcOpt.analyze(module, tr, conventions) else null
-        Lowering(module, plan, tr, stats, target, builder).run()
+        val plan = if (rcOpt) RcOpt.analyze(module, tr, conventions, externalFunctionSignatures, externalFunctionOwnedMasks, externalBorrowedFunctions) else null
+        Lowering(module, plan, tr, stats, target, builder, externalClasses, externalFunctions, entrySymbol, userMainSymbol, externalFunctionSignatures).run()
     }
 }
 
-private const val USER_MAIN = "mkh_user_main"
 private const val WASM_INIT_FACADES = "mini_wasm_init_facades"
 
 private class Scope(val locals: List<MirLocal>, val loop: MirLabel?)
@@ -93,6 +99,11 @@ private class Lowering<V : Any, B : Any>(
     val stats: Boolean,
     val target: LlvmTarget,
     val b: IrBuilder<V, B>,
+    val externalClasses: Boolean,
+    val externalFunctions: Boolean,
+    val entrySymbol: String,
+    val userMainSymbol: String,
+    val externalFunctionSignatures: List<MirFunction>,
 ) {
     var curFn: MirFunction? = null
     val newaUsed = LinkedHashSet<String>()
@@ -137,6 +148,7 @@ private class Lowering<V : Any, B : Any>(
         for (f in module.functions) {
             if (sig.put(f.cName, f) != null) throw EmitError("duplicate C symbol ${f.cName}")
         }
+        for (f in externalFunctionSignatures) if (!sig.containsKey(f.cName)) sig[f.cName] = f
         for (c in module.classes) classes[c.cName] = c
         layouts = Layouts(classes, target)
         throwing = ThrowAnalysis(module).run()
@@ -165,8 +177,23 @@ private class Lowering<V : Any, B : Any>(
                 b.declareDefined("${f.cName}_new", IrType.PTR, IrExt.NONE, ps.map { ity(it.type) }, ps.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
             }
         }
+        for (f in externalFunctionSignatures) {
+            if (module.functions.any { it.cName == f.cName }) continue
+            val name = fname(f.cName)
+            b.declareDefined(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
+            if (f.constructorOf != null) {
+                val ps = f.params.drop(1)
+                b.declareDefined("${f.cName}_new", IrType.PTR, IrExt.NONE, ps.map { ity(it.type) }, ps.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
+            }
+        }
         for (c in module.classes) {
-            if (c.external) continue
+            if (c.external) {
+                b.externTypeInfo("${c.cName}_ti")
+                if (!c.isInterface && c.objectCtor != null) {
+                    b.declareDefined("${c.cName}_get", IrType.PTR, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, IrLinkage.EXTERNAL)
+                }
+                continue
+            }
             b.declareGlobalOfStruct("${c.cName}_ti", "MkTypeInfo", IrLinkage.INTERNAL)
             if (!c.isInterface && c.objectCtor != null) {
                 b.declareDefined("${c.cName}_get", IrType.PTR, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, IrLinkage.INTERNAL)
@@ -192,7 +219,7 @@ private class Lowering<V : Any, B : Any>(
     }
 
     /** The IR name of a function of the module (the user's `main` is a helper the generated `mk_main` calls). */
-    fun fname(cName: String): String = if (cName == Mangling.MAIN) USER_MAIN else cName
+    fun fname(cName: String): String = if (cName == Mangling.MAIN) userMainSymbol else cName
 
     /** A pooled NUL-terminated C string constant; the result is its global (a `ptr` operand). */
     fun cstr(text: String): V {
@@ -686,6 +713,7 @@ private class Lowering<V : Any, B : Any>(
     }
 
     fun emitClasses() {
+        val classLinkage = if (externalClasses) IrLinkage.EXTERNAL else IrLinkage.INTERNAL
         for (c in module.classes) {
             if (c.external) {
                 b.externTypeInfo(c.cName + "_ti")
@@ -704,7 +732,7 @@ private class Lowering<V : Any, B : Any>(
                     "MkTypeInfo",
                     listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong())),
                 )
-                b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, IrLinkage.INTERNAL, 8, false)
+                b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, classLinkage, 8, false)
                 b.blankLine(IrSection.CLASSES)
                 continue
             }
@@ -759,11 +787,11 @@ private class Lowering<V : Any, B : Any>(
                     b.constInt(szT, c.interfaces.size.toLong()),
                 ),
             )
-            b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, IrLinkage.INTERNAL, 8, false)
+            b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, classLinkage, 8, false)
             if (c.objectCtor != null) {
-                val obj = b.defineGlobal(IrSection.CLASSES, "${c.cName}_obj", b.constNull(), false, IrLinkage.INTERNAL, 0, false)
+                val obj = b.defineGlobal(IrSection.CLASSES, "${c.cName}_obj", b.constNull(), false, classLinkage, 0, false)
                 val alloc = declare("mk_alloc", TString, listOf(TString))
-                beginGenerated(IrSection.CLASSES, "${c.cName}_get", TString, emptyList(), emptyList(), emptyList(), IrLinkage.INTERNAL)
+                beginGenerated(IrSection.CLASSES, "${c.cName}_get", TString, emptyList(), emptyList(), emptyList(), classLinkage)
                 val init0 = b.newBlock("init")
                 val done = b.newBlock("done")
                 val o = b.load(IrType.PTR, obj, 0, "o")
@@ -990,9 +1018,9 @@ private class Lowering<V : Any, B : Any>(
 
     fun emitMainWrapper(userMain: MirFunction) {
         b.comment(IrSection.FUNCTIONS, "program entry: an exception that escaped main is reported by the runtime")
-        beginGenerated(IrSection.FUNCTIONS, "mk_main", TUnit, emptyList(), emptyList(), emptyList(), IrLinkage.EXTERNAL)
+        beginGenerated(IrSection.FUNCTIONS, entrySymbol, TUnit, emptyList(), emptyList(), emptyList(), IrLinkage.EXTERNAL)
         val uncaught = declare("mk_report_uncaught", TNothing, listOf(), IrAttrs.NORETURN)
-        val um = b.global(USER_MAIN)
+        val um = b.global(userMainSymbol)
         if (userMain.params.isEmpty()) {
             call(TUnit, um, emptyList(), emptyList())
         } else {
@@ -1435,14 +1463,22 @@ private class Lowering<V : Any, B : Any>(
             is MirExpr.Unary -> unary(e)
             is MirExpr.Convert -> convert(e)
             is MirExpr.Call -> {
-                val f = sig[e.cName] ?: throw EmitError("call of unknown function ${e.cName}")
-                if (f.params.size != e.args.size) throw EmitError("wrong argument count for ${e.cName}")
-                val mask = rcPlan?.ownedMask(e.cName)
-                if (mask == null) {
+                val f = sig[e.cName]
+                if (f == null) {
+                    if (!externalFunctions) throw EmitError("call of unknown function ${e.cName}")
+                    val types = e.args.map { it.type }
+                    declare(e.cName, e.type, types)
                     val vs = e.args.map { expr(it) }
-                    call(f.returnType, b.global(fname(e.cName)), f.params.map { it.type }, vs)
+                    call(e.type, b.global(e.cName), types, vs)
                 } else {
-                    ownedCall(fname(e.cName), f.returnType, f.params.map { it.type }, e.args, mask, 0, null)
+                    if (f.params.size != e.args.size) throw EmitError("wrong argument count for ${e.cName}")
+                    val mask = rcPlan?.ownedMask(e.cName)
+                    if (mask == null) {
+                        val vs = e.args.map { expr(it) }
+                        call(f.returnType, b.global(fname(e.cName)), f.params.map { it.type }, vs)
+                    } else {
+                        ownedCall(fname(e.cName), f.returnType, f.params.map { it.type }, e.args, mask, 0, null)
+                    }
                 }
             }
             is MirExpr.RuntimeCall -> {
@@ -1519,11 +1555,18 @@ private class Lowering<V : Any, B : Any>(
                 call(e.type, fp, listOf<MirType>(TString) + e.paramTypes, listOf(r) + vs)
             }
             is MirExpr.New -> {
-                val f = sig[e.ctorCName] ?: throw EmitError("unknown constructor ${e.ctorCName}")
-                val ps = f.params.drop(1)
-                val mask = rcPlan?.ownedMask(e.ctorCName)
-                val al = e.allocator
-                if (al != null && tr.enabled && curFn?.strict == true) {
+                val f = sig[e.ctorCName]
+                if (f == null) {
+                    if (!externalFunctions) throw EmitError("unknown constructor ${e.ctorCName}")
+                    val types = e.args.map { it.type }
+                    declare(e.ctorCName + "_new", e.type, types)
+                    val vs = e.args.map { expr(it) }
+                    call(e.type, b.global(e.ctorCName + "_new"), types, vs)
+                } else {
+                    val ps = f.params.drop(1)
+                    val mask = rcPlan?.ownedMask(e.ctorCName)
+                    val al = e.allocator
+                    if (al != null && tr.enabled && curFn?.strict == true) {
                     // allocation through a chosen allocator (Strict code): `<ctor>_newa(allocator address, args...)`
                     newaUsed.add(e.ctorCName)
                     val newa = "${e.ctorCName}_newa"
@@ -1535,11 +1578,12 @@ private class Lowering<V : Any, B : Any>(
                     } else {
                         ownedCall(newa, TString, ps.map { it.type }, e.args, mask, 1, lead)
                     }
-                } else if (mask == null) {
-                    val vs = e.args.map { expr(it) }
-                    call(TString, b.global("${e.ctorCName}_new"), ps.map { it.type }, vs)
-                } else {
-                    ownedCall("${e.ctorCName}_new", TString, ps.map { it.type }, e.args, mask, 1, null)
+                    } else if (mask == null) {
+                        val vs = e.args.map { expr(it) }
+                        call(TString, b.global("${e.ctorCName}_new"), ps.map { it.type }, vs)
+                    } else {
+                        ownedCall("${e.ctorCName}_new", TString, ps.map { it.type }, e.args, mask, 1, null)
+                    }
                 }
             }
             is MirExpr.ObjectGet -> call(TString, b.global("${e.classCName}_get"), listOf(), listOf())

@@ -98,11 +98,19 @@ class RcPlan internal constructor(
 }
 
 object RcOpt {
-    fun analyze(module: MirModule, tr: Tracking = Tracking(module, false), conventions: Boolean = true): RcPlan {
-        val conv = Conventions.build(module, conventions)
+    fun analyze(
+        module: MirModule,
+        tr: Tracking = Tracking(module, false),
+        conventions: Boolean = true,
+        externalFunctions: List<MirFunction> = emptyList(),
+        externalOwned: Map<String, BooleanArray> = emptyMap(),
+        externalBorrowed: Set<String> = emptySet(),
+    ): RcPlan {
+        val conv = Conventions.build(module, conventions, externalFunctions, externalOwned, externalBorrowed)
         tr.conv = conv
         val fx = RcEffects(module, tr).run()
         val owned = HashMap<String, BooleanArray>()
+        for ((name, mask) in externalOwned) owned[name] = BooleanArray(mask.size) { mask[it] }
         // owned parameters of non-constructor functions (annotations, merged over the dispatch groups)
         if (conv.any) for (f in module.functions) if (f.constructorOf == null) conv.maskOfFunction(f.cName)?.let { owned[f.cName] = it }
         // Which constructor parameters does the initialiser always hand over (store into a field, pass on to
