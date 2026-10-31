@@ -73,6 +73,15 @@ class EmitterTest {
     }
 
     @Test
+    fun generatedCDisablesFloatingPointContraction() {
+        val c = CEmitter.emit(module(MirFunction("main", "mk_main", emptyList(), TUnit, emptyList())))
+        assertTrue("#if defined(__clang__)" in c, c)
+        assertTrue("#pragma clang fp contract(off)" in c, c)
+        assertTrue("#elif defined(__GNUC__)" in c, c)
+        assertTrue("#pragma GCC optimize (\"fp-contract=off\")" in c, c)
+    }
+
+    @Test
     fun stringLiteralsAreUtf16AndDeduplicated() {
         val s = MirExpr.StringConst("a\"b\\é\n")
         val main = MirFunction(

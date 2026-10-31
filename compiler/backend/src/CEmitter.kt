@@ -132,6 +132,9 @@ object CEmitter {
             out.append("#include <math.h>\n#include <stdint.h>\n#include \"minirt.h\"\n")
             if (usesMemory) out.append("#include <string.h>\n")
             for (h in module.includes) out.append("#include \"${headerName(h)}\"\n")
+            // Kotlin rounds each floating-point operator separately. The standard C pragma is ignored by GCC,
+            // so select the supported compiler-specific spelling to keep generated C aligned with LLVM.
+            out.append("\n#if defined(__clang__)\n#pragma clang fp contract(off)\n#elif defined(__GNUC__)\n#pragma GCC optimize (\"fp-contract=off\")\n#endif\n")
             out.append("\n")
             out.append(PRELUDE)
             if (usesMemory) out.append(MEMORY_PRELUDE)

@@ -12,6 +12,8 @@ fun main() {
     // arithmetic is float32: 16777216f + 1f stays 16777216f, 0.1f + 0.2f is not the Double sum
     println(16777216f + 1f)
     println(0.1f + 0.2f)
+    // Kotlin rounds after each operator; compilers must not contract this into an FMA.
+    println((1.0 + 7.450580596923828e-9) * (1.0 - 7.450580596923828e-9) - 1.0)
     println((0.1f + 0.2f).toDouble())
     println(1.0f / 3.0f)
     println(1.0f + 1.0)
