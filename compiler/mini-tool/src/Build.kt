@@ -13,6 +13,7 @@ class BuildOptions(
     val wasmLib: Boolean = false,
     /** `--target wasm32` was given. */
     val wasmTarget: Boolean = false,
+    val backend: String = "c",
 ) {
     val profile: String get() = if (release) "release" else "debug"
 }
@@ -271,7 +272,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         }
         if (!checkEachStrict(root, files, "compile", libs)) return BuildResult(false, null)
         c.trace("minic-native " + sources.joinToString(" ") + " -> " + binary)
-        val r = tc.compile(p, sources, emptyList(), binary, o.werror, o.release, cSourcesOf(root), libs.map { it.path })
+        val r = tc.compile(p, sources, emptyList(), binary, o.werror, o.release, cSourcesOf(root), libs.map { it.path }, o.backend)
         if (r.exitCode != 0) return failed(root, r, files, "compile")
         report(root, r, files)
         p.writeText(fpFile, fp + "\n")
@@ -352,7 +353,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         if (!ensureLibs(root, libs)) return BuildResult(false, null)
         if (!checkEachStrict(root, files, "build the tests of", libs)) return BuildResult(false, null)
         c.trace("minic-native " + files.joinToString(" ") { it.path } + " -> " + binary)
-        val r = tc.compile(p, files.map { it.path } + extraSources, declarationOnly, binary, o.werror, o.release, cSourcesOf(root), libs.map { it.path })
+        val r = tc.compile(p, files.map { it.path } + extraSources, declarationOnly, binary, o.werror, o.release, cSourcesOf(root), libs.map { it.path }, o.backend)
         if (r.exitCode != 0) return failed(root, r, files, "build the tests of")
         report(root, r, files)
         p.writeText(fpFile, fp + "\n")

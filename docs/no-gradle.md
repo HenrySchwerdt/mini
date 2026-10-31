@@ -1,6 +1,6 @@
 # The repository without Gradle
 
-The main build of Mini needs **no JVM and no Gradle**: a C compiler and the latest release (or the C bootstrap seed) are enough.
+The main build of Mini needs **no JVM and no Gradle**. A C compiler and the latest release (or the C bootstrap seed) are enough for the C bootstrap; release packaging also needs LLVM 18 development libraries to produce the static LLVM API compiler.
 The cross-checks against the official Kotlin compiler (K2 on the JVM) live in the separate, optional tool
 [`tools/k2-oracle`](../tools/k2-oracle/README.md), run nightly and on manual dispatch, not per pull request.
 
@@ -39,6 +39,10 @@ scripts/check-purity.sh                     # the compiler packages use no JVM A
 scripts/test-e2e.sh                         # compiler/testdata: C backend, ASan/LSan/UBSan, memory corpus; --suite llvm ... for LLVM
 compiler/bootstrap.sh                       # stage2 == stage3; --backend=llvm | llvm-api
 ```
+
+Release builds use `compiler/bootstrap.sh --backend=llvm-api` and link LLVM 18 static archives into `bin/minic-native` for
+linux-x64, linux-arm64 and macOS arm64. The shipped compiler needs no LLVM installation at runtime. It still uses the platform
+C linker to build programs; `minic` and `mini` choose the LLVM API path by default, and `--backend=c` selects the C fallback.
 
 ## Inventory: what was Gradle/JVM, and where it went
 
