@@ -1,5 +1,5 @@
 name: Release
-# Prebuilt compilers on GitHub Releases: one tarball per platform, the portable C bootstrap seed and SHA256SUMS.
+# Prebuilt LLVM API compilers on GitHub Releases: one self-contained tarball per platform, the portable C bootstrap seed and SHA256SUMS.
 #   * push a tag `v0.4.0`, or
 #   * run the workflow with `version: 0.4.0` (it creates the tag `v0.4.0` on the dispatched commit).
 on:
@@ -50,16 +50,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # the previous release's native compiler (stage0) -> stage1 -> stage2 -> stage3, stage2 == stage3 (the release is the checked fixpoint)
+      - name: Install LLVM 18
+        run: |
+          if [ "${{ runner.os }}" = macOS ]; then
+            brew install llvm@18 zstd
+            echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq llvm-18-dev libzstd-dev
+            echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+          fi
+      # The prior release's C seed compiler -> LLVM API stage1 -> stage2 -> stage3, static LLVM, stage2 == stage3.
       - name: Bootstrap
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/ci-stage0.sh "$RUNNER_TEMP/boot0"
+        run: BOOT_OPT=-O2 scripts/ci-stage0.sh "$RUNNER_TEMP/boot0" --backend=llvm-api
+      - name: Fetch LLVM license
+        run: curl -fsSL "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/llvm/LICENSE.TXT" -o "$RUNNER_TEMP/LLVM-LICENSE.txt"
       - name: Package
         run: |
           flags=""
           if [ "${{ matrix.seed }}" = "true" ]; then flags="--seed"; fi
-          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot0/s0" --out dist $flags
+          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot0/s0" --llvm-license "$RUNNER_TEMP/LLVM-LICENSE.txt" --out dist $flags
       - name: Smoke test the tarball
         run: |
           d="$(mktemp -d)"
@@ -68,11 +80,22 @@ jobs:
           "$d/hello" | tee "$d/out.txt"
           grep -q 'Hello, Mini!' "$d/out.txt"
           scripts/test-minic-cli.sh "$d/home"
+          # The installed API compiler is the default and its C emitter remains an explicit fallback.
+          "$d/home/bin/minic" build --backend=c examples/hello.kt -o "$d/hello-c"
+          "$d/hello-c" | grep -q 'Hello, Mini!'
+          if [ "${{ runner.os }}" = macOS ]; then
+            ! otool -L "$d/home/bin/minic-native" | grep -Ei '/opt/homebrew|llvm|zstd|unwind'
+          else
+            ! ldd "$d/home/bin/minic-native" | grep -Ei 'llvm|zstd|unwind'
+          fi
+          printf 'val x = 40\nx + 2\n:quit\n' | "$d/home/bin/mini" repl | grep -x '42'
           # the project tool (a native binary, no JVM): new, build, run, test, check
           mkdir "$d/proj" && cd "$d/proj"
           "$d/home/bin/mini" new demo && cd demo
           "$d/home/bin/mini" build && "$d/home/bin/mini" run | grep -q 'Hello, world!'
           "$d/home/bin/mini" test && "$d/home/bin/mini" check
+          "$d/home/bin/mini" build --backend=c && "$d/home/bin/mini" run --backend=c | grep -q 'Hello, world!'
+          "$d/home/bin/mini" test --backend=c
       # The seed alone (a C compiler) must give a stage0 that reproduces stage2 == stage3 and its own C.
       - name: Verify the bootstrap seed
         if: matrix.seed

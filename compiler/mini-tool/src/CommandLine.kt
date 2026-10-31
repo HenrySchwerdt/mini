@@ -57,12 +57,13 @@ object CommandLine {
     private val werrorFlag = Flag("Werror", "Treat memory-checker warnings as errors")
     private val formatFlag = Flag("message-format", "Diagnostics format: human or json (one JSON object per line, for editors)", value = "<FMT>", choices = listOf("human", "json"))
     private val releaseFlag = Flag("release", "Optimised build (build/release/, clang -O2)")
+    private val backendFlag = Flag("backend", "Compiler backend: llvm-api (default for API releases) or c", value = "<BACKEND>", choices = listOf("llvm-api", "c"))
 
     private val targetFlag = Flag("target", "Build for another target: wasm32 (a library for JavaScript; needs `kind = \"wasm-lib\"` or --lib)", value = "<TARGET>", choices = listOf("wasm32"))
     private val wasmLibFlag = Flag("lib", "With --target wasm32: build the package as a WebAssembly library (its @WasmExport functions)")
     private val templateFlag = Flag("template", "Project template: app, lib or wasm-lib (a WebAssembly module for JavaScript)", value = "<TEMPLATE>", choices = listOf("app", "lib", "wasm-lib"))
 
-    private val buildFlags = listOf(pkgFlag, releaseFlag, memFlag, werrorFlag, offlineFlag, lockedFlag, formatFlag, manifestFlag)
+    private val buildFlags = listOf(pkgFlag, releaseFlag, backendFlag, memFlag, werrorFlag, offlineFlag, lockedFlag, formatFlag, manifestFlag)
     private val buildTargetFlags = buildFlags + listOf(targetFlag, wasmLibFlag)
 
     val commands: List<Command> = listOf(
@@ -122,7 +123,7 @@ object CommandLine {
         Command(
             "test", "Run the @Test functions of the project", "[FILTER]",
             listOf(
-                pkgFlag, memFlag, werrorFlag, offlineFlag, lockedFlag, manifestFlag,
+                pkgFlag, backendFlag, memFlag, werrorFlag, offlineFlag, lockedFlag, manifestFlag,
                 Flag("list", "List the tests without building or running them"),
                 Flag("nocapture", "Show the output of passing tests too"),
                 Flag("fail-fast", "Stop after the first failing test"),
@@ -165,6 +166,9 @@ object CommandLine {
             listOf("mini explain M0102", "mini explain --list"), maxPositionals = 1,
         ),
         Command("doctor", "Check the toolchain (compiler, C compiler, git, libuv) and suggest fixes", "", emptyList()),
+        Command("repl", "Start the persistent LLVM ORC REPL", "", emptyList(),
+            "Starts an in-process LLVM ORC session. Enter a declaration or expression on each line; use :help or :quit.",
+            listOf("mini repl")),
         Command(
             "completions", "Print a shell completion script", "<SHELL>",
             emptyList(),

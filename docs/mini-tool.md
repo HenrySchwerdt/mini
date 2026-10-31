@@ -1,7 +1,7 @@
 # `mini`: the project tool
 
 `mini` is to Mini what `cargo` is to Rust: it creates projects, resolves dependencies, builds, runs and tests them.
-`minic` stays the bare compiler underneath (like `rustc`); `mini` calls the native compiler `minic-native` as a subprocess. `mini` itself is a native binary compiled by Mini from Kotlin sources: no JVM, no Gradle, ever.
+`minic` stays the bare compiler underneath (like `rustc`); `mini` calls the native compiler `minic-native` as a subprocess. `mini` itself is a native binary compiled by Mini from Kotlin sources: no JVM, no Gradle, ever. Release builds use the LLVM C API by default; pass `--backend=c` to `mini build`, `run` or `test` to use the C emitter.
 
 ```text
 $ ./mini new hello && cd hello
@@ -27,7 +27,7 @@ a rebuild without changes is instant, see [Incremental builds](#incremental-buil
 ## Installation
 
 **Release.** `install.sh` installs `bin/mini`, `bin/minic-native`, `bin/minic`, `lib/libminirt.a`, `include/` and `stdlib/` into
-`~/.mini` (needs clang or gcc; `mini doctor` checks this). `mini` finds the rest next to itself, no environment needed.
+`~/.mini`. The LLVM 18 libraries are statically linked into `minic-native`; compiling a program still needs a system C linker (clang or gcc), which `mini doctor` checks. `mini` finds the rest next to itself, no environment needed.
 
 **Source checkout.** The wrapper script `./mini` in the repository root builds the tool and the compiler on first use with
 `scripts/build-mini.sh` (a minute or two) into `build/native` and rebuilds them when their sources change. The compiler is
@@ -320,11 +320,9 @@ The only dependency of the core is the pure-Kotlin parser of `compiler/frontend`
 `MemoryMode` annotation). Because the core is compiled by Mini, it avoids what the Mini stdlib lacks (`Regex`, a few `String`
 helpers); `Text.kt` has the hand-written line patterns.
 
-**Build pipeline.** `mini build` runs `minic-native -o app.c <sources> --stdlib <stdlib files>` (Kotlin to C; `--check` for the
-memory checker) and then the C compiler on that file, `lib/libminirt.a` and `-l` flags from `@file:CLink`. `scripts/build-mini.sh`
-builds the tool the same way: `minic-native -o mini.c <tool + frontend sources> --stdlib ...`, then `clang mini.c mini_host.c libminirt.a`.
-`ExplainData.kt` (the `mini explain` texts) is generated from `docs/memory-model.md` by `scripts/gen-explain.py` and checked in,
-so the native build needs no Gradle.
+**Build pipeline.** API releases run `minic-native --backend=llvm-api --exe app <sources> --stdlib <stdlib files>` to emit an object in process and link it with the system C linker, `lib/libminirt.a` and `-l` flags from `@file:CLink`. `--backend=c` selects the C emitter fallback. `scripts/build-mini.sh --backend llvm-api` builds the tool through the same API; plain bootstrap builds use `--backend c`. `mini check` and wasm library builds keep their existing frontend and textual LLVM paths. `ExplainData.kt` (the `mini explain` texts) is generated from `docs/memory-model.md` by `scripts/gen-explain.py` and checked in, so the native build needs no Gradle.
+
+`mini repl` starts the persistent LLVM ORC session from the installed API compiler. The child inherits the terminal and standard input; see [Native REPL](native-repl.md).
 
 ## Follow-ups
 

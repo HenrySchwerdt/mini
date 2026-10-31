@@ -21,6 +21,7 @@ class Toolchain(
     val minic: String,
     val cc: String,
     val ccName: String,
+    val defaultBackend: String = "c",
 ) {
     val stdlib: String get() = Paths.join(root, "stdlib")
     val include: String get() = Paths.join(root, "include")
@@ -106,7 +107,8 @@ class Toolchain(
                 throw MiniError("the runtime library lib/libminirt.a is missing under $root", "reinstall Mini, or in a source checkout run `scripts/build-mini.sh`")
             }
             val cc = findCompiler(p) ?: throw MiniError("no C compiler found (tried clang and gcc)", "install one (`sudo apt install clang` or `xcode-select --install`), then run `mini doctor`")
-            return Toolchain(root, minic, cc.first, cc.first)
+            val defaultBackend = if (explicit == null && p.readText(Paths.join(root, "TOOLCHAIN-BACKEND"))?.trim() == "llvm-api") "llvm-api" else "c"
+            return Toolchain(root, minic, cc.first, cc.first, defaultBackend)
         }
     }
 
@@ -132,10 +134,11 @@ class Toolchain(
      * [sources] are the program (the first one names the module), [declarationOnly] files only declare (annotation classes,
      * other packages' APIs), [cSources] are compiled together with the generated C. The result merges the output of both steps; a non-zero exit code names the failing one.
      */
-    fun compile(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean, cSources: List<String> = emptyList(), libs: List<String> = emptyList()): ExecResult {
+    fun compile(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean, cSources: List<String> = emptyList(), libs: List<String> = emptyList(), backend: String = "c"): ExecResult {
+        if (backend == "llvm-api") return compileLlvmApi(p, sources, declarationOnly, out, werror, release, cSources, libs)
         val cFile = "$out.c"
         val args = ArrayList<String>()
-        args += listOf("-o", cFile)
+        args += listOf("--backend=c", "-o", cFile)
         if (werror) args += "-Werror"
         args += sources
         args += stdlibArgs(p, libs, declarationOnly)
@@ -171,6 +174,30 @@ class Toolchain(
             return ExecResult(if (cr.exitCode == 0) 1 else cr.exitCode, r.stdout + cr.stdout, r.stderr + msg + cr.stderr, r.millis + cr.millis, cr.startError)
         }
         return ExecResult(0, r.stdout + cr.stdout, r.stderr + cr.stderr, r.millis + cr.millis)
+    }
+
+    /** Builds directly to a native object and links it with the system compiler, without writing generated C. */
+    private fun compileLlvmApi(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean, cSources: List<String>, libs: List<String>): ExecResult {
+        val args = ArrayList<String>()
+        args += listOf("--backend=llvm-api", "--opt=" + if (release) "O2" else "O0", "--exe", out, "--cc", cc)
+        if (werror) args += "-Werror"
+        args += "--link-arg"; args += runtimeLib
+        val includeDirs = ArrayList<String>()
+        includeDirs += include
+        for (s in cSources) Paths.parent(s)?.let { if (it !in includeDirs) includeDirs += it }
+        for (d in includeDirs) { args += "--link-arg"; args += "-I$d" }
+        for (source in cSources) { args += "--link-arg"; args += source }
+        args += sources
+        args += stdlibArgs(p, libs, declarationOnly)
+        return runMinic(p, args)
+    }
+
+    /** Starts the interactive compiler REPL with all three standard streams inherited from `mini`. */
+    fun repl(p: Platform): ExecResult {
+        if (defaultBackend != "llvm-api") throw MiniError("`mini repl` needs an LLVM API compiler", "install an LLVM API release or build a toolchain with `scripts/build-mini.sh --backend llvm-api`")
+        val args = arrayListOf("--backend=llvm-api", "--repl")
+        args += stdlibArgs(p, emptyList(), emptyList())
+        return p.exec(Exec(listOf(minic) + args, cwd = root, capture = false))
     }
 
     /**

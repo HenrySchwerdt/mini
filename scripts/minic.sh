@@ -19,6 +19,8 @@ while [ -h "$self" ]; do
 done
 HOME_DIR="${MINI_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
 NATIVE="$HOME_DIR/bin/minic-native"
+DEFAULT_BACKEND="$(cat "$HOME_DIR/TOOLCHAIN-BACKEND" 2>/dev/null || echo c)"
+case "$DEFAULT_BACKEND" in llvm-api) ;; *) DEFAULT_BACKEND=c ;; esac
 REPORT_URL="https://github.com/HenrySchwerdt/mini/issues"
 DOCS_URL="https://henryschwerdt.github.io/mini/"
 VERSION="$(cat "$HOME_DIR/VERSION" 2>/dev/null || echo unknown)"
@@ -116,7 +118,8 @@ Examples:
     minic check --error-format=json app.kt
 
 Exit status: 0 success, 1 compile error, 2 usage error, 3 internal compiler error.
-Environment: CC (C compiler, default: cc, clang or gcc), MINI_HOME (default: the directory above bin/),
+Build backend: LLVM C API by default in API releases; use --backend=c for the C-emitter fallback.
+Environment: CC (system C compiler/linker, default: cc, clang or gcc), MINI_HOME (default: the directory above bin/),
              NO_COLOR (disable colors), TMPDIR.
 Documentation: $DOCS_URL
 EOF
@@ -134,7 +137,9 @@ Options:
     -O0 -O1 -O2 -O3         C optimization level (default -O2)
     -g, --debug             debug build: -O0 with debug information
     --emit-c <out.c>        keep the generated C file there
+    --backend <name>        llvm-api (default for API releases) or c
     --cc <compiler>         C compiler (default: \$CC, then cc, clang, gcc)
+    --backend <name>        llvm-api (default for API releases) or c
     -Werror                 memory-checker warnings fail the build
     --no-rc-opt             skip the reference-count optimization pass
     -v, --verbose           print the commands that are run
@@ -228,13 +233,13 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-    build) valid="-o -O0 -O1 -O2 -O3 -g --debug --emit-c --cc -Werror --no-rc-opt -v --verbose --time --color --error-format --error-limit --help -h" ;;
-    run) valid="-O0 -O1 -O2 -O3 -g --debug --cc -Werror --no-rc-opt -v --verbose --time --color --error-format --error-limit --help -h" ;;
+    build) valid="-o -O0 -O1 -O2 -O3 -g --debug --emit-c --cc --backend -Werror --no-rc-opt -v --verbose --time --color --error-format --error-limit --help -h" ;;
+    run) valid="-O0 -O1 -O2 -O3 -g --debug --cc --backend -Werror --no-rc-opt -v --verbose --time --color --error-format --error-limit --help -h" ;;
     check) valid="-Werror --brief --color --error-format --error-limit --help -h" ;;
     emit-c) valid="-o -Werror --no-rc-opt --color --error-format --error-limit --help -h" ;;
 esac
 
-out=""; emit=""; opt=""; debug=0; cc_arg=""; werror=0; norc=0; verbose=0; timing=0; brief=0
+out=""; emit=""; opt=""; debug=0; cc_arg=""; backend="$DEFAULT_BACKEND"; werror=0; norc=0; verbose=0; timing=0; brief=0
 limit=""
 SRCLIST=""
 nargs=$#
@@ -259,7 +264,7 @@ while [ "$nargs" -gt 0 ]; do
     esac
     # options that take a value: --opt=value or --opt value
     case "$name" in
-        -o|--emit-c|--cc|--color|--error-format|--error-limit)
+        -o|--emit-c|--cc|--backend|--color|--error-format|--error-limit)
             if [ "$has_val" = 0 ]; then
                 [ "$nargs" -gt 0 ] || usage_error "option '$name' needs a value"
                 val="$1"; shift; nargs=$((nargs - 1))
@@ -272,6 +277,8 @@ while [ "$nargs" -gt 0 ]; do
         -o) out="$val" ;;
         --emit-c) emit="$val" ;;
         --cc) cc_arg="$val" ;;
+        --backend)
+            case "$val" in llvm-api|c) backend="$val" ;; *) usage_error "--backend takes llvm-api or c (got '$val')" ;; esac ;;
         -O0|-O1|-O2|-O3) opt="$name" ;;
         -g|--debug) debug=1 ;;
         -Werror) werror=1 ;;
@@ -352,7 +359,8 @@ frontend() { # <mode: check|build> [<c file>]
 '
     set -f
     if [ "$use_color" = 1 ]; then cmode=always; else cmode=never; fi
-    NATIVE_ARGS="--color=$cmode
+    NATIVE_ARGS="--backend=c
+--color=$cmode
 --error-format=$error_format
 "
     if [ -n "$limit" ]; then NATIVE_ARGS="$NATIVE_ARGS--error-limit=$limit
@@ -394,6 +402,61 @@ $2
         1) exit 1 ;;
         3) exit 3 ;;
         2) ice "minic-native rejected the command line it was given" ;;
+        *) ice "minic-native stopped unexpectedly (exit status $st)" ;;
+    esac
+}
+
+# LLVM C API compilation: minic-native emits an object in process and asks the system C linker to add runtime/archive
+# dependencies. Generated C is optional and is never an intermediate in this path.
+frontend_api() { # <executable>
+    t0="$(now)"
+    set -f
+    if [ "$use_color" = 1 ]; then cmode=always; else cmode=never; fi
+    if [ "$debug" = 1 ]; then api_opt=O0; elif [ "$opt" = "-O0" ]; then api_opt=O0; elif [ "$opt" = "-O1" ]; then api_opt=O1; elif [ "$opt" = "-O3" ]; then api_opt=O3; else api_opt=O2; fi
+    NATIVE_ARGS="--backend=llvm-api
+--opt=$api_opt
+--exe
+$1
+--cc
+${cc%% *}
+--link-arg
+$HOME_DIR/lib/libminirt.a
+--link-arg
+-I$HOME_DIR/include
+--color=$cmode
+--error-format=$error_format
+"
+    if [ "$timing" = 1 ]; then NATIVE_ARGS="$NATIVE_ARGS--time
+"; fi
+    if [ -n "$limit" ]; then NATIVE_ARGS="$NATIVE_ARGS--error-limit=$limit
+"; fi
+    if [ "$werror" = 1 ]; then NATIVE_ARGS="$NATIVE_ARGS-Werror
+"; fi
+    if [ "$norc" = 1 ]; then NATIVE_ARGS="$NATIVE_ARGS--no-rc-opt
+"; fi
+    if [ "$debug" = 1 ] && [ -n "$emit" ]; then NATIVE_ARGS="$NATIVE_ARGS--line-directives
+"; fi
+    if [ -n "$emit" ]; then NATIVE_ARGS="$NATIVE_ARGS--emit-c
+$emit
+"; fi
+    if [ -f "$HOME_DIR/lib/stdlib.mlib" ] && [ "${MINIC_STDLIB:-}" != source ]; then
+        # shellcheck disable=SC2086
+        set -- $NATIVE_ARGS $SRCLIST --lib "$HOME_DIR/lib/stdlib.mlib" --compiler-id "$VERSION"
+    else
+        STDFILES="$(find -L "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
+        # shellcheck disable=SC2086
+        set -- $NATIVE_ARGS $SRCLIST --stdlib $STDFILES
+    fi
+    show "$NATIVE" "$@"
+    "$NATIVE" "$@"
+    st=$?
+    set +f
+    add_time "compile (parse, check, lower, emit LLVM object and link)" "$(ms_since "$t0")"
+    case "$st" in
+        0) ;;
+        1) exit 1 ;;
+        2) usage_error "minic-native rejected the LLVM API invocation" "this compiler was built without LLVM C API support; install an LLVM API release or choose --backend=c" ;;
+        3) exit 3 ;;
         *) ice "minic-native stopped unexpectedly (exit status $st)" ;;
     esac
 }
@@ -452,6 +515,14 @@ else
     [ -n "$opt" ] || opt="-O2"
 fi
 if [ "$debug" = 1 ]; then opt="-O0"; fi
+
+if [ "$backend" = llvm-api ]; then
+    frontend_api "$exe"
+    if [ "$timing" = 1 ]; then printf 'minic timings:\n%s' "$phase_times" >&2; fi
+    if [ "$cmd" = run ]; then "$exe" "$@"; exit $?; fi
+    exit 0
+fi
+
 if [ -n "$emit" ]; then cfile="$emit"; else cfile="$tmp/$base.c"; fi
 
 frontend build "$cfile"

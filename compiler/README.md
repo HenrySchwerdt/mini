@@ -47,12 +47,11 @@ minic check <file.kt>... [--extra-src <file.kt>]... [--brief] [-Werror] [--front
 ```
 
 The release `minic` (`bin/minic`, no JDK; `scripts/minic.sh`) has the same core plus more commands: `minic run foo.kt [-- args]`,
-`minic build foo.kt` (output `./foo`, default `-O2`; `-O0..-O3`, `-g`/`--debug`), `minic check foo.kt` (no C compiler needed), `minic emit-c`, `--version`,
+`minic build foo.kt` (output `./foo`, default LLVM API `O2`; `-O0..-O3`, `-g`/`--debug`, `--backend=c` fallback), `minic check foo.kt` (no C compiler needed), `minic emit-c`, `--version`,
 `<command> --help`, "did you mean" for unknown commands and options, and diagnostics options `--color=auto|always|never` (`NO_COLOR` is respected),
 `--error-format=human|json` (one JSON object per diagnostic on stderr, for editors) and `--error-limit=N`. Exit status: 0 success, 1 compile error,
-2 usage error, 3 internal compiler error (also what a C compiler failure on the generated C is reported as, with the C kept as `minic-ice-<name>.c`).
-`minic build hello.kt` takes about 0.35 s (`--time` shows the split: ~185 ms parsing and analysing the stdlib plus the program, which is nearly all of the front end; ~120 ms
-for the C compiler at `-O2` and the link; the default `-O2` costs +2% on the self-host C and +6% on a mid-size program compared with `-O1`).
+2 usage error, 3 internal compiler error (a C compiler failure on generated C in the explicit C fallback keeps the file as `minic-ice-<name>.c`).
+The release wrapper's default API path emits and links LLVM objects in process; the platform C linker is still needed to build a program.
 The option block above is the CLI of the JVM `minic` of `tools/k2-oracle`; the native `minic` is documented in `website/reference/cli.md`.
 
 * Several `.kt` files can be given (`minic build a.kt b.kt -o out`); exactly one of them has `fun main()`.
@@ -695,18 +694,16 @@ frontend after normalising local ids and `tmpN` numbers (41 lines of 96,774 diff
 
 ### Releases
 
-`.github/workflows/release.yml` (tag `v*` or manual run with a version) bootstraps on linux-x64, linux-arm64 and macos-arm64, packages
-`scripts/package-release.sh` and publishes to GitHub Releases:
+`.github/workflows/release.yml` (tag `v*` or manual run with a version) statically links LLVM 18 on linux-x64, linux-arm64 and macos-arm64, packages
+`scripts/package-release.sh` and publishes to GitHub Releases. The LLVM API compiler has no LLVM/Homebrew runtime dependency; the platform C linker is still needed when a user builds a program:
 
 | Asset | Contents |
 |---|---|
-| `mini-<version>-<target>.tar.gz` | `bin/mini` (the project tool, native, compiled by `bin/minic-native`), `bin/minic` (shell driver `scripts/minic.sh`: `build`, `run`, `check`, `emit-c`, `--version`; runs `bin/minic-native`, then `cc` with the bundled runtime), `bin/minic-native` (the self-hosted compiler, -O2), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `README.md` |
+| `mini-<version>-<target>.tar.gz` | `bin/mini` (the project tool), `bin/minic` (LLVM API default and `--backend=c` fallback), `bin/minic-native` (self-hosted compiler with LLVM 18 statically linked and ORC REPL), `lib/libminirt.a`, `include/`, `stdlib/`, `LICENSE`, `NOTICE`, `LLVM-LICENSE.txt`, `README.md` |
 | `mini-<version>-bootstrap-c.tar.gz` | the generated C of the compiler (`minic.c`), `runtime/`, `build.sh`: `cc` alone builds a stage0 (`scripts/package-seed.sh`) |
 | `SHA256SUMS` | checksums of the above; `install.sh` verifies them |
 
-The `minic` driver is a shell script (`scripts/minic.sh`, copied into the tarball with `VERSION` and `TARGET`): the native stdlib has no process API yet, so `minic-native` only
-emits C and the script calls `cc`, finds a C compiler (`--cc`, `CC`, `cc`, `clang`, `gcc`; otherwise it explains how to install one) and turns a C compiler error on the
-generated C into an "internal compiler error". `minic-native` itself prints diagnostics to stderr (`--color=`, `--error-format=`, `--error-limit=`; the stdlib has the
+The `minic` driver is a shell script (`scripts/minic.sh`, copied into the tarball with `VERSION` and `TARGET`). By default it asks `minic-native` to build and link through the LLVM C API; `--backend=c` explicitly selects C emission. Both executable build paths use the platform C linker (`--cc`, `CC`, `cc`, `clang`, `gcc`). A generated-C compiler error in the fallback path is reported as an internal compiler error. `minic-native` itself prints diagnostics to stderr (`--color=`, `--error-format=`, `--error-limit=`; the stdlib has the
 intrinsics `stderrWrite` and `exitProcess` for that) and exits with 0, 1 (compile error), 2 (usage) or 3 (internal compiler error). `scripts/test-minic-cli.sh <MINI_HOME>` tests the CLI.
 
 `compiler/bootstrap.sh --stage0 <native minic>` starts from a prebuilt native compiler (there is no JVM stage1 any more; the K2/JVM-started chain is `tools/k2-oracle/bootstrap-k2.sh`) (a release's `bin/minic-native` or the stage
@@ -717,19 +714,21 @@ by default (clang takes 9 s instead of 73 s per stage), so the whole check takes
 ### The native `mini` tool
 
 `mini` (compiler/mini-tool: pure Kotlin core, `Platform` interface) is compiled by `minic-native` like the compiler itself, no JVM:
-`scripts/build-mini.sh` runs `minic-native -o mini.c <mini-tool + frontend sources> --stdlib ...` and links the C with
-`lib/libminirt.a` and `mini_host.c` (`compiler/mini-tool/src/native/c`, the POSIX layer for files, environment, processes and the
-terminal that `NativePlatform` reaches through `@CSymbol`). Given a compiler it builds the staged layout of a release in
+`scripts/build-mini.sh --backend c` runs `minic-native --backend=c -o mini.c <mini-tool + frontend sources> --stdlib ...` and links the C with
+`lib/libminirt.a` and `mini_host.c` (`compiler/mini-tool/host/mini_host.c`, the POSIX layer for files, environment, processes and the
+terminal that `NativePlatform` reaches through `@CSymbol`). `--backend llvm-api` builds the tool with the in-process LLVM API. Given a compiler it builds the staged layout of a release in
 `build/native` (`bin/minic-native`, `bin/mini`, `lib/libminirt.a`, `include/`, `stdlib/`):
 
 ```sh
-scripts/build-mini.sh --stage0 <any native minic-native>     # builds the current compiler with it, then mini (about a minute)
-scripts/build-mini.sh --minic-native <compiler of these sources>   # e.g. stage3 of bootstrap.sh; release packaging uses -O2
+scripts/build-mini.sh --stage0 <any native minic-native>     # C bootstrap path; builds the current compiler with it, then mini
+scripts/build-mini.sh --minic-native <compiler of these sources> --backend llvm-api   # e.g. stage3 of the LLVM API bootstrap
 ./mini new demo && cd demo && ../mini run                    # the wrapper does the above on first use
 ```
 
-`mini` calls only `minic-native` (`-o app.c <sources> --stdlib <stdlib>`, `--check` for the memory checker) and the C compiler; the K2
-frontend is not reachable from it. `package-release.sh` ships `bin/mini` next to `bin/minic-native`, and the `stage0` CI shard builds it
+`mini` calls `minic-native --backend=llvm-api --exe app` in an LLVM API release and links the object with the system C compiler;
+`--backend=c` selects C emission explicitly. `minic` uses the same default. The bare `minic-native -o out.c` command stays on the C
+emitter for the bootstrap seed. `mini repl` opens the persistent ORC session. The K2 frontend is not reachable from `mini`.
+`package-release.sh` ships `bin/mini` next to `bin/minic-native`, and the `stage0` CI shard builds it
 from the stage3 compiler and smoke-tests `mini new/build/run/test/check` (`scripts/ci-mini-smoke.sh`). The `mini-tool` tests
 (`mini test -p mini-tool`, on `NativePlatform`) run the end-to-end cases against the staged `build/native`. The Mini stdlib has no `Regex`, so the
 core uses hand-written patterns (`Text.kt`); `ExplainData.kt` is generated from `docs/memory-model.md` by `scripts/gen-explain.py` and checked in.
@@ -739,7 +738,7 @@ core uses hand-written patterns (`Text.kt`); `ExplainData.kt` is generated from 
 `compiler/backend/.../llvm` (package `mini.backend.llvm`, pure Kotlin, scanned by `PurityTest`, compiled by minic like the rest of the backend) is the
 second code generator: MIR to **textual LLVM IR** (`.ll`), an alternative to `CEmitter` (docs/plan-kotlin.md section 10g, phase 1). Phase 2
 adds the in-process LLVM C API and ORC JIT in `compiler/llvm-c`; it reuses the same lowering for object files and `--run`.
-The API build also has an incremental native REPL (`minic-native --backend=llvm-api --repl`); see [native-repl.md](../docs/native-repl.md).
+The API build also has an incremental native REPL (`minic-native --backend=llvm-api --repl`), exposed by installed `mini repl`; see [native-repl.md](../docs/native-repl.md).
 
 ```
 MIR ─► RcOpt (RcPlan) ─► LlvmEmitter ─► prog.ll ─► clang (-c) ─► prog.o ─► clang + libminirt (runtime/src/*.c) ─► binary

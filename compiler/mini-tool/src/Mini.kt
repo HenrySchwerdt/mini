@@ -76,6 +76,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
             "tree" -> tree()
             "explain" -> explain()
             "doctor" -> Doctor(p, c).run()
+            "repl" -> repl()
             "completions" -> { c.print(Completions.generate(a.positionals[0])); 0 }
             else -> throw UsageError("unknown command `${a.command.name}`")
         }
@@ -213,13 +214,23 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
         writeLock = writeLock,
     )
 
-    private fun buildOptions(): BuildOptions {
+    private fun buildOptions(backendDefault: String): BuildOptions {
         val target = a.value("target")
         if (target == null && a.has("lib") && a.command.name == "build") throw UsageError("`--lib` needs `--target wasm32`", "use `mini build --target wasm32 --lib`")
-        return BuildOptions(a.has("release"), a.has("strict"), a.has("Werror"), a.value("message-format") == "json", target == "wasm32" && a.has("lib"), target == "wasm32")
+        return BuildOptions(a.has("release"), a.has("strict"), a.has("Werror"), a.value("message-format") == "json", target == "wasm32" && a.has("lib"), target == "wasm32", a.value("backend") ?: backendDefault)
     }
 
-    private fun builder(project: Project): Builder = Builder(p, c, Toolchain.locate(p), project, buildOptions())
+    private fun builder(project: Project): Builder {
+        val tc = Toolchain.locate(p)
+        return Builder(p, c, tc, project, buildOptions(tc.defaultBackend))
+    }
+
+    private fun repl(): Int {
+        if (a.positionals.isNotEmpty()) throw UsageError("`mini repl` takes no arguments")
+        val result = Toolchain.locate(p).repl(p)
+        if (result.startError != null) throw MiniError("could not start the LLVM API REPL: ${result.startError}")
+        return result.exitCode
+    }
 
     private fun build(): Int {
         val project = loader.load(loadOptions())
@@ -307,7 +318,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
     private fun test(): Int {
         val project = loader.load(loadOptions())
         val list = a.has("list")
-        val b = if (list) Builder(p, c, Toolchain(project.root, "", "clang", "clang"), project, buildOptions()) else builder(project)
+        val b = if (list) Builder(p, c, Toolchain(project.root, "", "clang", "clang"), project, buildOptions("c")) else builder(project)
         val runner = TestRunner(p, c, b)
         var code = 0
         for (pkg in project.selected) {
