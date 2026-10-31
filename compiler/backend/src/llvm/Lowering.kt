@@ -80,10 +80,12 @@ object LlvmLowering {
         externalFunctionSignatures: List<MirFunction> = emptyList(),
         externalFunctionOwnedMasks: Map<String, BooleanArray> = emptyMap(),
         externalBorrowedFunctions: Set<String> = emptySet(),
+        externalClassNames: Set<String> = emptySet(),
+        exportedClassNames: Set<String> = emptySet(),
     ) {
         val tr = Tracking(module, strict)
         val plan = if (rcOpt) RcOpt.analyze(module, tr, conventions, externalFunctionSignatures, externalFunctionOwnedMasks, externalBorrowedFunctions) else null
-        Lowering(module, plan, tr, stats, target, builder, externalClasses, externalFunctions, entrySymbol, userMainSymbol, externalFunctionSignatures).run()
+        Lowering(module, plan, tr, stats, target, builder, externalClasses, externalFunctions, entrySymbol, userMainSymbol, externalFunctionSignatures, externalClassNames, exportedClassNames).run()
     }
 }
 
@@ -104,6 +106,8 @@ private class Lowering<V : Any, B : Any>(
     val entrySymbol: String,
     val userMainSymbol: String,
     val externalFunctionSignatures: List<MirFunction>,
+    val externalClassNames: Set<String>,
+    val exportedClassNames: Set<String>,
 ) {
     var curFn: MirFunction? = null
     val newaUsed = LinkedHashSet<String>()
@@ -120,6 +124,8 @@ private class Lowering<V : Any, B : Any>(
     val inlineRc: Boolean = rcPlan != null && !stats
     val szT: IrType = if (target.ptrBytes == 8) IrType.I64 else IrType.I32
     val pb: Int = target.ptrBytes
+
+    fun isExternalClass(c: MirClass): Boolean = c.external || c.cName in externalClassNames
 
     // module level
     val literals = HashMap<String, V>() // kotlin value -> global
@@ -180,17 +186,20 @@ private class Lowering<V : Any, B : Any>(
         for (f in externalFunctionSignatures) {
             if (module.functions.any { it.cName == f.cName }) continue
             val name = fname(f.cName)
-            b.declareDefined(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
+            if (externalFunctions) b.declareExternal(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, IrAttrs.STD, false)
+            else b.declareDefined(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
             if (f.constructorOf != null) {
                 val ps = f.params.drop(1)
-                b.declareDefined("${f.cName}_new", IrType.PTR, IrExt.NONE, ps.map { ity(it.type) }, ps.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
+                if (externalFunctions) b.declareExternal("${f.cName}_new", IrType.PTR, IrExt.NONE, ps.map { ity(it.type) }, ps.map { ext(it.type) }, IrAttrs.STD, false)
+                else b.declareDefined("${f.cName}_new", IrType.PTR, IrExt.NONE, ps.map { ity(it.type) }, ps.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
             }
         }
         for (c in module.classes) {
-            if (c.external) {
+            if (isExternalClass(c)) {
                 b.externTypeInfo("${c.cName}_ti")
                 if (!c.isInterface && c.objectCtor != null) {
-                    b.declareDefined("${c.cName}_get", IrType.PTR, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, IrLinkage.EXTERNAL)
+                    if (externalFunctions || c.cName in externalClassNames) b.declareExternal("${c.cName}_get", IrType.PTR, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, false)
+                    else b.declareDefined("${c.cName}_get", IrType.PTR, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, IrLinkage.EXTERNAL)
                 }
                 continue
             }
@@ -198,6 +207,12 @@ private class Lowering<V : Any, B : Any>(
             if (!c.isInterface && c.objectCtor != null) {
                 b.declareDefined("${c.cName}_get", IrType.PTR, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, IrLinkage.INTERNAL)
             }
+        }
+        // Stub-only MIR may mention an imported object getter without carrying its MirClass record (ObjectGet itself
+        // is sufficient for lowering). In separate-library mode the ABI supplies those names independently.
+        if (externalFunctions) for (cName in externalClassNames) {
+            b.externTypeInfo("${cName}_ti")
+            b.declareExternal("${cName}_get", IrType.PTR, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, false)
         }
         b.declareDefined("mkh_abstract", IrType.VOID, IrExt.NONE, emptyList(), emptyList(), IrAttrs.STD, IrLinkage.INTERNAL)
         val p1 = listOf(IrType.PTR)
@@ -715,7 +730,7 @@ private class Lowering<V : Any, B : Any>(
     fun emitClasses() {
         val classLinkage = if (externalClasses) IrLinkage.EXTERNAL else IrLinkage.INTERNAL
         for (c in module.classes) {
-            if (c.external) {
+            if (isExternalClass(c)) {
                 b.externTypeInfo(c.cName + "_ti")
                 continue
             }
@@ -732,7 +747,7 @@ private class Lowering<V : Any, B : Any>(
                     "MkTypeInfo",
                     listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong())),
                 )
-                b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, classLinkage, 8, false)
+                b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage, 8, false)
                 b.blankLine(IrSection.CLASSES)
                 continue
             }
@@ -787,11 +802,12 @@ private class Lowering<V : Any, B : Any>(
                     b.constInt(szT, c.interfaces.size.toLong()),
                 ),
             )
-            b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, classLinkage, 8, false)
+            val typeInfoLinkage = if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage
+            b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, typeInfoLinkage, 8, false)
             if (c.objectCtor != null) {
                 val obj = b.defineGlobal(IrSection.CLASSES, "${c.cName}_obj", b.constNull(), false, classLinkage, 0, false)
                 val alloc = declare("mk_alloc", TString, listOf(TString))
-                beginGenerated(IrSection.CLASSES, "${c.cName}_get", TString, emptyList(), emptyList(), emptyList(), classLinkage)
+                beginGenerated(IrSection.CLASSES, "${c.cName}_get", TString, emptyList(), emptyList(), emptyList(), if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage)
                 val init0 = b.newBlock("init")
                 val done = b.newBlock("done")
                 val o = b.load(IrType.PTR, obj, 0, "o")

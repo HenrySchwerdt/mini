@@ -89,6 +89,7 @@ diags = await call('check', { files: [{ name: 'main.kt', text: 'fun main() { pri
 assert.deepEqual(diags, [])
 diags = await call('check', { files: [{ name: 'main.kt', text: 'import mini.plot.*\nfun main() { plt.plot(listOf(0.0), listOf(1.0)) }\n' }] })
 assert.deepEqual(diags, [], 'plot .mlib loads lazily on first import')
+assert.ok(!events.some(e => e.stage === 'library-object'), 'check loads the plot .mlib without downloading its compile-only object')
 
 await assert.rejects(() => call('compile', { files: [{ name: 'main.kt', text: 'fun main() {}' }], opts: {} }), /./)
 
@@ -107,12 +108,92 @@ const ran = await run(r.wasm)
 assert.equal(ran.code, 0)
 assert.equal(ran.out, 'Hello, Mini!\n1 * 1 = 1\n2 * 2 = 4\n3 * 3 = 9\n')
 
-const tensor = await call('compile', { files: [{ name: 'main.kt', text: 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n' }], opts: {} })
+const tensor = await call('compile', { files: [{ name: 'main.kt', text: 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n' }], opts: { emitLlvmIr: true } })
 assert.deepEqual(tensor.diagnostics, [])
+assert.ok(events.some(e => e.stage === 'library-object'), 'compile loads the selected library object after its .mlib was already available')
 assert.ok(tensor.wasm instanceof Uint8Array)
 const tensorRan = await run(tensor.wasm)
 assert.equal(tensorRan.code, 0)
 assert.equal(tensorRan.out, '14.0\n')
+assert.ok(tensor.llvmIr.length < 250_000, 'tensor LLVM IR contains only the user module when the cached library object is used')
+
+const tensorModelSource = `import mini.tensor.*
+import mini.tensor.nn.*
+import mini.tensor.optim.Adam
+fun main() {
+    manualSeed(7)
+    val model = Sequential(Linear(2, 3), Tanh(), Linear(3, 1))
+    println("model ${'$'}{model(tensor(doubleArrayOf(0.0, 1.0)))}")
+    val w = tensor(5.0, -3.0, requiresGrad = true)
+    val opt = Adam(listOf(w), lr = 0.2)
+    opt.zeroGrad()
+    (w * w).sum().backward()
+    opt.step()
+    println("weight ${'$'}w")
+}
+`
+const tensorModel = await call('compile', { files: [{ name: 'main.kt', text: tensorModelSource }], opts: { emitLlvmIr: true } })
+assert.deepEqual(tensorModel.diagnostics, [])
+assert.ok(tensorModel.llvmIr.length < 250_000, 'NN and optimizer classes are imported from the precompiled tensor object')
+const tensorModelRan = await run(tensorModel.wasm)
+assert.equal(tensorModelRan.code, 0)
+assert.ok(tensorModelRan.out.startsWith('model tensor('))
+assert.ok(tensorModelRan.out.includes('weight tensor('))
+const tensorModelFallback = await call('compile', { files: [{ name: 'main.kt', text: tensorModelSource }], opts: { optLevel: '0', emitLlvmIr: true } })
+assert.deepEqual(tensorModelFallback.diagnostics, [])
+assert.ok(tensorModelFallback.llvmIr.length > tensorModel.llvmIr.length, 'O0 compiles the library bodies instead of using O1 objects')
+const tensorModelFallbackRan = await run(tensorModelFallback.wasm)
+assert.equal(tensorModelFallbackRan.code, 0)
+assert.equal(tensorModelFallbackRan.out, tensorModelRan.out, 'O1 library objects preserve model/optimizer output byte-for-byte')
+
+const plotSource = label => `import mini.plot.*
+fun main() {
+    plt.figure(figsize = 6.0 to 3.5)
+    plt.plot(doubleArrayOf(0.0, 1.0, 2.0), doubleArrayOf(0.0, 1.0, 4.0), label = "${label}")
+    println(plt.toSvg())
+}
+`
+const plot = await call('compile', { files: [{ name: 'plot.kt', text: plotSource('first') }], opts: { emitLlvmIr: true } })
+assert.deepEqual(plot.diagnostics, [])
+assert.ok(plot.llvmIr.length < 250_000, 'plot LLVM IR contains only the user module when the cached library object is used')
+const plotRan = await run(plot.wasm)
+assert.equal(plotRan.code, 0)
+assert.ok(plotRan.out.includes('<svg'))
+assert.ok(plotRan.out.includes('first'))
+
+// An edited second cell must compile against the same cached library object and reflect the new source.
+const editedPlot = await call('compile', { files: [{ name: 'plot.kt', text: plotSource('edited') }], opts: {} })
+assert.deepEqual(editedPlot.diagnostics, [])
+const editedPlotRan = await run(editedPlot.wasm)
+assert.equal(editedPlotRan.code, 0)
+assert.ok(editedPlotRan.out.includes('edited'))
+assert.ok(!editedPlotRan.out.includes('first'))
+
+const mixed = await call('compile', { files: [{ name: 'main.kt', text: `import mini.plot.*
+import mini.tensor.*
+fun main() {
+    val x = tensor(2.0, requiresGrad = true)
+    val y = x * x + x
+    y.backward()
+    println("grad ${'$'}{x.grad!!.item()}")
+    plt.figure(figsize = 6.0 to 3.5)
+    plt.plot(doubleArrayOf(0.0, 1.0, 2.0), doubleArrayOf(0.0, 1.0, 4.0), label = "mixed")
+    println(plt.toSvg())
+}
+` }], opts: {} })
+assert.deepEqual(mixed.diagnostics, [])
+const mixedRan = await run(mixed.wasm)
+assert.equal(mixedRan.code, 0)
+assert.ok(mixedRan.out.startsWith('grad 5.0\n'))
+assert.ok(mixedRan.out.includes('mixed'))
+
+// Non-O1 options use the monolithic fallback until matching library objects are packaged.
+const fallback = await call('compile', { files: [{ name: 'main.kt', text: 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n' }], opts: { optLevel: '0', emitLlvmIr: true } })
+assert.deepEqual(fallback.diagnostics, [])
+assert.ok(fallback.llvmIr.length > tensor.llvmIr.length, 'O0 uses full library LLVM IR when O1 objects are incompatible')
+const fallbackRan = await run(fallback.wasm)
+assert.equal(fallbackRan.code, 0)
+assert.equal(fallbackRan.out, '14.0\n')
 
 const bad = await call('compile', { files: [{ name: 'main.kt', text: 'fun main() { val x: Int = "a" }' }], opts: {} })
 assert.equal(bad.wasm, undefined); assert.equal(bad.diagnostics.length, 1)

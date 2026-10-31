@@ -2,10 +2,18 @@ package mini.lower
 
 import mini.backend.MirLink
 import mini.backend.MirModule
+import mini.backend.MirExpr
+import mini.backend.MirStmt
+import mini.backend.MirType
+import mini.backend.MirFunction
+import mini.backend.TObject
+import mini.backend.ANY_CNAME
 import mini.backend.MirReader
 import mini.backend.MirWriter
 import mini.backend.Mangling
 import mini.backend.MIR_FORMAT_VERSION
+import mini.backend.RcOpt
+import mini.backend.Tracking
 import mini.backend.memory.MemoryReport
 import mini.frontend.StubWriter
 
@@ -44,6 +52,177 @@ class Mlib(
     val hash: String,
     val failures: List<MlibFailure> = emptyList(),
 )
+
+/** The MIR inputs needed to emit one separately compiled wasm library object. */
+class MlibObjectInput(
+    val module: MirModule,
+    val externalClassNames: Set<String>,
+    val exportedClassNames: Set<String>,
+    val externalFunctions: List<mini.backend.MirFunction>,
+    val externalFunctionOwnedMasks: Map<String, BooleanArray>,
+    val externalBorrowedFunctions: Set<String>,
+)
+
+/** Effective RC calling conventions of the complete ordered library set. */
+fun effectiveMlibAbi(libs: List<Mlib>): Pair<Map<String, BooleanArray>, Set<String>> {
+    if (libs.isEmpty()) return Pair(emptyMap(), emptySet())
+    val modules = libs.map { lib ->
+        try { MirReader.read(lib.mir) }
+        catch (e: Exception) { throw MlibError("library '${lib.name}': damaged MIR section (${e.message})") }
+    }
+    val combined = MirLink.link(modules, MirModule("<library-abi>", emptyList()))
+    val plan = RcOpt.analyze(combined, Tracking(combined, true))
+    val owned = LinkedHashMap<String, BooleanArray>()
+    val borrowed = LinkedHashSet<String>()
+    for (f in combined.functions) {
+        plan.ownedMask(f.cName)?.let { mask -> owned[f.cName] = BooleanArray(mask.size) { mask[it] } }
+        if (plan.returnsBorrowed(f.cName)) borrowed.add(f.cName)
+    }
+    return Pair(owned, borrowed)
+}
+
+/** Split one library into owned definitions and dependency declarations while preserving all class layouts. */
+fun mlibObjectInput(library: Mlib, dependencies: List<Mlib>): MlibObjectInput {
+    fun packagesOf(lib: Mlib): Set<String> {
+        val out = LinkedHashSet<String>()
+        for (stub in lib.stubs) {
+            var start = 0
+            while (start <= stub.text.length) {
+                var end = stub.text.indexOf('\n', start)
+                if (end < 0) end = stub.text.length
+                val line = stub.text.substring(start, end).trim()
+                if (line.startsWith("package ")) {
+                    val pkg = line.substring(8).trim()
+                    if (pkg.isNotEmpty()) out.add(pkg)
+                    break
+                }
+                start = end + 1
+            }
+        }
+        return out
+    }
+    val packages = packagesOf(library)
+    if (packages.isEmpty()) throw MlibError("library '${library.name}' has no package declarations; cannot split its MIR into an object")
+    fun read(lib: Mlib): MirModule = try { MirReader.read(lib.mir) }
+        catch (e: Exception) { throw MlibError("library '${lib.name}': damaged MIR section (${e.message})") }
+    val full = MirLink.link(dependencies.map { read(it) }, read(library))
+    fun own(qn: String, cName: String): Boolean = cName.contains(library.tag) || packages.any { qn.startsWith("$it.") }
+    val ownClasses = full.classes.filter { own(it.qualifiedName, it.cName) }.map { it.cName }.toHashSet()
+    val ownFunctions = full.functions.filter { own(it.qualifiedName, it.cName) }.map { it.cName }.toHashSet()
+    // Lowering creates helper classes (for example mk.Ref for a mutable captured local) whose
+    // qualified names do not belong to the source package. Those classes still belong in the
+    // object that contains the function which constructs them. Track class references through
+    // owned MIR before classifying the remaining classes as imports.
+    val classesByName = full.classes.associateBy { it.cName }
+    val dependencyPackages = dependencies.flatMap { packagesOf(it) }
+    val dependencyTags = dependencies.map { it.tag }
+    fun dependencyOwned(qn: String, cName: String): Boolean =
+        dependencyTags.any { cName.contains(it) } || dependencyPackages.any { qn.startsWith("$it.") }
+    val dependencyFunctions = full.functions.filter { dependencyOwned(it.qualifiedName, it.cName) }
+    val dependencyClassNames = full.classes.filter { dependencyOwned(it.qualifiedName, it.cName) }
+        .map { it.cName }.toHashSet()
+    dependencyClassNames.addAll(referencedClasses(dependencyFunctions))
+    val constructors = full.functions.filter { it.constructorOf != null }.associateBy { it.constructorOf!! }
+    val ownedBodyFunctions = full.functions.filter { it.cName in ownFunctions }
+    ownClasses.addAll(referencedClasses(ownedBodyFunctions).filter {
+        classesByName.containsKey(it) && !classesByName[it]!!.external && it !in dependencyClassNames
+    })
+    // Bridge methods use synthetic qualified names; owned class dispatch tables are the source of truth for them.
+    var added = true
+    while (added) {
+        val before = ownClasses.size + ownFunctions.size
+        for (c in full.classes) if (c.cName in ownClasses) {
+            c.objectCtor?.let { ownFunctions.add(it) }
+            c.vtable.filterNotNull().forEach { ownFunctions.add(it) }
+            for (it in c.itables) it.entries.filterNotNull().forEach { ownFunctions.add(it) }
+        }
+        for (className in ownClasses) constructors[className]?.let { ownFunctions.add(it.cName) }
+        val newlyOwnedFunctions = full.functions.filter { it.cName in ownFunctions }
+        val newlyReferenced = referencedClasses(newlyOwnedFunctions).filter {
+            val c = classesByName[it]
+            c != null && !c.external && it !in dependencyClassNames && it !in ownClasses
+        }
+        ownClasses.addAll(newlyReferenced)
+        added = before != ownClasses.size + ownFunctions.size
+    }
+    val functions = full.functions.filter { it.cName in ownFunctions }
+    if (functions.isEmpty()) throw MlibError("library '${library.name}' has no functions owned by its source packages")
+    // Every non-owned class in the linked MIR comes from a dependency or the runtime contract.
+    // Mark it imported even when the serialized dependency class itself was not tagged external;
+    // otherwise both the dependency object and this object define its typeinfo/constructor.
+    val externalClasses = full.classes.filter { it.cName !in ownClasses }.map { it.cName }.toHashSet()
+    val module = MirModule(full.sourceName, functions, full.classes, full.externs, full.includes, full.links)
+    val abi = effectiveMlibAbi(dependencies)
+    return MlibObjectInput(module, externalClasses, ownClasses, full.functions.filter { it.cName !in ownFunctions }, abi.first, abi.second)
+}
+
+/** Class symbols mentioned in function signatures and bodies. Keeps compiler-generated classes with their producer. */
+private fun referencedClasses(functions: List<MirFunction>): Set<String> {
+    val out = LinkedHashSet<String>()
+    fun type(t: MirType?) {
+        if (t is TObject && t.cName != ANY_CNAME) out.add(t.cName)
+    }
+    lateinit var expr: (MirExpr) -> Unit
+    lateinit var stmt: (MirStmt) -> Unit
+    val exprs: (List<MirExpr>) -> Unit = { xs -> xs.forEach(expr) }
+    val stmts: (List<MirStmt>) -> Unit = { xs -> xs.forEach(stmt) }
+    expr = { e ->
+        type(e.type)
+        when (e) {
+            is MirExpr.Binary -> { expr(e.left); expr(e.right) }
+            is MirExpr.Unary -> expr(e.operand)
+            is MirExpr.Convert -> expr(e.operand)
+            is MirExpr.Call -> e.args.forEach(expr)
+            is MirExpr.RuntimeCall -> e.args.forEach(expr)
+            is MirExpr.Conditional -> { expr(e.cond); expr(e.thenValue); expr(e.elseValue) }
+            is MirExpr.Box -> expr(e.operand)
+            is MirExpr.Unbox -> expr(e.operand)
+            is MirExpr.Cast -> { type(e.to); expr(e.operand) }
+            is MirExpr.IsInstance -> { type(e.target); expr(e.operand) }
+            is MirExpr.NotNull -> expr(e.operand)
+            is MirExpr.FieldGet -> { out.add(e.owner); expr(e.obj) }
+            is MirExpr.VCall -> { e.paramTypes.forEach(::type); expr(e.receiver); e.args.forEach(expr) }
+            is MirExpr.ICall -> { e.paramTypes.forEach(::type); expr(e.receiver); e.args.forEach(expr) }
+            is MirExpr.New -> { exprs(e.args); e.allocator?.let(expr) }
+            is MirExpr.ObjectGet -> out.add(e.classCName)
+            is MirExpr.StringLength -> expr(e.operand)
+            is MirExpr.Load -> expr(e.ptr)
+            is MirExpr.PtrAdd -> { expr(e.ptr); expr(e.bytes) }
+            is MirExpr.CCall -> { e.extern.params.forEach(::type); exprs(e.args) }
+            is MirExpr.CCallIndirect -> { e.paramTypes.forEach(::type); expr(e.callee); exprs(e.args) }
+            is MirExpr.TypeInfoOf -> type(e.target)
+            is MirExpr.IntConst, is MirExpr.LongConst, is MirExpr.DoubleConst, is MirExpr.BooleanConst,
+            is MirExpr.CharConst, is MirExpr.StringConst, MirExpr.UnitValue, is MirExpr.Local,
+            is MirExpr.NullConst, is MirExpr.Unreachable, is MirExpr.CaughtException, is MirExpr.FuncAddr -> Unit
+        }
+    }
+    stmt = { s ->
+        when (s) {
+            is MirStmt.Declare -> { type(s.local.type); s.init?.let(expr) }
+            is MirStmt.Assign -> { type(s.local.type); expr(s.value) }
+            is MirStmt.SetField -> { out.add(s.owner); type(s.fieldType); expr(s.obj); expr(s.value) }
+            is MirStmt.Store -> { expr(s.ptr); expr(s.value) }
+            is MirStmt.Eval -> expr(s.expr)
+            is MirStmt.If -> { expr(s.cond); stmts(s.thenBody); stmts(s.elseBody) }
+            is MirStmt.Block -> stmts(s.body)
+            is MirStmt.While -> { expr(s.cond); stmts(s.body) }
+            is MirStmt.Loop -> stmts(s.body)
+            is MirStmt.DoWhile -> { stmts(s.body); stmts(s.condStmts); expr(s.cond) }
+            is MirStmt.ForRange -> { type(s.variable.type); expr(s.start); expr(s.end); s.step?.let(expr); stmts(s.body) }
+            is MirStmt.Return -> s.value?.let(expr)
+            is MirStmt.Throw -> expr(s.value)
+            is MirStmt.Try -> { stmts(s.body); for (c in s.catches) { type(c.type); stmts(c.body) } }
+            is MirStmt.Break, is MirStmt.Continue, is MirStmt.Panic -> Unit
+        }
+    }
+    for (f in functions) {
+        type(f.returnType)
+        f.params.forEach { type(it.type) }
+        stmts(f.body)
+    }
+    return out
+}
+
 
 /** FNV-1a (64 bit) of the pieces, as 16 hex digits. Not cryptographic: it detects damage and keys caches. */
 class MlibHasher {
@@ -234,6 +413,19 @@ fun lowerToMirAgainstLibs(
     val all = ArrayList<LowerInput>(inputs)
     all.addAll(libInputs(libs))
     return lowerToMir(all, sourceName, lineDirectives, memoryGate, nameTag)
+}
+
+/** Reject a recorded unsupported library body if it is reachable from a separately emitted user module. */
+fun validateMlibFailures(program: MirModule, libs: List<Mlib>) {
+    if (libs.isEmpty()) return
+    val modules = libs.map { lib ->
+        try { MirReader.read(lib.mir) }
+        catch (e: Exception) { throw MlibError("library '${lib.name}': damaged MIR section (${e.message})") }
+    }
+    val pruned = MirLink.prune(MirLink.link(modules, program), programRoots(program))
+    val failed = HashMap<String, String>()
+    for (lib in libs) for (f in lib.failures) failed[f.cName] = f.message
+    for (f in pruned.functions) failed[f.cName]?.let { throw UnsupportedConstruct(it) }
 }
 
 /**
