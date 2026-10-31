@@ -113,8 +113,6 @@ jobs:
                 compiler/bootstrap.sh --backend=llvm "$RUNNER_TEMP/boot-llvm"
                 compiler/bootstrap.sh --backend=llvm-api "$RUNNER_TEMP/boot-api"
                 MINIC_API="$RUNNER_TEMP/boot-api/stage3" scripts/test-e2e.sh --suite llvm-api
-                MINIC_API="$RUNNER_TEMP/boot-api/stage3" compiler/llvm-c/tests/repl-session.sh
-                MINIC_API="$RUNNER_TEMP/boot-api/stage3" compiler/llvm-c/tests/session-api-smoke.sh
               fi ;;
             # B3 from the latest release: native stage0 -> stage1 -> stage2 -> stage3, stage2 == stage3 byte for byte.
             # Then the native `mini` project tool is built by that stage3 compiler and smoke-tested:
@@ -122,6 +120,18 @@ jobs:
             stage0)
               scripts/ci-stage0.sh "$RUNNER_TEMP/stage0" && scripts/ci-mini-smoke.sh "$RUNNER_TEMP/stage0" ;;
           esac
+      - name: Native REPL session tests (LLVM API)
+        if: matrix.shard == 'llvm' && runner.os == 'Linux'
+        timeout-minutes: 10
+        env:
+          MINIC_API: ${{ runner.temp }}/boot-api/stage3
+        run: compiler/llvm-c/tests/repl-session.sh
+      - name: ORC session API tests
+        if: matrix.shard == 'llvm' && runner.os == 'Linux'
+        timeout-minutes: 10
+        env:
+          MINIC_API: ${{ runner.temp }}/boot-api/stage3
+        run: compiler/llvm-c/tests/session-api-smoke.sh
 
   # Single status for branch protection: green when every job that ran passed.
   ci-ok:
