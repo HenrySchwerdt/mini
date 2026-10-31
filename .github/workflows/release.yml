@@ -71,7 +71,12 @@ jobs:
         run: |
           flags=""
           if [ "${{ matrix.seed }}" = "true" ]; then flags="--seed"; fi
-          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot0/s0" --llvm-license "$RUNNER_TEMP/LLVM-LICENSE.txt" --out dist $flags
+          if [ "${{ runner.os }}" = macOS ]; then
+            zstd_license="$(brew --prefix zstd)/LICENSE"
+          else
+            zstd_license=/usr/share/doc/libzstd-dev/copyright
+          fi
+          scripts/package-release.sh "$VERSION" "${{ matrix.target }}" --work "$RUNNER_TEMP/boot0/s0" --llvm-license "$RUNNER_TEMP/LLVM-LICENSE.txt" --zstd-license "$zstd_license" --out dist $flags
       - name: Smoke test the tarball
         run: |
           d="$(mktemp -d)"
