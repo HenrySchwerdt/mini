@@ -437,6 +437,9 @@ $HOME_DIR/lib/libminirt.a
 --color=$cmode
 --error-format=$error_format
 "
+    if [ -n "$native_link_flags" ]; then NATIVE_ARGS="$NATIVE_ARGS--link-arg
+$native_link_flags
+"; fi
     if [ "$timing" = 1 ]; then NATIVE_ARGS="$NATIVE_ARGS--time
 "; fi
     if [ -n "$limit" ]; then NATIVE_ARGS="$NATIVE_ARGS--error-limit=$limit
@@ -526,6 +529,12 @@ fi
 if [ "$debug" = 1 ]; then opt="-O0"; fi
 
 find_cc
+# Mach-O records function boundaries without extra section flags. Let the linker discard unused code in
+# optimized native executables, while retaining the existing debug/O0 behavior and other platforms' flags.
+native_link_flags=""
+if [ "$debug" = 0 ] && [ "$opt" != "-O0" ]; then
+    case "$(uname -s)" in Darwin) native_link_flags="-Wl,-dead_strip" ;; esac
+fi
 if [ "$backend" = llvm-api ]; then
     frontend_api "$exe"
     if [ "$timing" = 1 ]; then printf 'minic timings:\n%s' "$phase_times" >&2; fi
@@ -546,9 +555,9 @@ libs="$(sed -n 's|^/\* mini:link \(.*\) \*/$|-l\1|p' "$cfile" | tr '\n' ' ')"
 # one C compiler call (compile and link). When it fails, a second call that only compiles tells the two apart: the C
 # compiler rejecting the generated C is never the user's mistake (internal compiler error); a failing link is reported as such.
 t1="$(now)"
-show "$cc $cflags -I $HOME_DIR/include $cfile $HOME_DIR/lib/libminirt.a $libs -lm -o $exe"
+show "$cc $cflags -I $HOME_DIR/include $cfile $HOME_DIR/lib/libminirt.a $libs -lm $native_link_flags -o $exe"
 # shellcheck disable=SC2086
-if ! $cc $cflags -I "$HOME_DIR/include" "$cfile" "$HOME_DIR/lib/libminirt.a" $libs -lm -o "$exe" 2>"$tmp/cc.err"; then
+if ! $cc $cflags -I "$HOME_DIR/include" "$cfile" "$HOME_DIR/lib/libminirt.a" $libs -lm $native_link_flags -o "$exe" 2>"$tmp/cc.err"; then
     # shellcheck disable=SC2086
     if ! $cc $cflags -I "$HOME_DIR/include" -c "$cfile" -o "$tmp/prog.o" 2>"$tmp/cc2.err"; then
         kept="minic-ice-$base.c"
