@@ -1,0 +1,1889 @@
+{
+  "schema_version": 1,
+  "kind": "fair-runtime-baseline",
+  "date": "2026-10-31",
+  "host": {
+    "cpu": "Apple M4",
+    "os": "macOS 26.2",
+    "architecture": "arm64",
+    "cores": 10,
+    "clang": "Apple clang version 17.0.0 (clang-1700.6.4.2)"
+  },
+  "minic": {
+    "version": "0.7.0",
+    "source_commit": "f353826",
+    "binary_sha256": "1b55365a43db6ab17085598d29c3aa571b9ff5b77b2b89ea879d30f90b15c624",
+    "source_equivalence_to_benchmark_source_commit": "f353826 and 8ce0e5c61ddf7fe2992777b9e6b5c753070e555e match in minic-native, frontend, lower, backend, stdlib and runtime; benchmark branch adds only runner/results files",
+    "runtime_archive": "published Mini 0.7.0 package libminirt.a",
+    "stdlib": "published Mini 0.7.0 package stdlib.mlib",
+    "llvm_target": "LLVM C API host triple/data layout; TargetMachine CPU generic; level O2/O3. No target-specific CPU flags."
+  },
+  "measurement": {
+    "warmup_runs_per_variant": 1,
+    "measured_runs_per_variant": 5,
+    "timing_tool": "existing bench/timeit.c launcher, wait4 child RSS and monotonic wall time",
+    "output_check": "every warmup and measured run matched the complete checked-in expected.txt bytes",
+    "no_fast_math": true,
+    "counter_availability": "no allocation or hardware performance counters collected; RSS/wall only",
+    "fastest_reference": "median of correct hand-C O2, O3 and supplemental O3 -mcpu=native variants; Mini ratios use the fastest of those three",
+    "native_cpu_tuning": "clang accepts -mcpu=native on Apple M4; no unsafe math; all C variants use -fno-fast-math -ffp-contract=off"
+  },
+  "caveats": {
+    "nbody": "C uses static Body[5], Mini uses Array<Body> plus objects; same input, 25,000,000 steps, pair-update/Euler/energy operation order and output. C uses -fno-fast-math -ffp-contract=off; LLVM API retains default precise FP semantics.",
+    "fannkuch": "Same N=11 permutation sequence, prefix flips, parity checksum and max-flips output; C fixed stack arrays vs Mini IntArrays/heap/bounds checks.",
+    "json": "Same seeded generation, recursive descent parse/tree walk, REPS=5 and exact output; C uses byte strings and custom buffers/nodes while Mini uses UTF-16 strings, substrings and collection runtime, so treat as a broad workload with representation/allocation caveat."
+  },
+  "results": [
+    {
+      "benchmark": "nbody",
+      "source_files": {
+        "c": "bench/nbody/nbody.c",
+        "mini": "bench/nbody/nbody.kt"
+      },
+      "expected_sha256": "3dcd4aea0c994333570ef2d33ab0cd2d3524ed566c26d9720a23bfb52cb87d40",
+      "fastest_c_o2_or_o3_median_seconds": 0.745699,
+      "variants": [
+        {
+          "id": "c-o2",
+          "compiler": "clang",
+          "backend": "handwritten C",
+          "optimization": "O2",
+          "compiler_flags": [
+            "-O2",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "compile_seconds": 0.040136749972589314,
+            "link_seconds": 0.02836654195562005,
+            "total_seconds": 0.06850329192820936,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-c",
+              "$REPO/bench/nbody/nbody.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-c-o2.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/nbody-c-o2.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-c-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 49960,
+            "object_bytes": 2488
+          },
+          "warmup": {
+            "wall_seconds": 0.939218,
+            "rss_raw": 1277952,
+            "rss_unit": "bytes",
+            "stdout": "-169075163\n-169029138\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.797825,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.834885,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.787653,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.791079,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.798943,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.797825,
+            "min_seconds": 0.787653,
+            "max_seconds": 0.834885,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "-169075163\n-169029138\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.069902199144695,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0799837019349214
+          }
+        },
+        {
+          "id": "c-o3",
+          "compiler": "clang",
+          "backend": "handwritten C",
+          "optimization": "O3",
+          "compiler_flags": [
+            "-O3",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "compile_seconds": 0.030715957982465625,
+            "link_seconds": 0.02785687509458512,
+            "total_seconds": 0.058572833077050745,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O3",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-c",
+              "$REPO/bench/nbody/nbody.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-c-o3.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/nbody-c-o3.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-c-o3"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 49992,
+            "object_bytes": 3528
+          },
+          "warmup": {
+            "wall_seconds": 0.896888,
+            "rss_raw": 1261568,
+            "rss_unit": "bytes",
+            "stdout": "-169075163\n-169029138\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.745699,
+              "rss_raw": 1261568,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.744266,
+              "rss_raw": 1261568,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.743053,
+              "rss_raw": 1261568,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.747591,
+              "rss_raw": 1261568,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.747423,
+              "rss_raw": 1261568,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.745699,
+            "min_seconds": 0.743053,
+            "max_seconds": 0.747591,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "-169075163\n-169029138\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.0,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0094228264959972
+          }
+        },
+        {
+          "id": "mini-c-o2",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "CEmitter, linked by clang",
+          "optimization": "O2",
+          "compiler_flags": [
+            "-O2",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "emit_c_seconds": 0.15613379096612334,
+            "clang_compile_seconds": 0.044030832941643894,
+            "link_seconds": 0.025791209074668586,
+            "total_seconds": 0.22595583298243582,
+            "emit_command": [
+              "$MINI_HOME/bin/minic",
+              "emit-c",
+              "$REPO/bench/nbody/nbody.kt",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-mini-c-o2.c"
+            ],
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-I$MINI_HOME/include",
+              "-c",
+              "/tmp/campaign-runtime-baseline/nbody-mini-c-o2.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-mini-c-o2.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/nbody-mini-c-o2.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-mini-c-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 73264,
+            "object_bytes": 8464,
+            "generated_c_bytes": 27179,
+            "generated_c_sha256": "8fdeef8eb2965f14f3d32638fbc9e2a46a2de3dd3c70f52b6a3d2a4ea6cc16c0"
+          },
+          "warmup": {
+            "wall_seconds": 0.996382,
+            "rss_raw": 1310720,
+            "rss_unit": "bytes",
+            "stdout": "-169075163\n-169029138\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.846275,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.84996,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.865533,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.838769,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.888156,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.84996,
+            "min_seconds": 0.838769,
+            "max_seconds": 0.888156,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "-169075163\n-169029138\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.1398164675023033,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.150556760312858
+          }
+        },
+        {
+          "id": "mini-llvm-api-o2",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "LLVM C API object emission",
+          "optimization": "O2",
+          "compiler_flags": [
+            "--opt=O2",
+            "--backend=llvm-api",
+            "no unsafe/fast math"
+          ],
+          "build": {
+            "api_object_seconds": 0.14939200005028397,
+            "api_phase_output": "",
+            "link_seconds": 0.02582387498114258,
+            "total_seconds": 0.17521587503142655,
+            "compile_command": [
+              "$MINI_HOME/bin/minic-native",
+              "--backend=llvm-api",
+              "--opt=O2",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-mini-llvm-api-o2.o",
+              "$REPO/bench/nbody/nbody.kt",
+              "--lib",
+              "$MINI_HOME/lib/stdlib.mlib",
+              "--compiler-id",
+              "0.7.0",
+              "--time"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/nbody-mini-llvm-api-o2.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-mini-llvm-api-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 72856,
+            "object_bytes": 7752
+          },
+          "warmup": {
+            "wall_seconds": 1.147214,
+            "rss_raw": 1327104,
+            "rss_unit": "bytes",
+            "stdout": "-169075163\n-169029138\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.822119,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.820434,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.825681,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.863796,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.843329,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.825681,
+            "min_seconds": 0.820434,
+            "max_seconds": 0.863796,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "-169075163\n-169029138\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.1072577541340407,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.1176912518375932
+          }
+        },
+        {
+          "id": "mini-llvm-api-o3",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "LLVM C API object emission",
+          "optimization": "O3",
+          "compiler_flags": [
+            "--opt=O3",
+            "--backend=llvm-api",
+            "no unsafe/fast math"
+          ],
+          "build": {
+            "api_object_seconds": 0.12825974996667355,
+            "link_seconds": 0.031228041043505073,
+            "total_seconds": 0.15948779101017863,
+            "compile_command": [
+              "$MINI_HOME/bin/minic-native",
+              "--backend=llvm-api",
+              "--opt=O3",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-mini-llvm-api-o3.o",
+              "$REPO/bench/nbody/nbody.kt",
+              "--lib",
+              "$MINI_HOME/lib/stdlib.mlib",
+              "--compiler-id",
+              "0.7.0"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/nbody-mini-llvm-api-o3.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-mini-llvm-api-o3"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 72856,
+            "object_bytes": 9024
+          },
+          "warmup": {
+            "wall_seconds": 1.093223,
+            "rss_raw": 1327104,
+            "rss_unit": "bytes",
+            "stdout": "-169075163\n-169029138\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.818091,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.860666,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.819119,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.819092,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.822992,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.819119,
+            "min_seconds": 0.818091,
+            "max_seconds": 0.860666,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "-169075163\n-169029138\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.0984579568968176,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.108808535637804
+          }
+        },
+        {
+          "id": "c-o3-mcpu-native",
+          "compiler": "Apple clang",
+          "backend": "handwritten C",
+          "optimization": "O3",
+          "compiler_flags": [
+            "-O3",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-mcpu=native"
+          ],
+          "build": {
+            "compile_seconds": 0.04071333399042487,
+            "link_seconds": 0.027518625021912158,
+            "total_seconds": 0.06823195901233703,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O3",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-mcpu=native",
+              "-c",
+              "$REPO/bench/nbody/nbody.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-c-o3-mcpu-native.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/nbody-c-o3-mcpu-native.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/nbody-c-o3-mcpu-native"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 50008,
+            "object_bytes": 3528
+          },
+          "warmup": {
+            "wall_seconds": 1.011153,
+            "rss_raw": 1245184,
+            "rss_unit": "bytes",
+            "stdout": "-169075163\n-169029138\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.738751,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.738532,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.738738,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.738349,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.739987,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "-169075163\n-169029138\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.738738,
+            "min_seconds": 0.738349,
+            "max_seconds": 0.739987,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "-169075163\n-169029138\n",
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0,
+            "ratio_vs_fastest_correct_c_o2_o3": 0.9906651343236346
+          }
+        }
+      ],
+      "fastest_c_o2_or_o3_or_native_o3_median_seconds": 0.738738
+    },
+    {
+      "benchmark": "fannkuch",
+      "source_files": {
+        "c": "bench/fannkuch/fannkuch.c",
+        "mini": "bench/fannkuch/fannkuch.kt"
+      },
+      "expected_sha256": "496853c07b61c35473bd742f66bbcf51dc054288614ab62f1529fc07703ebdb5",
+      "fastest_c_o2_or_o3_median_seconds": 1.987138,
+      "variants": [
+        {
+          "id": "c-o2",
+          "compiler": "clang",
+          "backend": "handwritten C",
+          "optimization": "O2",
+          "compiler_flags": [
+            "-O2",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "compile_seconds": 0.04993679095059633,
+            "link_seconds": 0.09237204201053828,
+            "total_seconds": 0.1423088329611346,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-c",
+              "$REPO/bench/fannkuch/fannkuch.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o2.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o2.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 33568,
+            "object_bytes": 2408
+          },
+          "warmup": {
+            "wall_seconds": 2.258814,
+            "rss_raw": 1277952,
+            "rss_unit": "bytes",
+            "stdout": "556355\nPfannkuchen(11) = 51\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 1.972007,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.981334,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.989212,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.999757,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 2.041425,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 1.989212,
+            "min_seconds": 1.972007,
+            "max_seconds": 2.041425,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "556355\nPfannkuchen(11) = 51\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.0010437121125961,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0010437121125961
+          }
+        },
+        {
+          "id": "c-o3",
+          "compiler": "clang",
+          "backend": "handwritten C",
+          "optimization": "O3",
+          "compiler_flags": [
+            "-O3",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "compile_seconds": 0.030325207975693047,
+            "link_seconds": 0.026344916899688542,
+            "total_seconds": 0.05667012487538159,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O3",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-c",
+              "$REPO/bench/fannkuch/fannkuch.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o3.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o3.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o3"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 33568,
+            "object_bytes": 2424
+          },
+          "warmup": {
+            "wall_seconds": 2.222851,
+            "rss_raw": 1277952,
+            "rss_unit": "bytes",
+            "stdout": "556355\nPfannkuchen(11) = 51\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 1.987138,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 2.002238,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.977965,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 2.006541,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.980591,
+              "rss_raw": 1277952,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 1.987138,
+            "min_seconds": 1.977965,
+            "max_seconds": 2.006541,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "556355\nPfannkuchen(11) = 51\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.0,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0
+          }
+        },
+        {
+          "id": "mini-c-o2",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "CEmitter, linked by clang",
+          "optimization": "O2",
+          "compiler_flags": [
+            "-O2",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "emit_c_seconds": 0.15416233299765736,
+            "clang_compile_seconds": 0.04360095807351172,
+            "link_seconds": 0.026305082952603698,
+            "total_seconds": 0.22406837402377278,
+            "emit_command": [
+              "$MINI_HOME/bin/minic",
+              "emit-c",
+              "$REPO/bench/fannkuch/fannkuch.kt",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-c-o2.c"
+            ],
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-I$MINI_HOME/include",
+              "-c",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-c-o2.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-c-o2.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-c-o2.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-c-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 55872,
+            "object_bytes": 5648,
+            "generated_c_bytes": 13617,
+            "generated_c_sha256": "ce1ee4b033a193d936d87bf55170f0d306a66416de30b05bf4331de30824e5b0"
+          },
+          "warmup": {
+            "wall_seconds": 2.158184,
+            "rss_raw": 1310720,
+            "rss_unit": "bytes",
+            "stdout": "556355\nPfannkuchen(11) = 51\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 1.855901,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.866009,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.840888,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 2.044231,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.953623,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 1.866009,
+            "min_seconds": 1.840888,
+            "max_seconds": 2.044231,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "556355\nPfannkuchen(11) = 51\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 0.9390434886756732,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 0.9390434886756732
+          }
+        },
+        {
+          "id": "mini-llvm-api-o2",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "LLVM C API object emission",
+          "optimization": "O2",
+          "compiler_flags": [
+            "--opt=O2",
+            "--backend=llvm-api",
+            "no unsafe/fast math"
+          ],
+          "build": {
+            "api_object_seconds": 0.13688637502491474,
+            "api_phase_output": "",
+            "link_seconds": 0.028072083950974047,
+            "total_seconds": 0.1649584589758888,
+            "compile_command": [
+              "$MINI_HOME/bin/minic-native",
+              "--backend=llvm-api",
+              "--opt=O2",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-llvm-api-o2.o",
+              "$REPO/bench/fannkuch/fannkuch.kt",
+              "--lib",
+              "$MINI_HOME/lib/stdlib.mlib",
+              "--compiler-id",
+              "0.7.0",
+              "--time"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-llvm-api-o2.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-llvm-api-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 55880,
+            "object_bytes": 3872
+          },
+          "warmup": {
+            "wall_seconds": 1.96763,
+            "rss_raw": 1310720,
+            "rss_unit": "bytes",
+            "stdout": "556355\nPfannkuchen(11) = 51\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 1.706222,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.717053,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.740472,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.695031,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.680621,
+              "rss_raw": 1310720,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 1.706222,
+            "min_seconds": 1.680621,
+            "max_seconds": 1.740472,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "556355\nPfannkuchen(11) = 51\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 0.8586328679739403,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 0.8586328679739403
+          }
+        },
+        {
+          "id": "mini-llvm-api-o3",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "LLVM C API object emission",
+          "optimization": "O3",
+          "compiler_flags": [
+            "--opt=O3",
+            "--backend=llvm-api",
+            "no unsafe/fast math"
+          ],
+          "build": {
+            "api_object_seconds": 0.10503929201513529,
+            "link_seconds": 0.02604250004515052,
+            "total_seconds": 0.1310817920602858,
+            "compile_command": [
+              "$MINI_HOME/bin/minic-native",
+              "--backend=llvm-api",
+              "--opt=O3",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-llvm-api-o3.o",
+              "$REPO/bench/fannkuch/fannkuch.kt",
+              "--lib",
+              "$MINI_HOME/lib/stdlib.mlib",
+              "--compiler-id",
+              "0.7.0"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-llvm-api-o3.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-mini-llvm-api-o3"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 55880,
+            "object_bytes": 3936
+          },
+          "warmup": {
+            "wall_seconds": 1.999311,
+            "rss_raw": 1327104,
+            "rss_unit": "bytes",
+            "stdout": "556355\nPfannkuchen(11) = 51\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 1.709308,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.6837,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.725424,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.685935,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.692648,
+              "rss_raw": 1327104,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 1.692648,
+            "min_seconds": 1.6837,
+            "max_seconds": 1.725424,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "556355\nPfannkuchen(11) = 51\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 0.8518019382649821,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 0.8518019382649821
+          }
+        },
+        {
+          "id": "c-o3-mcpu-native",
+          "compiler": "Apple clang",
+          "backend": "handwritten C",
+          "optimization": "O3",
+          "compiler_flags": [
+            "-O3",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-mcpu=native"
+          ],
+          "build": {
+            "compile_seconds": 0.03475108300335705,
+            "link_seconds": 0.025739207980223,
+            "total_seconds": 0.06049029098358005,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O3",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-mcpu=native",
+              "-c",
+              "$REPO/bench/fannkuch/fannkuch.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o3-mcpu-native.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o3-mcpu-native.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/fannkuch-c-o3-mcpu-native"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 33576,
+            "object_bytes": 2424
+          },
+          "warmup": {
+            "wall_seconds": 2.275402,
+            "rss_raw": 1245184,
+            "rss_unit": "bytes",
+            "stdout": "556355\nPfannkuchen(11) = 51\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 1.993901,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 2.022216,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.989133,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 2.002478,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 1.99332,
+              "rss_raw": 1245184,
+              "rss_unit": "bytes",
+              "stdout": "556355\nPfannkuchen(11) = 51\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 1.993901,
+            "min_seconds": 1.989133,
+            "max_seconds": 2.022216,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "556355\nPfannkuchen(11) = 51\n",
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0034033871829737,
+            "ratio_vs_fastest_correct_c_o2_o3": 1.0034033871829737
+          }
+        }
+      ],
+      "fastest_c_o2_or_o3_or_native_o3_median_seconds": 1.987138
+    },
+    {
+      "benchmark": "json",
+      "source_files": {
+        "c": "bench/json/json.c",
+        "mini": "bench/json/json.kt"
+      },
+      "expected_sha256": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+      "fastest_c_o2_or_o3_median_seconds": 0.333376,
+      "variants": [
+        {
+          "id": "c-o2",
+          "compiler": "clang",
+          "backend": "handwritten C",
+          "optimization": "O2",
+          "compiler_flags": [
+            "-O2",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "compile_seconds": 0.07131604198366404,
+            "link_seconds": 0.030036458978429437,
+            "total_seconds": 0.10135250096209347,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-c",
+              "$REPO/bench/json/json.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-c-o2.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/json-c-o2.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-c-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 50520,
+            "object_bytes": 8496
+          },
+          "warmup": {
+            "wall_seconds": 0.644895,
+            "rss_raw": 81707008,
+            "rss_unit": "bytes",
+            "stdout": "7055506 1072916 885982430\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.330971,
+              "rss_raw": 81215488,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.331633,
+              "rss_raw": 81182720,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.337452,
+              "rss_raw": 81166336,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.346531,
+              "rss_raw": 81199104,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.337453,
+              "rss_raw": 81182720,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.337452,
+            "min_seconds": 0.330971,
+            "max_seconds": 0.346531,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "7055506 1072916 885982430\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.012226435016318,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.012226435016318
+          }
+        },
+        {
+          "id": "c-o3",
+          "compiler": "clang",
+          "backend": "handwritten C",
+          "optimization": "O3",
+          "compiler_flags": [
+            "-O3",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "compile_seconds": 0.05356516700703651,
+            "link_seconds": 0.027070000069215894,
+            "total_seconds": 0.0806351670762524,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O3",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-c",
+              "$REPO/bench/json/json.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-c-o3.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/json-c-o3.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-c-o3"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 50488,
+            "object_bytes": 9352
+          },
+          "warmup": {
+            "wall_seconds": 0.620634,
+            "rss_raw": 81674240,
+            "rss_unit": "bytes",
+            "stdout": "7055506 1072916 885982430\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.333376,
+              "rss_raw": 81133568,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.3308,
+              "rss_raw": 81182720,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.334232,
+              "rss_raw": 81199104,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.343661,
+              "rss_raw": 81149952,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.32914,
+              "rss_raw": 81117184,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.333376,
+            "min_seconds": 0.32914,
+            "max_seconds": 0.343661,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "7055506 1072916 885982430\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.0,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0
+          }
+        },
+        {
+          "id": "mini-c-o2",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "CEmitter, linked by clang",
+          "optimization": "O2",
+          "compiler_flags": [
+            "-O2",
+            "-fno-fast-math",
+            "-ffp-contract=off"
+          ],
+          "build": {
+            "emit_c_seconds": 0.15928145800717175,
+            "clang_compile_seconds": 0.134251750074327,
+            "link_seconds": 0.02694524999242276,
+            "total_seconds": 0.3204784580739215,
+            "emit_command": [
+              "$MINI_HOME/bin/minic",
+              "emit-c",
+              "$REPO/bench/json/json.kt",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-mini-c-o2.c"
+            ],
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-I$MINI_HOME/include",
+              "-c",
+              "/tmp/campaign-runtime-baseline/json-mini-c-o2.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-mini-c-o2.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/json-mini-c-o2.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-mini-c-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 102336,
+            "object_bytes": 63016,
+            "generated_c_bytes": 157608,
+            "generated_c_sha256": "390f16b5b808e23b5e7d93a834e438145600a157b20b0e86e18f5871ba62012b"
+          },
+          "warmup": {
+            "wall_seconds": 0.737161,
+            "rss_raw": 166133760,
+            "rss_unit": "bytes",
+            "stdout": "7055506 1072916 885982430\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.481781,
+              "rss_raw": 166150144,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.487769,
+              "rss_raw": 166133760,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.515644,
+              "rss_raw": 166150144,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.482392,
+              "rss_raw": 166133760,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.488678,
+              "rss_raw": 166150144,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.487769,
+            "min_seconds": 0.481781,
+            "max_seconds": 0.515644,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "7055506 1072916 885982430\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.4631197206757536,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.4631197206757536
+          }
+        },
+        {
+          "id": "mini-llvm-api-o2",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "LLVM C API object emission",
+          "optimization": "O2",
+          "compiler_flags": [
+            "--opt=O2",
+            "--backend=llvm-api",
+            "no unsafe/fast math"
+          ],
+          "build": {
+            "api_object_seconds": 0.27549954201094806,
+            "api_phase_output": "",
+            "link_seconds": 0.026737374952062964,
+            "total_seconds": 0.302236916963011,
+            "compile_command": [
+              "$MINI_HOME/bin/minic-native",
+              "--backend=llvm-api",
+              "--opt=O2",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-mini-llvm-api-o2.o",
+              "$REPO/bench/json/json.kt",
+              "--lib",
+              "$MINI_HOME/lib/stdlib.mlib",
+              "--compiler-id",
+              "0.7.0",
+              "--time"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/json-mini-llvm-api-o2.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-mini-llvm-api-o2"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 102552,
+            "object_bytes": 63512
+          },
+          "warmup": {
+            "wall_seconds": 0.797814,
+            "rss_raw": 168329216,
+            "rss_unit": "bytes",
+            "stdout": "7055506 1072916 885982430\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.491477,
+              "rss_raw": 166215680,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.54646,
+              "rss_raw": 166182912,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.533783,
+              "rss_raw": 166166528,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.593977,
+              "rss_raw": 166215680,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.505341,
+              "rss_raw": 166182912,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.533783,
+            "min_seconds": 0.491477,
+            "max_seconds": 0.593977,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "7055506 1072916 885982430\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.601144053561144,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.601144053561144
+          }
+        },
+        {
+          "id": "mini-llvm-api-o3",
+          "compiler": "Mini 0.7.0 package compiler",
+          "backend": "LLVM C API object emission",
+          "optimization": "O3",
+          "compiler_flags": [
+            "--opt=O3",
+            "--backend=llvm-api",
+            "no unsafe/fast math"
+          ],
+          "build": {
+            "api_object_seconds": 0.2621449999278411,
+            "link_seconds": 0.03552816703449935,
+            "total_seconds": 0.2976731669623405,
+            "compile_command": [
+              "$MINI_HOME/bin/minic-native",
+              "--backend=llvm-api",
+              "--opt=O3",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-mini-llvm-api-o3.o",
+              "$REPO/bench/json/json.kt",
+              "--lib",
+              "$MINI_HOME/lib/stdlib.mlib",
+              "--compiler-id",
+              "0.7.0"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/json-mini-llvm-api-o3.o",
+              "$MINI_HOME/lib/libminirt.a",
+              "-lm",
+              "-Wl,-dead_strip",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-mini-llvm-api-o3"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 102360,
+            "object_bytes": 66752
+          },
+          "warmup": {
+            "wall_seconds": 0.773473,
+            "rss_raw": 168329216,
+            "rss_unit": "bytes",
+            "stdout": "7055506 1072916 885982430\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.51065,
+              "rss_raw": 166166528,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.539413,
+              "rss_raw": 166182912,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.555476,
+              "rss_raw": 166166528,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.498333,
+              "rss_raw": 166133760,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.502404,
+              "rss_raw": 166150144,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.51065,
+            "min_seconds": 0.498333,
+            "max_seconds": 0.555476,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "7055506 1072916 885982430\n",
+            "ratio_vs_fastest_correct_c_o2_o3": 1.5317539354962566,
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.5317539354962566
+          }
+        },
+        {
+          "id": "c-o3-mcpu-native",
+          "compiler": "Apple clang",
+          "backend": "handwritten C",
+          "optimization": "O3",
+          "compiler_flags": [
+            "-O3",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-mcpu=native"
+          ],
+          "build": {
+            "compile_seconds": 0.0692693340824917,
+            "link_seconds": 0.03150258294772357,
+            "total_seconds": 0.10077191703021526,
+            "compile_command": [
+              "clang",
+              "-std=c17",
+              "-O3",
+              "-fno-fast-math",
+              "-ffp-contract=off",
+              "-mcpu=native",
+              "-c",
+              "$REPO/bench/json/json.c",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-c-o3-mcpu-native.o"
+            ],
+            "link_command": [
+              "clang",
+              "/tmp/campaign-runtime-baseline/json-c-o3-mcpu-native.o",
+              "-lm",
+              "-o",
+              "/tmp/campaign-runtime-baseline/json-c-o3-mcpu-native"
+            ]
+          },
+          "artifact": {
+            "executable_bytes": 50504,
+            "object_bytes": 9352
+          },
+          "warmup": {
+            "wall_seconds": 0.608662,
+            "rss_raw": 81723392,
+            "rss_unit": "bytes",
+            "stdout": "7055506 1072916 885982430\n",
+            "stderr": "",
+            "returncode": 0
+          },
+          "samples": [
+            {
+              "wall_seconds": 0.333203,
+              "rss_raw": 81199104,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.336624,
+              "rss_raw": 81248256,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.331318,
+              "rss_raw": 81231872,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.336865,
+              "rss_raw": 81166336,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            },
+            {
+              "wall_seconds": 0.343131,
+              "rss_raw": 81199104,
+              "rss_unit": "bytes",
+              "stdout": "7055506 1072916 885982430\n",
+              "stderr": "",
+              "returncode": 0
+            }
+          ],
+          "summary": {
+            "median_seconds": 0.336624,
+            "min_seconds": 0.331318,
+            "max_seconds": 0.343131,
+            "all_outputs_match_expected": true,
+            "complete_stdout": "7055506 1072916 885982430\n",
+            "ratio_vs_fastest_correct_c_o2_o3_native_o3": 1.0097427529276253,
+            "ratio_vs_fastest_correct_c_o2_o3": 1.0097427529276253
+          }
+        }
+      ],
+      "fastest_c_o2_or_o3_or_native_o3_median_seconds": 0.333376
+    }
+  ]
+}
