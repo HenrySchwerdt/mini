@@ -1426,7 +1426,8 @@
     "Selfcompile wall-time ranges overlap. Instruction-count reduction is small (~1.4%) and does not constitute a substantial speedup.",
     "No allocation counters were available. CPU target remains generic.",
     "The published 0.7 package comparison above is observational, not causal, because packaged runtime/archive builds differ. The isolated_local_api_control compares local API O1 compiler binaries linked with the same candidate runtime objects and LLVM static link recipe.",
-    "Hello size direction: published package executable 54,280 bytes; integrated package executable 54,352 bytes. The object files are both 872 bytes and byte-identical."
+    "Hello size direction: published package executable 54,280 bytes; integrated package executable 54,352 bytes. The object files are both 872 bytes and byte-identical.",
+    "The final API O1 versus O2 compiler-level comparison uses the same fixed 8ce inputs, shared API runtime objects and static link recipe. O2 changes generated compiler binary/object size slightly; observed build-time and runtime deltas are small and not conclusive."
   ],
   "isolated_local_api_control": {
     "binary_provenance": {
@@ -2306,5 +2307,1043 @@
       "object_sha256": "aa6c8c8fea7feca2f61d559e9dd5076c33c832730607cef1937300f37d084a7d",
       "manifest_target_correction": "Manifest wording \u201cclang -O1\u201d is imprecise: O1 is the LLVM API codegen level. Clang only links the generated object and shared runtime objects."
     }
+  },
+  "integrated_api_opt_level_triads": {
+    "variants": {
+      "baseline-local-api": {
+        "binary_sha256": "3fe1d19067a2b75c088ce8ade2296dca28b9f6027b1cecf32db793a6a2c0a509",
+        "summary": {
+          "wall_seconds": 2.7953452080255374,
+          "user_seconds": 2.67,
+          "sys_seconds": 0.08,
+          "max_rss_bytes": 697106432.0,
+          "instructions_retired": 47244399517.0,
+          "cycles_elapsed": 10833586225.0,
+          "wall_range_seconds": [
+            2.6864036669721827,
+            2.99079112499021
+          ],
+          "c_sha256_values": [
+            "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e"
+          ],
+          "mir_sha256_values": [
+            "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943"
+          ]
+        }
+      },
+      "integrated-api-o1": {
+        "binary_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+        "summary": {
+          "wall_seconds": 2.686646124930121,
+          "user_seconds": 2.58,
+          "sys_seconds": 0.07,
+          "max_rss_bytes": 697335808.0,
+          "instructions_retired": 47136150413.0,
+          "cycles_elapsed": 10719487835.0,
+          "wall_range_seconds": [
+            2.6634101249510422,
+            2.7992150000063702
+          ],
+          "c_sha256_values": [
+            "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e"
+          ],
+          "mir_sha256_values": [
+            "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943"
+          ]
+        }
+      },
+      "integrated-api-o2": {
+        "binary_sha256": "fbcb2842806283725724a0d799af0b81f2520ea32e0722727a9d3aead042e0ae",
+        "summary": {
+          "wall_seconds": 2.7422773329308257,
+          "user_seconds": 2.62,
+          "sys_seconds": 0.09,
+          "max_rss_bytes": 697139200.0,
+          "instructions_retired": 46893999894.0,
+          "cycles_elapsed": 10758876612.0,
+          "wall_range_seconds": [
+            2.6266685830196366,
+            2.911522874957882
+          ],
+          "c_sha256_values": [
+            "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e"
+          ],
+          "mir_sha256_values": [
+            "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943"
+          ]
+        }
+      }
+    },
+    "inputs": {
+      "source_commit": "8ce0e5c61ddf7fe2992777b9e6b5c753070e555e",
+      "compiler_sources": 91,
+      "stdlib_sources": 62,
+      "paths_and_sha256": [
+        {
+          "path": "compiler/backend/src/CEmitter.kt",
+          "sha256": "8bef3183be155efda98ac3af63020af1cfc53c430148ec16b977f901ed6e4c70"
+        },
+        {
+          "path": "compiler/backend/src/CInterop.kt",
+          "sha256": "c3919c37ae73a4c987ac3e4485683449bd29698459d7882140a1bd7e9a8b138f"
+        },
+        {
+          "path": "compiler/backend/src/Conventions.kt",
+          "sha256": "9ebbcf5baaeb3b93817069448cf60da99edd9fd31800b1df39e1c1e5d48fc077"
+        },
+        {
+          "path": "compiler/backend/src/Effects.kt",
+          "sha256": "db5ced41c633fba3a12ff03f0c677bd82624e333220b94d6cb2f4ed0bc650532"
+        },
+        {
+          "path": "compiler/backend/src/IntCollections.kt",
+          "sha256": "c69796afe68afbebfd1e6262f490ab80f06a1e62e6ca601eea57dad1e84de4b5"
+        },
+        {
+          "path": "compiler/backend/src/Mangling.kt",
+          "sha256": "6da826dbfdf1200ef4c9a0cd470441c17cafc3c153118728595502d28a3eef9c"
+        },
+        {
+          "path": "compiler/backend/src/MemReport.kt",
+          "sha256": "b931f2dac02738bb3f0d55b70cdaaa005ce71de683ce0fa2b11428ce1e26d619"
+        },
+        {
+          "path": "compiler/backend/src/Mir.kt",
+          "sha256": "9c2f2231dd64b894b59f4d9e2127ab544afe2324640095e060b111e0e39452d2"
+        },
+        {
+          "path": "compiler/backend/src/MirLink.kt",
+          "sha256": "83ed4a5c76d18aa5787b583ec8c439f7f0b81c49932b5477c9d83587c9f73e29"
+        },
+        {
+          "path": "compiler/backend/src/MirSerial.kt",
+          "sha256": "8b78e205cbdc9dce066daedc1b994d18eaeaa1948cc769bb1ec7c497a1c61178"
+        },
+        {
+          "path": "compiler/backend/src/RcOpt.kt",
+          "sha256": "53956fd2fbd1476b945b693159148d01476db1156f517ddfb6c1167643c7855b"
+        },
+        {
+          "path": "compiler/backend/src/ThrowAnalysis.kt",
+          "sha256": "3c331579b2345874bc206ad22eb0c3281b54ba8cc34f2a85283e84dfc74e001e"
+        },
+        {
+          "path": "compiler/backend/src/Tracking.kt",
+          "sha256": "27a7ad5385d3302df4ce13a8480338ecc826bc48d47b7d1879f51eefa9d03836"
+        },
+        {
+          "path": "compiler/backend/src/WasmLib.kt",
+          "sha256": "b386630f2931032c6d6ccd4d033eb5959c360ba9ba8accf3c31f1b1d4ceb3103"
+        },
+        {
+          "path": "compiler/backend/src/llvm/IrBuilder.kt",
+          "sha256": "8d4c80972289a79b98f06a7e3c3df00619534220bb2eb6e1274a01570d39879b"
+        },
+        {
+          "path": "compiler/backend/src/llvm/LlvmEmitter.kt",
+          "sha256": "80c2c9d9d88abb21ef302a73f70eabcc60f9a558da90d714e127715711b616ba"
+        },
+        {
+          "path": "compiler/backend/src/llvm/LlvmTarget.kt",
+          "sha256": "d371fe67e079daa78cd67a9c5cb62c1fd5083fd53f2392a0dbdf4dce49b1ab0a"
+        },
+        {
+          "path": "compiler/backend/src/llvm/Lowering.kt",
+          "sha256": "b6503653babcf00eb60154f2fec75005d89b32907d61bd30869b0082cfcf3ab9"
+        },
+        {
+          "path": "compiler/backend/src/llvm/TextIrBuilder.kt",
+          "sha256": "e69ab915aa806517fb13a815a77f29d25be5a4897ea42e378d4e5b92ae2fd9da"
+        },
+        {
+          "path": "compiler/backend/src/memory/Cfg.kt",
+          "sha256": "d3761b529fc5a7c26bb615bcd7b94cf31b55fc545f36310dc2e4e2f04e96bd0d"
+        },
+        {
+          "path": "compiler/backend/src/memory/Checker.kt",
+          "sha256": "e34bcfa754b919491887082584767359ade783ad12275feb7e8f07130044952a"
+        },
+        {
+          "path": "compiler/backend/src/memory/DiagFormat.kt",
+          "sha256": "d018f3a1ae1dc2c7081df0593f49468270128e4de8788bc7e1b5563c14592c44"
+        },
+        {
+          "path": "compiler/backend/src/memory/Diagnostics.kt",
+          "sha256": "1e9bdf37c8c1f2108b1239911e1804dff56583c5e08cc3f42c4c1e1305ff2c04"
+        },
+        {
+          "path": "compiler/backend/src/memory/MemIr.kt",
+          "sha256": "80f137be547b3b747c19ec4a4b768a4a128ad5c37dcb2a0b0490f7cd2b81e0f9"
+        },
+        {
+          "path": "compiler/backend/src/memory/State.kt",
+          "sha256": "5f5c594de19764e2fb0a0e2ccbd8ac09c63115719764128ca0f79e0bc783a62a"
+        },
+        {
+          "path": "compiler/backend/src/memory/Transfer.kt",
+          "sha256": "9344bfb7f4c933f75772ad676441e51fbcabbf40388ee2583d33f379286a00da"
+        },
+        {
+          "path": "compiler/frontend/src/Ast.kt",
+          "sha256": "5743169da5a2dc5a8f92d835a8ddd3a63bccacab9a3f40cfcad8da9e543252c9"
+        },
+        {
+          "path": "compiler/frontend/src/Cst.kt",
+          "sha256": "ddfd582b8740df7771e05a97aa6c7efac38d0f8eddc3c5bc7e2225c0be405d5a"
+        },
+        {
+          "path": "compiler/frontend/src/Lexer.kt",
+          "sha256": "36f0cc08b76164aa5eaff500ef913eeac9323b207dda647b5c3cb7b208e7674f"
+        },
+        {
+          "path": "compiler/frontend/src/Outline.kt",
+          "sha256": "2af5de449290e556e9bd5887c5a440a59ca94387ba9af5cefc2f98ac3532c4db"
+        },
+        {
+          "path": "compiler/frontend/src/Parser.kt",
+          "sha256": "b14bf4f2431f7aab1394c36e3444eb08dc220fd1be142f10cd43e9a73242e6fe"
+        },
+        {
+          "path": "compiler/frontend/src/ParserExprs.kt",
+          "sha256": "90b2fce448c478b06723f0b9f832e15fe640604d0bb824eedbeafb88d2fb6ba6"
+        },
+        {
+          "path": "compiler/frontend/src/ParserTypes.kt",
+          "sha256": "f9a0e56ff8b85a44884d657700db2120ff552a22b4fc55008c07c015545d5742"
+        },
+        {
+          "path": "compiler/frontend/src/Stubs.kt",
+          "sha256": "46f5f45d37434b08b83e5f1b77e760f05a00948c8679b26bef23a47cce591c21"
+        },
+        {
+          "path": "compiler/frontend/src/Token.kt",
+          "sha256": "dbed46718b4053c25e99cd822751830f3402bcf5afb37cd8dc7c72af4a85e8d3"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Api.kt",
+          "sha256": "0b939dfd47168899546500a3a5450f6f43c4a8a9c1aae7d870996196861a9711"
+        },
+        {
+          "path": "compiler/frontend/src/sema/AstWalk.kt",
+          "sha256": "15a75679f608f285748221e2e8d6e44a147e0d6e2f2152bf3662cfc71795985c"
+        },
+        {
+          "path": "compiler/frontend/src/sema/BodyChecker.kt",
+          "sha256": "7bac975676ad0740772611da4a5581cfd922b125050511143d220918a746b19c"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Calls.kt",
+          "sha256": "6232f7107336ebdf0ee6e3541be407221a2f32ba02f623946f88648e3768b29f"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Collector.kt",
+          "sha256": "144ec410e642b40cd001f509c2006e49df1974f29a1a229cf5e316e4579efe39"
+        },
+        {
+          "path": "compiler/frontend/src/sema/DataFlow.kt",
+          "sha256": "dc75838d92cac144e2616d188f0d66e6c468471eaf1a3ea5e360f2c03deb206f"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Declarations.kt",
+          "sha256": "a1d5cc09646098990e8edc6ee34c5070d4714937f307a3b599cf9439c098ec01"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Elab.kt",
+          "sha256": "cbfe9e2498a0e59900d8e2d7112214272ba5f33bf9be10b597e67aba10ff3d1c"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Exprs.kt",
+          "sha256": "fb9c43f0cbb72672210a5b1ed2cdbefab266a9a3001ec86f283271206e2a22c0"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Infer.kt",
+          "sha256": "aa886c08f924c4bc2eec9f5475c6348ccac6ff4daca6ce099a157ed630a80293"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Lambdas.kt",
+          "sha256": "00cd3456cf6381e0dcad46bc19b4f60a629c1878e4fe780b4dfd3ee6113aea4b"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Members.kt",
+          "sha256": "875de4f66c2a973de5ce31664be66208cec2491ebcc2b6cc7b3bfd5343eaa6da"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Names.kt",
+          "sha256": "20ffaee5fbbde98cab5fc151ed08b7b92f590778b8ebb719faf5e14fef3948a0"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Records.kt",
+          "sha256": "5f975328b14f4a80be487e69db8d9723533be7e8ccb7db4d7dadf4e6171f02fa"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Sema.kt",
+          "sha256": "d80979d9d4c3ed82dee0a981b2d7a6c615bb36242c59a26e75e4a2e6e764f03f"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Symbols.kt",
+          "sha256": "2908668f50c327c03b5885f620769c7476c297cc50a93210e8f194a7ead03c4b"
+        },
+        {
+          "path": "compiler/frontend/src/sema/TypeOps.kt",
+          "sha256": "b4e12e728c7a607cbf4cbd9bf3cf82d74b1962363f58714c0c0fe4eba681f8bc"
+        },
+        {
+          "path": "compiler/frontend/src/sema/Types.kt",
+          "sha256": "44458b15e5eea2bf4fe52d628b6c59bc4c700a5f647f727825104b9b8f289de6"
+        },
+        {
+          "path": "compiler/lower/src/Ast2Ir.kt",
+          "sha256": "33f19bc7232c9940e8d7aac130dfbad1014f22a2324f71b1c853cb1770a14ee3"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrBodies.kt",
+          "sha256": "504680d7bf04e73ddbad31e9ca082d9f875c743621f248bbd5fba7b79f9e7b1b"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrCalls.kt",
+          "sha256": "863fb3dd101064e0163de4752d8458e1861224d72dc4c4aa969217709ae5e92c"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrConst.kt",
+          "sha256": "e173a11c812c1c2f8a5cb0dc55afa7220064f4f68826a5aad414fdd9413d430c"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrExprs.kt",
+          "sha256": "f9d0fadd48cdc55a50d58b278f2ca69392108412bf26ec021927ae38fa45ee55"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrFake.kt",
+          "sha256": "4e8b483db087d0f4162d6cc8f85c45c57a9e1d7632478f683a3cfbae9cfcc267"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrFlow.kt",
+          "sha256": "87204920d80a0b6f61bfcc92f8e33f7f4dcb8598ec4707c38e60468a0752a1e5"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrLambda.kt",
+          "sha256": "636482563dba56ede01f86fb0dc1fa2a68f45bbf6ad1c0d4e6931cdf1bff234e"
+        },
+        {
+          "path": "compiler/lower/src/Ast2IrMembers.kt",
+          "sha256": "fbf0723a6ac8df4075e083224bee2d387776a7db84b81c4eb8d6c4f268e2059d"
+        },
+        {
+          "path": "compiler/lower/src/ClosureAnalysis.kt",
+          "sha256": "1813c011b5ac3b6c3ce823a484056b8c12dd19522388d6c9b9bc7dd9f27fcd3e"
+        },
+        {
+          "path": "compiler/lower/src/Ir.kt",
+          "sha256": "f1c2006dacb5b4aec706f3d0663c1ff172952fd8fa569f3526741d32b0f9d8bb"
+        },
+        {
+          "path": "compiler/lower/src/Ir2Mir.kt",
+          "sha256": "29878fa30657cd50089aca9d3de13aa6c369a0b5fc5bb3f91db2aabaa6a21e8e"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirArrays.kt",
+          "sha256": "ca2def557953af0ccf7cb36e21209ed986311c0f43d15a80f66e63efbc13a287"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirCalls.kt",
+          "sha256": "be7e1551cd89aacf687df551d6e2b3e75cc16522e19b00855b8febe4a8cfd88d"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirClasses.kt",
+          "sha256": "780acf66370caff2747f7068873d894733a74b676bb4af23df33ce098836064c"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirClosures.kt",
+          "sha256": "96766c8966ae638259ff7adc77e574512875a8a6c20382286a87c7df0600457c"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirControlFlow.kt",
+          "sha256": "8381b577ab4618c50762b68bad4d2135349743838580f41cbafe2b93c843532b"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirDeclarations.kt",
+          "sha256": "d8a4d6eddbcd9984f39b4ab311deded246f1ca557905e90d42059d498980cd69"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirExceptions.kt",
+          "sha256": "dbf180615025fbbca4a95c50ad2d6a2e885ffe67c64b5c1c5398087e00fa26f7"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirExpressions.kt",
+          "sha256": "e77b67f9cb5dac9f54971a1eadf6e5b87b285742768dea61c5ffc7ee2d7f7b03"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirInline.kt",
+          "sha256": "3f486ac5612ad3d8d94a3076c506c29857f6cde5ddbae999e16e1540d3cf71b6"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirInterop.kt",
+          "sha256": "0e95d45f83b38e735bf7741752409b8751ee6a56c84c05b20eddc750d24b854e"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirIntrinsics.kt",
+          "sha256": "18d9a476e5a4aa75cfb788af974ea3cb6a420cf90cd1a7be7631fc67a43956a3"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirLocalClasses.kt",
+          "sha256": "3108fc1b6424087bae216baa1613ffbc63ec7889fc31746e7a761da090519181"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirMain.kt",
+          "sha256": "32370a970c0fd6a399b6c3bd30010f4bf5b251a6eb4c88b3d1b1ac1a225feec1"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirShared.kt",
+          "sha256": "70c6ecc3880c99ac624a833e237eaddcfac59c078873f9b762b32b6edf8afc91"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirStrict.kt",
+          "sha256": "8ab988e9dd682e2db4036a16fbec5885ef196f3d75e85ee74eb9662ce06fecda"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirTopLevel.kt",
+          "sha256": "8ac2a1542e5a1ca1b07128c1d9d5d434e638db17a3b6d093ae42d2d79476d23b"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirTypes.kt",
+          "sha256": "747484143f256a4eba7e94bd219d7aa9a86e1daa094ac6fd7cc701b8cce14bc0"
+        },
+        {
+          "path": "compiler/lower/src/Ir2MirWasm.kt",
+          "sha256": "c36a7960a2318edb7c83d75b4a7c9603e50172cb3fdcfd9338255bfd7aca4da2"
+        },
+        {
+          "path": "compiler/lower/src/IrUtil.kt",
+          "sha256": "7cb18c873ea1f8752ff13cccb3d7b9e7cd7852851aca287671a0e9a20bd4d050"
+        },
+        {
+          "path": "compiler/lower/src/Lowering.kt",
+          "sha256": "e3ad8d7463eb3fc431c3cd3edd3ee7fb38dc86125fa33af7e861bf93968f2005"
+        },
+        {
+          "path": "compiler/lower/src/MemoryFacts.kt",
+          "sha256": "d5b46278b1d85c515708475c55d081d4c6d5a1747cdd4651d60bc26ac81c7889"
+        },
+        {
+          "path": "compiler/lower/src/Mlib.kt",
+          "sha256": "7578d994cc65b1c1e79937e4355c824ab3aafcdaeb575c4eaa74bf04059444d5"
+        },
+        {
+          "path": "compiler/lower/src/Reachability.kt",
+          "sha256": "aced2cec58d55a82171ce374f53829f798cd928b42e83cf73ec9285d379e9de1"
+        },
+        {
+          "path": "compiler/minic-native/src/Driver.kt",
+          "sha256": "30eaac43165bba1a55fa67203bbfc5c3c8eb3301ed8309ebdf59b3c394eb1cdd"
+        },
+        {
+          "path": "compiler/minic-native/src/Main.kt",
+          "sha256": "ba87e09acca579d77489abe77492154cb5a049bddb36fefb73971c93fb31d393"
+        },
+        {
+          "path": "compiler/minic-native/src/NativeReplIO.kt",
+          "sha256": "196655b5fe43b2883872610f7d48144a0524de1a7abc6aa14c6ab6d1a03191db"
+        },
+        {
+          "path": "stdlib/java/lang/Thread.kt",
+          "sha256": "f930bb0d3edfa1344a93b1b7233028fb03b6d956eb50799b4064cf60ba408059"
+        },
+        {
+          "path": "stdlib/kotlin/Annotations.kt",
+          "sha256": "e1e3c672a3650e94889249e36426209cefd616d70092ab3b05096412263665e3"
+        },
+        {
+          "path": "stdlib/kotlin/ArrayIndices.kt",
+          "sha256": "a01deb827c1f60c8f30bc1af14548b023e64ec12f37cf2ed65dd2b0fa33e39a3"
+        },
+        {
+          "path": "stdlib/kotlin/Arrays.kt",
+          "sha256": "aea047d5362b581dd575c9692f856b7029555a2195b66718646bed7b20f8f1c0"
+        },
+        {
+          "path": "stdlib/kotlin/Builtins.kt",
+          "sha256": "7b77ecf415d5c3741e120cfe5fb29efe61c92b2e43e2e13fb533dd8246e48ec0"
+        },
+        {
+          "path": "stdlib/kotlin/Comparator.kt",
+          "sha256": "f82630afe8011773ffc98f1cfeb7497bef6764656039128006df4f06f6fe7cb0"
+        },
+        {
+          "path": "stdlib/kotlin/ContextParameters.kt",
+          "sha256": "e9fcd39395f98b54495ae91da7444c0265984b36be8b07176b0dfb8a43c30e66"
+        },
+        {
+          "path": "stdlib/kotlin/Lazy.kt",
+          "sha256": "d2d9aef8987bdb246250e8864c9910032706f27cfdac0e8fc075129a4990bec7"
+        },
+        {
+          "path": "stdlib/kotlin/NumbersMore.kt",
+          "sha256": "2284c6a28f6f8a3cacf4f0d433833806395e70aba839b4819395c86c4b0846f0"
+        },
+        {
+          "path": "stdlib/kotlin/Platform.kt",
+          "sha256": "d74bea6f5858389dd8bc8b0a8c49473140e02b5243aa19a570cd20d4f87cb496"
+        },
+        {
+          "path": "stdlib/kotlin/Preconditions.kt",
+          "sha256": "f1fda23db6f6a606d80c45b940397dc86d344cb411aee5b6d47c7029fe4fc6d9"
+        },
+        {
+          "path": "stdlib/kotlin/PrimitiveArrays.kt",
+          "sha256": "dfc01d423a45c12818ef650d18a4109f79386b4195e6f3f858d16f2d49f7f8ab"
+        },
+        {
+          "path": "stdlib/kotlin/Primitives.kt",
+          "sha256": "ca223ea9c9a1e9507f25a07c49af8bcc9925f11447301007ba9ca2951f655663"
+        },
+        {
+          "path": "stdlib/kotlin/Ranges.kt",
+          "sha256": "54f6a63ffd32d9969fef336b6151b203607b839d917361b9ffc60ee9b5e5f6bb"
+        },
+        {
+          "path": "stdlib/kotlin/Result.kt",
+          "sha256": "dcd798695b66be3850722cdb137acc6668ca73fa39128bf1f263f84316fe8042"
+        },
+        {
+          "path": "stdlib/kotlin/Standard.kt",
+          "sha256": "e26b47cf9e9a6d3c0009333d96f40b0246b25ba9e3ca49beed665d8b13d9487c"
+        },
+        {
+          "path": "stdlib/kotlin/Throwable.kt",
+          "sha256": "29f13dbeef00779e76edcd9a96ff1ecc39b3f2127ac4a32ed1e78756a8aac3af"
+        },
+        {
+          "path": "stdlib/kotlin/Tuples.kt",
+          "sha256": "cf9c518633fc27e3018a5544182fa3ff6e37d4aaf2c72359a9b7349facb767b1"
+        },
+        {
+          "path": "stdlib/kotlin/annotation/Annotations.kt",
+          "sha256": "fc0fc3c934f59249fd641bcfe31f31d9544d1707af0918d6837dab171debe0ae"
+        },
+        {
+          "path": "stdlib/kotlin/collections/AbstractCollections.kt",
+          "sha256": "bbc044eb9f89356784e7daaa8051f58d0a21f096c8445ed8552e79bfdc111f86"
+        },
+        {
+          "path": "stdlib/kotlin/collections/ArrayDeque.kt",
+          "sha256": "33702df7d23d46ec157d0d95b5eb0fcbebe752adb3b59a522071f7d04427ce72"
+        },
+        {
+          "path": "stdlib/kotlin/collections/ArrayList.kt",
+          "sha256": "ecb338b8c4e94485a0f9d1efc6a6bc2eafac46e28d62c0e51f549c2527cc04bd"
+        },
+        {
+          "path": "stdlib/kotlin/collections/Builders.kt",
+          "sha256": "46b455a4b83b92052395c8e1fe75478ce8ce72cc4b2e6cc69ad4ff7916819d74"
+        },
+        {
+          "path": "stdlib/kotlin/collections/Collections.kt",
+          "sha256": "4e954dddcfd24418f10eb5dd54296d5be05be4013b91069b6e15c826b0b9a301"
+        },
+        {
+          "path": "stdlib/kotlin/collections/HashMap.kt",
+          "sha256": "ef0d842812abf94fbf13974e9f60982201146319e67dcbd87e68ef740beb0eac"
+        },
+        {
+          "path": "stdlib/kotlin/collections/HashSet.kt",
+          "sha256": "d02f83516c0f66624e227c21ab7ccb9442d38a8a07da80e64c1e091509aca173"
+        },
+        {
+          "path": "stdlib/kotlin/collections/Iterables.kt",
+          "sha256": "70e5e05428977e8ac82e1acf1e1e77a0bd8d92aabcc25e1d6edcd780e186e706"
+        },
+        {
+          "path": "stdlib/kotlin/collections/IterablesMore.kt",
+          "sha256": "9675edf04b3ac6fbb8a784393b42beea35d4dac2273cfbd3fd854a5a9414ff0f"
+        },
+        {
+          "path": "stdlib/kotlin/collections/Iterator.kt",
+          "sha256": "1445e731e8a9ca8a8d5af57d201796d40c0f4c23686065fbd65f7dcad1315961"
+        },
+        {
+          "path": "stdlib/kotlin/collections/MapsMore.kt",
+          "sha256": "06b528f9895e65616495a063a2703436ecbf8fe451138e9d61b6c55030b8ca80"
+        },
+        {
+          "path": "stdlib/kotlin/collections/PrimitiveIterators.kt",
+          "sha256": "accebc755495466b1b12b442ae4818d0c5db702d810520f5814a2237f011b770"
+        },
+        {
+          "path": "stdlib/kotlin/comparisons/Comparisons.kt",
+          "sha256": "8cf2320b99c4be6c2677cc8c3e3b452c386f00690d174404c7d55085df2f38d8"
+        },
+        {
+          "path": "stdlib/kotlin/concurrent/Thread.kt",
+          "sha256": "2dfc6d357ec1e9750fb4b1f95fe254a3a5f90fec1ab57b00213ba0fb597861d8"
+        },
+        {
+          "path": "stdlib/kotlin/internal/Builtin.kt",
+          "sha256": "eb4fa630d35c952cf929ddfae0afd2499865422a492d323b633760b6706fd491"
+        },
+        {
+          "path": "stdlib/kotlin/internal/Conventions.kt",
+          "sha256": "fcb4a8465bbaa7edf0cb1716ae166a51f7c419df6ad0aacb6c6e068f561e8719"
+        },
+        {
+          "path": "stdlib/kotlin/io/Console.kt",
+          "sha256": "71174821cc6210f642a8c6331f5dd334d46962652c0174138b3f350ea86d0676"
+        },
+        {
+          "path": "stdlib/kotlin/jvm/JvmInline.kt",
+          "sha256": "d580ab4dc214848ddf07d9042914023ff1c9acb357cadaca234954b4c1598cce"
+        },
+        {
+          "path": "stdlib/kotlin/math/Math.kt",
+          "sha256": "b6fdd220cc118229bcc7f131475c73a001f0b4bca6badee94ebf0e04ad0631ea"
+        },
+        {
+          "path": "stdlib/kotlin/native/CName.kt",
+          "sha256": "99e35bb8d523009b89f4c8341b786c8dcd0c1c1007e50854b0428086673b30fe"
+        },
+        {
+          "path": "stdlib/kotlin/ranges/Coerce.kt",
+          "sha256": "2c602a429329b51f436a66d59227841d3d93a0b198f6e81413995dab45e6c14f"
+        },
+        {
+          "path": "stdlib/kotlin/reflect/KClass.kt",
+          "sha256": "1f69289fa3418440c9c41c329d17bc79dfeb17978caebb90cdffa0c9a0046f3b"
+        },
+        {
+          "path": "stdlib/kotlin/text/Char.kt",
+          "sha256": "4d1ad07dfc9ee95c4bc1a114a4ab0430d46ae5bf0924b8141c20d485d8056c91"
+        },
+        {
+          "path": "stdlib/kotlin/text/StringBuilder.kt",
+          "sha256": "41273901e3ea1e4fdb105a2c4ef7b27222478894506131b61146a6aa28317e0c"
+        },
+        {
+          "path": "stdlib/kotlin/text/StringNumberConversions.kt",
+          "sha256": "001718ff434e538de71dd5475bdecce27b6f9b534ff03e48148e151a3087c175"
+        },
+        {
+          "path": "stdlib/kotlin/text/Strings.kt",
+          "sha256": "918cbb86ac878bc302272633a9ea2bf3101b1fe4559a9cac919477296b08c352"
+        },
+        {
+          "path": "stdlib/kotlin/text/StringsMore.kt",
+          "sha256": "f999bb3875459c7437312bd5287454c13356e599276afb9a4e3abdc7a1d35646"
+        },
+        {
+          "path": "stdlib/kotlinx/cinterop/Annotations.kt",
+          "sha256": "5111c73461e2dd3ffbabc80f2028ad4af59cec683d0d27ae7a0896e7521e2fbe"
+        },
+        {
+          "path": "stdlib/kotlinx/cinterop/Intrinsics.kt",
+          "sha256": "2d70928b73a573526b32583c7a624ec479b98c3e73b2abbfd553f6f11d9879ad"
+        },
+        {
+          "path": "stdlib/kotlinx/cinterop/Memory.kt",
+          "sha256": "d00ed538dc2e7ce4c6e9677182d92e140b16db9fd06fc5d101184d10dbf6b1be"
+        },
+        {
+          "path": "stdlib/kotlinx/cinterop/Pointers.kt",
+          "sha256": "258993b47f0d4e7c3528d0cbf07ecbdb3059163428c9129370ccfdf935b902d8"
+        },
+        {
+          "path": "stdlib/kotlinx/cinterop/Strings.kt",
+          "sha256": "d44079e6632c3c97074347cbf2f3e193ad1af9c2f92fd65e21e0d95f43bd6b9c"
+        },
+        {
+          "path": "stdlib/kotlinx/cinterop/Types.kt",
+          "sha256": "85ec6a5bf32e69bfee201d101b5ebf53a07c8fa62a4a51a8cbc0501fd000a71f"
+        },
+        {
+          "path": "stdlib/mini/display/Display.kt",
+          "sha256": "c7934604b01c9d056be8da52971b5a45e0f84e6f5e56ed248ff23b97bc8d1875"
+        },
+        {
+          "path": "stdlib/mini/internal/B1Intrinsics.kt",
+          "sha256": "b5d359b049a19be800cc9fdff5b1e23bce3f9420ef16823fd47872a55c4ee36e"
+        },
+        {
+          "path": "stdlib/mini/internal/CSymbol.kt",
+          "sha256": "c32ae7dd50fce011815d492c86f798d382f1934120977a372ade509b0be65186"
+        },
+        {
+          "path": "stdlib/mini/internal/Intrinsics.kt",
+          "sha256": "4e3b28f4439e13736cd9de9fdc2265563b38c5d0f1ba0f771aee4b698c192e90"
+        },
+        {
+          "path": "stdlib/mini/io/Files.kt",
+          "sha256": "0b45dfbf15876bd9ae12d6b2574608cb8b05f05e25078f06441a960ae3968bf3"
+        },
+        {
+          "path": "stdlib/mini/memory/Allocator.kt",
+          "sha256": "12394cffc0a26d962051b456c3b69a9331d629a602cad752b8bf19e2b2801997"
+        },
+        {
+          "path": "stdlib/mini/memory/Allocators.kt",
+          "sha256": "7da6e32a96f753997ea0c1b02ba71d45a1d6ddebb78181a01ca614d3f59764e3"
+        },
+        {
+          "path": "stdlib/mini/memory/Annotations.kt",
+          "sha256": "d28ab1d4142a75a49600bec9c8b189a04ae0bdecbebacd70efe76aab730cdcab"
+        },
+        {
+          "path": "stdlib/mini/memory/Spawn.kt",
+          "sha256": "dd594527e6e318ed91fa4729cdc173f8fc5cc068bcedf30acd4e61499f26e08e"
+        },
+        {
+          "path": "stdlib/mini/wasm/WasmExport.kt",
+          "sha256": "8ed74f362f118f524c1c7a15a2014b4b9141701e80ebeaec8e395c11a7b5fc7b"
+        }
+      ],
+      "set_sha256": "5eae78d75f70f870e8244335a1a64622069d8122a0dbe8e781725083aba622b5"
+    },
+    "command_template": "<stage3> --backend=c -o OUT.c --emit-mir OUT.mir <91 sorted compiler Kotlin paths> --stdlib <62 sorted stdlib Kotlin paths>",
+    "warmups": {
+      "baseline-local-api": {
+        "wall_seconds": 2.927302125026472,
+        "user_seconds": 2.62,
+        "sys_seconds": 0.11,
+        "max_rss_bytes": 680525824.0,
+        "instructions_retired": 47311036535.0,
+        "cycles_elapsed": 10937427105.0,
+        "returncode": 0,
+        "stderr_tail": "luntary context switches\n                2875  involuntary context switches\n         47311036535  instructions retired\n         10937427105  cycles elapsed\n           683312040  peak memory footprint\n",
+        "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+        "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+        "c_bytes": 25248236,
+        "mir_bytes": 18533493
+      },
+      "integrated-api-o1": {
+        "wall_seconds": 2.6383304169867188,
+        "user_seconds": 2.5,
+        "sys_seconds": 0.08,
+        "max_rss_bytes": 697319424.0,
+        "instructions_retired": 47175069090.0,
+        "cycles_elapsed": 10428948487.0,
+        "returncode": 0,
+        "stderr_tail": "luntary context switches\n                 467  involuntary context switches\n         47175069090  instructions retired\n         10428948487  cycles elapsed\n           683344784  peak memory footprint\n",
+        "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+        "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+        "c_bytes": 25248236,
+        "mir_bytes": 18533493
+      },
+      "integrated-api-o2": {
+        "wall_seconds": 4.032144958036952,
+        "user_seconds": 2.75,
+        "sys_seconds": 0.14,
+        "max_rss_bytes": 673693696.0,
+        "instructions_retired": 47053923507.0,
+        "cycles_elapsed": 11232232535.0,
+        "returncode": 0,
+        "stderr_tail": "luntary context switches\n                7830  involuntary context switches\n         47053923507  instructions retired\n         11232232535  cycles elapsed\n           683344784  peak memory footprint\n",
+        "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+        "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+        "c_bytes": 25248236,
+        "mir_bytes": 18533493
+      }
+    },
+    "triads": [
+      {
+        "order": [
+          "baseline-local-api",
+          "integrated-api-o1",
+          "integrated-api-o2"
+        ],
+        "samples": {
+          "baseline-local-api": {
+            "wall_seconds": 2.99079112499021,
+            "user_seconds": 2.77,
+            "sys_seconds": 0.12,
+            "max_rss_bytes": 696926208.0,
+            "instructions_retired": 47262239397.0,
+            "cycles_elapsed": 11238737656.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                5186  involuntary context switches\n         47262239397  instructions retired\n         11238737656  cycles elapsed\n           683656104  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "integrated-api-o1": {
+            "wall_seconds": 2.686646124930121,
+            "user_seconds": 2.58,
+            "sys_seconds": 0.09,
+            "max_rss_bytes": 696565760.0,
+            "instructions_retired": 47118503859.0,
+            "cycles_elapsed": 10719487835.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                 523  involuntary context switches\n         47118503859  instructions retired\n         10719487835  cycles elapsed\n           682591120  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "integrated-api-o2": {
+            "wall_seconds": 2.861062709009275,
+            "user_seconds": 2.7,
+            "sys_seconds": 0.09,
+            "max_rss_bytes": 697696256.0,
+            "instructions_retired": 46904341283.0,
+            "cycles_elapsed": 11032447104.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                3390  involuntary context switches\n         46904341283  instructions retired\n         11032447104  cycles elapsed\n           683803536  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          }
+        }
+      },
+      {
+        "order": [
+          "integrated-api-o1",
+          "integrated-api-o2",
+          "baseline-local-api"
+        ],
+        "samples": {
+          "integrated-api-o1": {
+            "wall_seconds": 2.788340084021911,
+            "user_seconds": 2.67,
+            "sys_seconds": 0.1,
+            "max_rss_bytes": 697974784.0,
+            "instructions_retired": 47158683521.0,
+            "cycles_elapsed": 10973700869.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                1513  involuntary context switches\n         47158683521  instructions retired\n         10973700869  cycles elapsed\n           684000144  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "integrated-api-o2": {
+            "wall_seconds": 2.7127380419988185,
+            "user_seconds": 2.6,
+            "sys_seconds": 0.09,
+            "max_rss_bytes": 697090048.0,
+            "instructions_retired": 46867806460.0,
+            "cycles_elapsed": 10758876612.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                1458  involuntary context switches\n         46867806460  instructions retired\n         10758876612  cycles elapsed\n           683213736  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "baseline-local-api": {
+            "wall_seconds": 2.71082104195375,
+            "user_seconds": 2.56,
+            "sys_seconds": 0.08,
+            "max_rss_bytes": 697155584.0,
+            "instructions_retired": 47306602026.0,
+            "cycles_elapsed": 10636524826.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                 915  involuntary context switches\n         47306602026  instructions retired\n         10636524826  cycles elapsed\n           683197328  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          }
+        }
+      },
+      {
+        "order": [
+          "integrated-api-o2",
+          "baseline-local-api",
+          "integrated-api-o1"
+        ],
+        "samples": {
+          "integrated-api-o2": {
+            "wall_seconds": 2.6266685830196366,
+            "user_seconds": 2.54,
+            "sys_seconds": 0.07,
+            "max_rss_bytes": 697139200.0,
+            "instructions_retired": 46893999894.0,
+            "cycles_elapsed": 10498454377.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                 274  involuntary context switches\n         46893999894  instructions retired\n         10498454377  cycles elapsed\n           683246480  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "baseline-local-api": {
+            "wall_seconds": 2.7953452080255374,
+            "user_seconds": 2.67,
+            "sys_seconds": 0.07,
+            "max_rss_bytes": 696991744.0,
+            "instructions_retired": 47229107231.0,
+            "cycles_elapsed": 10833586225.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                1145  involuntary context switches\n         47229107231  instructions retired\n         10833586225  cycles elapsed\n           683033488  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "integrated-api-o1": {
+            "wall_seconds": 2.668261709040962,
+            "user_seconds": 2.57,
+            "sys_seconds": 0.07,
+            "max_rss_bytes": 697614336.0,
+            "instructions_retired": 47144798006.0,
+            "cycles_elapsed": 10614090011.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                 455  involuntary context switches\n         47144798006  instructions retired\n         10614090011  cycles elapsed\n           683656104  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          }
+        }
+      },
+      {
+        "order": [
+          "baseline-local-api",
+          "integrated-api-o1",
+          "integrated-api-o2"
+        ],
+        "samples": {
+          "baseline-local-api": {
+            "wall_seconds": 2.6864036669721827,
+            "user_seconds": 2.59,
+            "sys_seconds": 0.07,
+            "max_rss_bytes": 697106432.0,
+            "instructions_retired": 47220244004.0,
+            "cycles_elapsed": 10668313005.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                 611  involuntary context switches\n         47220244004  instructions retired\n         10668313005  cycles elapsed\n           683164584  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "integrated-api-o1": {
+            "wall_seconds": 2.7992150000063702,
+            "user_seconds": 2.67,
+            "sys_seconds": 0.07,
+            "max_rss_bytes": 696516608.0,
+            "instructions_retired": 47106480203.0,
+            "cycles_elapsed": 10882427515.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                1741  involuntary context switches\n         47106480203  instructions retired\n         10882427515  cycles elapsed\n           682541968  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "integrated-api-o2": {
+            "wall_seconds": 2.911522874957882,
+            "user_seconds": 2.69,
+            "sys_seconds": 0.13,
+            "max_rss_bytes": 697647104.0,
+            "instructions_retired": 47021277072.0,
+            "cycles_elapsed": 11062995053.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                5046  involuntary context switches\n         47021277072  instructions retired\n         11062995053  cycles elapsed\n           683754384  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          }
+        }
+      },
+      {
+        "order": [
+          "integrated-api-o1",
+          "integrated-api-o2",
+          "baseline-local-api"
+        ],
+        "samples": {
+          "integrated-api-o1": {
+            "wall_seconds": 2.6634101249510422,
+            "user_seconds": 2.56,
+            "sys_seconds": 0.07,
+            "max_rss_bytes": 697335808.0,
+            "instructions_retired": 47136150413.0,
+            "cycles_elapsed": 10583274831.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                 383  involuntary context switches\n         47136150413  instructions retired\n         10583274831  cycles elapsed\n           683361168  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "integrated-api-o2": {
+            "wall_seconds": 2.7422773329308257,
+            "user_seconds": 2.62,
+            "sys_seconds": 0.08,
+            "max_rss_bytes": 697106432.0,
+            "instructions_retired": 46825461988.0,
+            "cycles_elapsed": 10720819916.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                 932  involuntary context switches\n         46825461988  instructions retired\n         10720819916  cycles elapsed\n           683230120  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          },
+          "baseline-local-api": {
+            "wall_seconds": 2.9281858330359682,
+            "user_seconds": 2.7,
+            "sys_seconds": 0.12,
+            "max_rss_bytes": 698351616.0,
+            "instructions_retired": 47244399517.0,
+            "cycles_elapsed": 11039369700.0,
+            "returncode": 0,
+            "stderr_tail": "luntary context switches\n                3573  involuntary context switches\n         47244399517  instructions retired\n         11039369700  cycles elapsed\n           684409768  peak memory footprint\n",
+            "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+            "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+            "c_bytes": 25248236,
+            "mir_bytes": 18533493
+          }
+        }
+      }
+    ],
+    "comparisons": {
+      "integrated_o1_vs_baseline_o1": {
+        "wall_ratio": 0.9611142542311635,
+        "instruction_ratio": 0.9977087420920431
+      },
+      "integrated_o2_vs_integrated_o1": {
+        "wall_ratio": 1.0207065632814414,
+        "instruction_ratio": 0.9948627429928343
+      },
+      "integrated_o2_vs_baseline_o1": {
+        "wall_ratio": 0.9810156273570964,
+        "instruction_ratio": 0.9925832558656204
+      },
+      "all_c_mir_outputs_identical": true
+    },
+    "binary_provenance": {
+      "baseline_path": "$API_BASELINE_LOCAL_STAGE3",
+      "integrated_o1_path": "$INTEGRATED_API_O1_STAGE3",
+      "integrated_o2_path": "$INTEGRATED_API_O2_STAGE3",
+      "shared_api_runtime_object_dir": "$INTEGRATED_API_RUNTIME_OBJECTS",
+      "baseline_built_with": "candidate API compiler, --backend=llvm-api --opt=O1; clang only final links",
+      "integrated_o1_built_with": "LLVM C API --opt=O1; shared runtime objects compiled -O1",
+      "integrated_o2_built_with": "LLVM C API --opt=O2; shared runtime objects compiled -O1",
+      "link_recipe": "same LLVM 18 static libraries, system libraries, force-loaded zstd/libunwind, C++ runtime and export flags; clang performs final system link only"
+    },
+    "build_manifest": {
+      "llvm": "18.1.8",
+      "target": "arm64-apple-macosx",
+      "runtime_objects": "same API runtime objects compiled at O1 for O1 and O2 compilers",
+      "link_args": "same static LLVM link args as O1; clang final link only",
+      "o2_build_time_seconds": 35.33,
+      "o2_link_time_seconds": 0.37,
+      "o2_stage3_bytes": 60816872,
+      "o2_stage3_sha256": "fbcb2842806283725724a0d799af0b81f2520ea32e0722727a9d3aead042e0ae",
+      "o2_stripped_bytes": 47067408,
+      "o2_stripped_sha256": "00119ee960c8ee904d1bb8ca2b7e49d3e818fd46d9e69e1f137f524563f79d29",
+      "o2_object_bytes": 7474440,
+      "o2_object_sha256": "e0709114bee92bb066cd9bca8c35298ef3e35e648015ecab459fdf1bd8ff2b0e",
+      "o1_stage3_bytes": 60849928,
+      "o1_stage3_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+      "o1_stripped_bytes": 47100464,
+      "o1_object_bytes": 7482968,
+      "o1_object_sha256": "65df219f016d60a84ffe70d247153cfaf7cbeca784ba08efd000c8ee7d26bae6",
+      "C_MIR_LL_outputs_identical_between_O1_O2": true,
+      "stage3_stripped_size_delta_bytes": -33056,
+      "stage3_object_size_delta_bytes": -8528,
+      "build_time_comparison_note": "O2 build time is an observational single build (35.33s); O1 stage3 build time was about 33.3s. These are not repeated controlled timings."
+    },
+    "interpretation": "O2 retires slightly fewer instructions than O1, but its median wall time is slightly higher. Ranges overlap, so the runtime difference is inconclusive. Compared with the API O1 baseline, O2 is under 1% lower in instructions and has overlapping wall ranges; these are small effects."
   }
 }
