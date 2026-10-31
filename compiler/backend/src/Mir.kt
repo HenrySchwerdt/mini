@@ -27,6 +27,8 @@ class MirModule(
     val includes: List<String> = emptyList(),
     /** `@file:CLink("lib")`: libraries the program is linked with (`-l<lib>`). */
     val links: List<String> = emptyList(),
+    /** `@WasmExport` functions of a WebAssembly library (WasmLib.kt); empty for programs. */
+    val wasmExports: List<MirWasmExport> = emptyList(),
 )
 
 /**

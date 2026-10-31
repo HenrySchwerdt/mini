@@ -1,6 +1,8 @@
 package mini.minicnative
 
 import mini.backend.CEmitter
+import mini.backend.Mangling
+import mini.backend.WasmGlue
 import mini.backend.MirModule
 import mini.backend.MirWriter
 import mini.backend.llvm.LlvmEmitter
@@ -27,10 +29,12 @@ import mini.lower.UnsupportedConstruct
 import mini.lower.lowerToMir
 
 /*
- *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--target=wasm32] [--emit-c out.c] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   minic-native [-o out.c] [--emit-mir out.mir] [--emit-ll out.ll] [--target=wasm32] [--emit=wasm-lib] [--emit-c out.c] [--no-rc-opt] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
  *   minic-native --backend=llvm-api -o out.o [--exe prog [--link-arg a]...] [--opt=O1] ...       (LLVM C API build only)
  *   minic-native --backend=llvm-api --run [--opt=O1] <user.kt>... --stdlib <std.kt>... [-- program args]
  *   minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
+ *   wasm library: --target=wasm32 --emit=wasm-lib --emit-ll <lib.ll> [--emit-js <lib.mjs> [--wasm-file <lib.wasm>]] [--emit-dts <lib.d.ts>] <user.kt>... [--stdlib ...]
+ *                (a module without entry point that exports the `@WasmExport` functions; WasmLib.kt, website/guide/wasm-library.md)
  *   libraries:   [--lib <x.mlib>]...   declarations from the stubs and code from the MIR of precompiled libraries (docs/mlib.md)
  *                --emit-mlib <out.mlib> [--name <n>] [--lib-version <v>] [--compiler-id <id>] [--no-memory-check] <user.kt>...   builds a library from the files
  *   diagnostics: [--color=auto|always|never] [--error-format=human|json] [--error-limit=N]
@@ -114,6 +118,10 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     var cOut: String? = null
     var rcOpt = true
     var wasm32 = false
+    var wasmLib = false
+    var jsOut: String? = null
+    var dtsOut: String? = null
+    var wasmFile: String? = null
     var check = false
     var brief = false
     var werror = false
@@ -153,6 +161,13 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         } else if (a == "--target=wasm32") {
             wasm32 = true
             i += 1
+        } else if (a == "--emit=wasm-lib") {
+            wasmLib = true
+            i += 1
+        } else if (a == "--emit-js" || a == "--emit-dts" || a == "--wasm-file") {
+            if (i + 1 >= args.size) throw UsageError("missing value for " + a + "\n" + USAGE)
+            if (a == "--emit-js") jsOut = args[i + 1] else if (a == "--emit-dts") dtsOut = args[i + 1] else wasmFile = args[i + 1]
+            i += 2
         } else if (a == "--emit-c") {
             if (i + 1 >= args.size) throw UsageError("missing value for --emit-c\n" + USAGE)
             cOut = args[i + 1]
@@ -255,10 +270,13 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         }
     }
     val api = backend == "llvm-api"
+    if (wasmLib && !wasm32) throw UsageError("--emit=wasm-lib needs --target=wasm32\n" + USAGE)
+    if (wasmLib && (api || output != null || cOut != null || exe != null || run)) throw UsageError("--emit=wasm-lib writes LLVM IR: use --emit-ll <file.ll> (and --emit-js / --emit-dts for the JavaScript side)\n" + USAGE)
+    if (!wasmLib && (jsOut != null || dtsOut != null)) throw UsageError("--emit-js and --emit-dts need --emit=wasm-lib\n" + USAGE)
     if (api && llvm == null) throw UsageError("--backend=llvm-api needs the build of minic-native with the LLVM C API (compiler/llvm-c)")
     if ((run || exe != null) && !api) throw UsageError("--run and --exe need --backend=llvm-api\n" + USAGE)
     if (firstName == null && args.size > 0 && inputs.isEmpty()) throw UsageError("no input files\n" + USAGE)
-    if (firstName == null || (!check && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null)) throw UsageError(USAGE)
+    if (firstName == null || (!check && !wasmLib && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null)) throw UsageError(USAGE)
     val name: String = firstName
     val libs = ArrayList<Mlib>()
     for (lp in libPaths) {
@@ -300,6 +318,21 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         throw DriverExit(1)
     }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
+    if (wasmLib) {
+        if (module.functions.any { it.cName == Mangling.MAIN }) {
+            printGeneral(diag, "a wasm library has no entry point: remove `fun main` from " + name + " (or build it without --emit=wasm-lib)")
+            throw DriverExit(1)
+        }
+        if (module.wasmExports.isEmpty()) {
+            printGeneral(diag, "no exported functions: annotate top-level functions with @WasmExport (import mini.wasm.WasmExport)")
+            throw DriverExit(1)
+        }
+        val lib = module.sourceName.removeSuffix(".kt")
+        if (llOut != null) writeTextFile(llOut, LlvmEmitter.emit(module, rcOpt, target = LlvmTarget.WASM32_LIB))
+        if (jsOut != null) writeTextFile(jsOut, WasmGlue.mjs(module, wasmFile ?: (lib + ".wasm")))
+        if (dtsOut != null) writeTextFile(dtsOut, WasmGlue.dts(module))
+        return
+    }
     if (cOut != null) writeTextFile(cOut, CEmitter.emit(module, rcOpt, lineFile = if (lineDirs) cOut else null))
     if (api && llvm != null) {
         if (run) {

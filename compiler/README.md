@@ -918,3 +918,29 @@ node (fake `self`, `file:` fetch): load check, M0101 and type-error diagnostics,
 * Run time of `minic.wasm` under node: `--check` of a small program 0.7 s including module compile and reading the 262 KB stdlib.
 * C interop programs (`cinterop_*`) are not part of the wasm check: they bind LP64 libc signatures (`strlen` as `Long`; wasm32 `size_t` is 32 bit) and need their own C files.
 * The prebuilt clang loads in about 1 s per invocation under node (one `llvm.core.wasm` instantiation); compiling hello.ll at `-O1` is a few seconds.
+
+### WebAssembly libraries (`--emit=wasm-lib`)
+
+The same wasm32 backend also builds a *reactor* module for JavaScript (user guide: `website/guide/wasm-library.md`):
+
+```
+minic-native --target=wasm32 --emit=wasm-lib --emit-ll lib.ll [--emit-js lib.mjs --wasm-file lib.wasm] [--emit-dts lib.d.ts] lib.kt --lib stdlib.mlib ...
+clang --target=wasm32-wasip1 -c lib.ll -o lib.o
+wasm-ld -m wasm32 --no-entry ... crt1-reactor.o lib.o libminirt-wasm32.a -lc libclang_rt.builtins.a -o lib.wasm
+```
+
+* **Front end.** `stdlib/mini/wasm/WasmExport.kt` declares `@WasmExport(name = "")`. `Ir2MirWasm.kt` collects the annotated top-level functions of the program (not of `--lib` dependencies),
+  checks the signatures with `WasmAbi.kindOf` (Int, Long, Float, Double, Boolean, String, Int/Long/Double/FloatArray, non-null class types as handles; result also Unit) and reports
+  `file:line:col: error: @WasmExport function 'f': parameter 'x' has the type 'T', which cannot cross the boundary` for the rest (and for duplicate or reserved names, generics, extensions, `vararg`, `suspend`).
+  The result is `MirModule.wasmExports` (`MirWasmExport(name, cName)`), carried through `MirLink`; the exported functions are ordinary MIR functions, kept because every function of a `main`-less program is a root.
+  The top-level property initialisers are forced by a synthesized `mini_wasm_init_facades` function (what `main` does first in a program).
+* **Wrappers.** With `LlvmTarget.WASM32_LIB` the LLVM lowering (`Lowering.emitWasmLib`) writes, instead of `mk_main`, one IR function per export (`mkw_<name>`, attribute `"wasm-export-name"="<name>"`, so no linker flags)
+  that converts the wasm arguments (`mk_string_from_utf8`, `mk_wasm_array_in`), calls the Kotlin function, releases the temporaries, calls `mk_wasm_failed()` and converts the result (`mk_wasm_string_out`, `mk_wasm_array_out`,
+  a handle is passed on with its reference), plus `mini_init`. The text IR builder only (the in-process API builder rejects `exportCurrentFunction`).
+* **Runtime.** `runtime/src/wasmlib.c` (in `libminirt-wasm32.a`, inert natively) exports `mini_alloc`, `mini_free`, `mini_release`, `mini_result_len`, `mini_take_error` (`export_name` attributes) and holds the helpers above.
+  Error protocol: no trap and no unwinding; `mk_wasm_failed` turns the pending exception (the runtime's normal mechanism) into `Class: message`, flushes stdout and returns true, the glue then throws `MiniError`.
+* **Glue.** `WasmLib.kt` (`WasmGlue.mjs` / `.dts`) generates the ES module from the MIR signatures: a static runtime (WASI shim for `fd_write` etc., `load`, string / array copies, `Handle` base class with `FinalizationRegistry`) and one wrapper per export; the other WASI imports of the module become `ENOSYS` stubs.
+* **`mini`.** `kind = "wasm-lib"` (or `mini build --target wasm32 --lib`) runs minic, then `$MINI_WASM_CLANG` (default `clang`, needs the wasm32 target) and `$MINI_WASM_LD` (default `wasm-ld`) against `$MINI_WASM_SYSROOT` and `$MINI_WASM_RUNTIME`
+  (`<root>/lib/wasm32/`, staged by `scripts/wasm/install-wasm32.sh`) and writes `build/wasm/<name>.{wasm,mjs,d.ts}`.
+* **Tests.** `compiler/testdata/wasmexport_*` (diagnostics, inert annotation; also run by `scripts/wasm/test-programs.sh`), `LlvmEmitterTest`, `scripts/wasm/test-wasm-lib.sh` (`mini build` of `scripts/wasm/wasm-lib/app` with a library dependency, Node assertions in `test.mjs`,
+  Chromium through Playwright in `test-browser.mjs`).

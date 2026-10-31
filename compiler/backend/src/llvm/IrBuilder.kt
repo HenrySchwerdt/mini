@@ -90,6 +90,9 @@ interface IrBuilder<V : Any, B : Any> {
         attrs: IrAttrs, linkage: IrLinkage,
     )
 
+    /** The function being defined is exported from the wasm module under [name] (`"wasm-export-name"`); only the text builder does it. */
+    fun exportCurrentFunction(name: String)
+
     fun param(i: Int): V
     fun entryBlock(): B
     fun endFunction()
