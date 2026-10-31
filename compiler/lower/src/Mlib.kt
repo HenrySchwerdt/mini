@@ -92,13 +92,13 @@ fun mlibObjectInput(library: Mlib, dependencies: List<Mlib>): MlibObjectInput {
     // a dependent library may extend a class from the same package, and its dispatch tables
     // then contain function definitions from an earlier library.
     val libraryClassNames = libraryModule.classes.map { it.cName }.toSet()
-    val libraryFunctionNames = libraryModule.functions.map { it.cName }.toSet()
     // Lowering creates helper classes (for example mk.Ref for a mutable captured local) whose
     // qualified names do not belong to the source package. Those classes still belong in the
     // object that contains the function which constructs them. Track class references through
     // owned MIR before classifying the remaining classes as imports.
     val classesByName = full.classes.associateBy { it.cName }
     val dependencyFunctions = dependencyModules.flatMap { it.functions }
+    val dependencyFunctionNames = dependencyFunctions.map { it.cName }.toHashSet()
     val dependencyClassNames = dependencyModules.flatMap { it.classes }.map { it.cName }.toHashSet()
     dependencyClassNames.addAll(referencedClasses(dependencyFunctions))
     // The frontend also inserts builtin classes (notably kotlin.Function$arity) into every
@@ -106,7 +106,11 @@ fun mlibObjectInput(library: Mlib, dependencies: List<Mlib>): MlibObjectInput {
     val ownClasses = full.classes.filter {
         it.cName in libraryClassNames && !it.external && it.cName !in dependencyClassNames
     }.map { it.cName }.toHashSet()
-    val ownFunctions = full.functions.filter { it.cName in libraryFunctionNames }.map { it.cName }.toHashSet()
+    // MirLink keeps the first definition (dependency order). Shared generated helpers such as
+    // mk.Ref<T> constructors can have the same stable C name in multiple libraries; keep only
+    // definitions whose name is not already provided by a dependency.
+    val ownFunctionNames = libraryModule.functions.map { it.cName }.filter { it !in dependencyFunctionNames }.toHashSet()
+    val ownFunctions = full.functions.filter { it.cName in ownFunctionNames }.map { it.cName }.toHashSet()
     val constructors = full.functions.filter { it.constructorOf != null }.associateBy { it.constructorOf!! }
     val ownedBodyFunctions = full.functions.filter { it.cName in ownFunctions }
     ownClasses.addAll(referencedClasses(ownedBodyFunctions).filter {
@@ -118,13 +122,13 @@ fun mlibObjectInput(library: Mlib, dependencies: List<Mlib>): MlibObjectInput {
     while (added) {
         val before = ownClasses.size + ownFunctions.size
         for (c in full.classes) if (c.cName in ownClasses) {
-            c.objectCtor?.takeIf { it in libraryFunctionNames }?.let { ownFunctions.add(it) }
-            c.vtable.filterNotNull().filter { it in libraryFunctionNames }.forEach { ownFunctions.add(it) }
+            c.objectCtor?.takeIf { it in ownFunctionNames }?.let { ownFunctions.add(it) }
+            c.vtable.filterNotNull().filter { it in ownFunctionNames }.forEach { ownFunctions.add(it) }
             for (itable in c.itables) {
-                itable.entries.filterNotNull().filter { it in libraryFunctionNames }.forEach { ownFunctions.add(it) }
+                itable.entries.filterNotNull().filter { it in ownFunctionNames }.forEach { ownFunctions.add(it) }
             }
         }
-        for (className in ownClasses) constructors[className]?.takeIf { it.cName in libraryFunctionNames }?.let { ownFunctions.add(it.cName) }
+        for (className in ownClasses) constructors[className]?.takeIf { it.cName in ownFunctionNames }?.let { ownFunctions.add(it.cName) }
         val newlyOwnedFunctions = full.functions.filter { it.cName in ownFunctions }
         val newlyReferenced = referencedClasses(newlyOwnedFunctions).filter {
             val c = classesByName[it]

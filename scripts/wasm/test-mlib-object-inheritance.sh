@@ -22,20 +22,28 @@ interface Readable {
 open class Base : Readable {
     override fun read(): Int = 7
 }
+
+fun counterA(): () -> Int {
+    var n = 5
+    return { n += 1; n }
+}
 EOF
 
 cat >"$work/derived.kt" <<'EOF'
 package shared
 
 class Derived : Base()
+
+fun counterB(): () -> Int {
+    var n = 39
+    return { n += 1; n }
+}
 EOF
 
 cat >"$work/app.kt" <<'EOF'
 package app
 
-import shared.Base
-import shared.Derived
-import shared.Readable
+import shared.*
 
 fun main() {
     val derived = Derived()
@@ -43,6 +51,12 @@ fun main() {
     val readable: Readable = derived
     println(base.read())
     println(readable.read())
+    val a = counterA()
+    println(a())
+    println(a())
+    val b = counterB()
+    println(b())
+    println(b())
 }
 EOF
 
@@ -74,8 +88,8 @@ $Y --mount "$w" clang --target=wasm32-wasip1 -Wl,--fatal-warnings \
 
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/split.wasm" >"$work/split.out"
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/mono.wasm" >"$work/mono.out"
-printf '7\n7\n' >"$work/expected.out"
+printf '7\n7\n6\n7\n40\n41\n' >"$work/expected.out"
 cmp "$work/expected.out" "$work/split.out"
 cmp "$work/expected.out" "$work/mono.out"
 cmp "$work/mono.out" "$work/split.out"
-echo "split inherited virtual/interface dispatch matches monolithic output"
+echo "split inherited dispatch and shared mutable-capture helpers match monolithic output"

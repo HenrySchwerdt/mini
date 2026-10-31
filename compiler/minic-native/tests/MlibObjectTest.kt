@@ -39,10 +39,18 @@ class MlibObjectTest {
             "shared.Base", baseName, false, null, emptyList(), listOf(ifaceName),
             listOf(null, null, null, value.cName), listOf(MirItable(ifaceName, listOf(value.cName))),
         )
+        val refName = "kc_mk_DRefI"
+        val refType = TObject("mk.Ref", refName, false)
+        val refThis = MirLocal(0, "this", refType)
+        val refCtor = MirFunction(
+            "mk.Ref.<init>", "${refName}_C", listOf(refThis), TUnit,
+            listOf(MirStmt.Return(null)), refName,
+        )
+        val refClass = MirClass("mk.Ref", refName, false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList(), refCtor.cName)
         val iface = MirClass("shared.Value", ifaceName, true, null, emptyList(), emptyList(), emptyList(), emptyList())
         val base = Mlib(
             "base", "0.0.0", "", "baseTag", emptyList(), listOf(MlibStub("Base.kt", "package shared\n")),
-            MirWriter.write(MirModule("base.mlib", listOf(value), listOf(iface, baseClass))), "baseHash",
+            MirWriter.write(MirModule("base.mlib", listOf(value, refCtor), listOf(iface, baseClass, refClass))), "baseHash",
         )
 
         val derivedType = TObject("shared.Derived", derivedName, false)
@@ -60,19 +68,27 @@ class MlibObjectTest {
             "shared.Derived", derivedName, false, baseName, emptyList(), listOf(ifaceName),
             listOf(null, null, null, value.cName), listOf(MirItable(ifaceName, listOf(bridgeName))),
         )
+        val duplicateRefThis = MirLocal(0, "this", refType)
+        val duplicateRefCtor = MirFunction(
+            "mk.Ref.<init>", refCtor.cName, listOf(duplicateRefThis), TUnit,
+            listOf(MirStmt.Return(null)), refName,
+        )
         val derived = Mlib(
             "derived", "0.0.0", "", "derivedTag", listOf(MlibDep("base", "baseHash")),
             listOf(MlibStub("Derived.kt", "package shared\n")),
-            MirWriter.write(MirModule("derived.mlib", listOf(derivedCtor, bridge), listOf(derivedClass))), "derivedHash",
+            MirWriter.write(MirModule("derived.mlib", listOf(derivedCtor, bridge, duplicateRefCtor), listOf(derivedClass, refClass))), "derivedHash",
         )
 
         val baseInput = mlibObjectInput(base, emptyList())
         val derivedInput = mlibObjectInput(derived, listOf(base))
         assertTrue(value.cName in derivedInput.externalFunctions.map { it.cName })
         assertFalse(value.cName in derivedInput.module.functions.map { it.cName })
+        assertTrue(refCtor.cName in derivedInput.externalFunctions.map { it.cName })
+        assertFalse(refCtor.cName in derivedInput.module.functions.map { it.cName }, "shared synthetic constructor remains a dependency import")
         assertTrue(bridgeName in derivedInput.module.functions.map { it.cName }, "synthetic bridge defined by this library stays owned")
         assertTrue(derivedName in derivedInput.exportedClassNames)
         assertTrue(baseName in derivedInput.externalClassNames)
+        assertTrue(refName in derivedInput.externalClassNames, "shared synthetic class is not exported again")
         var derivedLayout: MirClass? = null
         for (klass in derivedInput.module.classes) if (klass.cName == derivedName) derivedLayout = klass
         assertTrue(derivedLayout != null)
@@ -81,6 +97,7 @@ class MlibObjectTest {
 
         val linked = mini.backend.MirLink.link(listOf(baseInput.module, derivedInput.module), MirModule("app", emptyList()))
         assertEquals(1, linked.functions.count { it.cName == value.cName }, "the dependency implementation has one definition across both object inputs")
+        assertEquals(1, linked.functions.count { it.cName == refCtor.cName }, "the shared synthetic constructor has one definition across both object inputs")
     }
 
     @Test
