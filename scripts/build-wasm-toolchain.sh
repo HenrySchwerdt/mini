@@ -24,6 +24,7 @@ dist=build/wasm-toolchain
 
 [ -x build/native/bin/minic-native ] || ./mini --version >/dev/null
 [ -d scripts/wasm/node_modules ] || npm ci --prefix scripts/wasm
+scripts/build-mini.sh --quiet
 
 scripts/wasm/build-runtime.sh "$w"
 scripts/wasm/build-minic-wasm.sh "$w"
@@ -35,23 +36,24 @@ fi
 
 rm -rf "$dist"; mkdir -p "$dist"
 cp "$w/minic.wasm" "$w/libminirt-wasm32.a" "$w/minirt-entry-wasm32.o" "$dist/"
-node scripts/wasm/pack-stdlib.mjs stdlib "$dist/stdlib.json"
-node scripts/wasm/pack-libs.mjs libs "$dist/libs.json"   # preinstalled libraries (mini.plot, ...), compiled with the program that imports them
+cp build/native/lib/stdlib.mlib "$dist/stdlib.mlib"
+node scripts/wasm/pack-mlibs.mjs . "$dist/libs.json" build/native/bin/minic-native build/native/lib/stdlib.mlib
 clang_version="$(node -p "require('./scripts/wasm/package.json').dependencies['@yowasp/clang']")"
 node -e '
 const fs = require("fs")
 const [dist, clangVersion, commit] = process.argv.slice(1)
 const size = f => fs.statSync(`${dist}/${f}`).size
+const libAssets = JSON.parse(fs.readFileSync(`${dist}/libs.json`, "utf8")).libs.map(l => l.path).filter(Boolean)
 fs.writeFileSync(`${dist}/toolchain.json`, JSON.stringify({
   format: 1,
   commit,
   clang: { package: "@yowasp/clang", version: clangVersion, target: "wasm32-wasip1" },
-  files: Object.fromEntries(["minic.wasm", "libminirt-wasm32.a", "minirt-entry-wasm32.o", "stdlib.json", "libs.json"].map(f => [f, size(f)])),
+  files: Object.fromEntries(["minic.wasm", "libminirt-wasm32.a", "minirt-entry-wasm32.o", "stdlib.mlib", "libs.json", ...libAssets].map(f => [f, size(f)])),
   // what the browser runs, in order (all paths relative to the virtual working directory)
   pipeline: {
-    check: ["minic.wasm --check --brief prog.kt --stdlib <stdlib files>"],
+    check: ["minic.wasm --check --brief prog.kt --lib stdlib.mlib"],
     compile: [
-      "minic.wasm --emit-ll prog.ll prog.kt --stdlib <stdlib files>",
+      "minic.wasm --emit-ll prog.ll prog.kt --lib stdlib.mlib --lib <used preinstalled libraries>",
       "clang --target=wasm32-wasip1 -O1 -Wno-override-module -c prog.ll -o prog.o",
       "clang --target=wasm32-wasip1 prog.o libminirt-wasm32.a minirt-entry-wasm32.o -o prog.wasm"
     ],
@@ -64,6 +66,5 @@ ls -l "$dist" build/wasm-toolchain.tar.gz
 
 # The website layout (manifest.json + versioned directory with the module worker), checked through the real worker protocol.
 node scripts/wasm/pack-site.mjs "$dist" build/site/toolchain
-node scripts/wasm/precompile-examples.mjs build/site/toolchain
 [ "$skip_test" -eq 1 ] || node --no-warnings scripts/wasm/test-worker.mjs build/site/toolchain
 tar -C build/site -czf build/wasm-toolchain-site.tar.gz toolchain

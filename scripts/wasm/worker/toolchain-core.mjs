@@ -9,43 +9,70 @@ const WORK = '/work'
 /**
  * @param {object} a
  * @param {WebAssembly.Module} a.minic        compiled minic.wasm
- * @param {{path: string, text: string}[]} a.stdlib   stdlib sources in compilation order
+ * @param {{path: string, text: string}[]} [a.stdlib]  legacy stdlib sources in compilation order
+ * @param {string} [a.stdlibMlib]                    precompiled stdlib MIR
  * @param {(args: string[], files: object, options: object) => Promise<object>} [a.clang]   `commands.clang` of @yowasp/clang (level full)
  * @param {Uint8Array} [a.libminirt]          libminirt-wasm32.a
  * @param {Uint8Array} [a.entry]              minirt-entry-wasm32.o
- * @param {{name: string, packages: string[], files: {path: string, text: string}[]}[]} [a.libs]
- *        preinstalled libraries (libs.json, built by pack-libs.mjs): their sources are compiled together with the program
- *        when the program mentions one of their packages (`import mini.plot.*`), like a path dependency of `mini build`
+ * @param {{name: string, packages: string[], files?: {path: string, text: string}[], mlib?: string}[]} [a.libs]
+ *        preinstalled libraries (libs.json): source entries support legacy manifests; mlib entries link precompiled MIR
  */
-export function createCore({ minic, stdlib, clang, libminirt, entry, libs = [] }) {
+export function createCore({ minic, stdlib = [], stdlibMlib, clang, libminirt, entry, libs = [] }) {
     const stdlibPaths = stdlib.map(f => `${WORK}/stdlib/${f.path}`)
     const stdlibBytes = stdlib.map(f => enc.encode(f.text))
+    const stdlibMlibPath = `${WORK}/stdlib.mlib`
+    const stdlibMlibBytes = stdlibMlib ? enc.encode(stdlibMlib) : null
+    const libMlibBytes = new Map(libs.filter(l => typeof l.mlib === 'string').map(l => [l.name, enc.encode(l.mlib)]))
 
     const safeName = n => n.replace(/^\/+/, '').replace(/\.\.\//g, '')
 
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const libMatchers = libs.map(l => new RegExp(`(?<![\\w.])(?:${l.packages.map(escape).join('|')})(?![\\w])`))
 
+    function requiredLibraryNames(files) {
+        const wanted = new Set()
+        libs.forEach((l, i) => { if (files.some(f => libMatchers[i].test(f.text))) wanted.add(l.name) })
+        const byName = new Map(libs.map(l => [l.name, l]))
+        const includeDependencies = name => {
+            const lib = byName.get(name)
+            for (const dep of lib?.dependencies ?? []) if (!wanted.has(dep)) {
+                wanted.add(dep)
+                includeDependencies(dep)
+            }
+        }
+        for (const name of [...wanted]) includeDependencies(name)
+        return libs.filter(l => wanted.has(l.name)).map(l => l.name)
+    }
+
     /** Library files the program needs, as [path, text] pairs below /work/libs. */
     function libFilesFor(files) {
         const out = []
-        libs.forEach((l, i) => {
-            if (files.some(f => libMatchers[i].test(f.text))) for (const f of l.files) out.push([`${WORK}/libs/${l.name}/${f.path}`, f.text])
-        })
+        // pack-mlibs writes dependency-first order; preserve it for the compiler's --lib validation.
+        for (const name of requiredLibraryNames(files)) {
+            const lib = libs.find(l => l.name === name)
+            if (libMlibBytes.has(name)) out.push([`${WORK}/libs/${name}.mlib`, libMlibBytes.get(name)])
+            else if (lib.path) throw new Error(`preinstalled library '${name}' was not loaded`)
+            else for (const f of lib.files ?? []) out.push([`${WORK}/libs/${name}/${f.path}`, f.text])
+        }
         return out
     }
 
     async function runMinic(files, flags, extraOut = []) {
         const fs = new Map()
         stdlib.forEach((f, i) => fs.set(stdlibPaths[i], stdlibBytes[i]))
+        if (stdlibMlibBytes) fs.set(stdlibMlibPath, stdlibMlibBytes)
         const userPaths = files.map(f => `${WORK}/${safeName(f.name)}`)
         files.forEach((f, i) => fs.set(userPaths[i], enc.encode(f.text)))
-        const libPaths = []
+        const libArgs = []
+        const legacyLibPaths = []
+        if (stdlibMlib) libArgs.push('--lib', stdlibMlibPath)
         for (const [path, text] of libFilesFor(files)) {
-            fs.set(path, enc.encode(text))
-            libPaths.push(path)
+            fs.set(path, text instanceof Uint8Array ? text : enc.encode(text))
+            if (path.endsWith('.mlib')) libArgs.push('--lib', path)
+            else legacyLibPaths.push(path)
         }
-        const r = await runCommand(minic, ['minic', ...flags, ...userPaths, ...libPaths, '--stdlib', ...stdlibPaths], fs)
+        const sourceStdlibArgs = stdlibMlib ? [] : ['--stdlib', ...stdlibPaths]
+        const r = await runCommand(minic, ['minic', ...flags, ...userPaths, ...legacyLibPaths, ...libArgs, ...sourceStdlibArgs], fs)
         const dec = new TextDecoder()
         const outputs = {}
         for (const p of extraOut) if (fs.has(p)) outputs[p] = dec.decode(fs.get(p))
@@ -53,6 +80,15 @@ export function createCore({ minic, stdlib, clang, libminirt, entry, libs = [] }
     }
 
     return {
+        requiredLibraries(files) {
+            return requiredLibraryNames(files).filter(name => libs.find(l => l.name === name)?.path && !libMlibBytes.has(name))
+        },
+        addLibraryMlib(name, text) {
+            const lib = libs.find(l => l.name === name && l.path)
+            if (!lib) throw new Error(`unknown preinstalled library '${name}'`)
+            lib.mlib = text
+            libMlibBytes.set(name, enc.encode(text))
+        },
         async check(files) {
             const r = await runMinic(files, ['--check'])
             return r.diagnostics

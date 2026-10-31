@@ -3,7 +3,7 @@
  * download progress, and the build-and-run pipeline. One toolchain instance per page load.
  */
 import { ref, shallowRef } from 'vue'
-import { WorkerToolchain, probeToolchain, toolchainBase } from './toolchain.ts'
+import { WorkerToolchain, probeToolchain } from './toolchain.ts'
 import { CompileCache } from './compile-cache.ts'
 import { runInWorker } from './run-client.ts'
 import {
@@ -120,30 +120,14 @@ export async function buildAndRun(files: SourceFile[], h: RunHandlers): Promise<
   await probe()
   let key: string | undefined
   let res: CompileResult | undefined
-  const cacheStarted = performance.now()
   try {
     if (manifest.value) {
       key = await programCache.key(manifest.value.version, files, options)
       res = await programCache.get(key)
     }
   } catch { /* A missing hashing/storage API only disables caching. */ }
-  if (!res && key) {
-    const example = manifest.value?.programs?.find(p => p.key === key)
-    if (example && example.bytes <= 8 * 1024 * 1024) {
-      try {
-        const response = await fetch(toolchainBase(siteBase) + example.path, { signal: h.signal })
-        if (response.ok) {
-          const wasm = new Uint8Array(await response.arrayBuffer())
-          if (wasm.length === example.bytes && WebAssembly.validate(wasm)) {
-            res = { wasm, diagnostics: example.diagnostics, timings: {} }
-            await programCache.put(key, res)
-          }
-        }
-      } catch { /* Optional prebuilt artifact missing: use the local compiler. */ }
-    }
-  }
   if (h.signal?.aborted) return cancelled()
-  if (res) res.timings = { cacheHit: 1, total: performance.now() - cacheStarted }
+  if (res) res.timings = { cacheHit: 1 }
   if (!res) {
     let tc: WorkerToolchain
     try {
