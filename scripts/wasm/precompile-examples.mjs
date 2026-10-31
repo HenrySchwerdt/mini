@@ -9,6 +9,7 @@ import { CompileCache } from '../../website/.vitepress/theme/playground/compile-
 
 const dir = resolve(process.argv[2] ?? 'build/site/toolchain')
 const manifestPath = join(dir, 'manifest.json')
+if (!existsSync(manifestPath)) throw new Error(`missing toolchain manifest: ${manifestPath}`)
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
 const source = readFileSync(new URL('../../website/.vitepress/theme/playground/digit-training.kt', import.meta.url), 'utf8')
 const cells = source.split(/^\/\/ %% .+\r?\n/gm).slice(1).map(s => newCell('code', s.trim()))
@@ -24,11 +25,19 @@ if (manifest.programs?.some(p => p.key === key && existsSync(join(dir, p.path)))
 let id = 0
 const pending = new Map()
 globalThis.self = { postMessage(message) {
+  if (!message || !Number.isInteger(message.id)) return
   if (message.type === 'progress') return
-  const p = pending.get(message.id); pending.delete(message.id)
+  const p = pending.get(message.id)
+  if (!p) return
+  pending.delete(message.id); clearTimeout(p.timer)
   if (message.type === 'error') p.reject(new Error(message.message))
-  else p.resolve(message.value)
+  else if (message.type === 'result') p.resolve(message.value)
+  else p.reject(new Error(`unexpected worker response: ${message.type}`))
 } }
+globalThis.self.onerror = event => {
+  for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error(event.message || 'toolchain worker failed')) }
+  pending.clear()
+}
 const realFetch = globalThis.fetch
 globalThis.fetch = async (url, init) => {
   if (!String(url).startsWith('file:')) return realFetch(url, init)
@@ -36,7 +45,9 @@ globalThis.fetch = async (url, init) => {
 }
 await import(pathToFileURL(join(dir, manifest.worker)).href)
 const call = (type, body) => new Promise((resolve, reject) => {
-  const next = ++id; pending.set(next, { resolve, reject })
+  const next = ++id
+  const timer = setTimeout(() => { pending.delete(next); reject(new Error(`toolchain ${type} timed out`)) }, 10 * 60 * 1000)
+  pending.set(next, { resolve, reject, timer })
   self.onmessage({ data: { id: next, type, ...body } })
 })
 await call('load', { level: 'full', manifestUrl: pathToFileURL(manifestPath).href })

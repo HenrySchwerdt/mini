@@ -37,7 +37,9 @@ export class CompileCache {
       if (newline < 0) return undefined
       const metadata = JSON.parse(new TextDecoder().decode(bytes.subarray(0, newline)))
       const wasm = bytes.slice(newline + 1)
-      if (!Array.isArray(metadata.diagnostics) || !metadata.timings || !WebAssembly.validate(wasm)) return undefined
+      if (!Array.isArray(metadata.diagnostics)
+        || metadata.diagnostics.some((d: { severity?: string }) => d?.severity === 'error')
+        || !metadata.timings || !WebAssembly.validate(wasm)) return undefined
       const result: CompileResult = { ...metadata, wasm }
       this.remember(key, result)
       return structuredClone(result)

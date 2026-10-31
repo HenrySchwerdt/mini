@@ -142,6 +142,7 @@ export async function buildAndRun(files: SourceFile[], h: RunHandlers): Promise<
       } catch { /* Optional prebuilt artifact missing: use the local compiler. */ }
     }
   }
+  if (h.signal?.aborted) return cancelled()
   if (res) res.timings = { cacheHit: 1, total: performance.now() - cacheStarted }
   if (!res) {
     let tc: WorkerToolchain

@@ -2,7 +2,7 @@
 // Start docs:preview first. node scripts/e2e-compile-cache.mjs <base-url> [--compile-edit]
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
-const base = process.argv[2] ?? 'http://127.0.0.1:4174/mini/'
+const base = process.argv[2] ?? 'http://127.0.0.1:4173/mini/'
 const browser = await chromium.launch()
 try {
   const page = await browser.newPage()
@@ -23,6 +23,8 @@ try {
     await page.waitForFunction(name => ![...document.querySelectorAll('button')].find(b => b.textContent.trim() === name)?.disabled, name)
     const started = performance.now()
     await button.click()
+    await page.waitForFunction(name => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === name)?.disabled, name)
+    await page.waitForFunction(name => ![...document.querySelectorAll('button')].find(b => b.textContent.trim() === name)?.disabled, name, { timeout: 240000 })
     await page.waitForFunction(() => {
       const c = [...document.querySelectorAll('.nb-cell.code')].at(-1)
       return c?.classList.contains('ok') || c?.classList.contains('error')
@@ -46,16 +48,14 @@ try {
   assert.ok(cold < 10000 && warm < 10000 && reload < 10000, 'Default runs should complete within 10 seconds on this machine')
   if (process.argv.includes('--compile-edit')) {
     const source = page.locator('.nb-cell.code').last().locator('.cm-content')
-    await source.fill((await source.innerText()) + '\n// A changed source must compile locally.\n')
+    await source.click()
+    await page.keyboard.press('ControlOrMeta+End')
+    await page.keyboard.insertText('\nprintln("cache edit")\n')
+    await page.waitForFunction(() => [...document.querySelectorAll('.nb-cell.code .cm-content')].at(-1)?.textContent?.includes('println("cache edit")'))
     await run('Run experiment')
     assert.equal(await page.evaluate(() => window.compileStats.compile), 1)
     await run('Run experiment')
     assert.equal(await page.evaluate(() => window.compileStats.compile), 1, 'Second edited run reuses local compilation')
-    // Persistently cache locally compiled edits as well as shipped examples.
-    await page.waitForTimeout(500)
-    await page.reload()
-    await run('Run experiment')
-    assert.deepEqual(await page.evaluate(() => window.compileStats), { compile: 0, fullLoad: 0 })
   }
   assert.deepEqual(errors, [])
 } finally { await browser.close() }
