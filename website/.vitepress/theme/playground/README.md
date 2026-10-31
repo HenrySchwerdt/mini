@@ -54,8 +54,8 @@ interface MiniToolchain {
 The authoritative definitions, with comments, are in `types.ts`.
 
 - **`load`** downloads and initializes. It is idempotent, and a later `full` upgrades an earlier `check`.
-  - Level **`check`**: only `minic.wasm` (a few MB): parse, type check, memory checker. Enough for `check`.
-  - Level **`full`**: additionally the stdlib bundle, the `clang` and `wasm-ld` wasm build, and
+  - Level **`check`**: `minic.wasm` (a few MB), the precompiled stdlib and small browser library metadata. Imported library MIR loads on first use.
+  - Level **`full`**: additionally the `clang` and `wasm-ld` wasm build and
     `libminirt-wasm32.a`. Needed for `compile`. This is the big download, so it must report byte progress.
   - The playground loads `check` when the page opens (if a manifest exists) for live diagnostics, and `full` on the first Run.
   - It rejects with `ToolchainUnavailableError` when there is no manifest (the front end handles that before calling).
@@ -82,7 +82,9 @@ The compiler pipeline runs inside the toolchain worker, which the toolchain buil
 (the front end does not depend on it):
 
 1. `minic.wasm` (our self-hosted compiler, wasm32-wasi) runs with an **in-memory file system** that holds
-   the sources and the stdlib bundle: parse, check, emit LLVM IR (and MIR text when asked). This stage also
+   the user sources and precompiled `.mlib` libraries: parse, check, emit LLVM IR (and MIR text when asked). The libraries contain
+   source API stubs and target-independent MIR, so edits do not parse and lower their full source again. Older source manifests remain
+   supported. This stage also
    produces the diagnostics for `check`.
 2. The wasm build of `clang` (`@yowasp/clang`, pinned) compiles the `.ll` to an object file; `wasm-ld`
    links it with `libminirt-wasm32.a`. Each tool is a WASI program run through a WASI shim with the same
@@ -126,7 +128,7 @@ so that VitePress copies it to `/mini/toolchain/`:
 ```
 toolchain/manifest.json     tiny, fetched with cache: 'no-cache'
 toolchain/<worker>.js       module worker named by manifest.worker
-toolchain/...               minic.wasm, stdlib bundle, clang/wasm-ld wasm, libminirt-wasm32.a
+toolchain/...               minic.wasm, stdlib.mlib, lazy per-library .mlib files, clang/wasm-ld wasm, libminirt-wasm32.a
 ```
 
 ```jsonc

@@ -43,14 +43,20 @@ async function load(id, level, manifestUrl) {
         baseUrl = manifestUrl
         manifest = await (await fetch(manifestUrl, { cache: 'no-cache' })).json()
     }
-    const want = manifest.files.filter(f => level === 'full' || f.stage === 'check')
+    const want = manifest.files.filter(f => !f.lazy && (level === 'full' || f.stage === 'check'))
     const state = { total: want.reduce((n, f) => n + f.bytes, 0), done: 0 }
     const file = name => new URL(manifest.files.find(f => f.path === name || f.path.endsWith('/' + name)).path, baseUrl).href
     if (!assets.minic) {
         const bytes = await fetchBytes(file('minic.wasm'), 'Loading the compiler', 'minic.wasm', id, state)
         assets.minic = await WebAssembly.compile(bytes)
-        const std = await fetchBytes(file('stdlib.json'), 'Loading the standard library', 'stdlib', id, state)
-        assets.stdlib = JSON.parse(new TextDecoder().decode(std)).files
+        if (manifest.files.some(f => f.path.endsWith('/stdlib.mlib'))) {
+            const std = await fetchBytes(file('stdlib.mlib'), 'Loading the standard library', 'stdlib', id, state)
+            assets.stdlibMlib = new TextDecoder().decode(std)
+            assets.stdlib = []
+        } else {
+            const std = await fetchBytes(file('stdlib.json'), 'Loading the standard library', 'stdlib', id, state)
+            assets.stdlib = JSON.parse(new TextDecoder().decode(std)).files
+        }
         // preinstalled libraries (mini.plot, ...): optional, absent from older toolchains
         assets.libs = []
         if (manifest.files.some(f => f.path.endsWith('/libs.json'))) {
@@ -74,12 +80,24 @@ async function load(id, level, manifestUrl) {
     }
     loaded = level === 'full' ? 'full' : loaded ?? 'check'
     core = createCore({
-        minic: assets.minic, stdlib: assets.stdlib, libs: assets.libs,
+        minic: assets.minic, stdlib: assets.stdlib, stdlibMlib: assets.stdlibMlib, libs: assets.libs,
         clang: loaded === 'full' ? commands.clang : undefined, libminirt: assets.libminirt, entry: assets.entry,
     })
     return {
         version: manifest.version, loaded,
         capabilities: { check: true, compile: loaded === 'full', mir: true, llvmIr: true },
+    }
+}
+
+async function ensureLibraries(files) {
+    for (const name of core.requiredLibraries(files)) {
+        const lib = assets.libs.find(l => l.name === name)
+        const asset = manifest.files.find(f => f.path.endsWith('/' + lib.path))
+        if (!asset) throw new Error(`toolchain is missing preinstalled library '${name}'`)
+        const response = await fetch(new URL(asset.path, baseUrl))
+        if (!response.ok) throw new Error(`Loading ${name}: ${response.status} ${response.statusText}`)
+        const text = new TextDecoder().decode(await response.arrayBuffer())
+        core.addLibraryMlib(name, text)
     }
 }
 
@@ -90,9 +108,11 @@ self.onmessage = async ev => {
             post(msg.id, 'result', { value: await load(msg.id, msg.level, msg.manifestUrl) })
         } else if (msg.type === 'check') {
             if (!core) throw new Error('the toolchain is not loaded')
+            await ensureLibraries(msg.files)
             post(msg.id, 'result', { value: await core.check(msg.files) })
         } else if (msg.type === 'compile') {
             if (!core) throw new Error('the toolchain is not loaded')
+            await ensureLibraries(msg.files)
             const value = await core.compile(msg.files, msg.opts ?? {})
             self.postMessage({ id: msg.id, type: 'result', value }, value.wasm ? [value.wasm.buffer] : [])
         }

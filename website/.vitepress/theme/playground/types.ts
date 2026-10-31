@@ -124,8 +124,8 @@ export interface ToolchainManifest {
   version: string
   /** Module worker script, relative to the manifest. */
   worker: string
-  /** Files with sizes, for progress and the service worker cache. Paths relative to the manifest. */
-  files: { path: string; bytes: number; stage: LoadStage }[]
+  /** Files with sizes, for progress and the service worker cache. Paths relative to the manifest. Lazy files load on first use. */
+  files: { path: string; bytes: number; stage: LoadStage; lazy?: boolean }[]
   capabilities: { check: boolean; compile: boolean; mir: boolean; llvmIr: boolean }
 }
 

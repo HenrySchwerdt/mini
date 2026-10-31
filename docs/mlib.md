@@ -85,12 +85,19 @@ a reachable class keeping its vtable and itable functions. A program without `ma
 | missing dependency | `library 'a' needs library 'b' (hash ...), which was not given (--lib <path to b.mlib>)` |
 | wrong dependency | `library 'a' was built against 'b' with hash X, but the given 'b' has hash Y` |
 
+## Browser toolchain
+
+The browser build uses the same format. `scripts/build-wasm-toolchain.sh` places `stdlib.mlib` and a `libs.json` containing the
+preinstalled libraries' metadata plus separate `.mlib` assets. The standard library loads with the checker; each preinstalled library
+loads only when a program imports one of its packages. The worker includes recorded dependencies and passes selected files with
+repeatable `--lib` flags. This lets the compiler parse library API stubs
+and link MIR instead of parsing and lowering each library's full source on every edit. Browser manifests with the older
+`stdlib.json` and source-based `libs.json` remain supported by the worker.
+
 ## Consumers other than the C backend
 
 The MIR text is the same for every target. The LLVM backend, the ORC JIT (`--backend=llvm-api --run`) and the wasm build take the module
-`lowerToMirWithLibs` returns; nothing in the format is C specific. The browser toolchain still ships `stdlib.json` (the sources); switching
-`scripts/wasm/pack-stdlib.mjs` and the website worker to `stdlib.mlib` is a follow-up (the worker passes `--lib` and one file instead of
-the source list). A package registry stores the `.mlib` files `mini package` writes; the header carries name, version, compiler and
+`lowerToMirWithLibs` returns; nothing in the format is C specific. A package registry stores the `.mlib` files `mini package` writes; the header carries name, version, compiler and
 the hashes of the libraries it needs.
 
 ## Limits and follow-ups
