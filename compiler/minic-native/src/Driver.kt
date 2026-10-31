@@ -292,6 +292,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     val api = backend == "llvm-api"
     if (repl && !api) throw UsageError("--repl needs --backend=llvm-api\n" + USAGE)
     if (repl && inputs.any { !it.isStdlib }) throw UsageError("--repl does not accept source files; enter declarations interactively\n" + USAGE)
+    if (repl && programArgs.isNotEmpty()) throw UsageError("--repl does not accept program arguments\n" + USAGE)
     if (repl && (run || check || wasmLib || output != null || exe != null || mlibOut != null || cOut != null || mirOut != null || llOut != null)) {
         throw UsageError("--repl cannot be combined with build, check, or one-shot run options\n" + USAGE)
     }
