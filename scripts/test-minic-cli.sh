@@ -95,6 +95,8 @@ if grep -q 'int main\|mk_main' hello.c; then pass "emit-c writes C"; else fail "
 expect "LLVM API default" 0 "emit LLVM object and link" "$M" build hello.kt -o hellot --time
 expect "C backend fallback" 0 "" "$M" build --backend=c hello.kt -o helloc
 if [ -x ./helloc ] && [ "$(./helloc | head -1)" = "Hello, Mini!" ]; then pass "C backend executable"; else fail "C backend executable"; fi
+expect "REPL does not require a C compiler" 0 "Mini native REPL" env CC=definitely-not-a-compiler "$HOME_DIR/bin/mini" repl
+expect "debug help states API limitation" 0 "only the C fallback adds native debug symbols" "$M" build --help
 
 # C compiler problems
 expect "missing C compiler" 1 "was not found" env CC=definitely-not-a-compiler "$M" build hello.kt
@@ -113,6 +115,15 @@ case "$*" in *" -c "*) exec cc "$@" ;; *) echo "ld: cannot find -lfoo" >&2; exit
 EOF2
 chmod +x badld
 expect "API link failure is not an internal error" 1 "linking" "$M" build hello.kt --cc "$W/badld"
+
+cat > ccache <<'EOF3'
+#!/bin/sh
+printf '%s\n' "$*" >> "$CC_LOG"
+exec "$@"
+EOF3
+chmod +x ccache
+expect "API preserves compound CC command and flags" 0 "" env PATH="$W:$PATH" CC_LOG="$W/cc.log" CC="ccache clang -DMINIC_CC_FLAG=1" "$M" build hello.kt -o hellocc
+if grep -q -- '-DMINIC_CC_FLAG=1' "$W/cc.log"; then pass "API forwarded CC flags"; else fail "API forwarded CC flags"; fi
 
 if [ "$fails" -ne 0 ]; then echo "$fails failure(s)"; exit 1; fi
 echo "all minic CLI tests passed"

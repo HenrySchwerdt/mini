@@ -227,7 +227,7 @@ class Commands(val p: Platform, val c: Console, val a: Parsed) {
 
     private fun repl(): Int {
         if (a.positionals.isNotEmpty()) throw UsageError("`mini repl` takes no arguments")
-        val result = Toolchain.locate(p).repl(p)
+        val result = Toolchain.locate(p, requireCompiler = false).repl(p)
         if (result.startError != null) throw MiniError("could not start the LLVM API REPL: ${result.startError}")
         return result.exitCode
     }

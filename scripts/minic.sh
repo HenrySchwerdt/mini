@@ -134,8 +134,8 @@ named after the first file (foo.kt gives ./foo).
 
 Options:
     -o <out>                output executable
-    -O0 -O1 -O2 -O3         C optimization level (default -O2)
-    -g, --debug             debug build: -O0 with debug information
+    -O0 -O1 -O2 -O3         optimization level (default -O2)
+    -g, --debug             use -O0; only the C fallback adds native debug symbols
     --emit-c <out.c>        keep the generated C file there
     --backend <name>        llvm-api (default for API releases) or c
     --cc <compiler>         C compiler (default: \$CC, then cc, clang, gcc)
@@ -158,8 +158,8 @@ Usage: minic run [options] <file.kt>... [-- <program args>]
 Builds the program into a temporary directory, runs it and removes it. The exit status is the program's.
 
 Options:
-    -O0 -O1 -O2 -O3         C optimization level (default -O1: shorter build, the program is usually short-lived)
-    -g, --debug             debug build: -O0 with debug information
+    -O0 -O1 -O2 -O3         optimization level (default -O1: shorter build, the program is usually short-lived)
+    -g, --debug             use -O0; only the C fallback adds native debug symbols
     --cc <compiler>         C compiler (default: \$CC, then cc, clang, gcc)
     -Werror                 memory-checker warnings fail the build
     --no-rc-opt             skip the reference-count optimization pass
@@ -413,12 +413,23 @@ frontend_api() { # <executable>
     set -f
     if [ "$use_color" = 1 ]; then cmode=always; else cmode=never; fi
     if [ "$debug" = 1 ]; then api_opt=O0; elif [ "$opt" = "-O0" ]; then api_opt=O0; elif [ "$opt" = "-O1" ]; then api_opt=O1; elif [ "$opt" = "-O3" ]; then api_opt=O3; else api_opt=O2; fi
+    # minic-native accepts one linker executable. Preserve the conventional shell-word form of CC (including
+    # wrappers and flags) through a tiny executable adapter; no eval is used.
+    api_cc_wrapper="$tmp/cc-wrapper"
+    cat > "$api_cc_wrapper" <<'EOF'
+#!/bin/sh
+set -f
+[ -n "${MINIC_CC_COMMAND:-}" ] || exit 127
+set -- $MINIC_CC_COMMAND "$@"
+exec "$@"
+EOF
+    chmod +x "$api_cc_wrapper"
     NATIVE_ARGS="--backend=llvm-api
 --opt=$api_opt
 --exe
 $1
 --cc
-${cc%% *}
+$api_cc_wrapper
 --link-arg
 $HOME_DIR/lib/libminirt.a
 --link-arg
@@ -448,7 +459,7 @@ $emit
         set -- $NATIVE_ARGS $SRCLIST --stdlib $STDFILES
     fi
     show "$NATIVE" "$@"
-    "$NATIVE" "$@"
+    MINIC_CC_COMMAND="$cc" "$NATIVE" "$@"
     st=$?
     set +f
     add_time "compile (parse, check, lower, emit LLVM object and link)" "$(ms_since "$t0")"
@@ -503,8 +514,6 @@ find_cc() {
         "install one:  $how" \
         "or point minic at yours:  CC=/path/to/compiler minic $cmd ...   (or --cc <compiler>)"
 }
-find_cc
-
 if [ "$cmd" = run ]; then
     exe="$tmp/$base"
     [ -n "$opt" ] || opt="-O1"
@@ -516,6 +525,7 @@ else
 fi
 if [ "$debug" = 1 ]; then opt="-O0"; fi
 
+find_cc
 if [ "$backend" = llvm-api ]; then
     frontend_api "$exe"
     if [ "$timing" = 1 ]; then printf 'minic timings:\n%s' "$phase_times" >&2; fi

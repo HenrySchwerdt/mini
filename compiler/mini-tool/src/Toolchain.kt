@@ -85,7 +85,7 @@ class Toolchain(
             return null
         }
 
-        fun locate(p: Platform): Toolchain {
+        fun locate(p: Platform, requireCompiler: Boolean = true): Toolchain {
             val root = findRoot(p) ?: throw MiniError(
                 "cannot find the Mini installation (stdlib/, include/ and lib/)",
                 "install Mini (see the README), or in a source checkout run `./mini` (it builds the toolchain), or set MINI_ROOT",
@@ -106,9 +106,9 @@ class Toolchain(
             if (!p.isFile(Paths.join(root, "lib/libminirt.a"))) {
                 throw MiniError("the runtime library lib/libminirt.a is missing under $root", "reinstall Mini, or in a source checkout run `scripts/build-mini.sh`")
             }
-            val cc = findCompiler(p) ?: throw MiniError("no C compiler found (tried clang and gcc)", "install one (`sudo apt install clang` or `xcode-select --install`), then run `mini doctor`")
+            val cc = if (requireCompiler) findCompiler(p) ?: throw MiniError("no C compiler found (tried clang and gcc)", "install one (`sudo apt install clang` or `xcode-select --install`), then run `mini doctor`") else null
             val defaultBackend = if (explicit == null && p.readText(Paths.join(root, "TOOLCHAIN-BACKEND"))?.trim() == "llvm-api") "llvm-api" else "c"
-            return Toolchain(root, minic, cc.first, cc.first, defaultBackend)
+            return Toolchain(root, minic, cc?.first ?: "", cc?.first ?: "", defaultBackend)
         }
     }
 
