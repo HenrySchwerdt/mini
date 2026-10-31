@@ -9,15 +9,25 @@ package mini.backend
  * call (virtual / interface) while any function reachable through a vtable or itable may throw.
  * Computed as a fixpoint over the module.
  */
-internal class ThrowAnalysis(private val module: MirModule) {
+internal class ThrowAnalysis(
+    private val module: MirModule,
+    /** Full MIR for imported libraries when available; unlike source stubs, this can prove their throw effects. */
+    private val externalFunctions: List<MirFunction> = emptyList(),
+) {
     val mayThrow = HashSet<String>()
     var dynamicMayThrow = false
         private set
 
     private val byName = HashMap<String, MirFunction>()
+    private val functions = ArrayList<MirFunction>()
 
     fun run(): ThrowAnalysis {
-        for (f in module.functions) byName[f.cName] = f
+        for (f in module.functions + externalFunctions) {
+            if (!byName.containsKey(f.cName)) {
+                byName[f.cName] = f
+                functions.add(f)
+            }
+        }
         val dyn = HashSet<String>()
         for (c in module.classes) {
             c.vtable.filterNotNull().forEach { dyn += it }
@@ -26,7 +36,7 @@ internal class ThrowAnalysis(private val module: MirModule) {
         var changed = true
         while (changed) {
             changed = false
-            for (f in module.functions) {
+            for (f in functions) {
                 if (f.cName in mayThrow) continue
                 if (bodyThrows(f)) {
                     mayThrow += f.cName
@@ -40,6 +50,9 @@ internal class ThrowAnalysis(private val module: MirModule) {
         }
         return this
     }
+
+    /** Calls to imported functions use their MIR effects when available; unresolved calls are conservatively throwing. */
+    fun callMayThrow(cName: String): Boolean = cName in mayThrow || !byName.containsKey(cName)
 
     private fun bodyThrows(f: MirFunction): Boolean = f.body.any { stmt(it) }
 
@@ -71,7 +84,7 @@ internal class ThrowAnalysis(private val module: MirModule) {
         is MirExpr.Unary -> expr(e.operand)
         is MirExpr.Convert -> expr(e.operand)
         // A function absent from this MIR module is an incremental/JIT external; assume it can throw.
-        is MirExpr.Call -> e.args.any { expr(it) } || e.cName in mayThrow || !byName.containsKey(e.cName)
+        is MirExpr.Call -> e.args.any { expr(it) } || callMayThrow(e.cName)
         is MirExpr.RuntimeCall -> e.args.any { expr(it) } || runtimeCallThrows(e.cName)
         is MirExpr.Conditional -> expr(e.cond) || expr(e.thenValue) || expr(e.elseValue)
         is MirExpr.Box -> expr(e.operand)
@@ -82,7 +95,7 @@ internal class ThrowAnalysis(private val module: MirModule) {
         is MirExpr.FieldGet -> expr(e.obj)
         is MirExpr.VCall -> expr(e.receiver) || e.args.any { expr(it) } || dynamicMayThrow
         is MirExpr.ICall -> expr(e.receiver) || e.args.any { expr(it) } || dynamicMayThrow
-        is MirExpr.New -> e.args.any { expr(it) } || e.ctorCName in mayThrow
+        is MirExpr.New -> e.args.any { expr(it) } || callMayThrow(e.ctorCName)
         is MirExpr.StringLength -> expr(e.operand)
         is MirExpr.Load -> expr(e.ptr)
         is MirExpr.PtrAdd -> expr(e.ptr) || expr(e.bytes)

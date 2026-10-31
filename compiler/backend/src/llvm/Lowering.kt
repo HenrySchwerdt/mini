@@ -157,7 +157,7 @@ private class Lowering<V : Any, B : Any>(
         for (f in externalFunctionSignatures) if (!sig.containsKey(f.cName)) sig[f.cName] = f
         for (c in module.classes) classes[c.cName] = c
         layouts = Layouts(classes, target)
-        throwing = ThrowAnalysis(module).run()
+        throwing = ThrowAnalysis(module, externalFunctionSignatures).run()
 
         b.beginModule(module.sourceName, module.links, target)
         b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT))
@@ -1445,11 +1445,11 @@ private class Lowering<V : Any, B : Any>(
     fun isNullableRef(t: MirType): Boolean = t === TNString || (t is TObject && t.nullable) || t is TBoxed
 
     fun needsCheck(e: MirExpr): Boolean = when (e) {
-        is MirExpr.Call -> e.cName in throwing.mayThrow
+        is MirExpr.Call -> throwing.callMayThrow(e.cName)
         // the inlined array accessors leave the function themselves on the failing path (see arrayAccess), no test on the fast path
         is MirExpr.RuntimeCall -> arrayAccessKind(e.cName) == null && ThrowAnalysis.runtimeCallThrows(e.cName)
         is MirExpr.VCall, is MirExpr.ICall -> throwing.dynamicMayThrow
-        is MirExpr.New -> e.ctorCName in throwing.mayThrow
+        is MirExpr.New -> throwing.callMayThrow(e.ctorCName)
         is MirExpr.Unbox, is MirExpr.NotNull -> true
         is MirExpr.Cast -> e.mode == MirExpr.CastMode.Checked
         is MirExpr.Binary -> (e.op == BinaryOp.Div || e.op == BinaryOp.Rem) && (e.left.type === TInt || e.left.type === TLong) &&

@@ -15,7 +15,10 @@ import mini.backend.TBoolean
 import mini.backend.TDouble
 import mini.backend.TInt
 import mini.backend.TLong
+import mini.backend.TNothing
 import mini.backend.TUnit
+import mini.backend.TObject
+import mini.backend.ThrowAnalysis
 import mini.backend.llvm.LlvmEmitter
 import mini.backend.llvm.LlvmTarget
 import kotlin.test.Test
@@ -60,6 +63,52 @@ class LlvmEmitterTest {
         assertTrue("load ptr, ptr @mk_pending_exception" in ll, "the exception ABI check must follow\n$ll")
         val g = MirFunction("g", "kt_g", emptyList(), TInt, listOf(MirStmt.Return(MirExpr.Binary(BinaryOp.Div, MirExpr.IntConst(1), MirExpr.IntConst(2)))))
         assertFalse("load ptr, ptr @mk_pending_exception" in LlvmEmitter.emit(module(g)).substringAfter("define i32 @kt_g"))
+    }
+
+    @Test
+    fun importedThrowingNothingAndTransitiveFunctionsAreChecked() {
+        val throwable = TObject("java.lang.Throwable", "MkThrowable", false)
+        val importedNothing = MirFunction(
+            "dep.throwNothing", "kt_dep_throwNothing", emptyList(), TNothing,
+            listOf(MirStmt.Throw(MirExpr.NullConst(throwable))),
+        )
+        val importedInt = MirFunction(
+            "dep.throwInt", "kt_dep_throwInt", emptyList(), TInt,
+            listOf(MirStmt.Throw(MirExpr.NullConst(throwable))),
+        )
+        val importedForwarder = MirFunction(
+            "dep.forward", "kt_dep_forward", emptyList(), TInt,
+            listOf(MirStmt.Return(MirExpr.Call("kt_dep_throwInt", emptyList(), TInt))),
+        )
+        val main = MirFunction(
+            "main", "mk_main", emptyList(), TUnit,
+            listOf(
+                MirStmt.Eval(MirExpr.Call("kt_dep_throwNothing", emptyList(), TNothing)),
+                MirStmt.Eval(MirExpr.Call("kt_dep_forward", emptyList(), TInt)),
+            ),
+        )
+        val ll = LlvmEmitter.emit(
+            module(main), target = LlvmTarget.WASM32,
+            externalFunctionSignatures = listOf(importedNothing, importedInt, importedForwarder),
+            externalFunctions = true,
+        )
+        for (call in listOf("call void @kt_dep_throwNothing()", "call i32 @kt_dep_forward()")) {
+            val tail = ll.substringAfter(call).substringBefore("\n}")
+            assertTrue("load ptr, ptr @mk_pending_exception" in tail, "missing pending-exception check after $call:\n$tail")
+        }
+    }
+
+    @Test
+    fun unresolvedExternalConstructorIsConservativelyThrowing() {
+        val externalType = TObject("dep.External", "kc_External", false)
+        val constructor = MirExpr.New("kc_External_C", emptyList(), externalType)
+        val caller = MirFunction("caller", "kt_caller", emptyList(), TUnit, listOf(MirStmt.Eval(constructor)))
+        val analysis = ThrowAnalysis(module(caller)).run()
+        assertTrue("kt_caller" in analysis.mayThrow)
+        assertTrue(analysis.callMayThrow("kc_External_C"))
+        val ll = LlvmEmitter.emit(module(caller), target = LlvmTarget.WASM32, externalFunctions = true)
+        val emitted = ll.substringAfter("call ptr @kc_External_C_new()").substringBefore("\n}")
+        assertTrue("load ptr, ptr @mk_pending_exception" in emitted, "missing pending-exception check after the external constructor:\n$emitted")
     }
 
     @Test

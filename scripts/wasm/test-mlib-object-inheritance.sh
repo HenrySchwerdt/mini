@@ -27,6 +27,12 @@ fun counterA(): () -> Int {
     var n = 5
     return { n += 1; n }
 }
+
+fun failNothing(): Nothing = throw IllegalStateException("nothing")
+
+fun failInt(): Int = throw IllegalStateException("int")
+
+fun forwardInt(): Int = failInt()
 EOF
 
 cat >"$work/derived.kt" <<'EOF'
@@ -57,6 +63,16 @@ fun main() {
     val b = counterB()
     println(b())
     println(b())
+    try {
+        failNothing()
+    } catch (e: IllegalStateException) {
+        println("caught nothing")
+    }
+    try {
+        println(forwardInt())
+    } catch (e: IllegalStateException) {
+        println("caught forwarded int")
+    }
 }
 EOF
 
@@ -88,7 +104,7 @@ $Y --mount "$w" clang --target=wasm32-wasip1 -Wl,--fatal-warnings \
 
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/split.wasm" >"$work/split.out"
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/mono.wasm" >"$work/mono.out"
-printf '7\n7\n6\n7\n40\n41\n' >"$work/expected.out"
+printf '7\n7\n6\n7\n40\n41\ncaught nothing\ncaught forwarded int\n' >"$work/expected.out"
 cmp "$work/expected.out" "$work/split.out"
 cmp "$work/expected.out" "$work/mono.out"
 cmp "$work/mono.out" "$work/split.out"
