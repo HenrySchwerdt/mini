@@ -31,6 +31,7 @@ scripts/wasm/build-minic-wasm.sh "$w"
 
 if [ "$skip_test" -eq 0 ]; then
     scripts/wasm/test-programs.sh
+    scripts/wasm/test-mlib-object-inheritance.sh "$w" build/native/bin/minic-native
     scripts/wasm/test-minic-wasm.sh "$w"
 fi
 
