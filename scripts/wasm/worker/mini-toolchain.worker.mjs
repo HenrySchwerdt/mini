@@ -109,8 +109,7 @@ async function ensureLibraries(files, id, objectOptLevel = null) {
     // O0/O2/Os builds that toolchain-core will compile monolithically anyway.
     if (objectOptLevel !== null) for (const name of core.requiredLibraryObjects(files)) {
         const lib = assets.libs.find(l => l.name === name)
-        if (lib.objectPath && lib.objectMeta?.target === 'wasm32-wasip1' &&
-            lib.objectMeta.optLevel === objectOptLevel && lib.objectMeta.rcOpt === true) {
+        if (lib.objectPath && core.canLoadLibraryObject(name, objectOptLevel)) {
             const objectAsset = manifest.files.find(f => f.path.endsWith('/' + lib.objectPath))
             if (!objectAsset) throw new Error(`toolchain is missing preinstalled library object '${name}'`)
             const object = await fetchBytes(new URL(objectAsset.path, baseUrl).href, `Loading ${name} object`, 'library-object', id, { done: 0, total: objectAsset.bytes })

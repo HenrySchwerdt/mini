@@ -29,6 +29,8 @@ export function createCore({ minic, stdlib = [], stdlibMlib, stdlibObject, stdli
         const header = new TextDecoder().decode(bytes.subarray(0, 2048))
         return /^hash ([0-9a-f]+)$/m.exec(header)?.[1] ?? null
     }
+    const compatibleObject = (meta, mlibBytes, level) => meta?.target === 'wasm32-wasip1' &&
+        meta.optLevel === level && meta.rcOpt === true && meta.mlibHash === mlibHash(mlibBytes)
 
     const safeName = n => n.replace(/^\/+/, '').replace(/\.\.\//g, '')
 
@@ -95,6 +97,10 @@ export function createCore({ minic, stdlib = [], stdlibMlib, stdlibObject, stdli
                 return lib?.objectPath && lib.objectMeta && !libObjectBytes.has(name)
             })
         },
+        canLoadLibraryObject(name, level) {
+            const lib = libs.find(item => item.name === name)
+            return !!lib?.objectPath && compatibleObject(lib.objectMeta, libMlibBytes.get(name), level)
+        },
         addLibraryMlib(name, text) {
             const lib = libs.find(l => l.name === name && l.path)
             if (!lib) throw new Error(`unknown preinstalled library '${name}'`)
@@ -117,12 +123,11 @@ export function createCore({ minic, stdlib = [], stdlibMlib, stdlibObject, stdli
             const timings = {}
             const t0 = Date.now()
             const level = opts.optLevel ?? '1'
-            const compatible = meta => meta?.target === 'wasm32-wasip1' && meta.optLevel === level && meta.rcOpt === true
             const usedLibraries = requiredLibraryNames(files)
-            const hasObjects = compatible(stdlibObjectMeta) && stdlibObject instanceof Uint8Array &&
-                stdlibObjectMeta.mlibHash === mlibHash(stdlibMlibBytes) && usedLibraries.every(name => {
+            const hasObjects = compatibleObject(stdlibObjectMeta, stdlibMlibBytes, level) && stdlibObject instanceof Uint8Array &&
+                usedLibraries.every(name => {
                 const lib = libs.find(item => item.name === name)
-                return compatible(lib?.objectMeta) && lib.objectMeta.mlibHash === mlibHash(libMlibBytes.get(name)) && libObjectBytes.has(name)
+                return compatibleObject(lib?.objectMeta, libMlibBytes.get(name), level) && libObjectBytes.has(name)
             })
             const flags = ['--emit-ll', `${WORK}/out.ll`, '--target=wasm32']
             if (hasObjects) flags.push('--wasm-separate-mlibs')

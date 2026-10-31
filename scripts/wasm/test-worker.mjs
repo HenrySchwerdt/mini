@@ -3,12 +3,14 @@
 //   node scripts/wasm/test-worker.mjs <site-toolchain-dir>      e.g. build/site/toolchain
 // `self` and `fetch(file:)` are faked; the code under test is the real esbuild bundle and the real wasm files.
 import { readFileSync } from 'node:fs'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join, resolve } from 'node:path'
 import { WASI } from 'node:wasi'
+import { spawnSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 
 const dir = resolve(process.argv[2] ?? 'build/site/toolchain')
+const staleObjectHashMode = process.argv.includes('--stale-object-hash')
 const manifestUrl = pathToFileURL(join(dir, 'manifest.json')).href
 const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'))
 
@@ -26,7 +28,12 @@ const realFetch = globalThis.fetch
 globalThis.fetch = async (url, init) => {
     const u = String(url)
     if (!u.startsWith('file:')) return realFetch(url, init)
-    const buf = readFileSync(new URL(u))
+    let buf = readFileSync(new URL(u))
+    if (staleObjectHashMode && u.endsWith('/libs.json')) {
+        const metadata = JSON.parse(buf.toString('utf8'))
+        for (const lib of metadata.libs ?? []) if (lib.objectMeta) lib.objectMeta.mlibHash = 'stale-object-mlib-hash'
+        buf = Buffer.from(JSON.stringify(metadata))
+    }
     return new Response(new ReadableStream({ start(c) { for (let i = 0; i < buf.length; i += 1 << 20) c.enqueue(buf.subarray(i, i + (1 << 20))); c.close() } }),
         { headers: { 'content-length': String(buf.length) } })
 }
@@ -98,6 +105,19 @@ const full = await call('load', { level: 'full', manifestUrl })
 assert.equal(full.loaded, 'full'); assert.equal(full.capabilities.compile, true)
 console.log(`load full: ${Date.now() - t} ms, last progress`, JSON.stringify(events[events.length - 1]))
 
+const tensorSource = 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n'
+if (staleObjectHashMode) {
+    const result = await call('compile', { files: [{ name: 'main.kt', text: tensorSource }], opts: { emitLlvmIr: true } })
+    assert.deepEqual(result.diagnostics, [])
+    assert.ok(result.llvmIr.length > 250_000, 'stale object metadata uses monolithic library LLVM IR')
+    assert.ok(!events.some(e => e.stage === 'library-object'), 'stale object hash prevents downloading that object')
+    const ran = await run(result.wasm)
+    assert.equal(ran.code, 0)
+    assert.equal(ran.out, '14.0\n', 'stale object metadata still produces the correct monolithic output')
+    console.log('stale object hash falls back without downloading object')
+    process.exit(0)
+}
+
 const hello = 'fun main() {\n    val name = "Mini"\n    println("Hello, $name!")\n    for (i in 1..3) println("$i * $i = ${i * i}")\n}\n'
 const r = await call('compile', { files: [{ name: 'main.kt', text: hello }], opts: { emitMir: true, emitLlvmIr: true } })
 console.log('compile hello:', JSON.stringify(r.timings), 'wasm', r.wasm?.length, 'diags', r.diagnostics.length)
@@ -133,7 +153,6 @@ const cinteropMonoRan = await run(cinteropMono.wasm)
 assert.equal(cinteropMonoRan.code, 0)
 assert.equal(cinteropMonoRan.out, cinteropSplitRan.out, 'C heap and memScoped allocation output matches monolithic compilation')
 
-const tensorSource = 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n'
 const objectFetchesBeforeO0 = events.filter(e => e.stage === 'library-object').length
 const tensorO0First = await call('compile', { files: [{ name: 'main.kt', text: tensorSource }], opts: { optLevel: '0', emitLlvmIr: true } })
 assert.deepEqual(tensorO0First.diagnostics, [])
@@ -234,3 +253,7 @@ assert.equal(bad.wasm, undefined); assert.equal(bad.diagnostics.length, 1)
 const withMem = await call('compile', { files: [{ name: 'main.kt', text: leak }], opts: {} })
 assert.equal(withMem.wasm, undefined); assert.equal(withMem.diagnostics[0].code, 'M0101')
 console.log('worker protocol OK')
+
+const stale = spawnSync(process.execPath, [fileURLToPath(import.meta.url), dir, '--stale-object-hash'], { encoding: 'utf8' })
+assert.equal(stale.status, 0, `fresh worker stale-hash test failed:\n${stale.stdout}\n${stale.stderr}`)
+process.stdout.write(stale.stdout)
