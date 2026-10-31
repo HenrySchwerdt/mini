@@ -68,14 +68,52 @@ stamp() { date +%s.%N; }
 elapsed() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f s", b - a }'; }
 
 if [ "$BACKEND" = llvm-api ]; then
-    LLVM_INC="${LLVM_INC:-$(llvm-config --includedir)}"
-    LLVM_LIB="${LLVM_LIB:-$(llvm-config --libdir)}"
+    LLVM_CONFIG="${LLVM_CONFIG:-llvm-config}"
+    LLVM_VERSION="$("$LLVM_CONFIG" --version)"
+    case "$LLVM_VERSION" in 18.*) ;; *) echo "bootstrap.sh: the LLVM C API build needs LLVM 18 (got $LLVM_VERSION from $LLVM_CONFIG)" >&2; exit 2 ;; esac
+    LLVM_INC="${LLVM_INC:-$("$LLVM_CONFIG" --includedir)}"
+    LLVM_LIB="${LLVM_LIB:-$("$LLVM_CONFIG" --libdir)}"
+    # `native` is host-specific. These explicit target components are also needed because the API shim initializes both
+    # X86 and AArch64 target registries. Keep LLVM itself static so a release compiler has no LLVM runtime dependency.
+    read -r -a LLVM_LIBS <<< "$("$LLVM_CONFIG" --link-static --libs core native orcjit passes x86 aarch64)"
+    read -r -a LLVM_SYSTEM_LIBS <<< "$("$LLVM_CONFIG" --link-static --system-libs)"
+    LLVM_LINK_START=()
+    LLVM_LINK_EXTRA=()
+    LLVM_CXX_LIB=(-lstdc++)
+    LLVM_EXPORT=(-rdynamic)
+    if [ "$(uname -s)" = Darwin ]; then
+        # Homebrew ships zstd and libunwind beside LLVM. Force-load their archives to avoid embedding Homebrew dylib paths.
+        LLVM_SYSTEM_FILTERED=()
+        for lib in "${LLVM_SYSTEM_LIBS[@]}"; do [ "$lib" = -lzstd ] || LLVM_SYSTEM_FILTERED+=("$lib"); done
+        LLVM_SYSTEM_LIBS=("${LLVM_SYSTEM_FILTERED[@]}")
+        [ -f "$LLVM_LIB/libunwind.a" ] || { echo "bootstrap.sh: LLVM static libunwind archive missing: $LLVM_LIB/libunwind.a" >&2; exit 2; }
+        LLVM_ZSTD="$("$LLVM_CONFIG" --prefix)/opt/zstd/lib/libzstd.a"
+        if [ ! -f "$LLVM_ZSTD" ]; then LLVM_ZSTD="$(dirname "$LLVM_LIB")/../opt/zstd/lib/libzstd.a"; fi
+        if [ ! -f "$LLVM_ZSTD" ]; then LLVM_ZSTD="$(brew --prefix zstd 2>/dev/null)/lib/libzstd.a"; fi
+        [ -f "$LLVM_ZSTD" ] || { echo "bootstrap.sh: static libzstd archive missing (install Homebrew zstd)" >&2; exit 2; }
+        LLVM_LINK_EXTRA+=("-Wl,-force_load,$LLVM_ZSTD" "-Wl,-force_load,$LLVM_LIB/libunwind.a" -Wl,-dead_strip_dylibs)
+        LLVM_CXX_LIB=(-lc++)
+        LLVM_EXPORT=(-Wl,-export_dynamic)
+    else
+        LLVM_LINK_START=(-Wl,--as-needed)
+        # Prefer an installed zstd archive; LLVM's support library otherwise makes this runtime compiler depend on a
+        # distro zstd shared object that may not be installed on the destination machine.
+        ZSTD_ARCHIVE="$("$CC" -print-file-name=libzstd.a)"
+        [ -f "$ZSTD_ARCHIVE" ] || { echo "bootstrap.sh: static libzstd archive missing (install zstd development files)" >&2; exit 2; }
+        LLVM_LINK_EXTRA+=(-Wl,-Bstatic -lzstd -Wl,-Bdynamic)
+        LLVM_SYSTEM_FILTERED=()
+        for lib in "${LLVM_SYSTEM_LIBS[@]}"; do [ "$lib" = -lzstd ] || LLVM_SYSTEM_FILTERED+=("$lib"); done
+        LLVM_SYSTEM_LIBS=("${LLVM_SYSTEM_FILTERED[@]}")
+    fi
+    llvm_api_link() {
+        "$CC" "$@" -L"$LLVM_LIB" "${LLVM_LIBS[@]}" "${LLVM_LINK_START[@]}" "${LLVM_SYSTEM_LIBS[@]}" "${LLVM_LINK_EXTRA[@]}" "${LLVM_CXX_LIB[@]}" "${LLVM_EXPORT[@]}" -lm
+    }
     APISRCS=$(find "$HERE/minic-native/src" -name '*.kt' ! -name Main.kt | sort; find "$HERE/lower/src" "$HERE/frontend/src" "$HERE/backend/src" "$HERE/llvm-c/src" -name '*.kt' | sort)
     t0=$(stamp)
     "$STAGE0" -o "$WORK/stage1.c" $APISRCS --stdlib $STD
     mkdir -p "$WORK/rt"
     for f in $RT; do "$CC" -std=c17 -O1 -w -I "$ROOT/runtime/include" -c "$f" -o "$WORK/rt/$(basename "$f" .c).o"; done
-    "$CC" -std=c17 $OPT -w -I "$ROOT/runtime/include" -I"$LLVM_INC" "$WORK/stage1.c" "$WORK/rt"/*.o -o "$WORK/stage1" -L"$LLVM_LIB" -lLLVM-18 -rdynamic -lm
+    llvm_api_link -std=c17 $OPT -w -I "$ROOT/runtime/include" -I"$LLVM_INC" "$WORK/stage1.c" "$WORK/rt"/*.o -o "$WORK/stage1"
     t1=$(stamp)
     echo "stage1 (native stage0 compiles the compiler with the LLVM C API to C, no JVM: $(elapsed $t0 $t1))"
     prev="$WORK/stage1"
@@ -83,7 +121,7 @@ if [ "$BACKEND" = llvm-api ]; then
     for stage in 2 3; do
         "$prev" --backend=llvm-api --opt=O1 -o "$WORK/stage$stage.o" --emit-c "$WORK/stage$stage.c" --emit-mir "$WORK/stage$stage.mir" --emit-ll "$WORK/stage$stage.ll" $APISRCS --stdlib $STD
         ta=$(stamp)
-        "$CC" "$WORK/stage$stage.o" "$WORK/rt"/*.o -o "$WORK/stage$stage" -rdynamic -L"$LLVM_LIB" -lLLVM-18 -lm
+        llvm_api_link "$WORK/stage$stage.o" "$WORK/rt"/*.o -o "$WORK/stage$stage"
         tb=$(stamp)
         echo "stage$stage (stage$((stage - 1)) compiles the sources and builds the object through the API: $(elapsed $t_prev $ta); system link: $(elapsed $ta $tb))"
         prev="$WORK/stage$stage"

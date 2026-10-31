@@ -7,7 +7,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Mini is **Kotlin**: same grammar, same semantics, same standard library. The compiler `minic` does not
-target the JVM. It translates Kotlin through C into **native binaries** and adds its own
+target the JVM. It translates Kotlin through an in-process LLVM API into **native binaries** by default (the C emitter remains available with `--backend=c`) and adds its own
 **memory model** on top. Write ordinary Kotlin with reference counting by default, or opt a file into
 **Strict** mode and let the compiler prove that every allocation has an owner and is released exactly once.
 
@@ -66,21 +66,20 @@ The same analysis finds double frees, use-after-free and arena escapes. The full
   parameters) removes most retain/release pairs from generated code.
 * **The stdlib is Kotlin source.** `stdlib/` is ported from the Kotlin stdlib (Apache-2.0) and compiled
   together with your program. No JDK, no stdlib JAR. See [docs/stdlib.md](docs/stdlib.md).
-* **Self-hosting.** `minic` compiles its own backend to a native binary that emits byte-identical C.
+* **Self-hosting.** `minic` compiles its own backend to a native binary; release compilers statically link LLVM 18 and retain the C emitter for bootstrap and fallback builds.
 * **Checked against real Kotlin.** Expected outputs of the test programs come from Kotlin on the JVM.
   The runtime tests run under ASan, UBSan and TSan.
 
 ## How it works
 
 ```text
-                  ┌─► K2 frontend (today) ──────────┐
-  Kotlin source ──┤                                 ├─► MIR ─► RcOpt ─► C17 ─► clang + libminirt ─► binary
-                  └─► own frontend (B2, in progress)┘
+                  ┌─► K2 frontend (oracle) ─────────┐
+  Kotlin source ──┤                                 ├─► MIR ─► RcOpt ─► LLVM C API ─► object + system linker ─► binary
+                  └─► own frontend (Mini) ─────────┘                 └─► C emitter (--backend=c)
                          lexer, parser, type checker
 ```
 
-`MIR` is Mini's mid-level IR. `RcOpt` removes reference-counting work, and the C emitter writes plain C17
-that links against `libminirt`, a small C runtime (object model, refcounting, strings, allocators).
+`MIR` is Mini's mid-level IR. `RcOpt` removes reference-counting work. The LLVM C API builds native objects in process; the C emitter can write plain C17 that links against `libminirt`, a small C runtime (object model, refcounting, strings, allocators).
 In Strict mode a separate checker runs before code generation.
 
 ## Status
@@ -93,10 +92,11 @@ In Strict mode a separate checker runs before code generation.
 | **RC elision (D1)** | **Done.** `arraylist` 405 to 265 ms, `tree` retains 8.3M to 0, self-hosted backend 749 to 603 ms. See [docs/benchmarks.md](docs/benchmarks.md). |
 | **Own frontend to MIR without K2 (B2-3)** | **Done.** `--frontend=mini` gives MIR and C byte-identical to the K2 path for all 47 test programs. The natively built `minic-native` (no JVM, no K2) compiles the whole compiler in about 5 s. |
 | **Strict codegen and stdlib on the memory model (D2)** | In progress. |
-| **Full bootstrap, stage 2 == stage 3 (B3)** | **Done.** `compiler/bootstrap.sh`: stage1 builds stage2, stage2 builds stage3, and the C and MIR of stage 2 and stage 3 are byte-identical. Checked in CI. |
+| **Full bootstrap, stage 2 == stage 3 (B3)** | **Done.** `compiler/bootstrap.sh` checks the C, LLVM IR, and LLVM API object builds. |
 | Project tool `mini` (`mini new/build/run/test`, `mini.toml`, path and git dependencies) | **Done, and native**: `mini` is Kotlin compiled by Mini itself and calls `minic-native`; no JVM, no Gradle. It ships in the release archives. See [docs/mini-tool.md](docs/mini-tool.md). Dropping Gradle from the rest of the repository (tests, K2 oracle) is next. |
 | Reflection (static metadata, ownership-aware) and a compiler-plugin API in the toolchain; JSON (`mini-serialization`) and a web framework with compile-time DI and one arena per request (`mini-web`) as separate libraries | Planned after B3. |
-| LLVM as the primary backend (in-process via its C API, embedded lld, single binary, no clang), statically bundled libuv, `.kts` scripts and a REPL on the LLVM ORC JIT | Planned after B3. |
+| LLVM API compiler, statically linked LLVM, API default, C fallback, and ORC REPL | **Done.** Release compilers include LLVM 18 with no LLVM runtime dependency; building programs still uses the platform C linker. |
+| Embedded lld, statically bundled libuv, `.kts` scripts | Planned. |
 | Coroutines and async IO on libuv, runtime written in Kotlin, Windows | Later. |
 
 Platforms: Linux and macOS (CI). Windows follows later. The full plan is in
@@ -106,7 +106,7 @@ Platforms: Linux and macOS (CI). Windows follows later. The full plan is in
 
 ### Install a release
 
-Prebuilt `mini` (project tool) and `minic` (compiler) for Linux (x64, arm64) and macOS (arm64), no JDK and no Gradle, only a C compiler (clang or gcc):
+Prebuilt `mini` (project tool) and `minic` (compiler) for Linux (x64, arm64) and macOS (arm64), no JDK, Gradle or LLVM install; a C linker (clang or gcc) is still needed to build programs:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh

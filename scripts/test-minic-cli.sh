@@ -1,6 +1,6 @@
 #!/bin/sh
-# Tests the command line of a release's bin/minic (scripts/minic.sh): help, version, did-you-mean, exit codes,
-# diagnostics (file:line:col, snippet, colors, json, error limit, code links), run/check/build, internal compiler error.
+# Tests the command line of a release's bin/minic (scripts/minic.sh): help, version, diagnostics, LLVM API defaults and
+# the explicit C fallback.
 #
 #   scripts/test-minic-cli.sh <MINI_HOME>      the unpacked release (bin/minic, bin/minic-native, lib/, stdlib/, ...)
 set -u
@@ -92,7 +92,11 @@ expect "debug build keeps the Kotlin lines" 0 "" "$M" build -g hello.kt -o hello
 if grep -q '^#line 3 "hello.kt"' hellog2.c; then pass "#line directives in --debug builds"; else fail "#line directives in --debug builds"; fi
 expect "emit-c" 0 "" "$M" emit-c hello.kt -o hello.c
 if grep -q 'int main\|mk_main' hello.c; then pass "emit-c writes C"; else fail "emit-c writes C"; fi
-expect "--time" 0 "link:" "$M" build hello.kt -o hellot --time
+expect "LLVM API default" 0 "emit LLVM object and link" "$M" build hello.kt -o hellot --time
+expect "C backend fallback" 0 "" "$M" build --backend=c hello.kt -o helloc
+if [ -x ./helloc ] && [ "$(./helloc | head -1)" = "Hello, Mini!" ]; then pass "C backend executable"; else fail "C backend executable"; fi
+expect "REPL does not require a C compiler" 0 "Mini native REPL" env CC=definitely-not-a-compiler "$HOME_DIR/bin/mini" repl
+expect "debug help states API limitation" 0 "only the C fallback adds native debug symbols" "$M" build --help
 
 # C compiler problems
 expect "missing C compiler" 1 "was not found" env CC=definitely-not-a-compiler "$M" build hello.kt
@@ -102,15 +106,24 @@ echo "generated.c:3:1: error: unknown type name 'foo'" >&2
 exit 1
 EOF
 chmod +x badcc
-expect "C compiler error is an internal error" 3 "internal compiler error" "$M" build hello.kt --cc "$W/badcc"
-expect "internal error names the issue tracker" 3 "github.com/HenrySchwerdt/mini/issues" "$M" build hello.kt --cc "$W/badcc"
+expect "C emitter compiler error is an internal error" 3 "internal compiler error" "$M" build --backend=c hello.kt --cc "$W/badcc"
+expect "internal error names the issue tracker" 3 "github.com/HenrySchwerdt/mini/issues" "$M" build --backend=c hello.kt --cc "$W/badcc"
 rm -f minic-ice-hello.c
 cat > badld <<'EOF2'
 #!/bin/sh
 case "$*" in *" -c "*) exec cc "$@" ;; *) echo "ld: cannot find -lfoo" >&2; exit 1 ;; esac
 EOF2
 chmod +x badld
-expect "link failure is not an internal error" 1 "linking" "$M" build hello.kt --cc "$W/badld"
+expect "API link failure is not an internal error" 1 "linking" "$M" build hello.kt --cc "$W/badld"
+
+cat > ccache <<'EOF3'
+#!/bin/sh
+printf '%s\n' "$*" >> "$CC_LOG"
+exec "$@"
+EOF3
+chmod +x ccache
+expect "API preserves compound CC command and flags" 0 "" env PATH="$W:$PATH" CC_LOG="$W/cc.log" CC="ccache clang -DMINIC_CC_FLAG=1" "$M" build hello.kt -o hellocc
+if grep -q -- '-DMINIC_CC_FLAG=1' "$W/cc.log"; then pass "API forwarded CC flags"; else fail "API forwarded CC flags"; fi
 
 if [ "$fails" -ne 0 ]; then echo "$fails failure(s)"; exit 1; fi
 echo "all minic CLI tests passed"
