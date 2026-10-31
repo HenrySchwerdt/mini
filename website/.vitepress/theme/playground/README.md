@@ -245,4 +245,14 @@ and evaluates `softmax(x @ weight.T + bias)` locally. No scripts from output are
 uses the emitted Mini-trained parameters in JavaScript; training, evaluation and plotting run in Mini.
 The widget is a snapshot of one run, not a persistent Mini process. See `/libraries/digits` for the editable experiment.
 
-The digit lab uses short declaration cells and a final executable cell. Its **Run experiment** button runs the last code cell, which assembles all earlier declarations; **Run all** retains the usual cell-by-cell behavior. The second preset version uses `mini-notebook-digits-v2` storage, leaving the original saved notebook untouched.
+The digit lab uses short declaration cells and a final executable cell. Its **Run experiment** button runs the last code cell, which assembles all earlier declarations; **Run all** bundles pure helper declarations into the next executable cell; properties, objects, mains and other cells with possible effects still run individually. The final cell always runs so trailing declarations are checked. The second preset version uses `mini-notebook-digits-v2` storage, leaving the original saved notebook untouched.
+
+### Compiled program cache and fast default examples
+
+Successful WASM builds are cached by SHA-256 of the complete ordered source files (including the HTTP dataset), compile options and toolchain version. The version covers the compiler, runtime and libraries. Memory and optional Cache Storage caches hold at most eight entries each, at most 8 MiB per entry. Cache hits still execute a fresh worker; outputs, training runs and predictions are never cached. Failed compilations are not cached. Storage failure falls back to local compilation.
+
+The toolchain build also runs `scripts/wasm/precompile-examples.mjs`. This compiles the exact default digit experiment once and adds an optional `programs` entry to the manifest. The browser only uses it when the entire source/dataset/options/version fingerprint matches. It can then run the real training without loading clang. Edits fall back to local compilation and are cached afterwards. The examples are shipped in the toolchain artifact, not committed as binaries.
+
+Only the small checker stage preloads automatically. Loading and initializing clang waits for a real cache miss. Browser compilation retains `-O1`: measurements on the digit lab found `-O0` slower both to compile and to execute.
+
+Verify cold default, warm, Run all, reload and edited-source behavior with `node scripts/e2e-compile-cache.mjs <base-url> --compile-edit`.

@@ -8,7 +8,7 @@ import { OutputSink, type Segment } from './display.ts'
 import ToolchainStatus from './ToolchainStatus.vue'
 import { createMarkdownRenderer } from './markdown.ts'
 import {
-  assembleProgram, deleteCell, insertCell, mapDiagnostics, moveCell, newCell, parseNotebook, serializeNotebook,
+  assembleProgram, deleteCell, insertCell, mapDiagnostics, moveCell, newCell, parseNotebook, serializeNotebook, runAllCellIndices,
   type Notebook, type MappedDiagnostic,
 } from './notebook.ts'
 import { hashFor, readHash } from './share.ts'
@@ -261,6 +261,7 @@ async function runCell(i: number): Promise<boolean> {
   })
   if (abort === controller) abort = undefined
   sinks.get(out)?.end()
+  if (outcome.timings.cacheHit) out.note = 'Reused compiled program; executed again locally.\n'
   const mapped = mapDiagnostics(outcome.diagnostics, asm, i)
   out.problems = mapped
   // Diagnostics of this run replace the markers of all cells up to this one.
@@ -295,10 +296,12 @@ async function runAll() {
   if (running.value || unavailable.value) return
   running.value = true
   clearOutputs()
+  const targets = new Set(runAllCellIndices(nb.value.cells))
   const codeCells = nb.value.cells.map((c, i) => [c, i] as const).filter(([c]) => c.type === 'code')
-  for (const [c] of codeCells) outputs[c.id] = reactive({ status: 'queued', segments: [], result: null, problems: [], note: '' })
+  for (const [c, i] of codeCells) outputs[c.id] = reactive({ status: targets.has(i) ? 'queued' : 'ok', segments: [], result: null, problems: [], note: targets.has(i) ? '' : 'Definitions included in the next program.' })
   try {
     for (const [, i] of codeCells) {
+      if (!targets.has(i)) continue
       if (!(await runCell(i))) {
         if (!abort?.signal.aborted) say(`Stopped at cell ${i + 1}: it failed.`, 'bad')
         break

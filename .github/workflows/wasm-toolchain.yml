@@ -22,6 +22,10 @@ on:
       - 'scripts/build-wasm-toolchain.sh'
       - 'runtime/**'
       - 'libs/**'
+      - 'website/.vitepress/theme/playground/digit-training.kt'
+      - 'website/.vitepress/theme/playground/notebook.ts'
+      - 'website/.vitepress/theme/playground/datasets.ts'
+      - 'website/.vitepress/theme/playground/compile-cache.ts'
       - '.github/workflows/wasm-toolchain.yml'
 
 permissions:
@@ -42,7 +46,7 @@ jobs:
           path: |
             build/wasm-toolchain.tar.gz
             build/wasm-toolchain-site.tar.gz
-          key: wasm-toolchain-${{ hashFiles('compiler/*/src/**', 'compiler/*/mini.toml', 'stdlib/**', 'runtime/**', 'libs/**', 'compiler/testdata/**', 'scripts/wasm/**', 'scripts/build-wasm-toolchain.sh') }}
+          key: wasm-toolchain-${{ hashFiles('compiler/*/src/**', 'compiler/*/mini.toml', 'stdlib/**', 'runtime/**', 'libs/**', 'compiler/testdata/**', 'scripts/wasm/**', 'scripts/build-wasm-toolchain.sh', 'website/.vitepress/theme/playground/digit-training.kt', 'website/.vitepress/theme/playground/notebook.ts', 'website/.vitepress/theme/playground/datasets.ts', 'website/.vitepress/theme/playground/compile-cache.ts') }}
 
       - uses: ./.github/actions/setup
         if: steps.cache.outputs.cache-hit != 'true'
