@@ -1,6 +1,6 @@
 # Native size optimization: bounded experiment
 
-Implemented one verified improvement: optimized macOS `minic build`/`run` executables pass `-Wl,-dead_strip` to the linker, for both LLVM API and C backends. Debug (`-g`), `-O0`, other platforms, `mini build`, bootstrap, runtime ownership and compiler IR are unchanged. This branch is for review; it is not merged or included in the release.
+Implemented one verified improvement: optimized macOS `minic build`/`run` executables pass `-Wl,-dead_strip` to the linker, for both LLVM API and C backends. Debug (`-g`), `-O0`, other platforms, `mini build`, bootstrap, runtime ownership and compiler IR are unchanged. The measurements below compare staged installations; published release contents depend on the release commit.
 
 ## Reproducible baseline
 
