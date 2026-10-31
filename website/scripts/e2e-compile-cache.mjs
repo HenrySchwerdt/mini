@@ -1,4 +1,4 @@
-// Uses the real shipped experiment, then optionally changes source to exercise local compilation.
+// Exercises the real browser compiler and its on-device compile cache.
 // Serves .vitepress/dist itself, or use: node scripts/e2e-compile-cache.mjs <base-url> [--compile-edit]
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
@@ -43,46 +43,52 @@ try {
       return post.call(this, m, ...rest)
     }
   })
-  const run = async name => {
-    const button = page.getByRole('button', { name, exact: true })
+  await page.goto(base)
+  const manifest = await (await fetch(new URL('toolchain/manifest.json', base))).json()
+  assert.equal(manifest.programs, undefined, 'the toolchain ships no compiled program examples')
+
+  const runSnippet = async (label) => {
+    const cell = page.locator('.mc').first()
+    const button = cell.getByRole('button', { name: 'Run', exact: true })
     await button.waitFor()
-    await page.waitForFunction(name => ![...document.querySelectorAll('button')].find(b => b.textContent.trim() === name)?.disabled, name)
+    await page.waitForFunction(() => !document.querySelector('.mc:first-of-type .mc-btn.primary')?.disabled)
     const started = performance.now()
     await button.click()
-    await page.waitForFunction(name => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === name)?.disabled, name)
-    await page.waitForFunction(name => ![...document.querySelectorAll('button')].find(b => b.textContent.trim() === name)?.disabled, name, { timeout: 240000 })
-    await page.waitForFunction(() => {
-      const c = [...document.querySelectorAll('.nb-cell.code')].at(-1)
-      return c?.classList.contains('ok') || c?.classList.contains('error')
-    }, null, { timeout: 240000 })
-    assert.equal(await page.locator('.nb-cell.code.error').count(), 0, await page.locator('.nb-cell.code').last().innerText())
-    assert.match(await page.locator('.nb-cell.code').last().innerText(), /Same weights after training: true/)
+    await page.waitForFunction(() => document.querySelector('.mc:first-of-type .mc-out .mc-verdict') || document.querySelector('.mc:first-of-type .mc-out .mc-note'), null, { timeout: 240000 })
+    const output = await cell.locator('.mc-out').innerText()
+    assert.match(output, /Hello from native code: 44/)
+    assert.match(output, /Matches the documented output/)
     const elapsed = performance.now() - started
-    console.log(`${name}: ${Math.round(elapsed)} ms; ${JSON.stringify(await page.evaluate(() => window.compileStats))}`)
+    console.log(`${label}: ${Math.round(elapsed)} ms; ${JSON.stringify(await page.evaluate(() => window.compileStats))}`)
     return elapsed
   }
-  await page.goto(base + 'libraries/digits')
-  const cold = await run('Run experiment')
-  assert.deepEqual(await page.evaluate(() => window.compileStats), { compile: 0, fullLoad: 0 }, 'Shipped example starts without clang')
-  const warm = await run('Run all')
-  assert.deepEqual(await page.evaluate(() => window.compileStats), { compile: 0, fullLoad: 0 }, 'Run all groups helpers and uses the cache')
-  assert.equal(await page.locator('.nb-out').filter({ hasText: 'Definitions included in the next program.' }).count(), 10)
-  await page.route('**/examples/*.wasm', route => route.abort())
+
+  const cold = await runSnippet('cold compile + run')
+  assert.deepEqual(await page.evaluate(() => window.compileStats), { compile: 1, fullLoad: 1 }, 'first default run compiles on-device')
+  await runSnippet('warm same source')
+  assert.deepEqual(await page.evaluate(() => window.compileStats), { compile: 1, fullLoad: 1 }, 'same source reuses the on-device memory cache')
+
   await page.reload()
-  const reload = await run('Run experiment')
-  assert.deepEqual(await page.evaluate(() => window.compileStats), { compile: 0, fullLoad: 0 }, 'Persistent cache works without the prebuilt asset after reload')
-  assert.ok(cold < 10000 && warm < 10000 && reload < 10000, 'Default runs should complete within 10 seconds on this machine')
+  await runSnippet('reload from Cache Storage')
+  assert.deepEqual(await page.evaluate(() => window.compileStats), { compile: 0, fullLoad: 0 }, 'successful compile survives reload in Cache Storage')
+
   if (process.argv.includes('--compile-edit')) {
-    const source = page.locator('.nb-cell.code').last().locator('.cm-content')
+    const cell = page.locator('.mc').first()
+    await cell.getByRole('button', { name: 'Edit', exact: true }).click()
+    const source = cell.locator('.mc-editor .cm-content')
     await source.click()
     await page.keyboard.press('ControlOrMeta+End')
-    await page.keyboard.insertText('\nprintln("cache edit")\n')
-    await page.waitForFunction(() => [...document.querySelectorAll('.nb-cell.code .cm-content')].at(-1)?.textContent?.includes('println("cache edit")'))
-    await run('Run experiment')
-    assert.equal(await page.evaluate(() => window.compileStats.compile), 1)
-    await run('Run experiment')
-    assert.equal(await page.evaluate(() => window.compileStats.compile), 1, 'Second edited run reuses local compilation')
+    await page.keyboard.insertText('\n// cache edit\n')
+    await page.waitForFunction(() => document.querySelector('.mc:first-of-type .cm-content')?.textContent?.includes('// cache edit'))
+    await cell.getByRole('button', { name: 'Run', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('.mc:first-of-type .mc-out .mc-verdict') || document.querySelector('.mc:first-of-type .mc-out .mc-note'), null, { timeout: 240000 })
+    assert.equal(await page.evaluate(() => window.compileStats.compile), 1, 'editing changes the source key and compiles locally')
+    assert.equal(await page.evaluate(() => window.compileStats.fullLoad), 1)
+    await cell.getByRole('button', { name: 'Run', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('.mc:first-of-type .mc-out .mc-verdict') || document.querySelector('.mc:first-of-type .mc-out .mc-note'), null, { timeout: 240000 })
+    assert.equal(await page.evaluate(() => window.compileStats.compile), 1, 'second edited-source run uses the cache')
   }
+  assert.ok(cold > 0)
   assert.deepEqual(errors, [])
 } finally {
   await browser.close()

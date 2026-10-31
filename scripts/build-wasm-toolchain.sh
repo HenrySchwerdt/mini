@@ -64,6 +64,5 @@ ls -l "$dist" build/wasm-toolchain.tar.gz
 
 # The website layout (manifest.json + versioned directory with the module worker), checked through the real worker protocol.
 node scripts/wasm/pack-site.mjs "$dist" build/site/toolchain
-node scripts/wasm/precompile-examples.mjs build/site/toolchain
 [ "$skip_test" -eq 1 ] || node --no-warnings scripts/wasm/test-worker.mjs build/site/toolchain
 tar -C build/site -czf build/wasm-toolchain-site.tar.gz toolchain

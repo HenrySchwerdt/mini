@@ -121,8 +121,6 @@ export class ToolchainUnavailableError extends Error {
 
 /** Contents of `<base>toolchain/manifest.json`, written by the toolchain build. */
 export interface ToolchainManifest {
-  /** Optional build-time compiled examples, matched against exact source + options + toolchain version. */
-  programs?: { key: string; path: string; bytes: number; diagnostics: Diagnostic[] }[]
   version: string
   /** Module worker script, relative to the manifest. */
   worker: string
