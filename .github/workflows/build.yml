@@ -120,6 +120,11 @@ jobs:
             stage0)
               scripts/ci-stage0.sh "$RUNNER_TEMP/stage0" && scripts/ci-mini-smoke.sh "$RUNNER_TEMP/stage0" ;;
           esac
+      - name: GNU GCC strict FP regression (C backend)
+        if: matrix.shard == 'e2e' && runner.os == 'Linux'
+        env:
+          CC: gcc
+        run: scripts/test-e2e.sh --suite c floats
       - name: Native REPL session tests (LLVM API)
         if: matrix.shard == 'llvm' && runner.os == 'Linux'
         timeout-minutes: 10
