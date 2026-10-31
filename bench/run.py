@@ -247,6 +247,7 @@ def measure(tools, prog, lang_id, src, build_dir, expected, reps, do_stats, no_b
                 r["backend"] = "unknown (pre-existing artifact)"
                 r["compiler_flags"] = None
                 r["compiler"] = None
+                r["compiler_source"] = None
                 r["build_reused"] = True
     else:
         run_cmd, artifact, err, bsec = build(tools, prog, lang_id, src, outdir)

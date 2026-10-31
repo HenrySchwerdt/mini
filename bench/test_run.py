@@ -48,6 +48,25 @@ class MiniRunnerTests(unittest.TestCase):
              "rss_kb": 10, "size_bytes": 20, "time_best_s": 1.0}
         ], "startup": {}}))
 
+    def test_preexisting_binary_without_sidecar_has_unknown_provenance(self):
+        tools = SimpleNamespace(minic="/custom/minic")
+        with tempfile.TemporaryDirectory() as build_dir:
+            outdir = os.path.join(build_dir, "mini-managed")
+            os.makedirs(outdir)
+            artifact = os.path.join(outdir, "nbody")
+            with open(artifact, "w") as f:
+                f.write("placeholder")
+            with mock.patch.object(run, "run_once", return_value=(1.0, 10, "expected", "", 0)), \
+                    mock.patch.object(run, "sizes", return_value=(20, 10)):
+                result = run.measure(tools, "nbody", "mini-managed", "/bench/nbody.kt", build_dir,
+                                     "expected", 1, False, True)
+
+        self.assertEqual(result["backend"], "unknown (pre-existing artifact)")
+        self.assertIsNone(result["compiler_flags"])
+        self.assertIsNone(result["compiler"])
+        self.assertIsNone(result["compiler_source"])
+        self.assertTrue(result["build_reused"])
+
 
 if __name__ == "__main__":
     unittest.main()
