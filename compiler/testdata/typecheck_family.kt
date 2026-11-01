@@ -1,9 +1,5 @@
-// Repeated type tests use a bounded local family cache; unknown C type descriptors still fall back.
-@file:CInclude("cinterop_lib.h")
-
-import kotlinx.cinterop.CInclude
-import mini.internal.CSymbol
-
+// Portable family-cache coverage for native and WASM targets.
+// Foreign C descriptors are covered separately by cinterop_typecheck_family.kt.
 open class Base
 interface RootI
 interface MidI : RootI
@@ -12,8 +8,6 @@ class Child : Middle()
 class Leaf : Base()
 class Sibling : Base()
 class Third : Base()
-
-@CSymbol("foreign_child") external fun foreignChild(value: Leaf): Base
 
 fun check(value: Base?): Int {
     var result = 0
@@ -27,11 +21,11 @@ fun check(value: Base?): Int {
 }
 
 fun main() {
-    val leaf = Leaf()
     println(check(null))
-    println(check(leaf))
+    println(check(Base()))
+    println(check(Leaf()))
     println(check(Child()))
     println(check(Sibling()))
-    // The C descriptor has Leaf as its superclass but is not a locally emitted type-info global.
-    println(check(foreignChild(leaf)))
+    println(check(Third()))
+    println(check(Middle()))
 }
