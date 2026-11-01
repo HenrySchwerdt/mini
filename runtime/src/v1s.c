@@ -132,10 +132,7 @@ static MkSb *sb_of(MkObject *o) {
     return (MkSb *)o;
 }
 
-static void sb_reserve(MkSb *sb, MkInt extra) {
-    if (extra < 0 || sb->length > INT32_MAX - extra) mk_panic("OutOfMemoryError: string too long");
-    MkInt need = sb->length + extra;
-    if (need <= sb->capacity) return;
+static void sb_grow(MkSb *sb, MkInt need) {
     MkInt cap = sb->capacity < MK_SB_INLINE_CAPACITY ? MK_SB_INLINE_CAPACITY : sb->capacity;
     while (cap < need) {
         if (cap > INT32_MAX / 2) { cap = need; break; }
@@ -153,6 +150,12 @@ static void sb_reserve(MkSb *sb, MkInt extra) {
     if (n == NULL) mk_panic("out of memory");
     sb->chars = n;
     sb->capacity = cap;
+}
+
+static inline void sb_reserve(MkSb *sb, MkInt extra) {
+    if (extra < 0 || sb->length > INT32_MAX - extra) mk_panic("OutOfMemoryError: string too long");
+    MkInt need = sb->length + extra;
+    if (need > sb->capacity) sb_grow(sb, need);
 }
 
 MkObject *mk_sb_new(void) {
