@@ -1,5 +1,9 @@
 #include "harness.h"
 
+static void new_ref_array_from_arg(void *arg) {
+    (void)mk_ref_array_new(*(MkInt *)arg);
+}
+
 static MkString *U(const char *s) { return mk_string_from_utf8(s, strlen(s)); }
 
 static int is_double(const char *text) {
@@ -55,6 +59,37 @@ int main(void) {
     CHECK(parse_double("12") == 12.0);
     CHECK(parse_double("1.25d") == 1.25);
 
+    /* StringBuilder inline-buffer boundaries and immutable snapshots. */
+    MkObject *empty_sb = mk_sb_new();
+    MkString *empty_snapshot = mk_sb_to_string(empty_sb);
+    CHECK_EQ_INT(empty_snapshot->length, 0);
+    mk_release(&empty_snapshot->header);
+    for (int i = 0; i < 16; i++) mk_sb_append_char(empty_sb, (MkChar)('a' + i));
+    CHECK_EQ_INT(mk_sb_length(empty_sb), 16);
+    MkString *inline_snapshot = mk_sb_to_string(empty_sb);
+    CHECK_EQ_INT(inline_snapshot->length, 16);
+    CHECK_EQ_INT(mk_string_char_at(inline_snapshot, 15), 'p');
+    mk_sb_append_char(empty_sb, 'q'); /* 16 -> 17 moves storage to the heap */
+    CHECK_EQ_INT(mk_sb_length(empty_sb), 17);
+    CHECK_EQ_INT(mk_string_char_at(inline_snapshot, 15), 'p');
+    CHECK_EQ_INT(mk_string_char_at(inline_snapshot, 0), 'a');
+    mk_release(&inline_snapshot->header);
+    mk_release(empty_sb);
+
+    MkObject *zero_fill_sb = mk_sb_new();
+    mk_sb_set_length(zero_fill_sb, 17); /* crosses the inline capacity and zero-fills */
+    CHECK_EQ_INT(mk_sb_length(zero_fill_sb), 17);
+    CHECK_EQ_INT(mk_sb_char_at(zero_fill_sb, 0), 0);
+    CHECK_EQ_INT(mk_sb_char_at(zero_fill_sb, 16), 0);
+    mk_sb_set_length(zero_fill_sb, 0);
+    mk_sb_append_char(zero_fill_sb, (MkChar)0xd83d);
+    mk_sb_append_char(zero_fill_sb, (MkChar)0xde00);
+    MkString *surrogate_snapshot = mk_sb_to_string(zero_fill_sb);
+    CHECK_EQ_INT(mk_string_char_at(surrogate_snapshot, 0), (MkChar)0xd83d);
+    CHECK_EQ_INT(mk_string_char_at(surrogate_snapshot, 1), (MkChar)0xde00);
+    mk_release(&surrogate_snapshot->header);
+    mk_release(zero_fill_sb);
+
     /* StringBuilder */
     MkObject *sb = mk_sb_new();
     MkString *part = U("hello");
@@ -101,12 +136,13 @@ int main(void) {
     MkString *e = U("elem");
     mk_ref_array_set(arr, 1, &e->header);
     mk_release(&e->header); /* the array keeps it alive */
+    CHECK(mk_ref_array_get_b(arr, 1) == &e->header);
     MkObject *got = mk_ref_array_get(arr, 1);
     CHECK(got != NULL);
     CHECK_STR((MkString *)got, "elem");
     MkObject *boxed = mk_box_int(42);
-    mk_ref_array_set(arr, 2, boxed);
-    mk_release(boxed);
+    mk_ref_array_set_o(arr, 2, boxed); /* the array takes over the caller's reference */
+    CHECK_EQ_INT(boxed->refcount, 1);
     mk_ref_array_set(arr, 1, NULL);
     MkObject *b2 = mk_ref_array_get(arr, 2);
     CHECK_EQ_INT(mk_unbox_int(b2), 42);
@@ -115,6 +151,13 @@ int main(void) {
     MkObject *empty_arr = mk_ref_array_new(0);
     CHECK_EQ_INT(mk_ref_array_length(empty_arr), 0);
     mk_release(empty_arr);
+
+    MkInt negative_ref_array_size = -1;
+    CHECK_ABORTS(new_ref_array_from_arg, &negative_ref_array_size, "NegativeArraySizeException");
+#if SIZE_MAX <= UINT32_MAX
+    MkInt overflowing_ref_array_size = INT32_MAX;
+    CHECK_ABORTS(new_ref_array_from_arg, &overflowing_ref_array_size, "out of memory");
+#endif
 
     /* type name / identity hash */
     MkObject *bx = mk_box_int(1);

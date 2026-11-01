@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "kind": "continued-campaign-integrated-validation",
+  "source_commit": "713f0faf7e087070b4fecf5baf1ce0793327811f",
+  "compiler_equivalent_c_fixpoint_commit": "5097406b83820e055f05feb071f2f7b2f4fe9b8a",
+  "platform": "macOS arm64",
+  "outcome": "passed within listed scope",
+  "summary": "Final validation summary\nWorktree: /Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini\nFinal source HEAD observed: 713f0faf7e087070b4fecf5baf1ce0793327811f\nTracked source changes at 713 vs 5097406: runtime/src/string.c and runtime/tests/test_string.c (docs WIP separately present); compiler sources unchanged.\n\nCompiler C bootstrap: at compiler-equivalent HEAD 5097406, stage2 == stage3 C and MIR byte-identical; native memory check passed. Fresh compiler source unchanged by 713 runtime-only fix. Log: c-bootstrap.log.\nModules: backend 95, frontend 32, native-driver 2 passed. Log: modules.log.\nPurity: 115 source files across 6 packages passed. Log: purity.log.\nC e2e with fresh runtime-linked native-fixed driver at 713: 331 passed, 0 failed, 1 skipped. Log: e2e-c-fixed.log.\nRuntime at 713: LIBUV_ROOT=/opt/homebrew/opt/libuv UBSAN_OPTIONS=halt_on_error=1 runtime/run_tests.sh; all tests passed, including string (73 checks), ASan/UBSan, UBSan-only, threads under ASan/UBSan, UBSan, TSan, and panic/stats checks. Log: runtime-fixed.log.\nLLVM API bootstrap at 713: stage2 == stage3 C, MIR, LLVM module text and object; cross-reference with C bootstrap passed. Log: api-bootstrap-fixed.log.\nAPI e2e with fresh api-fixed stage3: 75 passed. REPL session regression passed. ORC session API smoke passed (expected missing-symbol diagnostic appeared in test). Logs: e2e-api-fixed.log, repl-fixed.log, orc-fixed.log.\nWASM: local LLVM 23 + lld + cached WASI sysroot; no YoWASP compilation. Built minic.wasm (5,372,018 bytes) and runtime archive (70,992 bytes). WASI compiler bad/good memory checks and hello/classes_basic/arrays/stdlib_stringbuilder compile-run comparisons passed; compiler-WASM/native compiler emitted LLVM IR byte-identical for all 4 programs. Summary: wasm-smoke.log; build: wasm-build-fixed.log.\n\nLimitations/warnings: compiler/bootstrap API LLVM18 link emitted Homebrew macOS 26.0 vs deployment target 16.0 and libunwind re-export warnings; bootstrap/fixpoint passed. Full scripts/wasm/test-minic-wasm.sh and test-programs.sh were not run because they hardcode YoWASP Clang for each compile/link and repeatedly fetch its toolchain. Targeted manual WASI checks used the equivalent cached local native toolchain. Initial YoWASP runtime build attempt failed to produce rt/alloc.o and was stopped; it is not counted as a pass.\nPackage smoke at HEAD 713f0fa: scripts/package-release.sh 0.7.0-campaign macos-arm64 --work build/campaign-final/api-fixed --out build/campaign-final/dist with existing installed licenses. Package symbol-strip test passed: stage3 60,962,200 -> staged minic-native 47,209,984 bytes; external symbols/dyld exports unchanged. Local tar unpacked to ignored build/campaign-final/install. Default API and explicit C `minic run` both matched hello output; packaged `mini repl` evaluated `1 + 2` to 3. `otool -L` for packaged minic-native listed only macOS system libraries (libSystem, libz, libncurses, libc++); no /opt/homebrew/libLLVM dependency. Sizes: tar.gz 18,887,075; staged compiler 47,209,984; mini 2,809,544; runtime archive 103,248; stdlib.mlib 1,468,098 bytes. Package logs: package.log, package-smoke.log, package-otool.log; license metadata uses the preexisting verified installed-package licenses.\n",
+  "log_manifest": {
+    "api-bootstrap-fixed.log": {
+      "sha256": "2aa72c76e162f905b83d30dcb94a81c39bd9bb51dc152c42c555cc71cdba9a60",
+      "bytes": 482780
+    },
+    "api-bootstrap.log": {
+      "sha256": "4eb59e7ddf2b1cf35b46aa2f74d5f0a67fc6bab576471687826931c90c142b03",
+      "bytes": 482774
+    },
+    "build-mini-fixed.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "build-mini.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "c-bootstrap.log": {
+      "sha256": "18b5b981e463a96da9dfd502df30143f4b2ce83773dc484cd27e7e98ba52dbf8",
+      "bytes": 410
+    },
+    "e2e-api-fixed.log": {
+      "sha256": "2c33244b6200d3287faff7065674791951e8855aa4333f832721a23d9bdb544f",
+      "bytes": 2791
+    },
+    "e2e-api.log": {
+      "sha256": "c1219f49ffddeabe0d4fd2a134b7daf04db1c6073f009139ef5163f52b416546",
+      "bytes": 2785
+    },
+    "e2e-c-fixed.log": {
+      "sha256": "fbee734c4c537b8fa834d16e916594f5467aabca7dae33a54e2dd44cb21d4a82",
+      "bytes": 13743
+    },
+    "e2e-c.log": {
+      "sha256": "6cd5297db54b43fab8241514e0f9dfe146fa7b445b3cc29ff076a9bc2e113ea5",
+      "bytes": 13737
+    },
+    "modules.log": {
+      "sha256": "a8bb6cdb2512a879444a56c76401010b92ac90afcd76a9cbc8fe8425fe0457b4",
+      "bytes": 12834
+    },
+    "orc-fixed.log": {
+      "sha256": "acbe4e09642e91b2115ea30ab76906ae0eef180ae189dc7f600703d74ec03bed",
+      "bytes": 639
+    },
+    "orc-session.log": {
+      "sha256": "d37df66b9d1fb2c65e33185dd2401440c5041f307a8660d34f10cb35246e20ba",
+      "bytes": 639
+    },
+    "package-otool.log": {
+      "sha256": "7c10bdb88220533673e0e566a335ec4a63db0015104ef36ae26e3341a6e4ce12",
+      "bytes": 474
+    },
+    "package-repl.log": {
+      "sha256": "442a8ec0d07852fe5d8ea86287a7691ed738e8ccfc8a30ffa348184893ce3e8b",
+      "bytes": 110
+    },
+    "package-smoke.log": {
+      "sha256": "a01330ee49bf403ab626e843d4edf72823d22e9ed51ab50d496af59a26296567",
+      "bytes": 65
+    },
+    "package.log": {
+      "sha256": "c3abb4b4dfcdb79db60dfe1f89a81bcc3c48ca5be89f06331a3c1654ab75cddc",
+      "bytes": 616
+    },
+    "purity.log": {
+      "sha256": "91116db1ad95af5ffe7b6955369f43b9a4f4b8cc25fc78c961be0afde90a9bb2",
+      "bytes": 50
+    },
+    "repl-fixed.log": {
+      "sha256": "110b571d8ea542f4cc9af7811939359da906406e321760c96ccfd9761f675950",
+      "bytes": 27
+    },
+    "repl-session.log": {
+      "sha256": "110b571d8ea542f4cc9af7811939359da906406e321760c96ccfd9761f675950",
+      "bytes": 27
+    },
+    "runtime-fixed.log": {
+      "sha256": "c6257a44a0bca5a59219d4c7be2c444471b3cfde04502f1e9beb9719b9759c79",
+      "bytes": 7634
+    },
+    "runtime.log": {
+      "sha256": "7483ebbbd85353a4dbf38143c9dfb98bf36d4dc021ee23dc7884ee64e26fb641",
+      "bytes": 7812
+    },
+    "wasm-build-fixed.log": {
+      "sha256": "18e67631702878fd25232760c2baec52497cde7332770ceb7be729a35dacdb65",
+      "bytes": 176
+    },
+    "wasm-check.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "wasm-compiler.log": {
+      "sha256": "b34968d6500d467ad71be9eba2bcd70e58307c45c181379e533d3e26a0e51853",
+      "bytes": 288
+    },
+    "wasm-path-probe.log": {
+      "sha256": "e3c330db2a1728c270262f6f132265f30d46c4cbfaf68e68cf54852aa527bc47",
+      "bytes": 359
+    },
+    "wasm-runtime.log": {
+      "sha256": "3a76b22fd23e9446f9884e717057ce1241d8d72c1e6747daafd92e0fa06e8849",
+      "bytes": 5709
+    },
+    "wasm-smoke.log": {
+      "sha256": "d1705efd5b98e4e471af810cf950cf411ab69652f16bb0bd1245029cc04d6fe2",
+      "bytes": 91
+    }
+  },
+  "limits": [
+    "Linux x64/arm64 not freshly validated in this local run.",
+    "Targeted WASI checks passed with local LLVM23/lld/cached sysroot; the hardcoded YoWASP scripts did not pass and are not counted.",
+    "Homebrew LLVM18 deployment-target/libunwind warnings are recorded in bootstrap logs.",
+    "No release or main merge. Performance target is assessed separately."
+  ]
+}

@@ -28,6 +28,11 @@ Person(name=Cy, age=40)
 [99, 3, 4]
 99 3 4 
 10045
+[null, 1, 99, 2, 3, 4, 5]
+2
+[null, 1, 99, 3, 4, 5]
+null, 1, 99, 3, 4, 5
+[7]
 n=5,true
 built3
 computing

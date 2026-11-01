@@ -80,6 +80,7 @@ class TypeOps(private val sema: Sema) {
 
     /** substitution of the type parameters of [c] by the arguments of [t] (star projections become the bound, `Any?` here) */
     fun substOf(t: ClassType): Map<TypeParamSym, Type> {
+        if (t.cls.typeParams.isEmpty()) return emptyMap()
         val m = HashMap<TypeParamSym, Type>()
         var i = 0
         for (tp in t.cls.typeParams) {

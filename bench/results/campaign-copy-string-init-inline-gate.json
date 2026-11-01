@@ -1,0 +1,14 @@
+{
+  "kind": "rejected-copy-init-static-inline-gate",
+  "baseline_experiment_commit": "0adbf27",
+  "compiler_flags": [
+    "-std=c17",
+    "-O2"
+  ],
+  "object_sha256": "69ab207dbbbc5e17bcc2782f52efafb01e7703ec19f062e64ea2d817e93cd4a3",
+  "object_bytes": 7784,
+  "finding": "mk_alloc_sized_site remains a four-instruction forwarding thunk; alloc_sized_core remains out of line. String-copy destination also branches to that core.",
+  "decision": "Failed ordinary-allocation overhead gate; no broader timings for this follow-on. Not integrated.",
+  "source_diff_sha256": "e51fed39e132c3b1f6059d33252b2a4594b1fed4543526d8dc76dff12854ffea",
+  "next_experiment": "A compiler-guarded forced-inline core was authorized but NOT implemented or measured before worker quota was exhausted. Requires fresh review and testing before any integration."
+}

@@ -1,0 +1,2040 @@
+{
+  "experiment": "ArrayList default initial backing capacity 10 -> 4",
+  "repo": "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini",
+  "branch": "codex/escape-collections",
+  "baseline_commit": "c1d8f24",
+  "compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+  "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+  "compiler_args": [
+    "--backend=llvm-api",
+    "--opt=O3"
+  ],
+  "runtime_archive": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+  "runtime_archive_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+  "same_runtime_archive_for_baseline_candidate": true,
+  "link_args": [
+    "clang",
+    "<app.o>",
+    "<same runtime archive>",
+    "-lm",
+    "-Wl,-dead_strip",
+    "-o",
+    "<exe>"
+  ],
+  "baseline_stdlib_file": "git show c1d8f24:stdlib/kotlin/collections/ArrayList.kt",
+  "candidate_stdlib_file": "assigned worktree source with default capacity 4",
+  "all_other_stdlib_sources_identical": true,
+  "workloads": {
+    "json": "bench/json/json.kt; output checked against bench/json/expected.txt",
+    "collections": "compiler/testdata/stdlib_collections.kt, including capacity-boundary growth, null, insert/remove, iterator, and initialCapacity=0; output checked against compiler/testdata/stdlib_collections.out",
+    "collection-load": "temporary generated program: 50000 default lists with 3 elements each, iterate/sum, then fill and iterate one 100000-element list; output checked against both variants"
+  },
+  "stats_runtime_archive": "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+  "stats_runtime_sha256": "74c1d30f957e5c21ccfd078eb980d4b366126ccaeab2f4aa5f6f0d57f4f05246",
+  "stats_runtime_same_for_baseline_candidate": true,
+  "timing_method": "10 paired runs per workload, deterministic shuffled order. Python perf_counter wraps /usr/bin/time -lp. Retired instructions and RSS parsed from raw macOS time output. Two warmups for each variant.",
+  "summary": {
+    "json": {
+      "instructions_retired": {
+        "baseline_median": 7890172329.0,
+        "candidate_median": 7653385260.5,
+        "candidate_ratio": 0.969989620172211
+      },
+      "max_rss_bytes": {
+        "baseline_median": 166133760.0,
+        "candidate_median": 145506304.0,
+        "candidate_ratio": 0.8758382642998027
+      },
+      "cycles_elapsed": {
+        "baseline_median": 2005734806.0,
+        "candidate_median": 1915825056.0,
+        "candidate_ratio": 0.9551736601812753
+      },
+      "perf_counter_wall_s": {
+        "baseline": 0.49064822954824194,
+        "candidate": 0.46746931254165247
+      },
+      "perf_counter_ratio": 0.952758584234715
+    },
+    "collections": {
+      "instructions_retired": {
+        "baseline_median": 10721805.5,
+        "candidate_median": 10718406.0,
+        "candidate_ratio": 0.9996829358637405
+      },
+      "max_rss_bytes": {
+        "baseline_median": 1392640.0,
+        "candidate_median": 1409024.0,
+        "candidate_ratio": 1.011764705882353
+      },
+      "cycles_elapsed": {
+        "baseline_median": 3601246.0,
+        "candidate_median": 3602152.0,
+        "candidate_ratio": 1.0002515795921745
+      },
+      "perf_counter_wall_s": {
+        "baseline": 0.0028823335305787623,
+        "candidate": 0.003060749964788556
+      },
+      "perf_counter_ratio": 1.0618999960681055
+    },
+    "collection-load": {
+      "instructions_retired": {
+        "baseline_median": 300756615.0,
+        "candidate_median": 288287207.0,
+        "candidate_ratio": 0.9585398711845456
+      },
+      "max_rss_bytes": {
+        "baseline_median": 24952832.0,
+        "candidate_median": 21839872.0,
+        "candidate_ratio": 0.8752462245567958
+      },
+      "cycles_elapsed": {
+        "baseline_median": 65673442.5,
+        "candidate_median": 61060226.5,
+        "candidate_ratio": 0.9297552279218498
+      },
+      "perf_counter_wall_s": {
+        "baseline": 0.018962041998747736,
+        "candidate": 0.018173146003391594
+      },
+      "perf_counter_ratio": 0.9583960421874268
+    }
+  },
+  "raw": {
+    "builds": [
+      {
+        "variant": "baseline",
+        "benchmark": "json",
+        "compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+        "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+        "compiler_flags": [
+          "--backend=llvm-api",
+          "--opt=O3"
+        ],
+        "runtime": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "runtime_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+        "link_flags": [
+          "-lm",
+          "-Wl,-dead_strip"
+        ],
+        "object_sha256": "972d4403ad906ce52891bfb6d48bb628e63da1039263de92dda239f6e3b032d1",
+        "exe_sha256": "61e1f4f048093509509af7f6183865b0c9e3adc5268563facd74b6f7eb978cb1",
+        "stdlib_sha256": "ecb338b8c4e94485a0f9d1efc6a6bc2eafac46e28d62c0e51f549c2527cc04bd",
+        "stdlib_file_count": 62,
+        "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+        "command": [
+          "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+          "--backend=llvm-api",
+          "--opt=O3",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/json-baseline.o",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/bench/json/json.kt",
+          "--stdlib",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/java/lang/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ArrayIndices.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Arrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Builtins.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Comparator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ContextParameters.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Lazy.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/NumbersMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Platform.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Preconditions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/PrimitiveArrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Primitives.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Ranges.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Result.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Standard.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Throwable.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Tuples.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/annotation/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/AbstractCollections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/ArrayDeque.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/ArrayList.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Builders.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Collections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/HashMap.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/HashSet.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Iterables.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/IterablesMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Iterator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/MapsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/PrimitiveIterators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/comparisons/Comparisons.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/concurrent/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/internal/Builtin.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/internal/Conventions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/io/Console.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/jvm/JvmInline.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/math/Math.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/native/CName.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ranges/Coerce.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/reflect/KClass.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/Char.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringBuilder.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringNumberConversions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Memory.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Pointers.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Types.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/display/Display.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/B1Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/CSymbol.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/io/Files.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Allocator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Allocators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Spawn.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/wasm/WasmExport.kt"
+        ],
+        "link_command": [
+          "clang",
+          "/tmp/campaign-arraylist-cap4/json-baseline.o",
+          "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/json-baseline"
+        ]
+      },
+      {
+        "variant": "baseline",
+        "benchmark": "collections",
+        "compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+        "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+        "compiler_flags": [
+          "--backend=llvm-api",
+          "--opt=O3"
+        ],
+        "runtime": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "runtime_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+        "link_flags": [
+          "-lm",
+          "-Wl,-dead_strip"
+        ],
+        "object_sha256": "a04c970a3079e1d6bfa575df75fecb13a25a29460476637bd241662aee3350d6",
+        "exe_sha256": "6c515f23c20c7c750c93ea495030c8b3c0d5a788ac88d585b9083da9ed51ac80",
+        "stdlib_sha256": "ecb338b8c4e94485a0f9d1efc6a6bc2eafac46e28d62c0e51f549c2527cc04bd",
+        "stdlib_file_count": 62,
+        "source_sha256": "21fc1aa5f6a8514824a1992f0d5e389a640845c62c6c63f80d6673e6060c5985",
+        "command": [
+          "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+          "--backend=llvm-api",
+          "--opt=O3",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collections-baseline.o",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/compiler/testdata/stdlib_collections.kt",
+          "--stdlib",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/java/lang/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ArrayIndices.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Arrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Builtins.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Comparator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ContextParameters.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Lazy.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/NumbersMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Platform.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Preconditions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/PrimitiveArrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Primitives.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Ranges.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Result.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Standard.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Throwable.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Tuples.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/annotation/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/AbstractCollections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/ArrayDeque.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/ArrayList.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Builders.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Collections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/HashMap.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/HashSet.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Iterables.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/IterablesMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Iterator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/MapsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/PrimitiveIterators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/comparisons/Comparisons.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/concurrent/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/internal/Builtin.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/internal/Conventions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/io/Console.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/jvm/JvmInline.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/math/Math.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/native/CName.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ranges/Coerce.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/reflect/KClass.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/Char.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringBuilder.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringNumberConversions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Memory.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Pointers.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Types.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/display/Display.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/B1Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/CSymbol.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/io/Files.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Allocator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Allocators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Spawn.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/wasm/WasmExport.kt"
+        ],
+        "link_command": [
+          "clang",
+          "/tmp/campaign-arraylist-cap4/collections-baseline.o",
+          "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collections-baseline"
+        ]
+      },
+      {
+        "variant": "candidate",
+        "benchmark": "json",
+        "compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+        "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+        "compiler_flags": [
+          "--backend=llvm-api",
+          "--opt=O3"
+        ],
+        "runtime": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "runtime_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+        "link_flags": [
+          "-lm",
+          "-Wl,-dead_strip"
+        ],
+        "object_sha256": "2d0c7487fd76a29285e4fc814ef64817d0dd3a46d4cd26250f573ff541836d0c",
+        "exe_sha256": "56fbc7dcdbd8eea3c31509ede4ea340b34bdbb761052d1d1b660015f5f1fd4fc",
+        "stdlib_sha256": "2f3b39131e431b18b97ef6290047011c37fa4bc91785be776244fa98c88b5454",
+        "stdlib_file_count": 62,
+        "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+        "command": [
+          "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+          "--backend=llvm-api",
+          "--opt=O3",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/json-candidate.o",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/bench/json/json.kt",
+          "--stdlib",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/java/lang/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ArrayIndices.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Arrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Builtins.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Comparator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ContextParameters.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Lazy.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/NumbersMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Platform.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Preconditions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/PrimitiveArrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Primitives.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Ranges.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Result.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Standard.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Throwable.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Tuples.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/annotation/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/AbstractCollections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/ArrayDeque.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/ArrayList.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Builders.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Collections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/HashMap.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/HashSet.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Iterables.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/IterablesMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Iterator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/MapsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/PrimitiveIterators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/comparisons/Comparisons.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/concurrent/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/internal/Builtin.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/internal/Conventions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/io/Console.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/jvm/JvmInline.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/math/Math.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/native/CName.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ranges/Coerce.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/reflect/KClass.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/Char.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringBuilder.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringNumberConversions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Memory.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Pointers.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Types.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/display/Display.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/B1Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/CSymbol.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/io/Files.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Allocator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Allocators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Spawn.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/wasm/WasmExport.kt"
+        ],
+        "link_command": [
+          "clang",
+          "/tmp/campaign-arraylist-cap4/json-candidate.o",
+          "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/json-candidate"
+        ]
+      },
+      {
+        "variant": "candidate",
+        "benchmark": "collections",
+        "compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+        "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+        "compiler_flags": [
+          "--backend=llvm-api",
+          "--opt=O3"
+        ],
+        "runtime": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "runtime_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+        "link_flags": [
+          "-lm",
+          "-Wl,-dead_strip"
+        ],
+        "object_sha256": "35c367fd39e3bf3be99837ed30d40d68e3b95ab56c1d1cb34540b1f47b036a4a",
+        "exe_sha256": "4cf72f95b69b04af291b5e64cb0b661f42af1179bd3b23cab54450a9565f430e",
+        "stdlib_sha256": "2f3b39131e431b18b97ef6290047011c37fa4bc91785be776244fa98c88b5454",
+        "stdlib_file_count": 62,
+        "source_sha256": "21fc1aa5f6a8514824a1992f0d5e389a640845c62c6c63f80d6673e6060c5985",
+        "command": [
+          "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+          "--backend=llvm-api",
+          "--opt=O3",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collections-candidate.o",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/compiler/testdata/stdlib_collections.kt",
+          "--stdlib",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/java/lang/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ArrayIndices.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Arrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Builtins.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Comparator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ContextParameters.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Lazy.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/NumbersMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Platform.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Preconditions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/PrimitiveArrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Primitives.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Ranges.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Result.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Standard.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Throwable.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Tuples.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/annotation/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/AbstractCollections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/ArrayDeque.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/ArrayList.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Builders.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Collections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/HashMap.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/HashSet.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Iterables.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/IterablesMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Iterator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/MapsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/PrimitiveIterators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/comparisons/Comparisons.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/concurrent/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/internal/Builtin.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/internal/Conventions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/io/Console.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/jvm/JvmInline.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/math/Math.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/native/CName.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ranges/Coerce.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/reflect/KClass.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/Char.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringBuilder.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringNumberConversions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Memory.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Pointers.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Types.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/display/Display.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/B1Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/CSymbol.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/io/Files.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Allocator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Allocators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Spawn.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/wasm/WasmExport.kt"
+        ],
+        "link_command": [
+          "clang",
+          "/tmp/campaign-arraylist-cap4/collections-candidate.o",
+          "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collections-candidate"
+        ]
+      },
+      {
+        "variant": "baseline",
+        "benchmark": "synthetic-default-list-growth",
+        "compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+        "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+        "compiler_flags": [
+          "--backend=llvm-api",
+          "--opt=O3"
+        ],
+        "runtime": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "runtime_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+        "link_flags": [
+          "-lm",
+          "-Wl,-dead_strip"
+        ],
+        "object_sha256": "df59839985d61d8c1f64e7d6f9f61be91bff2e17b192c86e8ac62b17441d5ac2",
+        "exe_sha256": "62f9220abca068998b81ebd146de4bf96dc44c824564dba114e7db055e679b9c",
+        "stdlib_sha256": "ecb338b8c4e94485a0f9d1efc6a6bc2eafac46e28d62c0e51f549c2527cc04bd",
+        "stdlib_file_count": 62,
+        "source_sha256": "e83335c06376d053d4272d4d0419fafcdf2074e0651b60a21508e3247266feea",
+        "command": [
+          "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+          "--backend=llvm-api",
+          "--opt=O3",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collection-load-baseline.o",
+          "/tmp/campaign-arraylist-cap4/collection-load.kt",
+          "--stdlib",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/java/lang/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ArrayIndices.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Arrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Builtins.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Comparator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ContextParameters.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Lazy.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/NumbersMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Platform.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Preconditions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/PrimitiveArrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Primitives.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Ranges.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Result.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Standard.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Throwable.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/Tuples.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/annotation/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/AbstractCollections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/ArrayDeque.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/ArrayList.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Builders.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Collections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/HashMap.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/HashSet.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Iterables.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/IterablesMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/Iterator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/MapsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/collections/PrimitiveIterators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/comparisons/Comparisons.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/concurrent/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/internal/Builtin.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/internal/Conventions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/io/Console.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/jvm/JvmInline.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/math/Math.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/native/CName.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/ranges/Coerce.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/reflect/KClass.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/Char.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringBuilder.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringNumberConversions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlin/text/StringsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Memory.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Pointers.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/kotlinx/cinterop/Types.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/display/Display.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/B1Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/CSymbol.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/internal/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/io/Files.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Allocator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Allocators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/memory/Spawn.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-baseline/mini/wasm/WasmExport.kt"
+        ],
+        "link_command": [
+          "clang",
+          "/tmp/campaign-arraylist-cap4/collection-load-baseline.o",
+          "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collection-load-baseline"
+        ]
+      },
+      {
+        "variant": "candidate",
+        "benchmark": "synthetic-default-list-growth",
+        "compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+        "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+        "compiler_flags": [
+          "--backend=llvm-api",
+          "--opt=O3"
+        ],
+        "runtime": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "runtime_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+        "link_flags": [
+          "-lm",
+          "-Wl,-dead_strip"
+        ],
+        "object_sha256": "9f6d12ef1ba35942bd6413c9104d9f3888b6b138f53ee51ba468cf6bfcef318a",
+        "exe_sha256": "56fb449cb1b9a2c07964f4c4dab80ebe0dd73286036185830b4d97dc19b571cf",
+        "stdlib_sha256": "2f3b39131e431b18b97ef6290047011c37fa4bc91785be776244fa98c88b5454",
+        "stdlib_file_count": 62,
+        "source_sha256": "e83335c06376d053d4272d4d0419fafcdf2074e0651b60a21508e3247266feea",
+        "command": [
+          "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+          "--backend=llvm-api",
+          "--opt=O3",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collection-load-candidate.o",
+          "/tmp/campaign-arraylist-cap4/collection-load.kt",
+          "--stdlib",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/java/lang/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ArrayIndices.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Arrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Builtins.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Comparator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ContextParameters.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Lazy.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/NumbersMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Platform.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Preconditions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/PrimitiveArrays.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Primitives.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Ranges.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Result.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Standard.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Throwable.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/Tuples.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/annotation/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/AbstractCollections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/ArrayDeque.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/ArrayList.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Builders.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Collections.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/HashMap.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/HashSet.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Iterables.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/IterablesMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/Iterator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/MapsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/collections/PrimitiveIterators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/comparisons/Comparisons.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/concurrent/Thread.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/internal/Builtin.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/internal/Conventions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/io/Console.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/jvm/JvmInline.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/math/Math.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/native/CName.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/ranges/Coerce.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/reflect/KClass.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/Char.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringBuilder.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringNumberConversions.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlin/text/StringsMore.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Memory.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Pointers.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Strings.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/kotlinx/cinterop/Types.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/display/Display.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/B1Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/CSymbol.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/internal/Intrinsics.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/io/Files.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Allocator.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Allocators.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Annotations.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/memory/Spawn.kt",
+          "/tmp/campaign-arraylist-cap4/stdlib-candidate/mini/wasm/WasmExport.kt"
+        ],
+        "link_command": [
+          "clang",
+          "/tmp/campaign-arraylist-cap4/collection-load-candidate.o",
+          "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-arraylist-cap4/collection-load-candidate"
+        ]
+      }
+    ],
+    "time_lp": {
+      "json": {
+        "expected_output_sha256": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+        "paired_order": [
+          {
+            "pair": 1,
+            "variant": "candidate",
+            "wall_s": 0.47,
+            "user_s": 0.46,
+            "max_rss_bytes": 145391616,
+            "instructions_retired": 7654465041,
+            "cycles_elapsed": 1906797172
+          },
+          {
+            "pair": 1,
+            "variant": "baseline",
+            "wall_s": 0.5,
+            "user_s": 0.48,
+            "max_rss_bytes": 166133760,
+            "instructions_retired": 7894155295,
+            "cycles_elapsed": 2025332210
+          },
+          {
+            "pair": 2,
+            "variant": "candidate",
+            "wall_s": 0.49,
+            "user_s": 0.47,
+            "max_rss_bytes": 145489920,
+            "instructions_retired": 7631600115,
+            "cycles_elapsed": 1949197490
+          },
+          {
+            "pair": 2,
+            "variant": "baseline",
+            "wall_s": 0.5,
+            "user_s": 0.48,
+            "max_rss_bytes": 166117376,
+            "instructions_retired": 7863221376,
+            "cycles_elapsed": 2005962016
+          },
+          {
+            "pair": 3,
+            "variant": "baseline",
+            "wall_s": 0.5,
+            "user_s": 0.48,
+            "max_rss_bytes": 166150144,
+            "instructions_retired": 7897629525,
+            "cycles_elapsed": 2005507596
+          },
+          {
+            "pair": 3,
+            "variant": "candidate",
+            "wall_s": 0.5,
+            "user_s": 0.48,
+            "max_rss_bytes": 145522688,
+            "instructions_retired": 7665888106,
+            "cycles_elapsed": 1937268510
+          },
+          {
+            "pair": 4,
+            "variant": "candidate",
+            "wall_s": 0.49,
+            "user_s": 0.47,
+            "max_rss_bytes": 145571840,
+            "instructions_retired": 7674656702,
+            "cycles_elapsed": 1933986853
+          },
+          {
+            "pair": 4,
+            "variant": "baseline",
+            "wall_s": 0.5,
+            "user_s": 0.48,
+            "max_rss_bytes": 166133760,
+            "instructions_retired": 7896902309,
+            "cycles_elapsed": 2000005134
+          },
+          {
+            "pair": 5,
+            "variant": "candidate",
+            "wall_s": 0.48,
+            "user_s": 0.47,
+            "max_rss_bytes": 145375232,
+            "instructions_retired": 7650186391,
+            "cycles_elapsed": 1918015981
+          },
+          {
+            "pair": 5,
+            "variant": "baseline",
+            "wall_s": 0.5,
+            "user_s": 0.48,
+            "max_rss_bytes": 166166528,
+            "instructions_retired": 7903645070,
+            "cycles_elapsed": 2011412993
+          },
+          {
+            "pair": 6,
+            "variant": "candidate",
+            "wall_s": 0.46,
+            "user_s": 0.45,
+            "max_rss_bytes": 145506304,
+            "instructions_retired": 7647525027,
+            "cycles_elapsed": 1882710949
+          },
+          {
+            "pair": 6,
+            "variant": "baseline",
+            "wall_s": 0.48,
+            "user_s": 0.47,
+            "max_rss_bytes": 166166528,
+            "instructions_retired": 7891003982,
+            "cycles_elapsed": 1968504053
+          },
+          {
+            "pair": 7,
+            "variant": "baseline",
+            "wall_s": 0.49,
+            "user_s": 0.47,
+            "max_rss_bytes": 166133760,
+            "instructions_retired": 7889340676,
+            "cycles_elapsed": 1983379723
+          },
+          {
+            "pair": 7,
+            "variant": "candidate",
+            "wall_s": 0.48,
+            "user_s": 0.47,
+            "max_rss_bytes": 145506304,
+            "instructions_retired": 7652714883,
+            "cycles_elapsed": 1912912012
+          },
+          {
+            "pair": 8,
+            "variant": "baseline",
+            "wall_s": 0.52,
+            "user_s": 0.49,
+            "max_rss_bytes": 166117376,
+            "instructions_retired": 7869452577,
+            "cycles_elapsed": 2023298643
+          },
+          {
+            "pair": 8,
+            "variant": "candidate",
+            "wall_s": 0.48,
+            "user_s": 0.47,
+            "max_rss_bytes": 145506304,
+            "instructions_retired": 7648183867,
+            "cycles_elapsed": 1920508239
+          },
+          {
+            "pair": 9,
+            "variant": "baseline",
+            "wall_s": 0.5,
+            "user_s": 0.49,
+            "max_rss_bytes": 166133760,
+            "instructions_retired": 7884443629,
+            "cycles_elapsed": 2010741080
+          },
+          {
+            "pair": 9,
+            "variant": "candidate",
+            "wall_s": 0.49,
+            "user_s": 0.47,
+            "max_rss_bytes": 145375232,
+            "instructions_retired": 7655333660,
+            "cycles_elapsed": 1913634131
+          },
+          {
+            "pair": 10,
+            "variant": "baseline",
+            "wall_s": 0.5,
+            "user_s": 0.48,
+            "max_rss_bytes": 166166528,
+            "instructions_retired": 7884243049,
+            "cycles_elapsed": 1997636559
+          },
+          {
+            "pair": 10,
+            "variant": "candidate",
+            "wall_s": 0.48,
+            "user_s": 0.46,
+            "max_rss_bytes": 145506304,
+            "instructions_retired": 7654055638,
+            "cycles_elapsed": 1906237365
+          }
+        ],
+        "summary": {
+          "baseline": {
+            "median_wall_s": 0.5,
+            "mean_wall_s": 0.499,
+            "median_instructions_retired": 7890172329.0,
+            "median_max_rss_bytes": 166133760.0,
+            "median_user_s": 0.48
+          },
+          "candidate": {
+            "median_wall_s": 0.48,
+            "mean_wall_s": 0.482,
+            "median_instructions_retired": 7653385260.5,
+            "median_max_rss_bytes": 145506304.0,
+            "median_user_s": 0.47
+          }
+        },
+        "all_runs_output_matches": true,
+        "raw_time_stderr": {
+          "baseline": [
+            "real 0.50\nuser 0.48\nsys 0.01\n           166133760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10367  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 670  involuntary context switches\n          7894155295  instructions retired\n          2025332210  cycles elapsed\n           165855688  peak memory footprint\n",
+            "real 0.50\nuser 0.48\nsys 0.01\n           166117376  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10366  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 332  involuntary context switches\n          7863221376  instructions retired\n          2005962016  cycles elapsed\n           165839304  peak memory footprint\n",
+            "real 0.50\nuser 0.48\nsys 0.01\n           166150144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10370  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 420  involuntary context switches\n          7897629525  instructions retired\n          2005507596  cycles elapsed\n           165872072  peak memory footprint\n",
+            "real 0.50\nuser 0.48\nsys 0.01\n           166133760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10367  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 674  involuntary context switches\n          7896902309  instructions retired\n          2000005134  cycles elapsed\n           165855688  peak memory footprint\n",
+            "real 0.50\nuser 0.48\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10373  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 248  involuntary context switches\n          7903645070  instructions retired\n          2011412993  cycles elapsed\n           165888456  peak memory footprint\n",
+            "real 0.48\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  62  involuntary context switches\n          7891003982  instructions retired\n          1968504053  cycles elapsed\n           165888456  peak memory footprint\n",
+            "real 0.49\nuser 0.47\nsys 0.01\n           166133760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10367  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  13  involuntary context switches\n          7889340676  instructions retired\n          1983379723  cycles elapsed\n           165855688  peak memory footprint\n",
+            "real 0.52\nuser 0.49\nsys 0.01\n           166117376  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10366  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                1096  involuntary context switches\n          7869452577  instructions retired\n          2023298643  cycles elapsed\n           165839304  peak memory footprint\n",
+            "real 0.50\nuser 0.49\nsys 0.01\n           166133760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10367  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 427  involuntary context switches\n          7884443629  instructions retired\n          2010741080  cycles elapsed\n           165855688  peak memory footprint\n",
+            "real 0.50\nuser 0.48\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 256  involuntary context switches\n          7884243049  instructions retired\n          1997636559  cycles elapsed\n           165888456  peak memory footprint\n"
+          ],
+          "candidate": [
+            "real 0.47\nuser 0.46\nsys 0.01\n           145391616  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9021  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 378  involuntary context switches\n          7654465041  instructions retired\n          1906797172  cycles elapsed\n           145113544  peak memory footprint\n",
+            "real 0.49\nuser 0.47\nsys 0.01\n           145489920  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9027  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 790  involuntary context switches\n          7631600115  instructions retired\n          1949197490  cycles elapsed\n           145195440  peak memory footprint\n",
+            "real 0.50\nuser 0.48\nsys 0.01\n           145522688  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9029  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 826  involuntary context switches\n          7665888106  instructions retired\n          1937268510  cycles elapsed\n           145244616  peak memory footprint\n",
+            "real 0.49\nuser 0.47\nsys 0.01\n           145571840  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9032  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 764  involuntary context switches\n          7674656702  instructions retired\n          1933986853  cycles elapsed\n           145277360  peak memory footprint\n",
+            "real 0.48\nuser 0.47\nsys 0.00\n           145375232  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9020  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 313  involuntary context switches\n          7650186391  instructions retired\n          1918015981  cycles elapsed\n           145097160  peak memory footprint\n",
+            "real 0.46\nuser 0.45\nsys 0.00\n           145506304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9028  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 112  involuntary context switches\n          7647525027  instructions retired\n          1882710949  cycles elapsed\n           145195416  peak memory footprint\n",
+            "real 0.48\nuser 0.47\nsys 0.00\n           145506304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9028  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  87  involuntary context switches\n          7652714883  instructions retired\n          1912912012  cycles elapsed\n           145211824  peak memory footprint\n",
+            "real 0.48\nuser 0.47\nsys 0.00\n           145506304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9028  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 364  involuntary context switches\n          7648183867  instructions retired\n          1920508239  cycles elapsed\n           145211824  peak memory footprint\n",
+            "real 0.49\nuser 0.47\nsys 0.01\n           145375232  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9020  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 889  involuntary context switches\n          7655333660  instructions retired\n          1913634131  cycles elapsed\n           145097160  peak memory footprint\n",
+            "real 0.48\nuser 0.46\nsys 0.00\n           145506304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9028  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 637  involuntary context switches\n          7654055638  instructions retired\n          1906237365  cycles elapsed\n           145211824  peak memory footprint\n"
+          ]
+        }
+      },
+      "collections": {
+        "expected_output_sha256": "02fd7aeb0c10f185daa70e9d08eff24dffa100d51f1829ea7aa277909e910e4f",
+        "paired_order": [
+          {
+            "pair": 1,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10695187,
+            "cycles_elapsed": 3890474
+          },
+          {
+            "pair": 1,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1392640,
+            "instructions_retired": 10723562,
+            "cycles_elapsed": 3769040
+          },
+          {
+            "pair": 2,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 11273928,
+            "cycles_elapsed": 5774257
+          },
+          {
+            "pair": 2,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1392640,
+            "instructions_retired": 10764734,
+            "cycles_elapsed": 4245349
+          },
+          {
+            "pair": 3,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10726154,
+            "cycles_elapsed": 3809350
+          },
+          {
+            "pair": 3,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10706734,
+            "cycles_elapsed": 3844927
+          },
+          {
+            "pair": 4,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10737509,
+            "cycles_elapsed": 3671637
+          },
+          {
+            "pair": 4,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1392640,
+            "instructions_retired": 10720049,
+            "cycles_elapsed": 3587452
+          },
+          {
+            "pair": 5,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10691638,
+            "cycles_elapsed": 3532667
+          },
+          {
+            "pair": 5,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10685597,
+            "cycles_elapsed": 3581480
+          },
+          {
+            "pair": 6,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10738375,
+            "cycles_elapsed": 3489181
+          },
+          {
+            "pair": 6,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1392640,
+            "instructions_retired": 10711121,
+            "cycles_elapsed": 3615040
+          },
+          {
+            "pair": 7,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1392640,
+            "instructions_retired": 10676892,
+            "cycles_elapsed": 3468782
+          },
+          {
+            "pair": 7,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10691240,
+            "cycles_elapsed": 3511319
+          },
+          {
+            "pair": 8,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10724714,
+            "cycles_elapsed": 3485956
+          },
+          {
+            "pair": 8,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10734205,
+            "cycles_elapsed": 3510863
+          },
+          {
+            "pair": 9,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1392640,
+            "instructions_retired": 10681868,
+            "cycles_elapsed": 3405861
+          },
+          {
+            "pair": 9,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10730078,
+            "cycles_elapsed": 3507512
+          },
+          {
+            "pair": 10,
+            "variant": "baseline",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 11062616,
+            "cycles_elapsed": 6174159
+          },
+          {
+            "pair": 10,
+            "variant": "candidate",
+            "wall_s": 0.0,
+            "user_s": 0.0,
+            "max_rss_bytes": 1409024,
+            "instructions_retired": 10687515,
+            "cycles_elapsed": 3776172
+          }
+        ],
+        "summary": {
+          "baseline": {
+            "median_wall_s": 0.0,
+            "mean_wall_s": 0.0,
+            "median_instructions_retired": 10721805.5,
+            "median_max_rss_bytes": 1392640.0,
+            "median_user_s": 0.0
+          },
+          "candidate": {
+            "median_wall_s": 0.0,
+            "mean_wall_s": 0.0,
+            "median_instructions_retired": 10718406.0,
+            "median_max_rss_bytes": 1409024.0,
+            "median_user_s": 0.0
+          }
+        },
+        "all_runs_output_matches": true,
+        "raw_time_stderr": {
+          "baseline": [
+            "real 0.00\nuser 0.00\nsys 0.00\n             1392640  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 232  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10723562  instructions retired\n             3769040  cycles elapsed\n              950560  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1392640  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 232  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10764734  instructions retired\n             4245349  cycles elapsed\n              950560  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10726154  instructions retired\n             3809350  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1392640  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 232  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10720049  instructions retired\n             3587452  cycles elapsed\n              950560  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10685597  instructions retired\n             3581480  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1392640  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 232  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   7  involuntary context switches\n            10711121  instructions retired\n             3615040  cycles elapsed\n              950560  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1392640  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 232  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10676892  instructions retired\n             3468782  cycles elapsed\n              950560  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10724714  instructions retired\n             3485956  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1392640  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 232  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10681868  instructions retired\n             3405861  cycles elapsed\n              950560  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  38  involuntary context switches\n            11062616  instructions retired\n             6174159  cycles elapsed\n              966944  peak memory footprint\n"
+          ],
+          "candidate": [
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n            10695187  instructions retired\n             3890474  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 235  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  38  involuntary context switches\n            11273928  instructions retired\n             5774257  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n            10706734  instructions retired\n             3844927  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10737509  instructions retired\n             3671637  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10691638  instructions retired\n             3532667  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10738375  instructions retired\n             3489181  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10691240  instructions retired\n             3511319  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10734205  instructions retired\n             3510863  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10730078  instructions retired\n             3507512  cycles elapsed\n              966944  peak memory footprint\n",
+            "real 0.00\nuser 0.00\nsys 0.00\n             1409024  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 233  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n            10687515  instructions retired\n             3776172  cycles elapsed\n              966944  peak memory footprint\n"
+          ]
+        }
+      },
+      "collection-load": {
+        "expected_output_sha256": "d19dd5add4a2d0ad30ba4b1482f8f70878e66bd77de7f4a6d1be3d2bfe3aa05f",
+        "paired_order": [
+          {
+            "pair": 1,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 287391258,
+            "cycles_elapsed": 60381761
+          },
+          {
+            "pair": 1,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24985600,
+            "instructions_retired": 301365140,
+            "cycles_elapsed": 70655990
+          },
+          {
+            "pair": 2,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288175173,
+            "cycles_elapsed": 61046291
+          },
+          {
+            "pair": 2,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300447985,
+            "cycles_elapsed": 65590023
+          },
+          {
+            "pair": 3,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300449263,
+            "cycles_elapsed": 66083874
+          },
+          {
+            "pair": 3,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288327707,
+            "cycles_elapsed": 61282109
+          },
+          {
+            "pair": 4,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21823488,
+            "instructions_retired": 288128343,
+            "cycles_elapsed": 59941807
+          },
+          {
+            "pair": 4,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300487171,
+            "cycles_elapsed": 64722553
+          },
+          {
+            "pair": 5,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288229243,
+            "cycles_elapsed": 60801512
+          },
+          {
+            "pair": 5,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300989296,
+            "cycles_elapsed": 66377961
+          },
+          {
+            "pair": 6,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288246707,
+            "cycles_elapsed": 62046193
+          },
+          {
+            "pair": 6,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300814510,
+            "cycles_elapsed": 67536098
+          },
+          {
+            "pair": 7,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300763988,
+            "cycles_elapsed": 65756862
+          },
+          {
+            "pair": 7,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288425393,
+            "cycles_elapsed": 61376508
+          },
+          {
+            "pair": 8,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300749242,
+            "cycles_elapsed": 65248609
+          },
+          {
+            "pair": 8,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288340105,
+            "cycles_elapsed": 61074162
+          },
+          {
+            "pair": 9,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300914282,
+            "cycles_elapsed": 65236884
+          },
+          {
+            "pair": 9,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288517269,
+            "cycles_elapsed": 60931482
+          },
+          {
+            "pair": 10,
+            "variant": "baseline",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 24952832,
+            "instructions_retired": 300749023,
+            "cycles_elapsed": 63354166
+          },
+          {
+            "pair": 10,
+            "variant": "candidate",
+            "wall_s": 0.01,
+            "user_s": 0.01,
+            "max_rss_bytes": 21839872,
+            "instructions_retired": 288348849,
+            "cycles_elapsed": 62002834
+          }
+        ],
+        "summary": {
+          "baseline": {
+            "median_wall_s": 0.01,
+            "mean_wall_s": 0.01,
+            "median_instructions_retired": 300756615.0,
+            "median_max_rss_bytes": 24952832.0,
+            "median_user_s": 0.01
+          },
+          "candidate": {
+            "median_wall_s": 0.01,
+            "mean_wall_s": 0.01,
+            "median_instructions_retired": 288287207.0,
+            "median_max_rss_bytes": 21839872.0,
+            "median_user_s": 0.01
+          }
+        },
+        "all_runs_output_matches": true,
+        "raw_time_stderr": {
+          "baseline": [
+            "real 0.01\nuser 0.01\nsys 0.00\n            24985600  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1672  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  49  involuntary context switches\n           301365140  instructions retired\n            70655990  cycles elapsed\n            24625488  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           300447985  instructions retired\n            65590023  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           300449263  instructions retired\n            66083874  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           300487171  instructions retired\n            64722553  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n           300989296  instructions retired\n            66377961  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           300814510  instructions retired\n            67536098  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           300763988  instructions retired\n            65756862  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           300749242  instructions retired\n            65248609  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           300914282  instructions retired\n            65236884  cycles elapsed\n            24592720  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            24952832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1670  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n           300749023  instructions retired\n            63354166  cycles elapsed\n            24592720  peak memory footprint\n"
+          ],
+          "candidate": [
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n           287391258  instructions retired\n            60381761  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288175173  instructions retired\n            61046291  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288327707  instructions retired\n            61282109  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21823488  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1479  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288128343  instructions retired\n            59941807  cycles elapsed\n            21463376  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288229243  instructions retired\n            60801512  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288246707  instructions retired\n            62046193  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288425393  instructions retired\n            61376508  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288340105  instructions retired\n            61074162  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288517269  instructions retired\n            60931482  cycles elapsed\n            21479760  peak memory footprint\n",
+            "real 0.01\nuser 0.01\nsys 0.00\n            21839872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n           288348849  instructions retired\n            62002834  cycles elapsed\n            21479760  peak memory footprint\n"
+          ]
+        }
+      }
+    },
+    "perf_counter": {
+      "json": {
+        "paired_order": [
+          {
+            "pair": 1,
+            "variant": "baseline",
+            "wall_s": 0.4853442079620436
+          },
+          {
+            "pair": 1,
+            "variant": "candidate",
+            "wall_s": 0.4664939580252394
+          },
+          {
+            "pair": 2,
+            "variant": "candidate",
+            "wall_s": 0.46420395898167044
+          },
+          {
+            "pair": 2,
+            "variant": "baseline",
+            "wall_s": 0.48489958292338997
+          },
+          {
+            "pair": 3,
+            "variant": "candidate",
+            "wall_s": 0.47242787503637373
+          },
+          {
+            "pair": 3,
+            "variant": "baseline",
+            "wall_s": 0.4917278749635443
+          },
+          {
+            "pair": 4,
+            "variant": "baseline",
+            "wall_s": 0.489712042035535
+          },
+          {
+            "pair": 4,
+            "variant": "candidate",
+            "wall_s": 0.46412129199597985
+          },
+          {
+            "pair": 5,
+            "variant": "candidate",
+            "wall_s": 0.46844466705806553
+          },
+          {
+            "pair": 5,
+            "variant": "baseline",
+            "wall_s": 0.4846493329387158
+          },
+          {
+            "pair": 6,
+            "variant": "candidate",
+            "wall_s": 0.4656499170232564
+          },
+          {
+            "pair": 6,
+            "variant": "baseline",
+            "wall_s": 0.4915844170609489
+          },
+          {
+            "pair": 7,
+            "variant": "baseline",
+            "wall_s": 0.5123627500142902
+          },
+          {
+            "pair": 7,
+            "variant": "candidate",
+            "wall_s": 0.47171349998097867
+          },
+          {
+            "pair": 8,
+            "variant": "baseline",
+            "wall_s": 0.49204725003801286
+          },
+          {
+            "pair": 8,
+            "variant": "candidate",
+            "wall_s": 0.4748959999997169
+          },
+          {
+            "pair": 9,
+            "variant": "baseline",
+            "wall_s": 0.4870649160584435
+          },
+          {
+            "pair": 9,
+            "variant": "candidate",
+            "wall_s": 0.4661758339498192
+          },
+          {
+            "pair": 10,
+            "variant": "baseline",
+            "wall_s": 0.4975361250108108
+          },
+          {
+            "pair": 10,
+            "variant": "candidate",
+            "wall_s": 0.47293916705530137
+          }
+        ],
+        "summary": {
+          "baseline": {
+            "median_wall_s": 0.49064822954824194,
+            "mean_wall_s": 0.4916928499005735,
+            "samples_s": [
+              0.4853442079620436,
+              0.48489958292338997,
+              0.4917278749635443,
+              0.489712042035535,
+              0.4846493329387158,
+              0.4915844170609489,
+              0.5123627500142902,
+              0.49204725003801286,
+              0.4870649160584435,
+              0.4975361250108108
+            ]
+          },
+          "candidate": {
+            "median_wall_s": 0.46746931254165247,
+            "mean_wall_s": 0.46870661691064014,
+            "samples_s": [
+              0.4664939580252394,
+              0.46420395898167044,
+              0.47242787503637373,
+              0.46412129199597985,
+              0.46844466705806553,
+              0.4656499170232564,
+              0.47171349998097867,
+              0.4748959999997169,
+              0.4661758339498192,
+              0.47293916705530137
+            ]
+          }
+        }
+      },
+      "collections": {
+        "paired_order": [
+          {
+            "pair": 1,
+            "variant": "baseline",
+            "wall_s": 0.0035318329464644194
+          },
+          {
+            "pair": 1,
+            "variant": "candidate",
+            "wall_s": 0.0033515000250190496
+          },
+          {
+            "pair": 2,
+            "variant": "candidate",
+            "wall_s": 0.003704875009134412
+          },
+          {
+            "pair": 2,
+            "variant": "baseline",
+            "wall_s": 0.003249750006943941
+          },
+          {
+            "pair": 3,
+            "variant": "candidate",
+            "wall_s": 0.0032953330082818866
+          },
+          {
+            "pair": 3,
+            "variant": "baseline",
+            "wall_s": 0.00308812502771616
+          },
+          {
+            "pair": 4,
+            "variant": "baseline",
+            "wall_s": 0.002775416010990739
+          },
+          {
+            "pair": 4,
+            "variant": "candidate",
+            "wall_s": 0.0036332079907879233
+          },
+          {
+            "pair": 5,
+            "variant": "candidate",
+            "wall_s": 0.0030951659427955747
+          },
+          {
+            "pair": 5,
+            "variant": "baseline",
+            "wall_s": 0.003363874973729253
+          },
+          {
+            "pair": 6,
+            "variant": "candidate",
+            "wall_s": 0.002914707991294563
+          },
+          {
+            "pair": 6,
+            "variant": "baseline",
+            "wall_s": 0.002674582996405661
+          },
+          {
+            "pair": 7,
+            "variant": "baseline",
+            "wall_s": 0.0027412499766796827
+          },
+          {
+            "pair": 7,
+            "variant": "candidate",
+            "wall_s": 0.0028742499416694045
+          },
+          {
+            "pair": 8,
+            "variant": "baseline",
+            "wall_s": 0.0027482910081744194
+          },
+          {
+            "pair": 8,
+            "variant": "candidate",
+            "wall_s": 0.002905084053054452
+          },
+          {
+            "pair": 9,
+            "variant": "baseline",
+            "wall_s": 0.002912792027927935
+          },
+          {
+            "pair": 9,
+            "variant": "candidate",
+            "wall_s": 0.0027342920657247305
+          },
+          {
+            "pair": 10,
+            "variant": "baseline",
+            "wall_s": 0.0028518750332295895
+          },
+          {
+            "pair": 10,
+            "variant": "candidate",
+            "wall_s": 0.0030263339867815375
+          }
+        ],
+        "summary": {
+          "baseline": {
+            "median_wall_s": 0.0028823335305787623,
+            "mean_wall_s": 0.00299377900082618,
+            "samples_s": [
+              0.0035318329464644194,
+              0.003249750006943941,
+              0.00308812502771616,
+              0.002775416010990739,
+              0.003363874973729253,
+              0.002674582996405661,
+              0.0027412499766796827,
+              0.0027482910081744194,
+              0.002912792027927935,
+              0.0028518750332295895
+            ]
+          },
+          "candidate": {
+            "median_wall_s": 0.003060749964788556,
+            "mean_wall_s": 0.0031534750014543533,
+            "samples_s": [
+              0.0033515000250190496,
+              0.003704875009134412,
+              0.0032953330082818866,
+              0.0036332079907879233,
+              0.0030951659427955747,
+              0.002914707991294563,
+              0.0028742499416694045,
+              0.002905084053054452,
+              0.0027342920657247305,
+              0.0030263339867815375
+            ]
+          }
+        }
+      },
+      "collection-load": {
+        "paired_order": [
+          {
+            "pair": 1,
+            "variant": "baseline",
+            "wall_s": 0.023297542007640004
+          },
+          {
+            "pair": 1,
+            "variant": "candidate",
+            "wall_s": 0.022252082941122353
+          },
+          {
+            "pair": 2,
+            "variant": "candidate",
+            "wall_s": 0.018199541955254972
+          },
+          {
+            "pair": 2,
+            "variant": "baseline",
+            "wall_s": 0.018937958986498415
+          },
+          {
+            "pair": 3,
+            "variant": "candidate",
+            "wall_s": 0.01969962497241795
+          },
+          {
+            "pair": 3,
+            "variant": "baseline",
+            "wall_s": 0.018792334012687206
+          },
+          {
+            "pair": 4,
+            "variant": "baseline",
+            "wall_s": 0.018538417061790824
+          },
+          {
+            "pair": 4,
+            "variant": "candidate",
+            "wall_s": 0.017478042049333453
+          },
+          {
+            "pair": 5,
+            "variant": "candidate",
+            "wall_s": 0.01720674999523908
+          },
+          {
+            "pair": 5,
+            "variant": "baseline",
+            "wall_s": 0.018316457979381084
+          },
+          {
+            "pair": 6,
+            "variant": "candidate",
+            "wall_s": 0.01719087501987815
+          },
+          {
+            "pair": 6,
+            "variant": "baseline",
+            "wall_s": 0.018184792017564178
+          },
+          {
+            "pair": 7,
+            "variant": "baseline",
+            "wall_s": 0.019035707926377654
+          },
+          {
+            "pair": 7,
+            "variant": "candidate",
+            "wall_s": 0.018146750051528215
+          },
+          {
+            "pair": 8,
+            "variant": "baseline",
+            "wall_s": 0.019573125056922436
+          },
+          {
+            "pair": 8,
+            "variant": "candidate",
+            "wall_s": 0.018251791945658624
+          },
+          {
+            "pair": 9,
+            "variant": "baseline",
+            "wall_s": 0.018986125010997057
+          },
+          {
+            "pair": 9,
+            "variant": "candidate",
+            "wall_s": 0.018686291994526982
+          },
+          {
+            "pair": 10,
+            "variant": "baseline",
+            "wall_s": 0.01926791702862829
+          },
+          {
+            "pair": 10,
+            "variant": "candidate",
+            "wall_s": 0.017980457982048392
+          }
+        ],
+        "summary": {
+          "baseline": {
+            "median_wall_s": 0.018962041998747736,
+            "mean_wall_s": 0.019293037708848715,
+            "samples_s": [
+              0.023297542007640004,
+              0.018937958986498415,
+              0.018792334012687206,
+              0.018538417061790824,
+              0.018316457979381084,
+              0.018184792017564178,
+              0.019035707926377654,
+              0.019573125056922436,
+              0.018986125010997057,
+              0.01926791702862829
+            ]
+          },
+          "candidate": {
+            "median_wall_s": 0.018173146003391594,
+            "mean_wall_s": 0.01850922089070082,
+            "samples_s": [
+              0.022252082941122353,
+              0.018199541955254972,
+              0.01969962497241795,
+              0.017478042049333453,
+              0.01720674999523908,
+              0.01719087501987815,
+              0.018146750051528215,
+              0.018251791945658624,
+              0.018686291994526982,
+              0.017980457982048392
+            ]
+          }
+        }
+      }
+    },
+    "mk_stats_stderr": {
+      "json": {
+        "baseline": "mk-stats: allocs=11224983 frees=11224981 live_at_exit=2 peak_live=2027260\nmk-stats: bytes_total=539268314 bytes_live_at_exit=80 bytes_peak=107997794\nmk-stats: retains=819100 retains_nonatomic=819100 retains_atomic=0 retains_noop=0\nmk-stats: releases=34850826 releases_nonatomic=11994426 releases_atomic=0 releases_noop=22856400\nmk-stats: heap_small=11224982 heap_large=1 small_chunks=384 small_chunk_bytes=99860480 central_refills=31652 overflows=39584\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n",
+        "candidate": "mk-stats: allocs=11224988 frees=11224986 live_at_exit=2 peak_live=2027260\nmk-stats: bytes_total=539268554 bytes_live_at_exit=80 bytes_peak=107997794\nmk-stats: retains=655320 retains_nonatomic=655320 retains_atomic=0 retains_noop=0\nmk-stats: releases=21382781 releases_nonatomic=11912541 releases_atomic=0 releases_noop=9470240\nmk-stats: heap_small=11224987 heap_large=1 small_chunks=384 small_chunk_bytes=99860480 central_refills=31652 overflows=39584\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n"
+      },
+      "collections": {
+        "baseline": "mk-stats: allocs=356 frees=354 live_at_exit=2 peak_live=135\nmk-stats: bytes_total=16768 bytes_live_at_exit=64 bytes_peak=6722\nmk-stats: retains=223 retains_nonatomic=151 retains_atomic=0 retains_noop=72\nmk-stats: releases=739 releases_nonatomic=512 releases_atomic=0 releases_noop=227\nmk-stats: heap_small=356 heap_large=0 small_chunks=1 small_chunk_bytes=16384 central_refills=0 overflows=0\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n",
+        "candidate": "mk-stats: allocs=357 frees=355 live_at_exit=2 peak_live=135\nmk-stats: bytes_total=16816 bytes_live_at_exit=64 bytes_peak=6722\nmk-stats: retains=231 retains_nonatomic=157 retains_atomic=0 retains_noop=74\nmk-stats: releases=716 releases_nonatomic=516 releases_atomic=0 releases_noop=200\nmk-stats: heap_small=357 heap_large=0 small_chunks=1 small_chunk_bytes=16384 central_refills=0 overflows=0\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n"
+      },
+      "collection-load": {
+        "baseline": "mk-stats: allocs=400033 frees=400033 live_at_exit=0 peak_live=350006\nmk-stats: bytes_total=17201584 bytes_live_at_exit=0 bytes_peak=14800288\nmk-stats: retains=491480 retains_nonatomic=491480 retains_atomic=0 retains_noop=0\nmk-stats: releases=1637273 releases_nonatomic=645773 releases_atomic=0 releases_noop=991500\nmk-stats: heap_small=400033 heap_large=0 small_chunks=68 small_chunk_bytes=17022976 central_refills=0 overflows=1366\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n",
+        "candidate": "mk-stats: allocs=400035 frees=400035 live_at_exit=0 peak_live=350006\nmk-stats: bytes_total=17201680 bytes_live_at_exit=0 bytes_peak=14800288\nmk-stats: retains=393200 retains_nonatomic=393200 retains_atomic=0 retains_noop=0\nmk-stats: releases=1189843 releases_nonatomic=596635 releases_atomic=0 releases_noop=593208\nmk-stats: heap_small=400035 heap_large=0 small_chunks=68 small_chunk_bytes=17022976 central_refills=0 overflows=1366\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n"
+      }
+    }
+  },
+  "source_hashes": {
+    "baseline_ArrayList.kt_sha256": "ecb338b8c4e94485a0f9d1efc6a6bc2eafac46e28d62c0e51f549c2527cc04bd",
+    "candidate_ArrayList.kt_sha256": "2f3b39131e431b18b97ef6290047011c37fa4bc91785be776244fa98c88b5454",
+    "baseline_object_sha256": {
+      "json": "972d4403ad906ce52891bfb6d48bb628e63da1039263de92dda239f6e3b032d1",
+      "collections": "a04c970a3079e1d6bfa575df75fecb13a25a29460476637bd241662aee3350d6",
+      "synthetic-default-list-growth": "df59839985d61d8c1f64e7d6f9f61be91bff2e17b192c86e8ac62b17441d5ac2"
+    },
+    "candidate_object_sha256": {
+      "json": "2d0c7487fd76a29285e4fc814ef64817d0dd3a46d4cd26250f573ff541836d0c",
+      "collections": "35c367fd39e3bf3be99837ed30d40d68e3b95ab56c1d1cb34540b1f47b036a4a",
+      "synthetic-default-list-growth": "9f6d12ef1ba35942bd6413c9104d9f3888b6b138f53ee51ba468cf6bfcef318a"
+    }
+  },
+  "stats_validation": {
+    "stats_runtime_sha256": "74c1d30f957e5c21ccfd078eb980d4b366126ccaeab2f4aa5f6f0d57f4f05246",
+    "stats_executable_object_mapping": {
+      "json": {
+        "baseline": {
+          "object_sha256": "972d4403ad906ce52891bfb6d48bb628e63da1039263de92dda239f6e3b032d1",
+          "stats_executable_sha256": "761010812e9e1e089b4c797643583afb48d65ecaa7c4f050fdc86c863575d977",
+          "stats_link_command": [
+            "clang",
+            "/tmp/campaign-arraylist-cap4/json-baseline.o",
+            "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+            "-lm",
+            "-Wl,-dead_strip",
+            "-o",
+            "/tmp/campaign-arraylist-cap4/json-baseline-stats"
+          ]
+        },
+        "candidate": {
+          "object_sha256": "2d0c7487fd76a29285e4fc814ef64817d0dd3a46d4cd26250f573ff541836d0c",
+          "stats_executable_sha256": "2eb68c97c18a3d48fec364c6886e2712625fbe5c674ddf63c71002f9d91be5ef",
+          "stats_link_command": [
+            "clang",
+            "/tmp/campaign-arraylist-cap4/json-candidate.o",
+            "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+            "-lm",
+            "-Wl,-dead_strip",
+            "-o",
+            "/tmp/campaign-arraylist-cap4/json-candidate-stats"
+          ]
+        }
+      },
+      "collections": {
+        "baseline": {
+          "object_sha256": "a04c970a3079e1d6bfa575df75fecb13a25a29460476637bd241662aee3350d6",
+          "stats_executable_sha256": "854572536315a93b87e5ee057d79010a51610ccdc9cb0b07c84c473e282393d3",
+          "stats_link_command": [
+            "clang",
+            "/tmp/campaign-arraylist-cap4/collections-baseline.o",
+            "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+            "-lm",
+            "-Wl,-dead_strip",
+            "-o",
+            "/tmp/campaign-arraylist-cap4/collections-baseline-stats"
+          ]
+        },
+        "candidate": {
+          "object_sha256": "35c367fd39e3bf3be99837ed30d40d68e3b95ab56c1d1cb34540b1f47b036a4a",
+          "stats_executable_sha256": "bf9324cdfa0889e3e6c5d767dca4a13c488fc1733fafb0b779aebbe91a309d1a",
+          "stats_link_command": [
+            "clang",
+            "/tmp/campaign-arraylist-cap4/collections-candidate.o",
+            "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+            "-lm",
+            "-Wl,-dead_strip",
+            "-o",
+            "/tmp/campaign-arraylist-cap4/collections-candidate-stats"
+          ]
+        }
+      },
+      "collection-load": {
+        "baseline": {
+          "object_sha256": "df59839985d61d8c1f64e7d6f9f61be91bff2e17b192c86e8ac62b17441d5ac2",
+          "stats_executable_sha256": "d0a25701afde5e8224033c572d63a8674d2f7ea874c8b0276cf814e660007ee3",
+          "stats_link_command": [
+            "clang",
+            "/tmp/campaign-arraylist-cap4/collection-load-baseline.o",
+            "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+            "-lm",
+            "-Wl,-dead_strip",
+            "-o",
+            "/tmp/campaign-arraylist-cap4/collection-load-baseline-stats"
+          ]
+        },
+        "candidate": {
+          "object_sha256": "9f6d12ef1ba35942bd6413c9104d9f3888b6b138f53ee51ba468cf6bfcef318a",
+          "stats_executable_sha256": "1b695e4fdd58d408318096c87bd4fd5b331e5e40f04305c32627f72fd1e0844a",
+          "stats_link_command": [
+            "clang",
+            "/tmp/campaign-arraylist-cap4/collection-load-candidate.o",
+            "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+            "-lm",
+            "-Wl,-dead_strip",
+            "-o",
+            "/tmp/campaign-arraylist-cap4/collection-load-candidate-stats"
+          ]
+        }
+      }
+    },
+    "link_command_template": [
+      "clang",
+      "<variant app .o>",
+      "/tmp/campaign-json-profile/rt-stats/libminirt_stats.a",
+      "-lm",
+      "-Wl,-dead_strip",
+      "-o",
+      "<variant stats executable>"
+    ],
+    "mk_stats_scope": "MK_STATS counts managed Mini objects/bytes, not the raw calloc backing buffers used by MkRefArray. Therefore equal MK_STATS bytes_peak is expected and cannot measure ArrayList backing-buffer memory. The max RSS comparison from /usr/bin/time -lp does include those buffers. Candidate MK_STATS counts were captured from executables linked to each variant object; the object hashes match the O3 build records.",
+    "object_hash_matches_noninstrumented_O3_build_record": true,
+    "mk_stats_deltas": {
+      "json": {
+        "baseline": {
+          "allocs": 11224983,
+          "frees": 11224981,
+          "bytes_total": 539268314,
+          "bytes_peak": 107997794
+        },
+        "candidate": {
+          "allocs": 11224988,
+          "frees": 11224986,
+          "bytes_total": 539268554,
+          "bytes_peak": 107997794
+        }
+      },
+      "collections": {
+        "baseline": {
+          "allocs": 356,
+          "frees": 354,
+          "bytes_total": 16768,
+          "bytes_peak": 6722
+        },
+        "candidate": {
+          "allocs": 357,
+          "frees": 355,
+          "bytes_total": 16816,
+          "bytes_peak": 6722
+        }
+      },
+      "collection-load": {
+        "baseline": {
+          "allocs": 400033,
+          "frees": 400033,
+          "bytes_total": 17201584,
+          "bytes_peak": 14800288
+        },
+        "candidate": {
+          "allocs": 400035,
+          "frees": 400035,
+          "bytes_total": 17201680,
+          "bytes_peak": 14800288
+        }
+      }
+    }
+  },
+  "machine_code_verification": {
+    "command": "otool -tvV <json variant object>",
+    "symbol": "_kc_kotlin_Dcollections_DArrayList_C",
+    "baseline_instruction": "mov w0, #0xa",
+    "candidate_instruction": "mov w0, #0x4",
+    "baseline_object_sha256": "972d4403ad906ce52891bfb6d48bb628e63da1039263de92dda239f6e3b032d1",
+    "candidate_object_sha256": "2d0c7487fd76a29285e4fc814ef64817d0dd3a46d4cd26250f573ff541836d0c",
+    "baseline_arraylist_source_sha256": "ecb338b8c4e94485a0f9d1efc6a6bc2eafac46e28d62c0e51f549c2527cc04bd",
+    "candidate_arraylist_source_sha256": "2f3b39131e431b18b97ef6290047011c37fa4bc91785be776244fa98c88b5454"
+  },
+  "runtime_build": {
+    "plain_compile_flags": [
+      "clang",
+      "-std=c17",
+      "-O2",
+      "-I",
+      "runtime/include",
+      "-c",
+      "<runtime/src file>",
+      "-o",
+      "<obj>"
+    ],
+    "plain_archive_command": [
+      "ar",
+      "rcs",
+      "libminirt_plain.a",
+      "<all runtime objects>"
+    ],
+    "stats_compile_flags": [
+      "clang",
+      "-std=c17",
+      "-O2",
+      "-DMK_STATS",
+      "-I",
+      "runtime/include",
+      "-c",
+      "<runtime/src file>",
+      "-o",
+      "<obj>"
+    ],
+    "stats_archive_command": [
+      "ar",
+      "rcs",
+      "libminirt_stats.a",
+      "<all runtime objects>"
+    ],
+    "same_archives_both_variants": true
+  },
+  "source_comparison": {
+    "command": "diff -qr /tmp/campaign-arraylist-cap4/stdlib-baseline /tmp/campaign-arraylist-cap4/stdlib-candidate",
+    "result": "only kotlin/collections/ArrayList.kt differs"
+  }
+}
