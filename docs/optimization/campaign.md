@@ -1,56 +1,96 @@
 # Compiler and runtime optimization campaign
 
-Status: in progress; changes are isolated on `codex/optimization-campaign`, with no automatic merge to main.
+Completed two investigation/implementation waves on `codex/optimization-campaign`. No merge to main and no release publication. Starting commit: `8ce0e5c61ddf7fe2992777b9e6b5c753070e555e`.
 
-## Targets and comparison rules
+## Outcome
 
-Starting commit: `8ce0e5c61ddf7fe2992777b9e6b5c753070e555e`.
-The generated-program target is Mini runtime / optimized hand-written C runtime <= 1.2 for representative complex programs. This is a stretch target, not an achieved result or universal guarantee. Use equivalent algorithms, workloads, output, floating-point semantics and target architecture; record optimization flags. Compare both Mini LLVM API and C backends. Unsafe fast math is excluded. There is no uniquely perfect C implementation: record the reference and tuning performed.
+Retained a small, measured frontend allocation reduction and a large macOS toolchain-size reduction. Repaired the existing benchmark runner for the current CLI and truthful build provenance. Rejected both runtime traversal and compiler O2-default experiments because they did not establish an overall performance win. No LLVM, runtime ABI, ownership or floating-point semantic changes remain.
 
-Other stretch goals: 20% fewer retired self-compilation instructions and additional binary/package size reductions beyond PR45. Preserve Kotlin semantics, ownership, exceptions, C, WASM, ORC and deterministic self-hosting.
+The 20% self-compilation instruction-reduction stretch goal was not reached. The generated-program goal, Mini runtime <=1.2x well-optimized equivalent C, was met on N-Body and Fannkuch but remains unmet on JSON. No universal performance claim is made.
 
-## Hardware and method
+## Hardware, toolchain and method
 
-Apple M4, arm64, 10 cores, macOS 26.2 (25C56), Apple clang 17.0.0. CPU-heavy builds and measurements have a single-agent lease. Five measured self-compilation runs follow a warmup; report medians and variation, not only fastest runs. Fixed 153-input workload emits both C and MIR. See `bench/results/campaign-baseline.json` for the initial installed-compiler baseline and `bench/results/campaign-core-pilot.json` for paired candidate measurements.
+Apple M4, arm64, 10 cores, macOS 26.2 (25C56); Apple clang 17.0.0; LLVM 18.1.8. CPU-heavy builds and timing runs had an exclusive lease, avoiding concurrent benchmarks. Luna workers owned independent compiler-core, LLVM, size, runtime and benchmark scopes; the lead approved semantics/architecture decisions and integrated reviewed commits individually.
 
-The initial installed compiler baseline and rebuilt C-backend pilot use different compiler builds. Their instruction totals must not be compared as an optimization effect.
+Self-compilation measurements use 91 compiler and 62 standard-library Kotlin inputs from clean 8ce sources, emitting C and MIR. They measure compiler execution including serialization, **not a final clang compile/link or complete LLVM object-generation pipeline**. Warmups precede five alternating pairs or rotating triads. Input hashes, output hashes, commands, all samples, retired instructions, cycles and RSS are retained in JSON. The C/MIR outputs match the initial baseline hashes exactly.
 
-## Worker ownership
+Application runs use one warmup and five output-checked samples. C reference variants are O2, O3 and O3 `-mcpu=native`, with `-fno-fast-math -ffp-contract=off`; API uses precise FP and its current generic CPU target. Ratios use the fastest correct C variant's median. This is an explicit tuned reference, not proof of a uniquely perfect C implementation. PR45 dead stripping is applied consistently to baseline and candidate app links and is not counted again.
 
-Luna workers inspect compiler frontend/lowering (A), LLVM backend (B), package/link size (C), runtime/memory (D, pending), and benchmark infrastructure (E). Lead approves architectural and ownership changes, reviews and integrates commits individually. User approved continuing with the current Sol lead.
+## Final comparison
 
-## First wave
+Primary source-change control: **both compiler binaries built locally with LLVM API O1, identical runtime objects and static link recipe**. This avoids differences between a CI-built published runtime and the current local runtime.
 
-### Compiler core
-
-Avoid allocating an empty substitution HashMap for classes with no type parameters in `TypeOps.substOf`. No global cache or lazy-resolution changes. General review clear; frontend suite 32/32. Baseline/candidate emitted C and MIR are byte-identical.
-
-Paired five-run pilot uses identically built C-backend compiler executables and a fixed source list (SHA256 `31ab0eab3e22a41a534abf7be6f2ca9d203922ad6ca53dd9bc5d8529989c836b`).
-
-| Metric | Baseline | Candidate | Difference |
+| Metric | Baseline | Retained optimized result | Difference |
 |---|---:|---:|---:|
-| Self-compile retired instructions, median | 44,658,569,433 | 44,535,558,464 | -0.28% |
-| Wall time, median | 2.537 s | 2.533 s | within noise |
-| Peak RSS, median | 684,949,504 B | 684,212,224 B | -0.11% |
+| Self-compile retired instructions, median | 47,223,885,034 | 47,118,649,919 | -0.223% |
+| Self-compile wall time, median | 2.690 s | 2.640 s | overlapping ranges; no meaningful speedup established |
+| Self-compile peak RSS, median | 697,434,112 B | 697,663,488 B | effectively flat (+0.033%) |
+| Packaged compiler binary | 60,849,928 B | 47,100,464 B | -22.60% |
+| Installed regular files | 65,592,105 B | 51,842,641 B | -20.96% |
+| Compressed toolchain archive | 20,770,837 B | 18,831,916 B | -9.33% |
+| Hello World object | 872 B | 872 B | byte-identical |
+| Hello World executable* | 54,280 B | 54,352 B | +72 B; build-environment comparison |
+| Representative JSON object | 66,752 B | 66,752 B | byte-identical |
+| Representative JSON executable* | 102,360 B | 102,424 B | +64 B; build-environment comparison |
 
-Raw wall ranges: baseline 2.487–2.644 s, candidate 2.503–2.572 s. No wall-time speedup claim. Initial overlapped pilot was discarded before the paired run.
+Compiler/install/archive figures come from the **same integrated installation tree**, using identical tar flags and substituting only the compiler before/after stripping. Original stage3 remains untouched. They isolate the symbol-stripping effect.
 
-### Binary size (experiment; functional validation pending)
+\* Application objects are byte-identical. The linked executable comparisons use published versus locally built runtime archives; the small byte differences are not attributable frontend optimization gains or regressions. No generated-program binary-size reduction was demonstrated. Source and bootstrap compiler artifacts retain local symbols; local symbolication detail is reduced only in the packaged compiler.
 
-On a staged copy of the macOS release compiler, `strip -x` retains external exports while removing local symbols. Compiler: 60,849,928 -> 47,100,464 B (-22.60%); compressed archive: 20,761,241 -> 18,831,722 B (-9.29%); installed files: 65,591,728 -> 51,842,264 B. External nm names and dyld export-trie names match exactly. Package smoke and reviewed packaging implementation remain pending. This removes local symbolication metadata; source/debug builds must retain it. No Linux gain is claimed.
+The isolated C-built core pilot independently measured 44.659B -> 44.536B instructions (-0.28%) and -0.11% RSS; wall time was flat. Do not compare its absolute totals with the differently built API compilers. The initial published-package versus local-package API comparison observed -1.41% instructions, but includes runtime/build-environment differences; it is not the source-change claim. The same-local-toolchain control above is the primary attributable result.
 
-### LLVM backend
+## Generated-program runtime
 
-Rejected a Mandelbrot devirtualization change based only on pre-optimization IR: the optimized hot loop already has no indirect calls or exception checks. Per-dispatch-group throw analysis remains an unapproved proposal requiring a demonstrated hot-path benefit and conservative open-world handling.
+These measurements describe existing code-generation quality. The retained frontend shortcut produced byte-identical application objects, so this campaign makes no generated-code speedup claim.
 
-### Runtime and benchmark infrastructure
+| Program | Fastest correct C median | Integrated API O3 median | Mini / C | <=1.2 goal |
+|---|---:|---:|---:|---|
+| nbody | 0.7387 s | 0.8271 s | 1.120x | yes |
+| fannkuch | 1.9871 s | 1.7013 s | 0.856x | yes |
+| json | 0.3334 s | 0.5036 s | 1.511x | no |
 
-Runtime investigation and fair hand-C/API comparisons pending. Benchmark runner compatibility repair is under review; unavailable RC/allocation statistics must be explicitly reported.
+N-Body and Fannkuch use matched algorithms, iteration counts and outputs, with array/object representation differences recorded. JSON uses byte strings/custom buffers in C versus UTF-16, substrings and collections in Mini; its remaining end-to-end gap stays visible. Wordcount is excluded from strict ratios because its C hash-table algorithm differs materially.
 
-## Validation still required
+Application sample ranges, Mini C/O2 comparisons, RSS and sizes are in the result JSON. Final API compilation/link observations were approximately 0.120/0.028 s (N-Body), 0.110/0.036 s (Fannkuch), and 0.262/0.033 s (JSON). These are single build observations, not robust compile-time before/after evidence. Retain/release and allocation counters were unavailable in the repaired runner and are explicitly marked; no counts were invented.
 
-Integrated remeasurement; stage2/stage3 deterministic bootstrap; backend behavioral comparisons; runtime sanitizers; C/API/WASM/ORC and release package smoke. Current results are preliminary, not full campaign validation.
+## Retained changes by scope
 
-## Next measured opportunities
+**Compiler core:** `TypeOps.substOf` returns an empty immutable map for classes without type parameters, avoiding an unnecessary HashMap allocation. Callers consume the map read-only or copy it; no global caching, lazy-resolution ordering or type semantics changed.
 
-Profile HashMap/string hashing and iterator allocations during self-compilation. Inspect optimized code in complex workloads before changing MIR/LLVM. Consider allocation-free supertype traversal only after proving lazy-resolution order and semantic equivalence. Do not weaken exception checks or remove standard-library source fallback.
+**Binary size:** `scripts/package-release.sh` applies `strip -x` only to the staged macOS arm64 compiler copy. `scripts/test-package-release-symbols.sh` checks external symbols, dyld export names, local-symbol reduction and size; failures abort packaging. Both external-name sets match exactly: 36,692 names, SHA256 `fb27b4187c3a715bb74803acbf954c071aa9863703e8b1c504a1c6b3af754894`. Local symbols fall from 132,542 to one. No Linux setting or stdlib-source fallback was removed.
+
+**Benchmark infrastructure:** current `-O2 --backend=c|llvm-api` commands, MINIC override, backend/flag sidecars, unknown provenance for old untracked artifacts and honest unavailable-counter reporting. Five focused tests passed.
+
+**LLVM and runtime:** no source changes retained. Existing canonical LLVM pipelines and memory ownership remain intact.
+
+## Rejected experiments and decisions
+
+1. **Superclass-first runtime type check:** 268/2,147 top-of-stack samples pointed to `type_is`. The fast path preserved behavior and passed focused ASan/UBSan checks, but duplicated work on interface/negative checks. Five pairs showed +2.59% instructions and +1.26% paired median wall time. All code was removed. See `typecheck-experiment.md` and its raw JSON.
+2. **Compiler built with LLVM O2 instead of bootstrap O1:** identical sources/runtime objects/link flags, five rotated triads. O2 retired 0.514% fewer instructions than integrated O1, but median wall time was 2.07% higher with overlapping ranges. Stripped binary saved only 33,056 B (0.07%); build observations were 35.33 s versus about 33.3 s. The small instruction/size gains do not establish a compelling net win; bootstrap remains O1. C/MIR/LLVM IR outputs matched, and no configuration change remains.
+3. **Mandelbrot devirtualization/check removal based on pre-optimization IR:** rejected because optimized assembly already had no such calls/checks in its hot loop.
+4. **New LLVM passes, host tuning, global type caches, symbol-export removal or layout changes:** no demonstrated need/safe measured benefit. The canonical O2/O3 pipeline is already present. Native tuning remains an optional future design, not an implicit portability change.
+
+## Validation
+
+Retained source validation at `aaa8758` passed; later commits add reports/results only. Raw summary: `bench/results/campaign-validation.json`. Ignored logs and unpublished local package `0.7.0-campaign` live under `build/campaign-validation/`.
+
+- C bootstrap: stage2/stage3 C and MIR byte equality, plus native memory-check probes.
+- Module tests: backend 85, frontend 32, native-driver 2; 119 passed.
+- C E2E: 329 passed, 0 failed, one expected thread-related skip across C, sanitizer/leak, ownership diagnostics/execution, multifile and mlib suites. macOS has ASan/UBSan here, not LeakSanitizer.
+- LLVM 18 API bootstrap: stage2/stage3 C, MIR, LLVM IR and object equality; API-built plain compiler C/MIR matched the C chain.
+- LLVM API E2E: 74/74 passed. REPL session and ORC session API smoke passed; its unresolved-symbol diagnostic is an intentional rollback case.
+- Actual integrated macOS package: strip/export invariants, default LLVM API, explicit C fallback and installed REPL smoke passed. Dynamic dependencies are system-only, with no external LLVM/Homebrew library. Duplicate `-lm` and Homebrew libunwind re-export link warnings did not introduce external package dependencies.
+- General source review and Python review cleared retained changes; benchmark tests and diff checks passed.
+
+Linux, a fresh browser/WASM bundle and the complete runtime/thread unit matrix were not rerun. No runtime or LLVM source changes remain, but these are explicit validation limits. No per-example WASM program assets were added.
+
+## Persistent evidence and next opportunities
+
+- `bench/results/campaign-baseline.json`: initial installed-compiler baseline/profile provenance.
+- `bench/results/campaign-core-pilot.json`: matched C-built compiler source-change pairs.
+- `bench/results/campaign-runtime-baseline.json`: tuned hand-C, Mini C and API O2/O3 application comparisons.
+- `bench/results/campaign-integrated.json`: final application output/object checks, package observation, isolated local API pairs, O1/O2 triads and build manifests.
+- `bench/results/campaign-typecheck-experiment.json`: rejected runtime experiment.
+- `bench/results/campaign-validation.json`: integrated correctness/package summary.
+
+Future work should profile JSON's string/index/allocation paths and iterator/interface-dispatch overhead, then propose targeted changes with equivalent-semantics C comparisons. Compiler-known concrete-class checks may avoid interface traversal, but require a separate architecture/ABI audit. Allocation-free supertype traversal needs proof of lazy-resolution order. Linux section/GC and architecture-specific static LLVM footprint changes require actual target-platform measurements. The 20% and broad 1.2x goals remain open; this campaign stops after the two measured waves rather than adding speculative optimizations.
