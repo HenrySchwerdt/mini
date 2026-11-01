@@ -1,0 +1,168 @@
+{
+  "title": "LLVM String length and indexing fast paths",
+  "date": "2026-11-01",
+  "branch": "codex/escape-llvm",
+  "implementation_commit": "3d4b3f6",
+  "host": {
+    "machine": "Apple M4 arm64",
+    "os": "macOS 26.2",
+    "llvm": "18.1.8",
+    "linker": "/opt/homebrew/opt/llvm/bin/clang"
+  },
+  "compiler_pair": {
+    "baseline_source_revision": "e62fafd",
+    "candidate_source_revision": "3d4b3f6",
+    "build_method": "Both are integrated LLVM C API compiler binaries built at O1. The candidate was built from this worktree's sources by the baseline compiler at O1 and linked with the same compiler-build runtime objects and LLVM 18 static-link recipe.",
+    "baseline_compiler": {
+      "path": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+      "sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3"
+    },
+    "candidate_compiler": {
+      "path": "build/campaign-validation/api-fastpath/stage3",
+      "sha256": "86c9f30c1fd536b9f86e54c2893ae7ef9714ad7e247b1f140695d608f13a37b9"
+    }
+  },
+  "application": {
+    "source": "bench/json/json.kt",
+    "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+    "source_parameters": {
+      "TOP": 60000,
+      "REPS": 5
+    },
+    "compile_argv_template": [
+      "<compiler>",
+      "--backend=llvm-api",
+      "--opt=O3",
+      "-o",
+      "<variant>.o",
+      "--emit-ll",
+      "<variant>.ll",
+      "bench/json/json.kt",
+      "--lib",
+      "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/native/lib/stdlib.mlib"
+    ],
+    "stdlib_mlib_sha256": "f96160c51943f4ac0a9a8d74a292968cf44904dc5e80f12277163398e01e09bc",
+    "link_argv_template": [
+      "/opt/homebrew/opt/llvm/bin/clang",
+      "<variant>.o",
+      "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+      "-lm",
+      "-o",
+      "<variant>"
+    ],
+    "runtime_archive": {
+      "path": "/tmp/campaign-json-profile/rt-plain/libminirt_plain.a",
+      "optimization": "O2",
+      "sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b"
+    },
+    "timing_method": "Two warmups per binary, then nine alternating baseline/candidate pairs. Wall time measured with Python time.perf_counter around each process; stdout redirected to /dev/null during timed runs.",
+    "timing_seconds": {
+      "baseline_samples": [
+        0.5021227920660749,
+        0.4998769169906154,
+        0.4991412910167128,
+        0.5029031250160187,
+        0.5002373339375481,
+        0.5039494580123574,
+        0.5046566250966862,
+        0.49335954198613763,
+        0.5011072079651058,
+        0.4899345829617232,
+        0.5122274169698358
+      ],
+      "candidate_samples": [
+        0.48046829202212393,
+        0.47896983299870044,
+        0.4800577909918502,
+        0.480196375050582,
+        0.476985290995799,
+        0.4757831250317395,
+        0.4738275839481503,
+        0.4650307089323178,
+        0.46395458397455513,
+        0.4712900420418009,
+        0.493072250043042
+      ],
+      "baseline_median": 0.5011072079651058,
+      "candidate_median": 0.476985290995799,
+      "candidate_over_baseline": 0.9518627619282091
+    },
+    "outputs_identical": true,
+    "stdout": "7055506 1072916 885982430\n",
+    "stdout_sha256": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+    "artifacts": {
+      "baseline_object": {
+        "bytes": 66752,
+        "sha256": "b1853e3131d2a4b4c917c76ebefc08e4270b729078616a1e788d0c56a651e1d4"
+      },
+      "candidate_object": {
+        "bytes": 67760,
+        "sha256": "1908a7e073d1471729cf3788af585488eb6e76658312bc96870fbf136ca82d49"
+      },
+      "baseline_ir": {
+        "bytes": 315912,
+        "sha256": "cf894311c402b1f8ea383fc65a06c548b79ff22802816e71d1c54bb35cc7c12c"
+      },
+      "candidate_ir": {
+        "bytes": 333879,
+        "sha256": "4ab0a3818f07f4cee94793c5e12d3ff8831c75164d069058b48c77e1a8c1bc1a"
+      },
+      "baseline_executable": {
+        "bytes": 148872,
+        "sha256": "3301fd4e6640bfde50ffecc6081e5658a27d7e96b91ceb11f67fd98f996cb9d3"
+      },
+      "candidate_executable": {
+        "bytes": 148872,
+        "sha256": "3c28a1d37707fd530184c63a45ff0c7457cf4ab2f72e3045f96defa09ce4ec29"
+      }
+    }
+  },
+  "edge_cases": {
+    "compile_and_link": "Same compiler pair, --backend=llvm-api --opt=O3, shared stdlib.mlib, O2 runtime archive, and clang link argv as the application pilot.",
+    "valid_utf16_and_empty_length": {
+      "source_sha256": "350058c60317420f6b190013e1e2c30c5ecb818a7220bb44c2730bef05d8f8cf",
+      "source_excerpt": "fun main() { val s = \"A\\uD83D\\uDE00Z\"; println(s.length); println(s[0].code); println(s[1].code); println(s[2].code); println(s[s.length - 1].code); println(\"\".length) }",
+      "baseline_exit": 0,
+      "candidate_exit": 0,
+      "baseline_and_candidate_stdout_sha256": "369423a8406f0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "expected_stdout": "4\n65\n55357\n56832\n90\n0\n",
+      "stderr_empty": true
+    },
+    "negative_index": {
+      "source_sha256": "9e6cd13dd16f5db4b55b4c77b7db94e291608f7fb99ca1eb3fec3d662c2d673d",
+      "source_excerpt": "fun main() { val s = \"x\"; println(s[-1].code) }",
+      "baseline_exit": 134,
+      "candidate_exit": 134,
+      "identical_stderr_sha256": "e186b66c4335594de38b1c662fb2d06238a2de4719fb71c1bc2e7c58e8af69fe",
+      "stderr": "fatal: StringIndexOutOfBoundsException: index out of range\n"
+    },
+    "index_equal_to_length": {
+      "source_sha256": "4572d09bce8aeeef8684b0cc0e1dec1c36404ee27f33cd11e8a39d36bd46fc4a",
+      "source_excerpt": "fun main() { val s = \"x\"; println(s[s.length].code) }",
+      "baseline_exit": 134,
+      "candidate_exit": 134,
+      "identical_stderr_sha256": "e186b66c4335594de38b1c662fb2d06238a2de4719fb71c1bc2e7c58e8af69fe",
+      "stderr": "fatal: StringIndexOutOfBoundsException: index out of range\n"
+    },
+    "nullable_csymbol_calls": {
+      "source_sha256": "f3b0f8fac367ec45cc9887df42912714c40821d5ec90e0f0a1a794919fdae90c",
+      "source_excerpt": "import mini.internal.CSymbol; @CSymbol(\"mk_string_length\") external fun runtimeLength(s: String?): Int; @CSymbol(\"mk_string_char_at\") external fun runtimeCharAt(s: String?, index: Int): Char; fun main() { println(runtimeLength(null)); println(runtimeCharAt(null, 0).code) }",
+      "baseline_exit": 134,
+      "candidate_exit": 134,
+      "identical_stdout_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "stdout": "0\n",
+      "identical_stderr_sha256": "471418f88161232aa9ccc5a975231a07eacd08f4502d00aa1276ad5fe1101d3b",
+      "stderr": "fatal: NullPointerException\n",
+      "note": "Nullable TNString signature is outside the fast-path signature guard and calls the original runtime functions."
+    }
+  },
+  "artifact_size_provenance": {
+    "verified_o3_rebuild": true,
+    "baseline_object_matches_prior_campaign_o3": {
+      "path": "/tmp/campaign-runtime-baseline/json-mini-llvm-api-o3.o",
+      "bytes": 66752,
+      "sha256": "b1853e3131d2a4b4c917c76ebefc08e4270b729078616a1e788d0c56a651e1d4"
+    },
+    "explanation": "The matching 66,752-byte baseline is the same bench/json/json.kt O3 application object as the earlier runtime campaign artifact; its source hash and object hash match exactly. This pilot's O3 compile command was read from the executed script and its O3 artifacts were freshly timestamped at 2026-11-01 09:32 Europe/Berlin (08:32 UTC). The 63,968/64,912-byte figures came from the earlier O1 mlib pilot and are superseded. The separate 89,088/89,168-byte profile objects use json_profile_reps50.kt (REPS=50), not bench/json/json.kt (REPS=5), so they are a different workload artifact."
+  }
+}
