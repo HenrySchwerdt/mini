@@ -1888,7 +1888,9 @@
       },
       "stats_executable_bytes": 102984,
       "stats_executable_sha256": "334c47811fe364622326b51283cb0b829f048b6c115ec41b96d8413d90cb1bf6",
-      "instrumented_timing_used_for_comparison": false
+      "instrumented_timing_used_for_comparison": false,
+      "compiler_emission_stats_requested": false,
+      "counter_scope": "The Mini object linked into each MK_STATS executable was emitted by the recorded llvm-api O3 compile command without --stats. compiler/backend/src/llvm/Lowering.kt sets inlineRc = rcPlan != null && !stats, so those objects use inline RC and only out-of-line mk_retain/mk_release runtime calls reach MK_STATS hooks. These retain/release figures are runtime-call counts, not total logical reference-count operations; the reported delta must not be described as an all-RC-op reduction. Allocation/free counters remain runtime managed-object counters. Fully instrumented LLVM emission would need a fresh --stats compile, which was not measured here."
     },
     "integrated-mini-api-o3": {
       "stderr_lines": [
@@ -1950,7 +1952,9 @@
       },
       "stats_executable_bytes": 119496,
       "stats_executable_sha256": "d4c823d11e76f487d0339e0a7317b489134c6231063a6b8b0476c8ad2359afed",
-      "instrumented_timing_used_for_comparison": false
+      "instrumented_timing_used_for_comparison": false,
+      "compiler_emission_stats_requested": false,
+      "counter_scope": "The Mini object linked into each MK_STATS executable was emitted by the recorded llvm-api O3 compile command without --stats. compiler/backend/src/llvm/Lowering.kt sets inlineRc = rcPlan != null && !stats, so those objects use inline RC and only out-of-line mk_retain/mk_release runtime calls reach MK_STATS hooks. These retain/release figures are runtime-call counts, not total logical reference-count operations; the reported delta must not be described as an all-RC-op reduction. Allocation/free counters remain runtime managed-object counters. Fully instrumented LLVM emission would need a fresh --stats compile, which was not measured here."
     }
   },
   "stats_delta_integrated_vs_baseline": {
@@ -2103,7 +2107,8 @@
       "integrated": 384,
       "delta": 0,
       "ratio": 1.0
-    }
+    },
+    "interpretation": "Allocation/free and heap counters are runtime managed-object counters. Retain/release values and ratios compare only out-of-line runtime calls because the linked Mini objects were emitted without --stats and inline RC remained enabled; they do not represent all logical RC operations."
   },
   "fastest_correct_hand_c_reference_seconds": 0.32340616697911173,
   "ratios_vs_fastest_hand_c": {
@@ -2116,7 +2121,8 @@
     "The integrated candidate combines NULL guarding, ArrayList default capacity 4, and LLVM API string fast paths; this baseline cannot assign a gain to any one change.",
     "The Mini variants use their matching source stdlib/runtime compiled from Kotlin/C source at O2; this avoids mixing old published .mlib or runtime archives.",
     "MK_STATS counters count Mini managed objects and reference events. They do not count the handwritten C reference malloc/realloc calls. Instrumented binaries are used only for counters, not timing.",
-    "Stats cover one REPS=5 execution per Mini variant; timing covers 2 warmups and 11 uninstrumented samples per variant."
+    "Stats cover one REPS=5 execution per Mini variant; timing covers 2 warmups and 11 uninstrumented samples per variant.",
+    "The MK_STATS runtime was linked to objects emitted by llvm-api O3 without --stats. LLVM Lowering therefore kept inlineRc enabled, so retain/release counts cover only out-of-line runtime calls, not all logical RC operations; a fully instrumented LLVM compile was not run."
   ],
   "profile": {
     "variant": "combined integrated Mini API O3; temporary REPS=50 source copy",
