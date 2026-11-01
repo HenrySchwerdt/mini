@@ -1,5 +1,7 @@
 # Compiler and runtime optimization campaign
 
+This report describes the completed first phase only. The user subsequently extended the campaign; see [continued runtime and escape analysis](escape-analysis.md) for later source changes, measurements and outstanding validation. Statements below about retained changes and completion apply to that earlier snapshot.
+
 Completed two investigation/implementation waves on `codex/optimization-campaign`. No merge to main and no release publication. Starting commit: `8ce0e5c61ddf7fe2992777b9e6b5c753070e555e`.
 
 ## Outcome
