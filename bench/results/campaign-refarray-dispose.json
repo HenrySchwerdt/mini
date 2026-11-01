@@ -1,0 +1,223 @@
+{
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "paired_order": [
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "seconds": 0.4903432499850169
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "seconds": 0.4866327499039471
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "seconds": 0.47817537491209805
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "seconds": 0.4839636660180986
+    },
+    {
+      "pair": 3,
+      "variant": "baseline",
+      "seconds": 0.48426387493964285
+    },
+    {
+      "pair": 3,
+      "variant": "candidate",
+      "seconds": 0.470240541966632
+    },
+    {
+      "pair": 4,
+      "variant": "candidate",
+      "seconds": 0.4797007080633193
+    },
+    {
+      "pair": 4,
+      "variant": "baseline",
+      "seconds": 0.48679541691672057
+    },
+    {
+      "pair": 5,
+      "variant": "candidate",
+      "seconds": 0.47183616599068046
+    },
+    {
+      "pair": 5,
+      "variant": "baseline",
+      "seconds": 0.5198659580200911
+    },
+    {
+      "pair": 6,
+      "variant": "candidate",
+      "seconds": 0.5172409589868039
+    },
+    {
+      "pair": 6,
+      "variant": "baseline",
+      "seconds": 0.4987932500662282
+    },
+    {
+      "pair": 7,
+      "variant": "baseline",
+      "seconds": 0.4869436660083011
+    },
+    {
+      "pair": 7,
+      "variant": "candidate",
+      "seconds": 0.472685124957934
+    },
+    {
+      "pair": 8,
+      "variant": "baseline",
+      "seconds": 0.5080937499878928
+    },
+    {
+      "pair": 8,
+      "variant": "candidate",
+      "seconds": 0.4817537920316681
+    },
+    {
+      "pair": 9,
+      "variant": "baseline",
+      "seconds": 0.48706316703464836
+    },
+    {
+      "pair": 9,
+      "variant": "candidate",
+      "seconds": 0.4797667079837993
+    },
+    {
+      "pair": 10,
+      "variant": "baseline",
+      "seconds": 0.48675004194956273
+    },
+    {
+      "pair": 10,
+      "variant": "candidate",
+      "seconds": 0.4735736669972539
+    },
+    {
+      "pair": 11,
+      "variant": "baseline",
+      "seconds": 0.48665370896924287
+    },
+    {
+      "pair": 11,
+      "variant": "candidate",
+      "seconds": 0.478292457992211
+    },
+    {
+      "pair": 12,
+      "variant": "baseline",
+      "seconds": 0.48756866611074656
+    },
+    {
+      "pair": 12,
+      "variant": "candidate",
+      "seconds": 0.4729767079697922
+    },
+    {
+      "pair": 13,
+      "variant": "baseline",
+      "seconds": 0.4899053330300376
+    },
+    {
+      "pair": 13,
+      "variant": "candidate",
+      "seconds": 0.4865602080244571
+    },
+    {
+      "pair": 14,
+      "variant": "baseline",
+      "seconds": 0.49433791695628315
+    },
+    {
+      "pair": 14,
+      "variant": "candidate",
+      "seconds": 0.4736054999521002
+    },
+    {
+      "pair": 15,
+      "variant": "baseline",
+      "seconds": 0.48949791700579226
+    },
+    {
+      "pair": 15,
+      "variant": "candidate",
+      "seconds": 0.4806195420678705
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "median_s": 0.48706316703464836,
+      "mean_s": 0.49180860552781575,
+      "runs_s": [
+        0.4866327499039471,
+        0.4839636660180986,
+        0.48426387493964285,
+        0.48679541691672057,
+        0.5198659580200911,
+        0.4987932500662282,
+        0.4869436660083011,
+        0.5080937499878928,
+        0.48706316703464836,
+        0.48675004194956273,
+        0.48665370896924287,
+        0.48756866611074656,
+        0.4899053330300376,
+        0.49433791695628315,
+        0.48949791700579226
+      ]
+    },
+    "candidate": {
+      "median_s": 0.478292457992211,
+      "mean_s": 0.48049138052544244,
+      "runs_s": [
+        0.4903432499850169,
+        0.47817537491209805,
+        0.470240541966632,
+        0.4797007080633193,
+        0.47183616599068046,
+        0.5172409589868039,
+        0.472685124957934,
+        0.4817537920316681,
+        0.4797667079837993,
+        0.4735736669972539,
+        0.478292457992211,
+        0.4729767079697922,
+        0.4865602080244571,
+        0.4736054999521002,
+        0.4806195420678705
+      ]
+    }
+  },
+  "ratio_candidate_over_baseline": 0.9819926661754461,
+  "object_sha256": "b1853e3131d2a4b4c917c76ebefc08e4270b729078616a1e788d0c56a651e1d4",
+  "expected_sha256": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+  "experiment": {
+    "worktree": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini",
+    "baseline_commit": "e62fafd5fab9eacbda1dfc6e09c3829580e24bf7",
+    "branch": "codex/escape-runtime",
+    "change": "ref_array_dispose skips mk_release for NULL slots; no ABI/layout/ownership changes",
+    "runtime_compile_flags": "clang -std=c17 -O2 -w -Iruntime/include -Iruntime/src -c",
+    "runtime_archive": "ar rcs libminirt.a <runtime object files>",
+    "json_object_compile_provenance": "existing integrated compiler LLVM C API O3 object; source bench/json/json.kt; object not rebuilt",
+    "json_object_path": "/tmp/campaign-integrated-final/json-integrated-api-o3.o",
+    "json_link_flags": "clang <same JSON object> <runtime archive> -lm -Wl,-dead_strip -o <binary>",
+    "baseline_v1s": "git show e62fafd5fab9eacbda1dfc6e09c3829580e24bf7:runtime/src/v1s.c",
+    "candidate_v1s": "runtime/src/v1s.c in candidate worktree",
+    "same_runtime_objects_except_v1s": true,
+    "baseline_binary_sha256": "1c1c3ea89f8f10ed69ce53ec21718e562f61df7655bcae571b734fca6466c189",
+    "candidate_binary_sha256": "72862258923cc4dd81e3199fc7972c3916416e94a0c396edaf788b88fa2e0b33",
+    "baseline_runtime_v1s_sha256": "f41a9056bb8adf6cd57fd019069049143b79e54e298ffbc8061ecda23a37a94e",
+    "candidate_runtime_v1s_sha256": "486ad6a6be96befefa2778ab89004bb1d4dd7c7407997779b8393664b4ee7803",
+    "measurement": "two warmups, then 15 paired runs in deterministic randomized order; wall clock via Python perf_counter; stdout discarded after validation against bench/json/expected.txt",
+    "focused_sanitizers": "Baseline and candidate test_ref_array_dispose compiled with -std=c17 -g -fsanitize=address,undefined -fno-omit-frame-pointer plus all runtime C sources (baseline v1s substituted); both passed 3 checks, 0 failures.",
+    "mk_stats": "Baseline test compiled -DMK_STATS -DEXPECTED_REF_ARRAY_NOOP_RELEASES=7; candidate -DMK_STATS. Both passed 8 checks. During array release alloc delta=0, frees delta=2, live delta=-2; no-op releases delta baseline=7 candidate=1. Includes six NULL slots and one static slot."
+  }
+}

@@ -213,7 +213,10 @@ typedef struct MkRefArray {
 
 static void ref_array_dispose(MkObject *self) {
     MkRefArray *a = (MkRefArray *)self;
-    for (MkInt i = 0; i < a->length; i++) mk_release(a->items[i]);
+    for (MkInt i = 0; i < a->length; i++) {
+        MkObject *item = a->items[i];
+        if (item != NULL) mk_release(item);
+    }
     free(a->items);
     a->items = NULL;
 }
