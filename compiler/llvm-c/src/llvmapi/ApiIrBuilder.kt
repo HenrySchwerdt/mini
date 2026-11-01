@@ -220,6 +220,10 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
         LLVMAddAttributeAtIndex(f, idx, attr(kNounwind, 0L))
         if (attrs == IrAttrs.STD || attrs == IrAttrs.INLINE) LLVMAddAttributeAtIndex(f, idx, attr(kSanitizeAddress, 0L))
         if (attrs == IrAttrs.INLINE) LLVMAddAttributeAtIndex(f, idx, attr(kAlwaysInline, 0L))
+        if (attrs == IrAttrs.PURE_INLINE) {
+            LLVMAddAttributeAtIndex(f, idx, attr(kAlwaysInline, 0L))
+            LLVMAddAttributeAtIndex(f, idx, attr(kMemory, 0L))
+        }
         if (attrs == IrAttrs.NORETURN) LLVMAddAttributeAtIndex(f, idx, attr(kNoReturn, 0L))
         if (attrs == IrAttrs.PURE) LLVMAddAttributeAtIndex(f, idx, attr(kMemory, 0L))
         // LLVM 18 ModRef.h: ArgMem/ InaccessibleMem/ Other each occupy two bits;

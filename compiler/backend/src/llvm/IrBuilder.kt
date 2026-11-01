@@ -19,7 +19,7 @@ enum class IrType { I1, I8, I16, I32, I64, FLOAT, DOUBLE, PTR, VOID }
 enum class IrExt { NONE, ZERO, SIGN }
 
 /** Function attributes. READONLY is reserved for exact runtime declarations proven to only read memory. */
-enum class IrAttrs { NONE, STD, INLINE, NORETURN, PURE, READONLY }
+enum class IrAttrs { NONE, STD, INLINE, NORETURN, PURE, PURE_INLINE, READONLY }
 
 enum class IrLinkage { EXTERNAL, INTERNAL, PRIVATE }
 

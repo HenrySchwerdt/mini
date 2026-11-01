@@ -241,6 +241,8 @@ class LlvmEmitterTest {
             assertTrue("icmp eq ptr" in helper && "@kc_A_ti" in helper && "@kc_B_ti" in helper && "@kc_C_ti" in helper, helper)
             assertFalse("@kc_Foreign_ti" in helper, helper)
             assertTrue("memory(none)" in ll, "the address-only classifier should be pure\n$ll")
+            assertTrue("define internal i32 @mkh_type_tag_kc_Base(ptr %type) #5" in ll, ll)
+            assertTrue("attributes #5 = { nounwind alwaysinline memory(none) }" in ll, ll)
             assertTrue("declare zeroext i1 @mk_is_instance(ptr, ptr) #4" in ll, ll)
             assertTrue("attributes #4 = { nounwind memory(read) }" in ll, ll)
             assertTrue("call i32 @mkh_type_tag_kc_Base" in body, body)

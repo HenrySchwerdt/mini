@@ -243,7 +243,7 @@ private class Lowering<V : Any, B : Any>(
             b.declareDefined("mkh_rel", IrType.VOID, IrExt.NONE, p1, e1, IrAttrs.INLINE, IrLinkage.INTERNAL)
         }
         for (family in typeCheckPlan.families) {
-            b.declareDefined(family.helperName, IrType.I32, IrExt.NONE, p1, e1, IrAttrs.PURE, IrLinkage.INTERNAL)
+            b.declareDefined(family.helperName, IrType.I32, IrExt.NONE, p1, e1, IrAttrs.PURE_INLINE, IrLinkage.INTERNAL)
         }
     }
 
@@ -750,7 +750,7 @@ private class Lowering<V : Any, B : Any>(
         for (family in typeCheckPlan.families) {
             b.beginFunction(
                 IrSection.PRELUDE, family.helperName, IrType.I32, IrExt.NONE, listOf("type"), listOf(IrType.PTR),
-                listOf(IrExt.NONE), IrAttrs.PURE, IrLinkage.INTERNAL,
+                listOf(IrExt.NONE), IrAttrs.PURE_INLINE, IrLinkage.INTERNAL,
             )
             val type = b.param(0)
             for ((index, tagClass) in family.tags.withIndex()) {
