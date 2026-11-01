@@ -1501,6 +1501,8 @@ private class Lowering<V : Any, B : Any>(
                 val owns = NativeConventions.ownedArgs(e.cName)
                 if (e.cName == "mk_free_dealloc" && !tr.enabled) b.none
                 else if (arrayAccessKind(e.cName) != null) arrayAccess(e, fplan?.borrowedReads?.contains(e) == true)
+                else if (isStringLengthCall(e)) stringLength(e)
+                else if (isStringCharAtCall(e)) stringCharAt(e)
                 else if (owns != null) {
                     declare(e.cName, e.type, e.args.map { it.type })
                     ownedCall(e.cName, e.type, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0, null)
@@ -1645,6 +1647,70 @@ private class Lowering<V : Any, B : Any>(
         if (cName == "mk_array_length") return "length"
         val k = if (cName.startsWith("mk_array_get_")) cName.substring(13) else if (cName.startsWith("mk_array_set_")) cName.substring(13) else return null
         return if (k == "int" || k == "long" || k == "double" || k == "float" || k == "boolean" || k == "char" || k == "obj") k else null
+    }
+
+    private fun isStringLengthCall(e: MirExpr.RuntimeCall): Boolean =
+        e.cName == "mk_string_length" && e.type === TInt && e.args.size == 1 && e.args[0].type === TString
+
+    private fun isStringCharAtCall(e: MirExpr.RuntimeCall): Boolean =
+        e.cName == "mk_string_char_at" && e.type === TChar && e.args.size == 2 &&
+            e.args[0].type === TString && e.args[1].type === TInt
+
+    /** Fast non-null string length load; null still takes the runtime path, which returns zero. */
+    private fun stringLength(e: MirExpr.RuntimeCall): V {
+        val string = expr(e.args[0])
+        val fallback = newLabel("strlen_null")
+        val fast = newLabel("strlen_fast")
+        val merge = newLabel("strlen_merge")
+        condBr(icmp(IrCmp.IEQ, string, b.constNull()), fallback, fast)
+
+        startBlock(fast)
+        val length = load(TInt, gep(string, layouts.headerSize))
+        val fastEnd = curBlock
+        br(merge)
+
+        startBlock(fallback)
+        val slowLength = rt("mk_string_length", TInt, listOf(TString), listOf(string))
+        val slowEnd = curBlock
+        br(merge)
+
+        startBlock(merge)
+        openBlock()
+        return b.phi(IrType.I32, length, fastEnd, slowLength, slowEnd)
+    }
+
+    /**
+     * Fast UTF-16 string indexing. Null and out-of-range cases call the original runtime function so its
+     * panic behavior and message remain unchanged. The unsigned comparison covers negative indexes too.
+     */
+    private fun stringCharAt(e: MirExpr.RuntimeCall): V {
+        val string = expr(e.args[0])
+        val index = expr(e.args[1])
+        val slow = newLabel("strchar_slow")
+        val checkBounds = newLabel("strchar_bounds")
+        val fast = newLabel("strchar_fast")
+        val merge = newLabel("strchar_merge")
+        condBr(icmp(IrCmp.IEQ, string, b.constNull()), slow, checkBounds, true)
+
+        startBlock(checkBounds)
+        val length = load(TInt, gep(string, layouts.headerSize))
+        condBr(icmp(IrCmp.UGE, index, length), slow, fast, true)
+
+        startBlock(fast)
+        val charOffset = layouts.headerSize + 4
+        val byteOffset = binop(IrOp.ADD, binop(IrOp.MUL, cvt(IrCast.SEXT, index, IrType.I64), c64(2)), c64(charOffset))
+        val value = load(TChar, b.gep(string, byteOffset, true, ""))
+        val fastEnd = curBlock
+        br(merge)
+
+        startBlock(slow)
+        val slowValue = rt("mk_string_char_at", TChar, listOf(TString, TInt), listOf(string, index))
+        val slowEnd = curBlock
+        br(merge)
+
+        startBlock(merge)
+        openBlock()
+        return b.phi(IrType.I16, value, fastEnd, slowValue, slowEnd)
     }
 
     /**

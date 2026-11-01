@@ -12,9 +12,11 @@ import mini.backend.MirWasmExport
 import mini.backend.TString
 import mini.backend.WasmGlue
 import mini.backend.TBoolean
+import mini.backend.TChar
 import mini.backend.TDouble
 import mini.backend.TInt
 import mini.backend.TLong
+import mini.backend.TNString
 import mini.backend.TNothing
 import mini.backend.TUnit
 import mini.backend.TObject
@@ -148,6 +150,65 @@ class LlvmEmitterTest {
         val wasm = LlvmEmitter.emit(m, target = LlvmTarget.WASM32)
         assertTrue("target triple = \"wasm32-unknown-wasi\"" in wasm)
         assertTrue("%MkTypeInfo = type <{ ptr, i32, ptr, ptr, ptr, i32, ptr, i32 }>" in wasm, wasm)
+    }
+
+    @Test
+    fun stringFastPathsUseTargetLayoutAndPreserveRuntimeColdPaths() {
+        val text = MirLocal(0, "text", TString)
+        val index = MirLocal(1, "index", TInt)
+        val at = MirFunction(
+            "at", "kt_at", listOf(text, index), TChar,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_char_at", listOf(MirExpr.Local(text), MirExpr.Local(index)), TChar))),
+        )
+        val length = MirFunction(
+            "length", "kt_length", listOf(text), TInt,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_length", listOf(MirExpr.Local(text)), TInt))),
+        )
+
+        for ((target, charsOffset) in listOf(LlvmTarget.HOST to 20, LlvmTarget.WASM32 to 16)) {
+            val ll = LlvmEmitter.emit(module(at, length), target = target)
+            val atBody = ll.substringAfter("define zeroext i16 @kt_at(").substringBefore("\n}")
+            val lenBody = ll.substringAfter("define i32 @kt_length(").substringBefore("\n}")
+            assertTrue("icmp eq ptr" in atBody, atBody)
+            assertTrue("icmp uge i32" in atBody, "unsigned comparison covers negative indexes\n$atBody")
+            assertTrue(", $charsOffset" in atBody, "UTF-16 data offset must follow target header + length\n$atBody")
+            assertTrue("call zeroext i16 @mk_string_char_at" in atBody, "cold path must preserve runtime panic behavior\n$atBody")
+            assertTrue("phi i16" in atBody, atBody)
+            assertTrue("icmp eq ptr" in lenBody, lenBody)
+            assertTrue("call i32 @mk_string_length" in lenBody, "null must preserve the runtime's zero result\n$lenBody")
+            assertTrue("phi i32" in lenBody, lenBody)
+            assertFalse("mk_pending_exception" in atBody || "mk_pending_exception" in lenBody, ll)
+        }
+    }
+
+    @Test
+    fun stringCharAtEvaluatesArgumentsOnceInSourceOrder() {
+        val indexArg = MirFunction("indexArg", "kt_index_arg", emptyList(), TInt, listOf(MirStmt.Return(MirExpr.IntConst(0))))
+        val text = MirLocal(0, "text", TString)
+        val at = MirFunction(
+            "at", "kt_at", listOf(text), TChar,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall(
+                "mk_string_char_at",
+                listOf(MirExpr.Local(text), MirExpr.Call("kt_index_arg", emptyList(), TInt)),
+                TChar,
+            ))),
+        )
+        val ll = LlvmEmitter.emit(module(indexArg, at))
+        val body = ll.substringAfter("define zeroext i16 @kt_at(").substringBefore("\n}")
+        assertTrue(body.indexOf("load ptr, ptr %v_text_0") < body.indexOf("call i32 @kt_index_arg"), body)
+        assertEquals(1, occurrences(body, "call i32 @kt_index_arg"), body)
+    }
+
+    @Test
+    fun nullableExternalStringCallsKeepTheirRuntimeNullSemantics() {
+        val text = MirLocal(0, "text", TNString)
+        val f = MirFunction(
+            "length", "kt_nullable_length", listOf(text), TInt,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_length", listOf(MirExpr.Local(text)), TInt))),
+        )
+        val body = LlvmEmitter.emit(module(f)).substringAfter("define i32 @kt_nullable_length(").substringBefore("\n}")
+        assertTrue("call i32 @mk_string_length" in body, body)
+        assertFalse("icmp eq ptr" in body || "phi i32" in body, body)
     }
 
     @Test
