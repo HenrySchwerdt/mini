@@ -112,10 +112,14 @@ typedef struct MkSb {
     MkChar *chars;
     MkInt length;
     MkInt capacity;
+    MkChar inline_chars[];
 } MkSb;
 
+#define MK_SB_INLINE_CAPACITY 16
+
 static void sb_dispose(MkObject *self) {
-    free(((MkSb *)self)->chars);
+    MkSb *sb = (MkSb *)self;
+    if (sb->chars != sb->inline_chars) free(sb->chars);
     ((MkSb *)self)->chars = NULL;
 }
 
@@ -132,18 +136,33 @@ static void sb_reserve(MkSb *sb, MkInt extra) {
     if (extra < 0 || sb->length > INT32_MAX - extra) mk_panic("OutOfMemoryError: string too long");
     MkInt need = sb->length + extra;
     if (need <= sb->capacity) return;
-    MkInt cap = sb->capacity < 16 ? 16 : sb->capacity;
+    MkInt cap = sb->capacity < MK_SB_INLINE_CAPACITY ? MK_SB_INLINE_CAPACITY : sb->capacity;
     while (cap < need) {
         if (cap > INT32_MAX / 2) { cap = need; break; }
         cap *= 2;
     }
-    MkChar *n = realloc(sb->chars, (size_t)cap * sizeof(MkChar));
+    MkChar *n;
+    if (sb->chars == sb->inline_chars) {
+        n = malloc((size_t)cap * sizeof(MkChar));
+        if (n != NULL && sb->length > 0) {
+            memcpy(n, sb->chars, (size_t)sb->length * sizeof(MkChar));
+        }
+    } else {
+        n = realloc(sb->chars, (size_t)cap * sizeof(MkChar));
+    }
     if (n == NULL) mk_panic("out of memory");
     sb->chars = n;
     sb->capacity = cap;
 }
 
-MkObject *mk_sb_new(void) { return mk_alloc(&sb_type); }
+MkObject *mk_sb_new(void) {
+    size_t bytes = sizeof(MkSb) + MK_SB_INLINE_CAPACITY * sizeof(MkChar);
+    MkSb *sb = (MkSb *)mk_alloc_sized(NULL, &sb_type, bytes);
+    if (sb == NULL) mk_panic("out of memory");
+    sb->chars = sb->inline_chars;
+    sb->capacity = MK_SB_INLINE_CAPACITY;
+    return &sb->header;
+}
 
 void mk_sb_append_string(MkObject *o, const MkString *s) {
     MkSb *sb = sb_of(o);

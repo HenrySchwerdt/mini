@@ -59,6 +59,37 @@ int main(void) {
     CHECK(parse_double("12") == 12.0);
     CHECK(parse_double("1.25d") == 1.25);
 
+    /* StringBuilder inline-buffer boundaries and immutable snapshots. */
+    MkObject *empty_sb = mk_sb_new();
+    MkString *empty_snapshot = mk_sb_to_string(empty_sb);
+    CHECK_EQ_INT(empty_snapshot->length, 0);
+    mk_release(&empty_snapshot->header);
+    for (int i = 0; i < 16; i++) mk_sb_append_char(empty_sb, (MkChar)('a' + i));
+    CHECK_EQ_INT(mk_sb_length(empty_sb), 16);
+    MkString *inline_snapshot = mk_sb_to_string(empty_sb);
+    CHECK_EQ_INT(inline_snapshot->length, 16);
+    CHECK_EQ_INT(mk_string_char_at(inline_snapshot, 15), 'p');
+    mk_sb_append_char(empty_sb, 'q'); /* 16 -> 17 moves storage to the heap */
+    CHECK_EQ_INT(mk_sb_length(empty_sb), 17);
+    CHECK_EQ_INT(mk_string_char_at(inline_snapshot, 15), 'p');
+    CHECK_EQ_INT(mk_string_char_at(inline_snapshot, 0), 'a');
+    mk_release(&inline_snapshot->header);
+    mk_release(empty_sb);
+
+    MkObject *zero_fill_sb = mk_sb_new();
+    mk_sb_set_length(zero_fill_sb, 17); /* crosses the inline capacity and zero-fills */
+    CHECK_EQ_INT(mk_sb_length(zero_fill_sb), 17);
+    CHECK_EQ_INT(mk_sb_char_at(zero_fill_sb, 0), 0);
+    CHECK_EQ_INT(mk_sb_char_at(zero_fill_sb, 16), 0);
+    mk_sb_set_length(zero_fill_sb, 0);
+    mk_sb_append_char(zero_fill_sb, (MkChar)0xd83d);
+    mk_sb_append_char(zero_fill_sb, (MkChar)0xde00);
+    MkString *surrogate_snapshot = mk_sb_to_string(zero_fill_sb);
+    CHECK_EQ_INT(mk_string_char_at(surrogate_snapshot, 0), (MkChar)0xd83d);
+    CHECK_EQ_INT(mk_string_char_at(surrogate_snapshot, 1), (MkChar)0xde00);
+    mk_release(&surrogate_snapshot->header);
+    mk_release(zero_fill_sb);
+
     /* StringBuilder */
     MkObject *sb = mk_sb_new();
     MkString *part = U("hello");
