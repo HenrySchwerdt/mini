@@ -35,3 +35,11 @@ The current type-classification prototype recognizes canonical local type-info a
 RC counters in the combined runtime experiment count out-of-line runtime hook calls. LLVM-inlined retain/release operations are not included, so those deltas are not total logical RC reductions. Managed allocation statistics formerly excluded separately allocated libc backing buffers; coallocation makes those bytes visible. Counter scope must be considered before inferring memory changes.
 
 No new claim is made yet for complete self-compilation, the broader workload suite or platform coverage. The next decision depends on reviewed type-classification and StringBuilder results, followed by fresh integrated benchmarks and correctness checks.
+
+## Follow-on evidence
+
+The optimized JSON object contains no checked-cast runtime call. Its tree walk calls the type-family classifier once, dispatches known tags, and retains six generic type checks only in the unknown-descriptor fallback. The earlier baseline profile cannot establish the frequency of this fallback in the candidate. A speculative checked-cast pass was therefore not implemented.
+
+A first 16-unit StringBuilder inline-buffer prototype was rejected: it improved JSON only 1.1% and regressed repeated 1024-character builder growth by 33.8%. Disassembly identified an extra out-of-line reserve call on every character append. Splitting the capacity guard from slow growth removed that wall-time regression. The follow-on measured 2.08% lower JSON time in eleven matched rotated rounds and 1.07% lower C/MIR-emission self-compilation time in five pairs, with identical outputs. These are local measurements, not universal guarantees.
+
+The follow-on still adds 32 managed bytes per builder and increases retired instructions by 7.84% in the large-builder control, despite slightly improved wall time there. On the fixed 153-input compiler workload, instructions instead fell 1.08% and peak RSS rose about 1.25 MB. Both sides of this tradeoff matter. In the latest same-round JSON comparison, Mini fell from 1.246 to **1.220 times the fastest C reference**. The goal is still unmet. Final integration and fresh broad validation are pending.
