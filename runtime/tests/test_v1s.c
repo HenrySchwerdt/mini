@@ -1,5 +1,9 @@
 #include "harness.h"
 
+static void new_ref_array_from_arg(void *arg) {
+    (void)mk_ref_array_new(*(MkInt *)arg);
+}
+
 static MkString *U(const char *s) { return mk_string_from_utf8(s, strlen(s)); }
 
 static int is_double(const char *text) {
@@ -101,12 +105,13 @@ int main(void) {
     MkString *e = U("elem");
     mk_ref_array_set(arr, 1, &e->header);
     mk_release(&e->header); /* the array keeps it alive */
+    CHECK(mk_ref_array_get_b(arr, 1) == &e->header);
     MkObject *got = mk_ref_array_get(arr, 1);
     CHECK(got != NULL);
     CHECK_STR((MkString *)got, "elem");
     MkObject *boxed = mk_box_int(42);
-    mk_ref_array_set(arr, 2, boxed);
-    mk_release(boxed);
+    mk_ref_array_set_o(arr, 2, boxed); /* the array takes over the caller's reference */
+    CHECK_EQ_INT(boxed->refcount, 1);
     mk_ref_array_set(arr, 1, NULL);
     MkObject *b2 = mk_ref_array_get(arr, 2);
     CHECK_EQ_INT(mk_unbox_int(b2), 42);
@@ -115,6 +120,13 @@ int main(void) {
     MkObject *empty_arr = mk_ref_array_new(0);
     CHECK_EQ_INT(mk_ref_array_length(empty_arr), 0);
     mk_release(empty_arr);
+
+    MkInt negative_ref_array_size = -1;
+    CHECK_ABORTS(new_ref_array_from_arg, &negative_ref_array_size, "NegativeArraySizeException");
+#if SIZE_MAX <= UINT32_MAX
+    MkInt overflowing_ref_array_size = INT32_MAX;
+    CHECK_ABORTS(new_ref_array_from_arg, &overflowing_ref_array_size, "out of memory");
+#endif
 
     /* type name / identity hash */
     MkObject *bx = mk_box_int(1);

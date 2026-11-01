@@ -43,5 +43,16 @@ int main(void) {
     CHECK_EQ_INT(after.releases - before.releases, EXPECTED_REF_ARRAY_NOOP_RELEASES + 2);
 #endif
 
+    /* Exercise inline storage large enough to use the allocator's malloc path. */
+    MkObject *large = mk_ref_array_new(128);
+    CHECK_EQ_INT(mk_ref_array_length(large), 128);
+    CHECK(mk_ref_array_get_b(large, 0) == NULL);
+    CHECK(mk_ref_array_get_b(large, 127) == NULL);
+    MkObject *large_child = mk_alloc(&tracked_type);
+    mk_ref_array_set_o(large, 127, large_child);
+    CHECK_EQ_INT(large_child->refcount, 1);
+    mk_release(large);
+    CHECK_EQ_INT(disposed, 2);
+
     TEST_DONE();
 }

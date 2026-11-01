@@ -209,6 +209,7 @@ typedef struct MkRefArray {
     MkObject header;
     MkInt length;
     MkObject **items;
+    MkObject *inline_items[];
 } MkRefArray;
 
 static void ref_array_dispose(MkObject *self) {
@@ -217,7 +218,6 @@ static void ref_array_dispose(MkObject *self) {
         MkObject *item = a->items[i];
         if (item != NULL) mk_release(item);
     }
-    free(a->items);
     a->items = NULL;
 }
 
@@ -234,12 +234,13 @@ static MkRefArray *ra_of(MkObject *o, MkInt index) {
 
 MkObject *mk_ref_array_new(MkInt size) {
     if (size < 0) mk_panic("NegativeArraySizeException");
-    MkRefArray *a = (MkRefArray *)mk_alloc(&ref_array_type);
-    if (size > 0) {
-        a->items = calloc((size_t)size, sizeof(MkObject *));
-        if (a->items == NULL) mk_panic("out of memory");
-    }
+    size_t count = (size_t)size;
+    if (count > (SIZE_MAX - sizeof(MkRefArray)) / sizeof(MkObject *)) mk_panic("out of memory");
+    size_t bytes = sizeof(MkRefArray) + count * sizeof(MkObject *);
+    MkRefArray *a = (MkRefArray *)mk_alloc_sized(NULL, &ref_array_type, bytes);
+    if (a == NULL) mk_panic("out of memory");
     a->length = size;
+    a->items = count > 0 ? a->inline_items : NULL;
     return &a->header;
 }
 
