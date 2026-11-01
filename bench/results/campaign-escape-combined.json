@@ -1,0 +1,2466 @@
+{
+  "schema_version": 1,
+  "kind": "escape-combined-json-target-baseline",
+  "date": "2026-11-01",
+  "integration_commit": "5158886b93d5d74eefe7213f3381e3251aadbf12",
+  "host": {
+    "cpu": "Apple M4",
+    "os": "macOS 26.2",
+    "architecture": "arm64",
+    "clang": "Apple clang version 17.0.0 (clang-1700.6.4.2)"
+  },
+  "sources": {
+    "json_kt_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+    "json_c_sha256": "3c81b54a7cfca91b1cfaa0ded38e493b3ba71534880b1ada64692a308d4354ef",
+    "expected_sha256": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+    "expected_stdout": "7055506 1072916 885982430\n",
+    "baseline_source_commit": "8433c381a416c0819caab32fb6704b3d0c983171",
+    "integrated_source_commit": "5158886b93d5d74eefe7213f3381e3251aadbf12",
+    "baseline_stdlib": "62 source files from baseline commit, compiled from source (no .mlib)",
+    "integrated_stdlib": "62 source files at integration commit, compiled from source (no .mlib)",
+    "runtime": "18 C files per source snapshot, built plain and MK_STATS separately at -O2; both Mini executables link to matching source-snapshot archive",
+    "hand_c_source_unchanged": true
+  },
+  "compiler_variants": {
+    "baseline-mini-api-o3": {
+      "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+      "compiler_path": "$BASELINE_API_STAGE3",
+      "compiler_version": "API stage3 built at O1; app compile uses --opt=O3",
+      "source_root_commit": "8433c381a416c0819caab32fb6704b3d0c983171",
+      "source_hashes": {
+        "json_kt": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+        "expected": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+        "stdlib_kt_sources": 62,
+        "runtime_c_sources": 18
+      },
+      "compile_command_template": "<compiler> --backend=llvm-api --opt=O3 -o OUT.o --emit-c OUT.c --emit-mir OUT.mir --emit-ll OUT.ll bench/json/json.kt --stdlib <62 source files>",
+      "compile_timing": {
+        "wall_seconds": 0.3396100830286741,
+        "time_user_seconds": 0.32,
+        "time_sys_seconds": 0.01,
+        "max_rss_bytes": 98271232.0,
+        "instructions_retired": 5627448340.0,
+        "cycles_elapsed": 1471281539.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.33\nuser 0.32\nsys 0.01\n            98271232  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6100  page reclaims\n                  65  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 114  involuntary context switches\n          5627448340  instructions retired\n          1471281539  cycles elapsed\n            71090608  peak memory footprint\n"
+      },
+      "link_command": [
+        "clang",
+        "$TMP/campaign-escape-combined/baseline-mini.o",
+        "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/libminirt.a",
+        "-lm",
+        "-Wl,-dead_strip",
+        "-o",
+        "$TMP/campaign-escape-combined/baseline-mini.exe"
+      ],
+      "link_timing": {
+        "wall_seconds": 0.028477874933741987,
+        "time_user_seconds": 0.04,
+        "time_sys_seconds": 0.01,
+        "max_rss_bytes": 44662784.0,
+        "instructions_retired": 68422427.0,
+        "cycles_elapsed": 25771833.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.02\nuser 0.04\nsys 0.01\n            44662784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5058  page reclaims\n                 106  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  18  voluntary context switches\n                 500  involuntary context switches\n            68422427  instructions retired\n            25771833  cycles elapsed\n             2441504  peak memory footprint\n"
+      },
+      "artifacts": {
+        "object_bytes": 89088,
+        "object_sha256": "972d4403ad906ce52891bfb6d48bb628e63da1039263de92dda239f6e3b032d1",
+        "mir_bytes": 172002,
+        "mir_sha256": "b7bc62e35494b7dd587635b6a08e3251ccae2ccf55084e6ab53b40bd384edfe9",
+        "ll_bytes": 410708,
+        "ll_sha256": "91154f181519eea7b8e0a770496c1b017d662fb0b7fe6de9deec67c4af00fb85",
+        "emitted_c_bytes": 209542,
+        "emitted_c_sha256": "983e4679d5411454c76b74e47484acce07d906e3ea88f10894292a8ea596f245",
+        "executable_bytes": 102432,
+        "executable_sha256": "692b3d50e6c4093cbfde6fce73d2ee064df98728f60e6f82bd87b5a90e4b34ea",
+        "plain_runtime": {
+          "flags": [
+            "-std=c17",
+            "-O2"
+          ],
+          "object_count": 18,
+          "archive_bytes": 102728,
+          "archive_sha256": "984aefcf23e527254b19e7fbae9ae72061da89a7fb7e0b440adf893c2aa198f0",
+          "commands": [
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/alloc.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_arena.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/alloc_arena.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_debug.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/alloc_debug.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_pool.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/alloc_pool.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_small.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/alloc_small.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/b1.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/b1.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/cinterop.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/cinterop.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/classes.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/classes.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/console.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/console.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/entry.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/entry.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/numfmt.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/numfmt.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/object.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/object.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/stats.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/stats.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/string.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/string.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/utf.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/utf.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/v1l.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/v1l.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/v1s.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/v1s.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/wasmlib.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-plain/wasmlib.o"
+            ]
+          ]
+        },
+        "stats_runtime": {
+          "flags": [
+            "-std=c17",
+            "-O2",
+            "-DMK_STATS"
+          ],
+          "object_count": 18,
+          "archive_bytes": 108072,
+          "archive_sha256": "8a98b5fd2a1a87b0429aa28879f91a052a4095a75da6295155c7598475b6af23",
+          "commands": [
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/alloc.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_arena.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/alloc_arena.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_debug.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/alloc_debug.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_pool.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/alloc_pool.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/alloc_small.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/alloc_small.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/b1.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/b1.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/cinterop.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/cinterop.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/classes.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/classes.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/console.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/console.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/entry.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/entry.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/numfmt.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/numfmt.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/object.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/object.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/stats.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/stats.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/string.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/string.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/utf.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/utf.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/v1l.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/v1l.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/v1s.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/v1s.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/include",
+              "-c",
+              "$BASELINE_8433_SOURCE_ROOT/runtime/src/wasmlib.c",
+              "-o",
+              "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/wasmlib.o"
+            ]
+          ]
+        }
+      },
+      "stats_executable": "$TMP/campaign-escape-combined/baseline-mini.stats.exe",
+      "compiler_build_source_commit": "8433c381a416c0819caab32fb6704b3d0c983171"
+    },
+    "integrated-mini-api-o3": {
+      "compiler_sha256": "86c9f30c1fd536b9f86e54c2893ae7ef9714ad7e247b1f140695d608f13a37b9",
+      "compiler_path": "$INTEGRATED_FASTPATH_API_STAGE3",
+      "compiler_version": "API stage3 built at O1; app compile uses --opt=O3",
+      "source_root_commit": "5158886b93d5d74eefe7213f3381e3251aadbf12",
+      "source_hashes": {
+        "json_kt": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+        "expected": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+        "stdlib_kt_sources": 62,
+        "runtime_c_sources": 18
+      },
+      "compile_command_template": "<compiler> --backend=llvm-api --opt=O3 -o OUT.o --emit-c OUT.c --emit-mir OUT.mir --emit-ll OUT.ll bench/json/json.kt --stdlib <62 source files>",
+      "compile_timing": {
+        "wall_seconds": 0.3790704170241952,
+        "time_user_seconds": 0.34,
+        "time_sys_seconds": 0.02,
+        "max_rss_bytes": 99205120.0,
+        "instructions_retired": 5806195099.0,
+        "cycles_elapsed": 1542727440.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.37\nuser 0.34\nsys 0.02\n            99205120  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6157  page reclaims\n                  66  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  68  voluntary context switches\n                  38  involuntary context switches\n          5806195099  instructions retired\n          1542727440  cycles elapsed\n            71942600  peak memory footprint\n"
+      },
+      "link_command": [
+        "clang",
+        "$TMP/campaign-escape-combined/integrated-mini.o",
+        "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/libminirt.a",
+        "-lm",
+        "-Wl,-dead_strip",
+        "-o",
+        "$TMP/campaign-escape-combined/integrated-mini.exe"
+      ],
+      "link_timing": {
+        "wall_seconds": 0.025942874955944717,
+        "time_user_seconds": 0.04,
+        "time_sys_seconds": 0.01,
+        "max_rss_bytes": 44695552.0,
+        "instructions_retired": 68315524.0,
+        "cycles_elapsed": 24689331.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.02\nuser 0.04\nsys 0.01\n            44695552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4922  page reclaims\n                  97  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 358  involuntary context switches\n            68315524  instructions retired\n            24689331  cycles elapsed\n             2425120  peak memory footprint\n"
+      },
+      "artifacts": {
+        "object_bytes": 90096,
+        "object_sha256": "49d342ae10f7a3ce5dd1cee8c346e5623af5bdb10529055cf4104389be17cd87",
+        "mir_bytes": 172001,
+        "mir_sha256": "3e27f170f5eee5388b28d966d4d2a1498ad88647519538942be92589a8de9c1c",
+        "ll_bytes": 428674,
+        "ll_sha256": "f6d358a4536dfaa00009327252abf7d568473ebc77299ec7dc5161690c935537",
+        "emitted_c_bytes": 209541,
+        "emitted_c_sha256": "633a0aab6cf416236ac19257e7365eb7bc20b729c426eecbcb165aea34cc338f",
+        "executable_bytes": 102432,
+        "executable_sha256": "adb22d6fa8fc917fdf8d38e6c5526048a89101b3e82f37168adc12c43004f79c",
+        "plain_runtime": {
+          "flags": [
+            "-std=c17",
+            "-O2"
+          ],
+          "object_count": 18,
+          "archive_bytes": 102736,
+          "archive_sha256": "c3d9541fca6a501facfd4cfeef7b4e275d2c1c9d7b10eddbc1b430465d18ed20",
+          "commands": [
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/alloc.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_arena.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/alloc_arena.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_debug.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/alloc_debug.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_pool.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/alloc_pool.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_small.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/alloc_small.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/b1.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/b1.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/cinterop.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/cinterop.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/classes.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/classes.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/console.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/console.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/entry.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/entry.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/numfmt.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/numfmt.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/object.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/object.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/stats.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/stats.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/string.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/string.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/utf.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/utf.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/v1l.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/v1l.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/v1s.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/v1s.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/wasmlib.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-plain/wasmlib.o"
+            ]
+          ]
+        },
+        "stats_runtime": {
+          "flags": [
+            "-std=c17",
+            "-O2",
+            "-DMK_STATS"
+          ],
+          "object_count": 18,
+          "archive_bytes": 108080,
+          "archive_sha256": "12b85077ee1ef14b63ab7895ac61cb436fc38675300cfa6af87763ed678459e5",
+          "commands": [
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/alloc.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_arena.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/alloc_arena.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_debug.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/alloc_debug.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_pool.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/alloc_pool.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/alloc_small.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/alloc_small.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/b1.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/b1.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/cinterop.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/cinterop.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/classes.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/classes.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/console.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/console.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/entry.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/entry.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/numfmt.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/numfmt.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/object.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/object.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/stats.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/stats.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/string.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/string.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/utf.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/utf.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/v1l.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/v1l.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/v1s.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/v1s.o"
+            ],
+            [
+              "clang",
+              "-std=c17",
+              "-O2",
+              "-DMK_STATS",
+              "-I",
+              "$INTEGRATION_REPO/runtime/include",
+              "-c",
+              "$INTEGRATION_REPO/runtime/src/wasmlib.c",
+              "-o",
+              "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/wasmlib.o"
+            ]
+          ]
+        }
+      },
+      "stats_executable": "$TMP/campaign-escape-combined/integrated-mini.stats.exe",
+      "compiler_build_source_commit": "3d4b3f645adbe4c3490e958a94127dda8c0e43b4",
+      "integrated_application_inputs_commit": "5158886b93d5d74eefe7213f3381e3251aadbf12"
+    },
+    "hand-c-o3": {
+      "source_sha256": "3c81b54a7cfca91b1cfaa0ded38e493b3ba71534880b1ada64692a308d4354ef",
+      "flags": [
+        "-O3",
+        "-fno-fast-math",
+        "-ffp-contract=off"
+      ],
+      "compile_command": [
+        "clang",
+        "-std=c17",
+        "-O3",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-c",
+        "$INTEGRATION_REPO/bench/json/json.c",
+        "-o",
+        "$TMP/campaign-escape-combined/hand-c-o3.o"
+      ],
+      "compile_timing": {
+        "wall_seconds": 0.05564741708803922,
+        "time_user_seconds": 0.03,
+        "time_sys_seconds": 0.0,
+        "max_rss_bytes": 52215808.0,
+        "instructions_retired": 68539486.0,
+        "cycles_elapsed": 27595545.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.05\nuser 0.03\nsys 0.00\n            52215808  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4731  page reclaims\n                 214  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  15  voluntary context switches\n                  16  involuntary context switches\n            68539486  instructions retired\n            27595545  cycles elapsed\n             2457888  peak memory footprint\n"
+      },
+      "link_command": [
+        "clang",
+        "$TMP/campaign-escape-combined/hand-c-o3.o",
+        "-lm",
+        "-o",
+        "$TMP/campaign-escape-combined/hand-c-o3.exe"
+      ],
+      "link_timing": {
+        "wall_seconds": 0.026878583943471313,
+        "time_user_seconds": 0.04,
+        "time_sys_seconds": 0.01,
+        "max_rss_bytes": 43843584.0,
+        "instructions_retired": 68372176.0,
+        "cycles_elapsed": 27459447.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.02\nuser 0.04\nsys 0.01\n            43843584  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4879  page reclaims\n                  97  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 344  involuntary context switches\n            68372176  instructions retired\n            27459447  cycles elapsed\n             2441504  peak memory footprint\n"
+      },
+      "object_bytes": 9352,
+      "object_sha256": "b063687f0a45a977048f4080a16c708f032075df63d5be753bdfd86c7bb85347",
+      "executable_bytes": 50496,
+      "executable_sha256": "e2658fbaa4eec9019b754aca04154c7fecf617f1b56f22e5a740ef59628157a8"
+    },
+    "hand-c-o3-native": {
+      "source_sha256": "3c81b54a7cfca91b1cfaa0ded38e493b3ba71534880b1ada64692a308d4354ef",
+      "flags": [
+        "-O3",
+        "-mcpu=native",
+        "-fno-fast-math",
+        "-ffp-contract=off"
+      ],
+      "compile_command": [
+        "clang",
+        "-std=c17",
+        "-O3",
+        "-mcpu=native",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-c",
+        "$INTEGRATION_REPO/bench/json/json.c",
+        "-o",
+        "$TMP/campaign-escape-combined/hand-c-o3-native.o"
+      ],
+      "compile_timing": {
+        "wall_seconds": 0.052396540995687246,
+        "time_user_seconds": 0.04,
+        "time_sys_seconds": 0.0,
+        "max_rss_bytes": 52215808.0,
+        "instructions_retired": 68618250.0,
+        "cycles_elapsed": 26805505.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.05\nuser 0.04\nsys 0.00\n            52215808  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4753  page reclaims\n                 196  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                  15  involuntary context switches\n            68618250  instructions retired\n            26805505  cycles elapsed\n             2507064  peak memory footprint\n"
+      },
+      "link_command": [
+        "clang",
+        "$TMP/campaign-escape-combined/hand-c-o3-native.o",
+        "-lm",
+        "-o",
+        "$TMP/campaign-escape-combined/hand-c-o3-native.exe"
+      ],
+      "link_timing": {
+        "wall_seconds": 0.025756207993254066,
+        "time_user_seconds": 0.04,
+        "time_sys_seconds": 0.01,
+        "max_rss_bytes": 43859968.0,
+        "instructions_retired": 68278923.0,
+        "cycles_elapsed": 26556329.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.02\nuser 0.04\nsys 0.01\n            43859968  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4858  page reclaims\n                  97  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 350  involuntary context switches\n            68278923  instructions retired\n            26556329  cycles elapsed\n             2474272  peak memory footprint\n"
+      },
+      "object_bytes": 9352,
+      "object_sha256": "b063687f0a45a977048f4080a16c708f032075df63d5be753bdfd86c7bb85347",
+      "executable_bytes": 50504,
+      "executable_sha256": "1d3086c2270de5b702b15d4a57a5106b384417aa8969df0ff9f34d2146547a14"
+    }
+  },
+  "measurement": {
+    "warmups_per_variant": 2,
+    "rotated_blocks": 11,
+    "execution_order": "baseline Mini, integrated Mini, hand C O3, hand C O3 -mcpu=native; rotate start variant every block",
+    "timing": "/usr/bin/time -lp; includes wall, user/sys, max RSS, instructions retired, cycles elapsed",
+    "normal_timing_instrumentation": "none; stats-only runs separate",
+    "C_flags": "hand C strict FP flags -fno-fast-math -ffp-contract=off; O3 and O3 -mcpu=native variants",
+    "Mini_flags": "--backend=llvm-api --opt=O3; target host triple/data layout and generic CPU"
+  },
+  "normal_timing": {
+    "baseline-mini-api-o3": {
+      "warmups": [
+        {
+          "wall_seconds": 0.7941901249578223,
+          "time_user_seconds": 0.48,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 168280064.0,
+          "instructions_retired": 7865563462.0,
+          "cycles_elapsed": 1993933713.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.79\nuser 0.48\nsys 0.01\n           168280064  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10498  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7865563462  instructions retired\n          1993933713  cycles elapsed\n           168001992  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4811311250086874,
+          "time_user_seconds": 0.46,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7887106929.0,
+          "cycles_elapsed": 1983053354.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.47\nuser 0.46\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   6  involuntary context switches\n          7887106929  instructions retired\n          1983053354  cycles elapsed\n           165872048  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.48123866703826934,
+          "time_user_seconds": 0.46,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7886381524.0,
+          "cycles_elapsed": 1982895557.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.47\nuser 0.46\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  10  involuntary context switches\n          7886381524  instructions retired\n          1982895557  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.49200695799663663,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7887203746.0,
+          "cycles_elapsed": 1999307156.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.49\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7887203746  instructions retired\n          1999307156  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.508916207938455,
+          "time_user_seconds": 0.48,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7871019650.0,
+          "cycles_elapsed": 2006430480.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.50\nuser 0.48\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n          7871019650  instructions retired\n          2006430480  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.48972645797766745,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166133760.0,
+          "instructions_retired": 7886893252.0,
+          "cycles_elapsed": 1979495197.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.48\nuser 0.47\nsys 0.01\n           166133760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10367  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  11  involuntary context switches\n          7886893252  instructions retired\n          1979495197  cycles elapsed\n           165855688  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.49588337494060397,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166150144.0,
+          "instructions_retired": 7860233923.0,
+          "cycles_elapsed": 2003470627.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.49\nuser 0.47\nsys 0.01\n           166150144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10368  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7860233923  instructions retired\n          2003470627  cycles elapsed\n           165872072  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.49074541695881635,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7888160264.0,
+          "cycles_elapsed": 1986838646.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.48\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7888160264  instructions retired\n          1986838646  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4949943330138922,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166133760.0,
+          "instructions_retired": 7892536564.0,
+          "cycles_elapsed": 1988768644.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.49\nuser 0.47\nsys 0.01\n           166133760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10367  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  15  involuntary context switches\n          7892536564  instructions retired\n          1988768644  cycles elapsed\n           165855688  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.48825454094912857,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7887173531.0,
+          "cycles_elapsed": 1967099459.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.48\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7887173531  instructions retired\n          1967099459  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.49248150002676994,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166150144.0,
+          "instructions_retired": 7859399195.0,
+          "cycles_elapsed": 1987934205.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.49\nuser 0.47\nsys 0.01\n           166150144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10368  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7859399195  instructions retired\n          1987934205  cycles elapsed\n           165872072  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4903479579370469,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7886717495.0,
+          "cycles_elapsed": 1973143988.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.48\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   7  involuntary context switches\n          7886717495  instructions retired\n          1973143988  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4936418329598382,
+          "time_user_seconds": 0.47,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7892422535.0,
+          "cycles_elapsed": 1995269190.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.49\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7892422535  instructions retired\n          1995269190  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "summary": {
+        "median_wall_seconds": 0.49200695799663663,
+        "range_wall_seconds": [
+          0.48123866703826934,
+          0.508916207938455
+        ],
+        "median_rss_bytes": 166166528.0,
+        "median_instructions_retired": 7886893252.0,
+        "median_cycles_elapsed": 1987934205.0,
+        "all_outputs_match_expected": true,
+        "ratio_vs_fastest_correct_hand_c_o3_or_native": 1.5213283116781584
+      }
+    },
+    "integrated-mini-api-o3": {
+      "warmups": [
+        {
+          "wall_seconds": 0.7012592909159139,
+          "time_user_seconds": 0.44,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 147668992.0,
+          "instructions_retired": 7161887468.0,
+          "cycles_elapsed": 1772802756.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.69\nuser 0.44\nsys 0.01\n           147668992  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9160  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   6  involuntary context switches\n          7161887468  instructions retired\n          1772802756  cycles elapsed\n           147390920  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.428707042010501,
+          "time_user_seconds": 0.41,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145440768.0,
+          "instructions_retired": 7155250392.0,
+          "cycles_elapsed": 1762140840.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.42\nuser 0.41\nsys 0.00\n           145440768  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9024  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          7155250392  instructions retired\n          1762140840  cycles elapsed\n           145146288  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.4420705829979852,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145440768.0,
+          "instructions_retired": 7155786139.0,
+          "cycles_elapsed": 1773393721.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.44\nuser 0.42\nsys 0.00\n           145440768  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9024  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7155786139  instructions retired\n          1773393721  cycles elapsed\n           145146288  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4401822090148926,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145457152.0,
+          "instructions_retired": 7161724793.0,
+          "cycles_elapsed": 1786660288.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.43\nuser 0.42\nsys 0.00\n           145457152  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9025  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7161724793  instructions retired\n          1786660288  cycles elapsed\n           145162672  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.456903540994972,
+          "time_user_seconds": 0.43,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 145457152.0,
+          "instructions_retired": 7175147394.0,
+          "cycles_elapsed": 1809565132.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.45\nuser 0.43\nsys 0.01\n           145457152  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9025  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  18  involuntary context switches\n          7175147394  instructions retired\n          1809565132  cycles elapsed\n           145162672  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.43623270897660404,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145489920.0,
+          "instructions_retired": 7155631712.0,
+          "cycles_elapsed": 1768423403.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.43\nuser 0.42\nsys 0.00\n           145489920  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9027  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7155631712  instructions retired\n          1768423403  cycles elapsed\n           145195440  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.43408829194959253,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145457152.0,
+          "instructions_retired": 7156009174.0,
+          "cycles_elapsed": 1752912461.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.43\nuser 0.42\nsys 0.00\n           145457152  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9025  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7156009174  instructions retired\n          1752912461  cycles elapsed\n           145162672  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4374552499502897,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145506304.0,
+          "instructions_retired": 7160681287.0,
+          "cycles_elapsed": 1767886593.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.43\nuser 0.42\nsys 0.00\n           145506304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9028  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   7  involuntary context switches\n          7160681287  instructions retired\n          1767886593  cycles elapsed\n           145211824  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.44042516709305346,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145506304.0,
+          "instructions_retired": 7155156007.0,
+          "cycles_elapsed": 1778280082.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.43\nuser 0.42\nsys 0.00\n           145506304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9028  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7155156007  instructions retired\n          1778280082  cycles elapsed\n           145211824  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4390328750014305,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145440768.0,
+          "instructions_retired": 7157483833.0,
+          "cycles_elapsed": 1772723692.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.43\nuser 0.42\nsys 0.00\n           145440768  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9024  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7157483833  instructions retired\n          1772723692  cycles elapsed\n           145146288  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.44600487500429153,
+          "time_user_seconds": 0.43,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145489920.0,
+          "instructions_retired": 7155510255.0,
+          "cycles_elapsed": 1794088045.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.44\nuser 0.43\nsys 0.00\n           145489920  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9027  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7155510255  instructions retired\n          1794088045  cycles elapsed\n           145195440  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4456503330729902,
+          "time_user_seconds": 0.43,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145489920.0,
+          "instructions_retired": 7127452866.0,
+          "cycles_elapsed": 1775981794.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.44\nuser 0.43\nsys 0.00\n           145489920  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9027  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   7  involuntary context switches\n          7127452866  instructions retired\n          1775981794  cycles elapsed\n           145195440  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.43951066699810326,
+          "time_user_seconds": 0.42,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 145506304.0,
+          "instructions_retired": 7155351444.0,
+          "cycles_elapsed": 1768676652.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.43\nuser 0.42\nsys 0.00\n           145506304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9028  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          7155351444  instructions retired\n          1768676652  cycles elapsed\n           145211824  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "summary": {
+        "median_wall_seconds": 0.4401822090148926,
+        "range_wall_seconds": [
+          0.43408829194959253,
+          0.456903540994972
+        ],
+        "median_rss_bytes": 145489920.0,
+        "median_instructions_retired": 7155786139.0,
+        "median_cycles_elapsed": 1773393721.0,
+        "all_outputs_match_expected": true,
+        "ratio_vs_fastest_correct_hand_c_o3_or_native": 1.3610816798163383
+      }
+    },
+    "hand-c-o3": {
+      "warmups": [
+        {
+          "wall_seconds": 0.5865212079370394,
+          "time_user_seconds": 0.33,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81756160.0,
+          "instructions_retired": 5066377109.0,
+          "cycles_elapsed": 1327601492.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.58\nuser 0.33\nsys 0.01\n            81756160  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5138  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5066377109  instructions retired\n          1327601492  cycles elapsed\n            81281408  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3123737920541316,
+          "time_user_seconds": 0.29,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81166336.0,
+          "instructions_retired": 5064078515.0,
+          "cycles_elapsed": 1296783687.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.31\nuser 0.29\nsys 0.01\n            81166336  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5103  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   6  involuntary context switches\n          5064078515  instructions retired\n          1296783687  cycles elapsed\n            80707968  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.31854804104659706,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81199104.0,
+          "instructions_retired": 5065204280.0,
+          "cycles_elapsed": 1305199626.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.31\nuser 0.30\nsys 0.01\n            81199104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5105  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          5065204280  instructions retired\n          1305199626  cycles elapsed\n            80724352  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3224714999087155,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81215488.0,
+          "instructions_retired": 5063229079.0,
+          "cycles_elapsed": 1319429199.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.30\nsys 0.01\n            81215488  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5106  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5063229079  instructions retired\n          1319429199  cycles elapsed\n            80757120  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.33876862504985183,
+          "time_user_seconds": 0.32,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81215488.0,
+          "instructions_retired": 5061108159.0,
+          "cycles_elapsed": 1397537204.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.33\nuser 0.32\nsys 0.01\n            81215488  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5106  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          5061108159  instructions retired\n          1397537204  cycles elapsed\n            80740736  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.32903854199685156,
+          "time_user_seconds": 0.31,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81215488.0,
+          "instructions_retired": 5067595831.0,
+          "cycles_elapsed": 1338154930.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.31\nsys 0.01\n            81215488  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5106  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5067595831  instructions retired\n          1338154930  cycles elapsed\n            80724352  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3196117909392342,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81182720.0,
+          "instructions_retired": 5063708426.0,
+          "cycles_elapsed": 1297683192.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.31\nuser 0.30\nsys 0.01\n            81182720  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5104  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          5063708426  instructions retired\n          1297683192  cycles elapsed\n            80707968  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.32340616697911173,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81215488.0,
+          "instructions_retired": 5065290339.0,
+          "cycles_elapsed": 1318313223.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.30\nsys 0.01\n            81215488  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5106  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          5065290339  instructions retired\n          1318313223  cycles elapsed\n            80740736  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.32191512489225715,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81199104.0,
+          "instructions_retired": 5066805188.0,
+          "cycles_elapsed": 1315567822.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.30\nsys 0.01\n            81199104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5105  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          5066805188  instructions retired\n          1315567822  cycles elapsed\n            80757144  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3207427921006456,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81182720.0,
+          "instructions_retired": 5067982938.0,
+          "cycles_elapsed": 1301445882.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.31\nuser 0.30\nsys 0.01\n            81182720  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5104  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   7  involuntary context switches\n          5067982938  instructions retired\n          1301445882  cycles elapsed\n            80724352  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3344459579093382,
+          "time_user_seconds": 0.32,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81182720.0,
+          "instructions_retired": 5064933671.0,
+          "cycles_elapsed": 1373981762.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.33\nuser 0.32\nsys 0.01\n            81182720  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5104  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5064933671  instructions retired\n          1373981762  cycles elapsed\n            80724352  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.33098895801231265,
+          "time_user_seconds": 0.31,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81215488.0,
+          "instructions_retired": 5062725275.0,
+          "cycles_elapsed": 1299124172.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.31\nsys 0.01\n            81215488  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5106  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          5062725275  instructions retired\n          1299124172  cycles elapsed\n            80757120  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.33814366697333753,
+          "time_user_seconds": 0.32,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81182720.0,
+          "instructions_retired": 5064107347.0,
+          "cycles_elapsed": 1364996872.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.33\nuser 0.32\nsys 0.01\n            81182720  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5104  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   4  involuntary context switches\n          5064107347  instructions retired\n          1364996872  cycles elapsed\n            80724352  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "summary": {
+        "median_wall_seconds": 0.32340616697911173,
+        "range_wall_seconds": [
+          0.31854804104659706,
+          0.33876862504985183
+        ],
+        "median_rss_bytes": 81199104.0,
+        "median_instructions_retired": 5064933671.0,
+        "median_cycles_elapsed": 1318313223.0,
+        "all_outputs_match_expected": true,
+        "ratio_vs_fastest_correct_hand_c_o3_or_native": 1.0
+      }
+    },
+    "hand-c-o3-native": {
+      "warmups": [
+        {
+          "wall_seconds": 0.5847523750271648,
+          "time_user_seconds": 0.33,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81641472.0,
+          "instructions_retired": 5065264352.0,
+          "cycles_elapsed": 1329078243.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.58\nuser 0.33\nsys 0.01\n            81641472  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5131  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5065264352  instructions retired\n          1329078243  cycles elapsed\n            81150312  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.31761033297516406,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81231872.0,
+          "instructions_retired": 5065947566.0,
+          "cycles_elapsed": 1317499409.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.31\nuser 0.30\nsys 0.01\n            81231872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5107  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5065947566  instructions retired\n          1317499409  cycles elapsed\n            80789912  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "samples": [
+        {
+          "wall_seconds": 0.32055466691963375,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81231872.0,
+          "instructions_retired": 5064259371.0,
+          "cycles_elapsed": 1317409535.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.31\nuser 0.30\nsys 0.01\n            81231872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5107  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  39  involuntary context switches\n          5064259371  instructions retired\n          1317409535  cycles elapsed\n            80789912  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3266285000136122,
+          "time_user_seconds": 0.31,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81182720.0,
+          "instructions_retired": 5061228858.0,
+          "cycles_elapsed": 1358967793.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.31\nsys 0.01\n            81182720  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5104  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5061228858  instructions retired\n          1358967793  cycles elapsed\n            80740736  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.32418695907108486,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81149952.0,
+          "instructions_retired": 5063051966.0,
+          "cycles_elapsed": 1307648162.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.30\nsys 0.01\n            81149952  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5102  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5063051966  instructions retired\n          1307648162  cycles elapsed\n            80691584  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3215803330531344,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81215488.0,
+          "instructions_retired": 5065322418.0,
+          "cycles_elapsed": 1311416463.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.31\nuser 0.30\nsys 0.01\n            81215488  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5106  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  10  involuntary context switches\n          5065322418  instructions retired\n          1311416463  cycles elapsed\n            80773528  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.32724958297330886,
+          "time_user_seconds": 0.31,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81166336.0,
+          "instructions_retired": 5063479280.0,
+          "cycles_elapsed": 1323826690.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.31\nsys 0.01\n            81166336  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5103  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5063479280  instructions retired\n          1323826690  cycles elapsed\n            80724352  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.32830070797353983,
+          "time_user_seconds": 0.31,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81199104.0,
+          "instructions_retired": 5063605155.0,
+          "cycles_elapsed": 1331507050.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.31\nsys 0.01\n            81199104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5105  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5063605155  instructions retired\n          1331507050  cycles elapsed\n            80773528  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.32193524995818734,
+          "time_user_seconds": 0.3,
+          "time_sys_seconds": 0.0,
+          "max_rss_bytes": 81133568.0,
+          "instructions_retired": 5063349066.0,
+          "cycles_elapsed": 1308856654.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.32\nuser 0.30\nsys 0.00\n            81133568  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5101  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5063349066  instructions retired\n          1308856654  cycles elapsed\n            80691584  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.33215791604015976,
+          "time_user_seconds": 0.31,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81199104.0,
+          "instructions_retired": 5064615045.0,
+          "cycles_elapsed": 1355406649.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.33\nuser 0.31\nsys 0.01\n            81199104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5105  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5064615045  instructions retired\n          1355406649  cycles elapsed\n            80773528  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.3359463330125436,
+          "time_user_seconds": 0.32,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81117184.0,
+          "instructions_retired": 5064886037.0,
+          "cycles_elapsed": 1371820266.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.33\nuser 0.32\nsys 0.01\n            81117184  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5100  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   6  involuntary context switches\n          5064886037  instructions retired\n          1371820266  cycles elapsed\n            80658816  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.344663541065529,
+          "time_user_seconds": 0.32,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81149952.0,
+          "instructions_retired": 5067360863.0,
+          "cycles_elapsed": 1355844168.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.34\nuser 0.32\nsys 0.01\n            81149952  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5102  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  12  involuntary context switches\n          5067360863  instructions retired\n          1355844168  cycles elapsed\n            80724376  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.339125124970451,
+          "time_user_seconds": 0.32,
+          "time_sys_seconds": 0.01,
+          "max_rss_bytes": 81117184.0,
+          "instructions_retired": 5063589962.0,
+          "cycles_elapsed": 1368597399.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr_tail": "real 0.33\nuser 0.32\nsys 0.01\n            81117184  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5100  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   5  involuntary context switches\n          5063589962  instructions retired\n          1368597399  cycles elapsed\n            80658816  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "summary": {
+        "median_wall_seconds": 0.32724958297330886,
+        "range_wall_seconds": [
+          0.32055466691963375,
+          0.344663541065529
+        ],
+        "median_rss_bytes": 81166336.0,
+        "median_instructions_retired": 5063605155.0,
+        "median_cycles_elapsed": 1331507050.0,
+        "all_outputs_match_expected": true,
+        "ratio_vs_fastest_correct_hand_c_o3_or_native": 1.0118841765761546
+      }
+    }
+  },
+  "stats_instrumented": {
+    "baseline-mini-api-o3": {
+      "stderr_lines": [
+        "mk-stats: allocs=11224983 frees=11224981 live_at_exit=2 peak_live=2027260",
+        "mk-stats: bytes_total=539268314 bytes_live_at_exit=80 bytes_peak=107997794",
+        "mk-stats: retains=819100 retains_nonatomic=819100 retains_atomic=0 retains_noop=0",
+        "mk-stats: releases=34850826 releases_nonatomic=11994426 releases_atomic=0 releases_noop=22856400",
+        "mk-stats: heap_small=11224982 heap_large=1 small_chunks=384 small_chunk_bytes=99860480 central_refills=31652 overflows=39584",
+        "mk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0"
+      ],
+      "counters": {
+        "allocs": 11224983,
+        "frees": 11224981,
+        "live_at_exit": 2,
+        "peak_live": 2027260,
+        "bytes_total": 539268314,
+        "bytes_live_at_exit": 80,
+        "bytes_peak": 107997794,
+        "retains": 819100,
+        "retains_nonatomic": 819100,
+        "retains_atomic": 0,
+        "retains_noop": 0,
+        "releases": 34850826,
+        "releases_nonatomic": 11994426,
+        "releases_atomic": 0,
+        "releases_noop": 22856400,
+        "heap_small": 11224982,
+        "heap_large": 1,
+        "small_chunks": 384,
+        "small_chunk_bytes": 99860480,
+        "central_refills": 31652,
+        "overflows": 39584,
+        "arena_allocs": 0,
+        "arena_slow_allocs": 0,
+        "arena_chunks": 0,
+        "arena_chunk_bytes": 0
+      },
+      "stdout": "7055506 1072916 885982430\n",
+      "output_matches_expected": true,
+      "stats_link_command": [
+        "clang",
+        "$TMP/campaign-escape-combined/baseline-mini.o",
+        "$TMP/campaign-escape-combined/baseline-mini-runtime-stats/libminirt_stats.a",
+        "-lm",
+        "-Wl,-dead_strip",
+        "-o",
+        "$TMP/campaign-escape-combined/baseline-mini.stats.exe"
+      ],
+      "stats_link_timing": {
+        "wall_seconds": 0.032882708008401096,
+        "time_user_seconds": 0.04,
+        "time_sys_seconds": 0.01,
+        "max_rss_bytes": 44875776.0,
+        "instructions_retired": 82415005.0,
+        "cycles_elapsed": 36709092.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.03\nuser 0.04\nsys 0.01\n            44875776  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4938  page reclaims\n                 172  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  23  voluntary context switches\n                 505  involuntary context switches\n            82415005  instructions retired\n            36709092  cycles elapsed\n             2457888  peak memory footprint\n"
+      },
+      "stats_executable_bytes": 102984,
+      "stats_executable_sha256": "334c47811fe364622326b51283cb0b829f048b6c115ec41b96d8413d90cb1bf6",
+      "instrumented_timing_used_for_comparison": false
+    },
+    "integrated-mini-api-o3": {
+      "stderr_lines": [
+        "mk-stats: allocs=11224988 frees=11224986 live_at_exit=2 peak_live=2027260",
+        "mk-stats: bytes_total=539268554 bytes_live_at_exit=80 bytes_peak=107997794",
+        "mk-stats: retains=655320 retains_nonatomic=655320 retains_atomic=0 retains_noop=0",
+        "mk-stats: releases=17604776 releases_nonatomic=11912541 releases_atomic=0 releases_noop=5692235",
+        "mk-stats: heap_small=11224987 heap_large=1 small_chunks=384 small_chunk_bytes=99860480 central_refills=31652 overflows=39584",
+        "mk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0"
+      ],
+      "counters": {
+        "allocs": 11224988,
+        "frees": 11224986,
+        "live_at_exit": 2,
+        "peak_live": 2027260,
+        "bytes_total": 539268554,
+        "bytes_live_at_exit": 80,
+        "bytes_peak": 107997794,
+        "retains": 655320,
+        "retains_nonatomic": 655320,
+        "retains_atomic": 0,
+        "retains_noop": 0,
+        "releases": 17604776,
+        "releases_nonatomic": 11912541,
+        "releases_atomic": 0,
+        "releases_noop": 5692235,
+        "heap_small": 11224987,
+        "heap_large": 1,
+        "small_chunks": 384,
+        "small_chunk_bytes": 99860480,
+        "central_refills": 31652,
+        "overflows": 39584,
+        "arena_allocs": 0,
+        "arena_slow_allocs": 0,
+        "arena_chunks": 0,
+        "arena_chunk_bytes": 0
+      },
+      "stdout": "7055506 1072916 885982430\n",
+      "output_matches_expected": true,
+      "stats_link_command": [
+        "clang",
+        "$TMP/campaign-escape-combined/integrated-mini.o",
+        "$TMP/campaign-escape-combined/integrated-mini-runtime-stats/libminirt_stats.a",
+        "-lm",
+        "-Wl,-dead_strip",
+        "-o",
+        "$TMP/campaign-escape-combined/integrated-mini.stats.exe"
+      ],
+      "stats_link_timing": {
+        "wall_seconds": 0.02579975000116974,
+        "time_user_seconds": 0.03,
+        "time_sys_seconds": 0.01,
+        "max_rss_bytes": 44908544.0,
+        "instructions_retired": 68391424.0,
+        "cycles_elapsed": 27463858.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr_tail": "real 0.02\nuser 0.03\nsys 0.01\n            44908544  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4965  page reclaims\n                 104  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 417  involuntary context switches\n            68391424  instructions retired\n            27463858  cycles elapsed\n             2457912  peak memory footprint\n"
+      },
+      "stats_executable_bytes": 119496,
+      "stats_executable_sha256": "d4c823d11e76f487d0339e0a7317b489134c6231063a6b8b0476c8ad2359afed",
+      "instrumented_timing_used_for_comparison": false
+    }
+  },
+  "stats_delta_integrated_vs_baseline": {
+    "allocs": {
+      "baseline": 11224983,
+      "integrated": 11224988,
+      "delta": 5,
+      "ratio": 1.0000004454349731
+    },
+    "arena_allocs": {
+      "baseline": 0,
+      "integrated": 0,
+      "delta": 0,
+      "ratio": null
+    },
+    "arena_chunk_bytes": {
+      "baseline": 0,
+      "integrated": 0,
+      "delta": 0,
+      "ratio": null
+    },
+    "arena_chunks": {
+      "baseline": 0,
+      "integrated": 0,
+      "delta": 0,
+      "ratio": null
+    },
+    "arena_slow_allocs": {
+      "baseline": 0,
+      "integrated": 0,
+      "delta": 0,
+      "ratio": null
+    },
+    "bytes_live_at_exit": {
+      "baseline": 80,
+      "integrated": 80,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "bytes_peak": {
+      "baseline": 107997794,
+      "integrated": 107997794,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "bytes_total": {
+      "baseline": 539268314,
+      "integrated": 539268554,
+      "delta": 240,
+      "ratio": 1.0000004450474722
+    },
+    "central_refills": {
+      "baseline": 31652,
+      "integrated": 31652,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "frees": {
+      "baseline": 11224981,
+      "integrated": 11224986,
+      "delta": 5,
+      "ratio": 1.0000004454350524
+    },
+    "heap_large": {
+      "baseline": 1,
+      "integrated": 1,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "heap_small": {
+      "baseline": 11224982,
+      "integrated": 11224987,
+      "delta": 5,
+      "ratio": 1.0000004454350127
+    },
+    "live_at_exit": {
+      "baseline": 2,
+      "integrated": 2,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "overflows": {
+      "baseline": 39584,
+      "integrated": 39584,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "peak_live": {
+      "baseline": 2027260,
+      "integrated": 2027260,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "releases": {
+      "baseline": 34850826,
+      "integrated": 17604776,
+      "delta": -17246050,
+      "ratio": 0.5051465925083095
+    },
+    "releases_atomic": {
+      "baseline": 0,
+      "integrated": 0,
+      "delta": 0,
+      "ratio": null
+    },
+    "releases_nonatomic": {
+      "baseline": 11994426,
+      "integrated": 11912541,
+      "delta": -81885,
+      "ratio": 0.9931730788951468
+    },
+    "releases_noop": {
+      "baseline": 22856400,
+      "integrated": 5692235,
+      "delta": -17164165,
+      "ratio": 0.2490433751596927
+    },
+    "retains": {
+      "baseline": 819100,
+      "integrated": 655320,
+      "delta": -163780,
+      "ratio": 0.8000488340861922
+    },
+    "retains_atomic": {
+      "baseline": 0,
+      "integrated": 0,
+      "delta": 0,
+      "ratio": null
+    },
+    "retains_nonatomic": {
+      "baseline": 819100,
+      "integrated": 655320,
+      "delta": -163780,
+      "ratio": 0.8000488340861922
+    },
+    "retains_noop": {
+      "baseline": 0,
+      "integrated": 0,
+      "delta": 0,
+      "ratio": null
+    },
+    "small_chunk_bytes": {
+      "baseline": 99860480,
+      "integrated": 99860480,
+      "delta": 0,
+      "ratio": 1.0
+    },
+    "small_chunks": {
+      "baseline": 384,
+      "integrated": 384,
+      "delta": 0,
+      "ratio": 1.0
+    }
+  },
+  "fastest_correct_hand_c_reference_seconds": 0.32340616697911173,
+  "ratios_vs_fastest_hand_c": {
+    "baseline-mini-api-o3": 1.5213283116781584,
+    "integrated-mini-api-o3": 1.3610816798163383,
+    "hand-c-o3": 1.0,
+    "hand-c-o3-native": 1.0118841765761546
+  },
+  "caveats": [
+    "The integrated candidate combines NULL guarding, ArrayList default capacity 4, and LLVM API string fast paths; this baseline cannot assign a gain to any one change.",
+    "The Mini variants use their matching source stdlib/runtime compiled from Kotlin/C source at O2; this avoids mixing old published .mlib or runtime archives.",
+    "MK_STATS counters count Mini managed objects and reference events. They do not count the handwritten C reference malloc/realloc calls. Instrumented binaries are used only for counters, not timing.",
+    "Stats cover one REPS=5 execution per Mini variant; timing covers 2 warmups and 11 uninstrumented samples per variant."
+  ],
+  "profile": {
+    "variant": "combined integrated Mini API O3; temporary REPS=50 source copy",
+    "profile_source_path": "$TMP/campaign-escape-combined/json-fastpath-profile-reps50.kt",
+    "profile_source_sha256": "1b23f0dfdce6d40fdab5ea04b3d00e48bfe6d8baa9ad817c99be8ace675497aa",
+    "change_from_checked_in_source": "only REPS 5 -> 50",
+    "expected_stdout": "7055506 1072916 885982430\n",
+    "profile_process_completed_and_output_matches": true,
+    "tool": "/usr/bin/sample",
+    "duration_seconds": 3,
+    "sample_interval_ms": 1,
+    "sample_file_path": "$TMP/campaign-escape-combined/json-fastpath-combined.sample.txt",
+    "sample_file_sha256": "7b33a06ebf3b9dae357502fefa1fce18862bae12f3f881ac778f9b932198c03a",
+    "main_thread_sample_count": 2314,
+    "exclusive_top_of_stack_collapsed": {
+      "source_section": "Sort by top of stack, same collapsed (when >= 5)",
+      "semantics": "exclusive sampled top frame per profile sample; rows are mutually exclusive top-of-stack buckets",
+      "listed_sample_count": 2286,
+      "below_threshold_samples": 28,
+      "minimum_reported_count": 5,
+      "counts": [
+        {
+          "symbol": "kc_Parser_MparseValue",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 351
+        },
+        {
+          "symbol": "type_is",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 235
+        },
+        {
+          "symbol": "mk_release",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 198
+        },
+        {
+          "symbol": "_platform_memset",
+          "image": "libsystem_platform.dylib",
+          "samples": 146
+        },
+        {
+          "symbol": "kc_Parser_MparseString",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 134
+        },
+        {
+          "symbol": "kt_walk_ALkc_J_ELkc_Stats_E",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 134
+        },
+        {
+          "symbol": "mk_alloc_sized_site",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 105
+        },
+        {
+          "symbol": "_tlv_get_addr",
+          "image": "libdyld.dylib",
+          "samples": 98
+        },
+        {
+          "symbol": "mk_free_object_memory",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 98
+        },
+        {
+          "symbol": "ref_array_dispose",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 83
+        },
+        {
+          "symbol": "_xzm_free",
+          "image": "libsystem_malloc.dylib",
+          "samples": 77
+        },
+        {
+          "symbol": "_xzm_xzone_malloc_tiny",
+          "image": "libsystem_malloc.dylib",
+          "samples": 75
+        },
+        {
+          "symbol": "kc_JStr_dispose",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 36
+        },
+        {
+          "symbol": "kc_JObj_dispose",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 33
+        },
+        {
+          "symbol": "kc_JArr_dispose",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 32
+        },
+        {
+          "symbol": "__bzero",
+          "image": "libsystem_platform.dylib",
+          "samples": 31
+        },
+        {
+          "symbol": "mk_ref_array_set_o",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 31
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_Mget_AI",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 30
+        },
+        {
+          "symbol": "_free",
+          "image": "libsystem_malloc.dylib",
+          "samples": 29
+        },
+        {
+          "symbol": "mk_alloc",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 29
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_MensureCapacity_AI",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 27
+        },
+        {
+          "symbol": "mk_is_instance",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 23
+        },
+        {
+          "symbol": "mk_string_substring",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 22
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_McheckElementIndex_AI",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 21
+        },
+        {
+          "symbol": "_xzm_malloc_zone_malloc_type_calloc_entry",
+          "image": "libsystem_malloc.dylib",
+          "samples": 20
+        },
+        {
+          "symbol": "_platform_memmove",
+          "image": "libsystem_platform.dylib",
+          "samples": 18
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_Madd_AQLmk_Any_E",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 18
+        },
+        {
+          "symbol": "DYLD-STUB$$bzero",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 14
+        },
+        {
+          "symbol": "mk_ref_array_get_b",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 14
+        },
+        {
+          "symbol": "_malloc_zone_calloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 13
+        },
+        {
+          "symbol": "_xzm_xzone_malloc",
+          "image": "libsystem_malloc.dylib",
+          "samples": 13
+        },
+        {
+          "symbol": "mk_sb_append_char",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 13
+        },
+        {
+          "symbol": "kt_kotlin_Dtext_Dsubstring_ASII",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 12
+        },
+        {
+          "symbol": "mk_ref_array_get",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 11
+        },
+        {
+          "symbol": "mk_ref_array_length",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 11
+        },
+        {
+          "symbol": "mk_ref_array_new",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 11
+        },
+        {
+          "symbol": "mk_string_alloc",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 11
+        },
+        {
+          "symbol": "mk_retain",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 7
+        },
+        {
+          "symbol": "DYLD-STUB$$free",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 6
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_M_x003Cget_x002Dsize_x003E",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 6
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_dispose",
+          "image": "json-fastpath-profile-reps50",
+          "samples": 5
+        },
+        {
+          "symbol": "mach_vm_reclaim_update_kernel_accounting_trap",
+          "image": "libsystem_kernel.dylib",
+          "samples": 5
+        }
+      ]
+    },
+    "inclusive_call_graph_nodes": {
+      "semantics": "sampled stack nodes include descendants and recursive frames; not additive with each other or with top-of-stack rows Max-per-node counts are not collapsed per function; the same function may occur in multiple stack nodes, so these values are not directly comparable to the exclusive collapsed totals.",
+      "max_node_samples_by_function": [
+        {
+          "symbol": "mkh_user_main",
+          "inclusive_samples": 614
+        },
+        {
+          "symbol": "mk_release",
+          "inclusive_samples": 614
+        },
+        {
+          "symbol": "ref_array_dispose",
+          "inclusive_samples": 614
+        },
+        {
+          "symbol": "mk_free_object_memory",
+          "inclusive_samples": 51
+        },
+        {
+          "symbol": "kc_Parser_MparseValue",
+          "inclusive_samples": 342
+        },
+        {
+          "symbol": "kc_Parser_MparseString",
+          "inclusive_samples": 132
+        },
+        {
+          "symbol": "kt_walk_ALkc_J_ELkc_Stats_E",
+          "inclusive_samples": 87
+        },
+        {
+          "symbol": "mk_alloc_sized_site",
+          "inclusive_samples": 42
+        },
+        {
+          "symbol": "mk_alloc",
+          "inclusive_samples": 29
+        },
+        {
+          "symbol": "mk_string_substring",
+          "inclusive_samples": 72
+        },
+        {
+          "symbol": "mk_string_alloc",
+          "inclusive_samples": 65
+        },
+        {
+          "symbol": "mk_sb_append_char",
+          "inclusive_samples": 15
+        },
+        {
+          "symbol": "mk_sb_to_string",
+          "inclusive_samples": 10
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_Madd_AQLmk_Any_E",
+          "inclusive_samples": 41
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_MensureCapacity_AI",
+          "inclusive_samples": 20
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_Mget_AI",
+          "inclusive_samples": 22
+        },
+        {
+          "symbol": "type_is",
+          "inclusive_samples": 57
+        }
+      ],
+      "dominant_observed_chain": "mkh_user_main -> mk_release -> recursive mk_release -> ref_array_dispose -> recursive releases/free"
+    }
+  },
+  "analysis": {
+    "combined_ratio_vs_target": {
+      "target_ratio": 1.2,
+      "integrated_ratio_vs_fastest_hand_c": 1.3610816798163383,
+      "achieved": false,
+      "baseline_ratio_vs_fastest_hand_c": 1.5213283116781584,
+      "integrated_median_improvement_vs_baseline": 0.10533336600109289
+    },
+    "private_string_buffer_fusion_evidence": {
+      "exclusive_profile_hits": {
+        "kc_Parser_MparseString": 134,
+        "_xzm_xzone_malloc_tiny": 75,
+        "_free": 29,
+        "mk_string_substring": 22,
+        "_xzm_malloc_zone_malloc_type_calloc_entry": 20,
+        "_malloc_zone_calloc": 13,
+        "mk_sb_append_char": 13,
+        "kt_kotlin_Dtext_Dsubstring_ASII": 12,
+        "mk_string_alloc": 11,
+        "DYLD-STUB$$free": 6
+      },
+      "inclusive_profile_hits": {
+        "kc_Parser_MparseString": 132,
+        "mk_string_substring": 72,
+        "mk_string_alloc": 65,
+        "mk_sb_append_char": 15,
+        "mk_sb_to_string": 10,
+        "mk_alloc_sized_site": 42,
+        "mk_alloc": 29,
+        "_xzm_free": 0,
+        "_free": 0,
+        "_malloc_zone_calloc": 0
+      },
+      "proposal": "Investigate a private string-builder buffer path that decodes/appends escaped strings directly and avoids intermediate substring/string allocations. The profile shows parser string handling, substring/allocation, StringBuilder append, and allocator functions on the exclusive top-of-stack list. Validate with identical checksums and MK_STATS before changing shared runtime behavior."
+    },
+    "target_statement": "The combined candidate improves median time about 10.5% from baseline (0.4920s to 0.4402s) but is still 1.361x the fastest matched strict C reference, above the 1.2x target.",
+    "source_provenance_note": "The input JSON and expected output are byte-identical in both commits; each Mini binary compiled with the stdlib source files from the corresponding baseline/integrated commit and linked to runtime objects compiled from that same commit at -O2."
+  }
+}
