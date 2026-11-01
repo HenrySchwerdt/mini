@@ -66,6 +66,9 @@ int main(void) {
         s = mk_string_from_utf8(NULL, 0);
         CHECK_EQ_INT(s->length, 0);
         mk_release(&s->header);
+        s = mk_string_from_utf8(NULL, 3); /* NULL is empty regardless of length. */
+        CHECK_EQ_INT(s->length, 0);
+        mk_release(&s->header);
     }
     /* output encoding: unpaired surrogates -> U+FFFD */
     {
