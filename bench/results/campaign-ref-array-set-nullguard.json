@@ -1,0 +1,631 @@
+{
+  "schema_version": 1,
+  "kind": "rejected-ref-array-null-old-release-guard",
+  "date": "2026-11-01",
+  "decision": "Do not integrate: the guard eliminates counted NULL releases but produces no measurable JSON wall-time gain; matched median was +0.26%.",
+  "branch": "codex/escape-builder-storage",
+  "base_commit": "9ef3ea3",
+  "implementation": {
+    "description": "In mk_ref_array_set_o and mk_ref_array_set, skip mk_release(old) only when old is NULL. Keep owned-store assignment-before-release and borrowed-store retain/store/release order unchanged. Non-NULL and static object releases still take the existing path.",
+    "files": [
+      "runtime/src/v1s.c",
+      "runtime/tests/test_ref_array_set.c"
+    ],
+    "source_sha256": "1fb20cb2f86490bb19efaaea6433416a1a7918964f0eaab187cdf4b8b8581d7a",
+    "test_sha256": "7e1b171de81f34a9e9bf80cbd4944269e7e069e121eba297e6c587adb211a307",
+    "baseline_failure": {
+      "compile_command": "clang -std=c17 -g -O1 -Wall -Wextra -Werror -DMK_STATS -I runtime/include -I runtime/src runtime/tests/test_ref_array_set.c <all runtime/src/*.c except entry.c> -lm -lpthread -o /tmp/campaign-ref-array-set-baseline",
+      "run_returncode": 1,
+      "stderr": "runtime/tests/test_ref_array_set.c:28: CHECK failed: (long long)(stats.releases_noop) == (long long)(0)\nruntime/tests/test_ref_array_set.c: 12 checks, 1 failures",
+      "summary": "Before the guard, the new focused stats assertion failed because null-slot stores recorded mk_release(NULL) calls."
+    }
+  },
+  "focused_tests": {
+    "variants": [
+      {
+        "variant": "asan_ubsan",
+        "compile_cmd": [
+          "clang",
+          "-std=c17",
+          "-g",
+          "-O1",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-I/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/include",
+          "-I/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src",
+          "-fsanitize=address,undefined",
+          "-fno-omit-frame-pointer",
+          "-DMK_STATS",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/tests/test_ref_array_set.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_arena.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_debug.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_pool.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_small.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/b1.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/cinterop.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/classes.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/console.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/numfmt.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/object.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/stats.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/string.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/utf.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/v1l.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/v1s.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/wasmlib.c",
+          "-lm",
+          "-lpthread",
+          "-o",
+          "/tmp/campaign-ref-array-set-tests/test_ref_array_set-asan_ubsan"
+        ],
+        "compile_rc": 0,
+        "compile_stderr": "",
+        "run_rc": 0,
+        "stdout": "",
+        "stderr": "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/tests/test_ref_array_set.c: 12 checks, 0 failures\nmk-stats: allocs=2 frees=3 live_at_exit=0 peak_live=2\nmk-stats: bytes_total=64 bytes_live_at_exit=0 bytes_peak=112\nmk-stats: retains=5 retains_nonatomic=3 retains_atomic=0 retains_noop=2\nmk-stats: releases=6 releases_nonatomic=6 releases_atomic=0 releases_noop=0\nmk-stats: heap_small=0 heap_large=0 small_chunks=0 small_chunk_bytes=0 central_refills=0 overflows=0\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n",
+        "wall_seconds": 0.37599897384643555
+      },
+      {
+        "variant": "ubsan_pool",
+        "compile_cmd": [
+          "clang",
+          "-std=c17",
+          "-g",
+          "-O1",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-I/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/include",
+          "-I/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src",
+          "-fsanitize=undefined",
+          "-fno-omit-frame-pointer",
+          "-DMK_STATS",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/tests/test_ref_array_set.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_arena.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_debug.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_pool.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_small.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/b1.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/cinterop.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/classes.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/console.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/numfmt.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/object.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/stats.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/string.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/utf.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/v1l.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/v1s.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/wasmlib.c",
+          "-lm",
+          "-lpthread",
+          "-o",
+          "/tmp/campaign-ref-array-set-tests/test_ref_array_set-ubsan_pool"
+        ],
+        "compile_rc": 0,
+        "compile_stderr": "",
+        "run_rc": 0,
+        "stdout": "",
+        "stderr": "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/tests/test_ref_array_set.c: 12 checks, 0 failures\nmk-stats: allocs=2 frees=3 live_at_exit=0 peak_live=2\nmk-stats: bytes_total=64 bytes_live_at_exit=0 bytes_peak=112\nmk-stats: retains=5 retains_nonatomic=3 retains_atomic=0 retains_noop=2\nmk-stats: releases=6 releases_nonatomic=6 releases_atomic=0 releases_noop=0\nmk-stats: heap_small=3 heap_large=0 small_chunks=1 small_chunk_bytes=16384 central_refills=0 overflows=0\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n",
+        "wall_seconds": 0.23619294166564941
+      },
+      {
+        "variant": "plain_malloc_stats",
+        "compile_cmd": [
+          "clang",
+          "-std=c17",
+          "-g",
+          "-O1",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-I/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/include",
+          "-I/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src",
+          "-DMK_PLAIN_MALLOC",
+          "-DMK_STATS",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/tests/test_ref_array_set.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_arena.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_debug.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_pool.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/alloc_small.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/b1.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/cinterop.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/classes.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/console.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/numfmt.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/object.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/stats.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/string.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/utf.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/v1l.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/v1s.c",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/src/wasmlib.c",
+          "-lm",
+          "-lpthread",
+          "-o",
+          "/tmp/campaign-ref-array-set-tests/test_ref_array_set-plain_malloc_stats"
+        ],
+        "compile_rc": 0,
+        "compile_stderr": "",
+        "run_rc": 0,
+        "stdout": "",
+        "stderr": "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/runtime/tests/test_ref_array_set.c: 12 checks, 0 failures\nmk-stats: allocs=2 frees=3 live_at_exit=0 peak_live=2\nmk-stats: bytes_total=64 bytes_live_at_exit=0 bytes_peak=112\nmk-stats: retains=5 retains_nonatomic=3 retains_atomic=0 retains_noop=2\nmk-stats: releases=6 releases_nonatomic=6 releases_atomic=0 releases_noop=0\nmk-stats: heap_small=0 heap_large=0 small_chunks=0 small_chunk_bytes=0 central_refills=0 overflows=0\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n",
+        "wall_seconds": 0.30455994606018066
+      }
+    ],
+    "summary": "ASan+UBSan with MK_STATS, UBSan small-pool with MK_STATS, and MK_PLAIN_MALLOC+MK_STATS each pass 12 checks with zero failures."
+  },
+  "matched_json": {
+    "source": "bench/json/json.kt",
+    "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+    "api_o3_object": "/Users/henryschwerdtner/.codex/worktrees/campaign-llvm/mini/build/campaign-validation/typecheck-candidate/json-candidate.o",
+    "api_o3_object_sha256": "5f0eb17a27567058628e3d2ecc571efc706e07f44d688c31848e2d1c43e38534",
+    "expected_stdout": "7055506 1072916 885982430\\n",
+    "measurement": "11 rotated parent time.perf_counter_ns rounds, same app object and O2 runtime flags; C O2/O3/O3-native, Mini hotcold baseline, and Mini nullguard candidate; all output matched.",
+    "median_ns": {
+      "c_o2": 337580292,
+      "c_o3": 326133375,
+      "c_o3_native": 326586459,
+      "mini_hotcold_baseline": 400125959,
+      "mini_nullguard": 401184500
+    },
+    "fastest_c_median_ns": 326133375,
+    "ratio_vs_fastest_c": {
+      "mini_hotcold_baseline": 1.2268782948080674,
+      "mini_nullguard": 1.2301240251783492
+    },
+    "nullguard_wall_change_pct": 0.2645519432544541,
+    "raw_rounds": {
+      "measurement": "11 rotated rounds; all variants warmed once; parent perf_counter_ns around subprocess.run; exact expected output checked each run",
+      "variants": {
+        "c_o2": "/tmp/campaign-runtime-baseline/json-c-o2",
+        "c_o3": "/tmp/campaign-runtime-baseline/json-c-o3",
+        "c_o3_native": "/tmp/campaign-runtime-baseline/json-c-o3-mcpu-native",
+        "mini_hotcold_baseline": "/tmp/campaign-ref-array-set-pilot/json-hotcold_baseline",
+        "mini_nullguard": "/tmp/campaign-ref-array-set-pilot/json-nullguard"
+      },
+      "records": [
+        {
+          "pair": 1,
+          "variant": "c_o2",
+          "elapsed_ns": 337580292,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 1,
+          "variant": "c_o3",
+          "elapsed_ns": 325380834,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 1,
+          "variant": "c_o3_native",
+          "elapsed_ns": 320392584,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 1,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 395613750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 1,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 401184500,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 2,
+          "variant": "c_o2",
+          "elapsed_ns": 348296125,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 2,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 404853750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 2,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 400626541,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 2,
+          "variant": "c_o3_native",
+          "elapsed_ns": 323133625,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 2,
+          "variant": "c_o3",
+          "elapsed_ns": 324358292,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 3,
+          "variant": "c_o3_native",
+          "elapsed_ns": 326666583,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 3,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 400091584,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 3,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 398096666,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 3,
+          "variant": "c_o2",
+          "elapsed_ns": 337287750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 3,
+          "variant": "c_o3",
+          "elapsed_ns": 326133375,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 4,
+          "variant": "c_o3_native",
+          "elapsed_ns": 326586459,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 4,
+          "variant": "c_o3",
+          "elapsed_ns": 327213875,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 4,
+          "variant": "c_o2",
+          "elapsed_ns": 355684292,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 4,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 403313041,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 4,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 397659958,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 5,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 394648417,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 5,
+          "variant": "c_o2",
+          "elapsed_ns": 337050042,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 5,
+          "variant": "c_o3",
+          "elapsed_ns": 325324250,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 5,
+          "variant": "c_o3_native",
+          "elapsed_ns": 324417000,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 5,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 401504750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 6,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 396699916,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 6,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 400125959,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 6,
+          "variant": "c_o3_native",
+          "elapsed_ns": 329880792,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 6,
+          "variant": "c_o3",
+          "elapsed_ns": 322428667,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 6,
+          "variant": "c_o2",
+          "elapsed_ns": 341260875,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 7,
+          "variant": "c_o3",
+          "elapsed_ns": 340176458,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 7,
+          "variant": "c_o3_native",
+          "elapsed_ns": 326935000,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 7,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 397132833,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 7,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 398593750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 7,
+          "variant": "c_o2",
+          "elapsed_ns": 334837709,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 8,
+          "variant": "c_o3",
+          "elapsed_ns": 340465750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 8,
+          "variant": "c_o2",
+          "elapsed_ns": 351168959,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 8,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 434264416,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 8,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 402365042,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 8,
+          "variant": "c_o3_native",
+          "elapsed_ns": 326293209,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 9,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 399339750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 9,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 401833792,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 9,
+          "variant": "c_o2",
+          "elapsed_ns": 372063917,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 9,
+          "variant": "c_o3",
+          "elapsed_ns": 320863500,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 9,
+          "variant": "c_o3_native",
+          "elapsed_ns": 325404708,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 10,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 405615959,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 10,
+          "variant": "c_o3_native",
+          "elapsed_ns": 339740750,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 10,
+          "variant": "c_o3",
+          "elapsed_ns": 331450709,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 10,
+          "variant": "c_o2",
+          "elapsed_ns": 336206917,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 10,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 396261125,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 11,
+          "variant": "c_o2",
+          "elapsed_ns": 334592625,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 11,
+          "variant": "c_o3",
+          "elapsed_ns": 326204375,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 11,
+          "variant": "c_o3_native",
+          "elapsed_ns": 328547875,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 11,
+          "variant": "mini_hotcold_baseline",
+          "elapsed_ns": 402829584,
+          "stdout": "7055506 1072916 885982430\n"
+        },
+        {
+          "pair": 11,
+          "variant": "mini_nullguard",
+          "elapsed_ns": 402140583,
+          "stdout": "7055506 1072916 885982430\n"
+        }
+      ]
+    },
+    "runtime_archives": {
+      "hotcold_baseline_sha256": "0aedbd0b22020138a8c79c9fb14dcf387d25f3ab9397df5e973c483c166a31b7",
+      "nullguard_sha256": "930226dd0202c1975336d2b6f47bb488eb2ac52c4112c49d7683238a926fc7a3",
+      "only_v1s_object_changed": true
+    }
+  },
+  "mk_stats": {
+    "raw": [
+      {
+        "variant": "hotcold_baseline",
+        "archive_sha256": "73f2d67664652eb8ce14a2cd874c60685ec8c0c1ba5b835aab97e588912d8fd5",
+        "link_command": [
+          "clang",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-llvm/mini/build/campaign-validation/typecheck-candidate/json-candidate.o",
+          "/tmp/campaign-builder-hotcold-pilot/candidate-runtime-stats/libminirt_stats.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-ref-array-set-pilot/json-hotcold_baseline-stats"
+        ],
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "mk-stats: allocs=11224988 frees=11224986 live_at_exit=2 peak_live=2027260\nmk-stats: bytes_total=626642506 bytes_live_at_exit=80 bytes_peak=122625922\nmk-stats: retains=655320 retains_nonatomic=655320 retains_atomic=0 retains_noop=0\nmk-stats: releases=17604776 releases_nonatomic=11912541 releases_atomic=0 releases_noop=5692235\nmk-stats: heap_small=11224927 heap_large=61 small_chunks=438 small_chunk_bytes=114016256 central_refills=31646 overflows=39578\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n"
+      },
+      {
+        "variant": "nullguard",
+        "archive_sha256": "89d754ded0c443492fd381b091dd95f67fc1206a17bd3cecfab870e5a1de95a9",
+        "link_command": [
+          "clang",
+          "/Users/henryschwerdtner/.codex/worktrees/campaign-llvm/mini/build/campaign-validation/typecheck-candidate/json-candidate.o",
+          "/tmp/campaign-ref-array-set-pilot/candidate-runtime-stats/libminirt_stats.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "/tmp/campaign-ref-array-set-pilot/json-nullguard-stats"
+        ],
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "mk-stats: allocs=11224988 frees=11224986 live_at_exit=2 peak_live=2027260\nmk-stats: bytes_total=626642506 bytes_live_at_exit=80 bytes_peak=122625922\nmk-stats: retains=655320 retains_nonatomic=655320 retains_atomic=0 retains_noop=0\nmk-stats: releases=11912541 releases_nonatomic=11912541 releases_atomic=0 releases_noop=0\nmk-stats: heap_small=11224927 heap_large=61 small_chunks=438 small_chunk_bytes=114016256 central_refills=31646 overflows=39578\nmk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0\n"
+      }
+    ],
+    "summary": {
+      "hotcold_baseline": {
+        "counters": {
+          "allocs": 11224988,
+          "frees": 11224986,
+          "live_at_exit": 2,
+          "peak_live": 2027260,
+          "bytes_total": 626642506,
+          "bytes_live_at_exit": 80,
+          "bytes_peak": 122625922,
+          "retains": 655320,
+          "retains_nonatomic": 655320,
+          "retains_atomic": 0,
+          "retains_noop": 0,
+          "releases": 17604776,
+          "releases_nonatomic": 11912541,
+          "releases_atomic": 0,
+          "releases_noop": 5692235,
+          "heap_small": 11224927,
+          "heap_large": 61,
+          "small_chunks": 438,
+          "small_chunk_bytes": 114016256,
+          "central_refills": 31646,
+          "overflows": 39578,
+          "arena_allocs": 0,
+          "arena_slow_allocs": 0,
+          "arena_chunks": 0,
+          "arena_chunk_bytes": 0
+        },
+        "archive_sha256": "73f2d67664652eb8ce14a2cd874c60685ec8c0c1ba5b835aab97e588912d8fd5",
+        "stdout": "7055506 1072916 885982430\n"
+      },
+      "nullguard": {
+        "counters": {
+          "allocs": 11224988,
+          "frees": 11224986,
+          "live_at_exit": 2,
+          "peak_live": 2027260,
+          "bytes_total": 626642506,
+          "bytes_live_at_exit": 80,
+          "bytes_peak": 122625922,
+          "retains": 655320,
+          "retains_nonatomic": 655320,
+          "retains_atomic": 0,
+          "retains_noop": 0,
+          "releases": 11912541,
+          "releases_nonatomic": 11912541,
+          "releases_atomic": 0,
+          "releases_noop": 0,
+          "heap_small": 11224927,
+          "heap_large": 61,
+          "small_chunks": 438,
+          "small_chunk_bytes": 114016256,
+          "central_refills": 31646,
+          "overflows": 39578,
+          "arena_allocs": 0,
+          "arena_slow_allocs": 0,
+          "arena_chunks": 0,
+          "arena_chunk_bytes": 0
+        },
+        "archive_sha256": "89d754ded0c443492fd381b091dd95f67fc1206a17bd3cecfab870e5a1de95a9",
+        "stdout": "7055506 1072916 885982430\n"
+      }
+    },
+    "effect": "releases_noop changed from 5,692,235 to 0; all 5,692,235 were on the release side. Allocation/free counts, bytes_total/live/peak, and other object counts were unchanged."
+  },
+  "scope_note": "The measured no-op counter drop proves null releases were skipped in this JSON process; it did not translate into a measurable wall-time improvement. No other RC elision was attempted.",
+  "raw_artifact_directory": "/tmp/campaign-ref-array-set-pilot"
+}
