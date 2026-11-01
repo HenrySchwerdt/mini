@@ -1,0 +1,746 @@
+{
+  "host": {
+    "os": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "arm",
+    "cpu": "Apple M4"
+  },
+  "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+  "c_source_sha256": "3c81b54a7cfca91b1cfaa0ded38e493b3ba71534880b1ada64692a308d4354ef",
+  "runtime_archive": "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/build/refarray-fusion-proof/runtime/libminirt.a",
+  "runtime_sha256": "bfed63fbc826c1d8aa4e3b8cbf1e715acbf6d1f671cc312fdf0265dd043fa656",
+  "compiler_sha256": {
+    "baseline": "86c9f30c1fd536b9f86e54c2893ae7ef9714ad7e247b1f140695d608f13a37b9",
+    "cacheonly": "d45b69dcad2c96ce9545cd4e310574cd301c4a84dfff549e75a58b719b391bb4",
+    "candidate": "18590f7d8ca9a313faa8df46825d63ad035f89e53303fadaae1e6d51def46f6d"
+  },
+  "app_sha256": {
+    "baseline": "b73367c74bb602115d137dce871b6f71afc9d972f115915d1b96c035639e7885",
+    "cacheonly": "9d1874096c5a28b8153c8dc4116d731039781f3863233dbd966021be0310a266",
+    "candidate": "a0dbb4730899fe1f8139a643803a78ffdc6df21583e61abd2ba44d9200440670",
+    "c_native_o3": "a292c1ac1030996c1bf4d87c59ccc61d911ca9191e735757c0221a76d9832bf1",
+    "c_generic_o3": "d33ddee2d1c086a0e7b52c43a95d09392058b83af7c6676d81ec3b556a8e71e7"
+  },
+  "flags": {
+    "mini_app": "--backend=llvm-api --opt=O3; current stdlib Kotlin sources",
+    "cacheonly_app": "type-cache prototype without mk_is_instance memory(read) declaration",
+    "runtime": "shared O2 libminirt.a",
+    "c_native_o3": "clang -std=c17 -O3 -fno-fast-math -mcpu=native -lm",
+    "c_generic_o3": "clang -std=c17 -O3 -fno-fast-math -lm"
+  },
+  "expected_stdout": "7055506 1072916 885982430\n",
+  "warmups_excluded": 1,
+  "rounds": 11,
+  "order": "rotated baseline/candidate/C order per round",
+  "summaries": {
+    "baseline": {
+      "median_seconds": 0.4109359998255968,
+      "min_seconds": 0.3991486250888556,
+      "max_seconds": 0.42293229210190475,
+      "all_seconds": [
+        0.3991486250888556,
+        0.40832758299075067,
+        0.4047742919065058,
+        0.40741454204544425,
+        0.4215835831128061,
+        0.4140410420950502,
+        0.41097337496466935,
+        0.4109359998255968,
+        0.4134273340459913,
+        0.4078464158810675,
+        0.42293229210190475
+      ]
+    },
+    "cacheonly": {
+      "median_seconds": 0.39810137497261167,
+      "min_seconds": 0.3937116658780724,
+      "max_seconds": 0.40722662513144314,
+      "all_seconds": [
+        0.3937116658780724,
+        0.3978335000574589,
+        0.39778687502257526,
+        0.3955674171447754,
+        0.40592929092235863,
+        0.40133195789530873,
+        0.4042961250524968,
+        0.39810137497261167,
+        0.40021520806476474,
+        0.398009791970253,
+        0.40722662513144314
+      ]
+    },
+    "candidate": {
+      "median_seconds": 0.3931309578474611,
+      "min_seconds": 0.3847205829806626,
+      "max_seconds": 0.4026399999856949,
+      "all_seconds": [
+        0.3918651251588017,
+        0.38493195781484246,
+        0.3847205829806626,
+        0.3941135839559138,
+        0.39644587505608797,
+        0.3979475419037044,
+        0.390976166119799,
+        0.38915437483228743,
+        0.3931309578474611,
+        0.4026399999856949,
+        0.3967500829603523
+      ]
+    },
+    "c_native_o3": {
+      "median_seconds": 0.3193946669343859,
+      "min_seconds": 0.3070222500246018,
+      "max_seconds": 0.3355795000679791,
+      "all_seconds": [
+        0.3070222500246018,
+        0.319525791099295,
+        0.3275760000105947,
+        0.3183548750821501,
+        0.31709929183125496,
+        0.31605949997901917,
+        0.3176494580693543,
+        0.32285358291119337,
+        0.3193946669343859,
+        0.3355795000679791,
+        0.32340400014072657
+      ]
+    },
+    "c_generic_o3": {
+      "median_seconds": 0.3189105831552297,
+      "min_seconds": 0.31209416687488556,
+      "max_seconds": 0.32803420815616846,
+      "all_seconds": [
+        0.31357999984174967,
+        0.3183505409397185,
+        0.31209416687488556,
+        0.32402399997226894,
+        0.32803420815616846,
+        0.3189105831552297,
+        0.3199490001425147,
+        0.31652733287774026,
+        0.3150663748383522,
+        0.3203979160171002,
+        0.32119862479157746
+      ]
+    }
+  },
+  "raw": [
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.3991486250888556,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 1
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.3937116658780724,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 1
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.3918651251588017,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 1
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.3070222500246018,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 1
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.31357999984174967,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 1
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.3978335000574589,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 2
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.38493195781484246,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 2
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.319525791099295,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 2
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.3183505409397185,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 2
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.40832758299075067,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 2
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.3847205829806626,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 3
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.3275760000105947,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 3
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.31209416687488556,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 3
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.4047742919065058,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 3
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.39778687502257526,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 3
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.3183548750821501,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 4
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.32402399997226894,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 4
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.40741454204544425,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 4
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.3955674171447754,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 4
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.3941135839559138,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 4
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.32803420815616846,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 5
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.4215835831128061,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 5
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.40592929092235863,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 5
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.39644587505608797,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 5
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.31709929183125496,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 5
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.4140410420950502,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 6
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.40133195789530873,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 6
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.3979475419037044,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 6
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.31605949997901917,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 6
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.3189105831552297,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 6
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.4042961250524968,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 7
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.390976166119799,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 7
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.3176494580693543,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 7
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.3199490001425147,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 7
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.41097337496466935,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 7
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.38915437483228743,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 8
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.32285358291119337,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 8
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.31652733287774026,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 8
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.4109359998255968,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 8
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.39810137497261167,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 8
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.3193946669343859,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 9
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.3150663748383522,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 9
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.4134273340459913,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 9
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.40021520806476474,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 9
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.3931309578474611,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 9
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.3203979160171002,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 10
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.4078464158810675,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 10
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.398009791970253,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 10
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.4026399999856949,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 10
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.3355795000679791,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 10
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.42293229210190475,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 11
+    },
+    {
+      "variant": "cacheonly",
+      "wall_seconds": 0.40722662513144314,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 11
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.3967500829603523,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 11
+    },
+    {
+      "variant": "c_native_o3",
+      "wall_seconds": 0.32340400014072657,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 11
+    },
+    {
+      "variant": "c_generic_o3",
+      "wall_seconds": 0.32119862479157746,
+      "stdout": "7055506 1072916 885982430\n",
+      "round": 11
+    }
+  ],
+  "schema_version": 1,
+  "kind": "guarded-type-family-cache-json-pilot",
+  "source_commit": "4025625",
+  "branch": "codex/typecheck-family",
+  "workload": {
+    "source": "bench/json/json.kt",
+    "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+    "reference_source": "bench/json/json.c",
+    "reference_source_sha256": "3c81b54a7cfca91b1cfaa0ded38e493b3ba71534880b1ada64692a308d4354ef",
+    "expected_stdout": "7055506 1072916 885982430\n",
+    "parser_and_walk_reps": 5,
+    "generated_items": 60000,
+    "profile_motivation": "Root's combined JSON profile had 235 / 2314 samples in type_is; checks in walk target the six JSON node classes."
+  },
+  "compiler": {
+    "baseline": {
+      "path": "build/campaign-validation/api-fastpath/stage3",
+      "sha256": "86c9f30c1fd536b9f86e54c2893ae7ef9714ad7e247b1f140695d608f13a37b9",
+      "mode": "LLVM C API compiler, O1 bootstrap binary"
+    },
+    "cacheonly": {
+      "sha256": "d45b69dcad2c96ce9545cd4e310574cd301c4a84dfff549e75a58b719b391bb4",
+      "mode": "one-stage O1 API compiler with type-family cache, before mk_is_instance memory(read)"
+    },
+    "candidate": {
+      "path": "build/campaign-validation/typecheck-candidate/stage3",
+      "sha256": "18590f7d8ca9a313faa8df46825d63ad035f89e53303fadaae1e6d51def46f6d",
+      "mode": "one-stage O1 API compiler with type-family cache and exact mk_is_instance memory(read)"
+    },
+    "application_flags": "--backend=llvm-api --opt=O3",
+    "stdlib": "current source files, same ordered list for both Mini variants"
+  },
+  "runtime": {
+    "path": "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/build/refarray-fusion-proof/runtime/libminirt.a",
+    "sha256": "bfed63fbc826c1d8aa4e3b8cbf1e715acbf6d1f671cc312fdf0265dd043fa656",
+    "optimization": "O2",
+    "same_archive_for_all_Mini_variants": true
+  },
+  "commands": {
+    "candidate_compiler_build": {
+      "bootstrap_compiler": "/Users/henryschwerdtner/.codex/worktrees/optimization-campaign/mini/build/campaign-validation/api/stage3",
+      "args": [
+        "--backend=llvm-api",
+        "--opt=O1",
+        "-o",
+        "build/campaign-validation/typecheck-candidate/stage3.o",
+        "--emit-c",
+        "build/campaign-validation/typecheck-candidate/stage3.c",
+        "--emit-mir",
+        "build/campaign-validation/typecheck-candidate/stage3.mir",
+        "--emit-ll",
+        "build/campaign-validation/typecheck-candidate/stage3.ll",
+        "<all current compiler/minic-native,lower,frontend,backend,llvm-c Kotlin sources>",
+        "--stdlib",
+        "<all current stdlib Kotlin sources>"
+      ],
+      "link": "clang stage3.o + same LLVM 18 static libraries and rt/*.o as build/campaign-validation/build-api-fastpath.sh"
+    },
+    "mini_baseline_o3": [
+      "build/campaign-validation/api-fastpath/stage3",
+      "--backend=llvm-api",
+      "--opt=O3",
+      "-o",
+      "build/campaign-validation/typecheck-candidate/json-baseline.o",
+      "--emit-ll",
+      "build/campaign-validation/typecheck-candidate/json-baseline.ll",
+      "bench/json/json.kt",
+      "--stdlib",
+      "stdlib/java/lang/Thread.kt",
+      "stdlib/kotlin/Annotations.kt",
+      "stdlib/kotlin/ArrayIndices.kt",
+      "stdlib/kotlin/Arrays.kt",
+      "stdlib/kotlin/Builtins.kt",
+      "stdlib/kotlin/Comparator.kt",
+      "stdlib/kotlin/ContextParameters.kt",
+      "stdlib/kotlin/Lazy.kt",
+      "stdlib/kotlin/NumbersMore.kt",
+      "stdlib/kotlin/Platform.kt",
+      "stdlib/kotlin/Preconditions.kt",
+      "stdlib/kotlin/PrimitiveArrays.kt",
+      "stdlib/kotlin/Primitives.kt",
+      "stdlib/kotlin/Ranges.kt",
+      "stdlib/kotlin/Result.kt",
+      "stdlib/kotlin/Standard.kt",
+      "stdlib/kotlin/Throwable.kt",
+      "stdlib/kotlin/Tuples.kt",
+      "stdlib/kotlin/annotation/Annotations.kt",
+      "stdlib/kotlin/collections/AbstractCollections.kt",
+      "stdlib/kotlin/collections/ArrayDeque.kt",
+      "stdlib/kotlin/collections/ArrayList.kt",
+      "stdlib/kotlin/collections/Builders.kt",
+      "stdlib/kotlin/collections/Collections.kt",
+      "stdlib/kotlin/collections/HashMap.kt",
+      "stdlib/kotlin/collections/HashSet.kt",
+      "stdlib/kotlin/collections/Iterables.kt",
+      "stdlib/kotlin/collections/IterablesMore.kt",
+      "stdlib/kotlin/collections/Iterator.kt",
+      "stdlib/kotlin/collections/MapsMore.kt",
+      "stdlib/kotlin/collections/PrimitiveIterators.kt",
+      "stdlib/kotlin/comparisons/Comparisons.kt",
+      "stdlib/kotlin/concurrent/Thread.kt",
+      "stdlib/kotlin/internal/Builtin.kt",
+      "stdlib/kotlin/internal/Conventions.kt",
+      "stdlib/kotlin/io/Console.kt",
+      "stdlib/kotlin/jvm/JvmInline.kt",
+      "stdlib/kotlin/math/Math.kt",
+      "stdlib/kotlin/native/CName.kt",
+      "stdlib/kotlin/ranges/Coerce.kt",
+      "stdlib/kotlin/reflect/KClass.kt",
+      "stdlib/kotlin/text/Char.kt",
+      "stdlib/kotlin/text/StringBuilder.kt",
+      "stdlib/kotlin/text/StringNumberConversions.kt",
+      "stdlib/kotlin/text/Strings.kt",
+      "stdlib/kotlin/text/StringsMore.kt",
+      "stdlib/kotlinx/cinterop/Annotations.kt",
+      "stdlib/kotlinx/cinterop/Intrinsics.kt",
+      "stdlib/kotlinx/cinterop/Memory.kt",
+      "stdlib/kotlinx/cinterop/Pointers.kt",
+      "stdlib/kotlinx/cinterop/Strings.kt",
+      "stdlib/kotlinx/cinterop/Types.kt",
+      "stdlib/mini/display/Display.kt",
+      "stdlib/mini/internal/B1Intrinsics.kt",
+      "stdlib/mini/internal/CSymbol.kt",
+      "stdlib/mini/internal/Intrinsics.kt",
+      "stdlib/mini/io/Files.kt",
+      "stdlib/mini/memory/Allocator.kt",
+      "stdlib/mini/memory/Allocators.kt",
+      "stdlib/mini/memory/Annotations.kt",
+      "stdlib/mini/memory/Spawn.kt",
+      "stdlib/mini/wasm/WasmExport.kt"
+    ],
+    "mini_candidate_o3": [
+      "build/campaign-validation/typecheck-candidate/stage3",
+      "--backend=llvm-api",
+      "--opt=O3",
+      "-o",
+      "build/campaign-validation/typecheck-candidate/json-candidate.o",
+      "--emit-ll",
+      "build/campaign-validation/typecheck-candidate/json-candidate.ll",
+      "bench/json/json.kt",
+      "--stdlib",
+      "stdlib/java/lang/Thread.kt",
+      "stdlib/kotlin/Annotations.kt",
+      "stdlib/kotlin/ArrayIndices.kt",
+      "stdlib/kotlin/Arrays.kt",
+      "stdlib/kotlin/Builtins.kt",
+      "stdlib/kotlin/Comparator.kt",
+      "stdlib/kotlin/ContextParameters.kt",
+      "stdlib/kotlin/Lazy.kt",
+      "stdlib/kotlin/NumbersMore.kt",
+      "stdlib/kotlin/Platform.kt",
+      "stdlib/kotlin/Preconditions.kt",
+      "stdlib/kotlin/PrimitiveArrays.kt",
+      "stdlib/kotlin/Primitives.kt",
+      "stdlib/kotlin/Ranges.kt",
+      "stdlib/kotlin/Result.kt",
+      "stdlib/kotlin/Standard.kt",
+      "stdlib/kotlin/Throwable.kt",
+      "stdlib/kotlin/Tuples.kt",
+      "stdlib/kotlin/annotation/Annotations.kt",
+      "stdlib/kotlin/collections/AbstractCollections.kt",
+      "stdlib/kotlin/collections/ArrayDeque.kt",
+      "stdlib/kotlin/collections/ArrayList.kt",
+      "stdlib/kotlin/collections/Builders.kt",
+      "stdlib/kotlin/collections/Collections.kt",
+      "stdlib/kotlin/collections/HashMap.kt",
+      "stdlib/kotlin/collections/HashSet.kt",
+      "stdlib/kotlin/collections/Iterables.kt",
+      "stdlib/kotlin/collections/IterablesMore.kt",
+      "stdlib/kotlin/collections/Iterator.kt",
+      "stdlib/kotlin/collections/MapsMore.kt",
+      "stdlib/kotlin/collections/PrimitiveIterators.kt",
+      "stdlib/kotlin/comparisons/Comparisons.kt",
+      "stdlib/kotlin/concurrent/Thread.kt",
+      "stdlib/kotlin/internal/Builtin.kt",
+      "stdlib/kotlin/internal/Conventions.kt",
+      "stdlib/kotlin/io/Console.kt",
+      "stdlib/kotlin/jvm/JvmInline.kt",
+      "stdlib/kotlin/math/Math.kt",
+      "stdlib/kotlin/native/CName.kt",
+      "stdlib/kotlin/ranges/Coerce.kt",
+      "stdlib/kotlin/reflect/KClass.kt",
+      "stdlib/kotlin/text/Char.kt",
+      "stdlib/kotlin/text/StringBuilder.kt",
+      "stdlib/kotlin/text/StringNumberConversions.kt",
+      "stdlib/kotlin/text/Strings.kt",
+      "stdlib/kotlin/text/StringsMore.kt",
+      "stdlib/kotlinx/cinterop/Annotations.kt",
+      "stdlib/kotlinx/cinterop/Intrinsics.kt",
+      "stdlib/kotlinx/cinterop/Memory.kt",
+      "stdlib/kotlinx/cinterop/Pointers.kt",
+      "stdlib/kotlinx/cinterop/Strings.kt",
+      "stdlib/kotlinx/cinterop/Types.kt",
+      "stdlib/mini/display/Display.kt",
+      "stdlib/mini/internal/B1Intrinsics.kt",
+      "stdlib/mini/internal/CSymbol.kt",
+      "stdlib/mini/internal/Intrinsics.kt",
+      "stdlib/mini/io/Files.kt",
+      "stdlib/mini/memory/Allocator.kt",
+      "stdlib/mini/memory/Allocators.kt",
+      "stdlib/mini/memory/Annotations.kt",
+      "stdlib/mini/memory/Spawn.kt",
+      "stdlib/mini/wasm/WasmExport.kt"
+    ],
+    "mini_link": [
+      "clang",
+      "<app.o>",
+      "/Users/henryschwerdtner/.codex/worktrees/campaign-runtime/mini/build/refarray-fusion-proof/runtime/libminirt.a",
+      "-lm",
+      "-Wl,-dead_strip",
+      "-o",
+      "<app>"
+    ],
+    "c_native_o3": [
+      "clang",
+      "-std=c17",
+      "-O3",
+      "-fno-fast-math",
+      "-mcpu=native",
+      "bench/json/json.c",
+      "-lm",
+      "-o",
+      "json-c"
+    ],
+    "c_generic_o3": [
+      "clang",
+      "-std=c17",
+      "-O3",
+      "-fno-fast-math",
+      "bench/json/json.c",
+      "-lm",
+      "-o",
+      "json-c-generic"
+    ],
+    "benchmark": "one warmup per executable excluded, then 11 rounds, rotated five-way order baseline/cacheonly/candidate/C-native/C-generic; measured with Python perf_counter and subprocess.run"
+  },
+  "candidate_artifact": {
+    "compiler": "build/campaign-validation/typecheck-candidate/stage3",
+    "compiler_sha256": "18590f7d8ca9a313faa8df46825d63ad035f89e53303fadaae1e6d51def46f6d",
+    "json_o3_object": "build/campaign-validation/typecheck-candidate/json-candidate.o",
+    "json_o3_object_sha256": "5f0eb17a27567058628e3d2ecc571efc706e07f44d688c31848e2d1c43e38534"
+  },
+  "semantic_regression": {
+    "source": "compiler/testdata/typecheck_family.kt",
+    "foreign_helper": "compiler/testdata/cinterop_lib.c::foreign_child",
+    "scenario": "NULL, final Leaf, known Child/Middle, Sibling, and fake C subtype whose MkTypeInfo.super is Leaf's runtime type-info pointer",
+    "expected_and_observed_stdout": "0\n2\n3\n2\n2\n",
+    "c_backend": "passed",
+    "llvm_api_source_stdlib": "passed",
+    "llvm_api_mlib_stdlib": "passed"
+  },
+  "focused_tests": {
+    "command": "cd compiler && ../mini test -p backend",
+    "result": "95 passed, 0 failed",
+    "coverage": [
+      "type planner open base, known classes, direct and inherited interfaces",
+      "external and missing interface metadata, foreign children, family budget and cycles",
+      "LLVM text output on host and WASM32",
+      "mk_is_instance memory(read) declaration and custom local symbol exclusion"
+    ]
+  },
+  "self_compile": {
+    "command": "one-stage LLVM API compiler recompiles the same current compiler/llvm-c sources with --opt=O1, then links identical baseline runtime objects",
+    "baseline_compiler_wall_seconds": 30.38,
+    "candidate_compiler_wall_seconds": 30.6,
+    "baseline_instructions_retired": 152040924,
+    "candidate_instructions_retired": 152047111,
+    "note": "one run per compiler; essentially flat, not a confidence interval"
+  },
+  "result": {
+    "candidate_vs_baseline_paired_median_ratio": 0.9509070288122934,
+    "candidate_vs_cacheonly_paired_median_ratio": 0.977525824569333,
+    "candidate_vs_c_native_paired_median_ratio": 1.230841596570377,
+    "candidate_vs_c_generic_paired_median_ratio": 1.2327067398696112,
+    "runtime_goal_1_2x_c": "not met on this workload",
+    "decision": "prototype evidence only; root review and broader workload evidence pending"
+  },
+  "implementation_notes": [
+    "Family classifier recognizes only locally emitted canonical type-info global addresses; tag 0 preserves mk_is_instance fallback for foreign or unknown descriptors.",
+    "NULL returns false before object-header load; helper is pure pointer comparisons; no SSA cache across calls.",
+    "READONLY is attached only to the exact runtime mk_is_instance Boolean(ptr, ptr) signature and is disabled when module/imported signatures define that symbol.",
+    "LLVM 18 memory(read) enum value 21 verified from local llvm/Support/ModRef.h encoding: Ref=1 at ArgMem, InaccessibleMem, and Other locations."
+  ],
+  "paths": {
+    "raw_runs": "build/campaign-validation/typecheck-candidate/json-paired-results.json (ignored build artifact, available in this worktree)",
+    "candidate_optimized_ir": "build/campaign-validation/typecheck-candidate/json-candidate.ll (ignored build artifact, available in this worktree)"
+  }
+}

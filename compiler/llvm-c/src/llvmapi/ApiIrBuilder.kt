@@ -222,6 +222,9 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
         if (attrs == IrAttrs.INLINE) LLVMAddAttributeAtIndex(f, idx, attr(kAlwaysInline, 0L))
         if (attrs == IrAttrs.NORETURN) LLVMAddAttributeAtIndex(f, idx, attr(kNoReturn, 0L))
         if (attrs == IrAttrs.PURE) LLVMAddAttributeAtIndex(f, idx, attr(kMemory, 0L))
+        // LLVM 18 ModRef.h: ArgMem/ InaccessibleMem/ Other each occupy two bits;
+        // Ref in all three locations is 1 + (1 << 2) + (1 << 4) == 21 (memory(read)).
+        if (attrs == IrAttrs.READONLY) LLVMAddAttributeAtIndex(f, idx, attr(kMemory, 21L))
     }
 
     private fun extKind(e: IrExt): Int = if (e == IrExt.ZERO) kZeroExt else kSignExt

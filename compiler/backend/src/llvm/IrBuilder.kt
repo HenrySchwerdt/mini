@@ -18,8 +18,8 @@ enum class IrType { I1, I8, I16, I32, I64, FLOAT, DOUBLE, PTR, VOID }
 /** Parameter / result attribute of the C ABI: `bool` and `uint16_t` are zero-extended, `int8_t` / `int16_t` sign-extended. */
 enum class IrExt { NONE, ZERO, SIGN }
 
-/** Function attribute sets: STD = `nounwind sanitize_address`, INLINE = STD + `alwaysinline`, NORETURN, PURE = `nounwind` + no memory access. */
-enum class IrAttrs { NONE, STD, INLINE, NORETURN, PURE }
+/** Function attributes. READONLY is reserved for exact runtime declarations proven to only read memory. */
+enum class IrAttrs { NONE, STD, INLINE, NORETURN, PURE, READONLY }
 
 enum class IrLinkage { EXTERNAL, INTERNAL, PRIVATE }
 

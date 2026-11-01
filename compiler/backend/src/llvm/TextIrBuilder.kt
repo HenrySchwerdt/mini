@@ -74,6 +74,7 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
     private val prelude = StringBuilder()
     private val functions = StringBuilder()
     private var usesPure = false
+    private var usesReadonly = false
 
     // the function being defined
     private val body = StringBuilder()
@@ -134,6 +135,10 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         IrAttrs.PURE -> {
             usesPure = true
             "#3"
+        }
+        IrAttrs.READONLY -> {
+            usesReadonly = true
+            "#4"
         }
     }
 
@@ -477,6 +482,7 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         out.append("attributes #1 = { nounwind alwaysinline sanitize_address }\n")
         out.append("attributes #2 = { noreturn nounwind }\n")
         if (usesPure) out.append("attributes #3 = { nounwind memory(none) }\n")
+        if (usesReadonly) out.append("attributes #4 = { nounwind memory(read) }\n")
         out.append("\n!0 = !{!\"branch_weights\", i32 1, i32 2000}\n")
         if (tbaaTags.isNotEmpty()) {
             out.append("!1 = !{!\"mini tbaa\"}\n")

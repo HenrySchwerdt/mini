@@ -21,6 +21,9 @@ import mini.backend.RcFunctionPlan
 import mini.backend.RcOpt
 import mini.backend.RcPlan
 import mini.backend.TBoolean
+import mini.backend.TypeCheckPlan
+import mini.backend.TypeCheckUse
+import mini.backend.TypeChecks
 import mini.backend.TBoxed
 import mini.backend.MirExtern
 import mini.backend.TByte
@@ -120,6 +123,8 @@ private class Lowering<V : Any, B : Any>(
     val classes = HashMap<String, MirClass>()
     lateinit var layouts: Layouts
     lateinit var throwing: ThrowAnalysis
+    lateinit var typeCheckPlan: TypeCheckPlan
+    var customIsInstanceSymbol = false
 
     val inlineRc: Boolean = rcPlan != null && !stats
     val szT: IrType = if (target.ptrBytes == 8) IrType.I64 else IrType.I32
@@ -153,11 +158,16 @@ private class Lowering<V : Any, B : Any>(
     fun run() {
         for (f in module.functions) {
             if (sig.put(f.cName, f) != null) throw EmitError("duplicate C symbol ${f.cName}")
+            if (f.cName == "mk_is_instance") customIsInstanceSymbol = true
         }
-        for (f in externalFunctionSignatures) if (!sig.containsKey(f.cName)) sig[f.cName] = f
+        for (f in externalFunctionSignatures) {
+            if (f.cName == "mk_is_instance") customIsInstanceSymbol = true
+            if (!sig.containsKey(f.cName)) sig[f.cName] = f
+        }
         for (c in module.classes) classes[c.cName] = c
         layouts = Layouts(classes, target)
         throwing = ThrowAnalysis(module, externalFunctionSignatures).run()
+        typeCheckPlan = TypeChecks.analyze(module, externalClassNames)
 
         b.beginModule(module.sourceName, module.links, target)
         b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT))
@@ -169,6 +179,7 @@ private class Lowering<V : Any, B : Any>(
             emitWasmLib()
         } else if (userMain != null) emitMainWrapper(userMain)
         emitClasses()
+        emitTypeCheckHelpers()
         emitPrelude()
     }
 
@@ -230,6 +241,9 @@ private class Lowering<V : Any, B : Any>(
         if (inlineRc) {
             b.declareDefined("mkh_retain", IrType.VOID, IrExt.NONE, p1, e1, IrAttrs.INLINE, IrLinkage.INTERNAL)
             b.declareDefined("mkh_rel", IrType.VOID, IrExt.NONE, p1, e1, IrAttrs.INLINE, IrLinkage.INTERNAL)
+        }
+        for (family in typeCheckPlan.families) {
+            b.declareDefined(family.helperName, IrType.I32, IrExt.NONE, p1, e1, IrAttrs.PURE, IrLinkage.INTERNAL)
         }
     }
 
@@ -417,7 +431,11 @@ private class Lowering<V : Any, B : Any>(
 
     /** Call of a libminirt function with explicit MIR types. */
     fun rt(name: String, ret: MirType, types: List<MirType>, args: List<V>): V {
-        val f = declare(name, ret, types)
+        val attrs = if (
+            !customIsInstanceSymbol && name == "mk_is_instance" && ret === TBoolean && types.size == 2 &&
+                types[0] === TString && types[1] === TString
+        ) IrAttrs.READONLY else IrAttrs.STD
+        val f = declare(name, ret, types, attrs)
         return call(ret, f, types, args)
     }
 
@@ -725,6 +743,72 @@ private class Lowering<V : Any, B : Any>(
         startFunction()
         b.beginFunction(s, name, ity(ret), rext(ret), pnames, ptypes, pexts, IrAttrs.STD, linkage)
         curBlock = b.entryBlock()
+    }
+
+    /** Defines classifiers that compare only locally emitted canonical type-info addresses. */
+    fun emitTypeCheckHelpers() {
+        for (family in typeCheckPlan.families) {
+            b.beginFunction(
+                IrSection.PRELUDE, family.helperName, IrType.I32, IrExt.NONE, listOf("type"), listOf(IrType.PTR),
+                listOf(IrExt.NONE), IrAttrs.PURE, IrLinkage.INTERNAL,
+            )
+            val type = b.param(0)
+            for ((index, tagClass) in family.tags.withIndex()) {
+                val matched = b.newBlock("tag_${index + 1}")
+                val next = b.newBlock("next_${index + 1}")
+                val equal = b.cmp(IrCmp.IEQ, type, b.global(tagClass.cName + "_ti"), "")
+                b.condBr(equal, matched, next, false)
+                b.appendBlock(matched)
+                b.ret(b.constInt(IrType.I32, (index + 1).toLong()))
+                b.appendBlock(next)
+            }
+            b.ret(b.constInt(IrType.I32, 0L))
+            b.endFunction()
+        }
+    }
+
+    /** Unknown runtime type-info stays on mk_is_instance, preserving foreign subclass semantics. */
+    private fun typeCheck(objectValue: V, expression: MirExpr.IsInstance, use: TypeCheckUse): V {
+        val isNull = icmp(IrCmp.IEQ, objectValue, b.constNull())
+        val nullBlock = newLabel("type_null")
+        val readType = newLabel("type_read")
+        val slow = newLabel("type_slow")
+        val fast = newLabel("type_fast")
+        val knownMerge = newLabel("type_known")
+        val merge = newLabel("type_merge")
+        condBr(isNull, nullBlock, readType, true)
+
+        startBlock(nullBlock)
+        val nullResult = b.constInt(IrType.I1, 0L)
+        val nullEnd = curBlock
+        br(merge)
+
+        startBlock(readType)
+        val actualType = load(TString, gep(objectValue, 0))
+        val tag = call(TInt, b.global(use.helperName), listOf(TString), listOf(actualType))
+        val unknown = icmp(IrCmp.IEQ, tag, c32(0))
+        condBr(unknown, slow, fast, true)
+
+        startBlock(slow)
+        val fallback = rt("mk_is_instance", TBoolean, listOf(TString, TString), listOf(objectValue, typeInfoOf(expression.target)))
+        val slowEnd = curBlock
+        br(knownMerge)
+
+        startBlock(fast)
+        val bitIndex = binop(IrOp.SUB, tag, c32(1))
+        val bit = binop(IrOp.SHL, c32(1), bitIndex)
+        val selected = binop(IrOp.AND, bit, c32(use.targetMask))
+        val result = icmp(IrCmp.INE, selected, c32(0))
+        val fastEnd = curBlock
+        br(knownMerge)
+
+        startBlock(knownMerge)
+        val knownResult = b.phi(IrType.I1, fallback, slowEnd, result, fastEnd)
+        val knownEnd = curBlock
+        br(merge)
+
+        startBlock(merge)
+        return b.phi(IrType.I1, nullResult, nullEnd, knownResult, knownEnd)
     }
 
     fun emitClasses() {
@@ -1544,8 +1628,13 @@ private class Lowering<V : Any, B : Any>(
             is MirExpr.Cast -> cast(e)
             is MirExpr.IsInstance -> {
                 val o = expr(e.operand)
-                val ti = typeInfoOf(e.target)
-                rt("mk_is_instance", TBoolean, listOf(TString, TString), listOf(o, ti))
+                val use = typeCheckPlan.uses[e]
+                if (use == null) {
+                    val ti = typeInfoOf(e.target)
+                    rt("mk_is_instance", TBoolean, listOf(TString, TString), listOf(o, ti))
+                } else {
+                    typeCheck(o, e, use)
+                }
             }
             is MirExpr.NotNull -> {
                 val o = expr(e.operand)

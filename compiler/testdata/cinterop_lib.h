@@ -3,6 +3,7 @@
 #define CINTEROP_LIB_H
 #include <stddef.h>
 #include <stdint.h>
+#include "minirt.h"
 
 typedef struct {
     int16_t x;
@@ -28,6 +29,7 @@ int sum_ints(const int *a, int n);
 void scale_doubles(double *a, int n, double k);
 typedef int (*binop_t)(int, int);
 int apply_binop(binop_t f, int a, int b);
+MkObject *foreign_child(MkObject *value);
 int fold(binop_t f, const int *a, int n, int init);
 typedef void (*visit_t)(int value, void *ctx);
 void visit_range(int from, int to, visit_t cb, void *ctx);

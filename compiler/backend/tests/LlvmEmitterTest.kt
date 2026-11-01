@@ -212,6 +212,72 @@ class LlvmEmitterTest {
     }
 
     @Test
+    fun repeatedIsChecksUseBoundedTagHelperAndUnknownTypesFallback() {
+        val baseType = TObject("Base", "kc_Base", true)
+        val value = MirLocal(0, "value", baseType)
+        val interfaceType = TObject("Named", "kc_Named", false, true)
+        val test = MirFunction(
+            "test", "kt_test", listOf(value), TBoolean,
+            listOf(
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), TObject("A", "kc_A", false))),
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), TObject("B", "kc_B", false))),
+                MirStmt.Return(MirExpr.IsInstance(MirExpr.Local(value), interfaceType)),
+            ),
+        )
+        val classes = listOf(
+            MirClass("Base", "kc_Base", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("Named", "kc_Named", true, null, emptyList(), emptyList(), emptyList(), emptyList()),
+            MirClass("A", "kc_A", false, "kc_Base", emptyList(), listOf("kc_Named"), listOf(null, null, null), emptyList()),
+            MirClass("B", "kc_B", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("C", "kc_C", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("Foreign", "kc_Foreign", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList(), external = true),
+        )
+        val m = MirModule("test.kt", listOf(test), classes)
+
+        for (target in listOf(LlvmTarget.HOST, LlvmTarget.WASM32)) {
+            val ll = LlvmEmitter.emit(m, target = target)
+            val helper = ll.substringAfter("define internal i32 @mkh_type_tag_kc_Base(").substringBefore("\n}")
+            val body = ll.substringAfter("define zeroext i1 @kt_test(").substringBefore("\n}")
+            assertTrue("icmp eq ptr" in helper && "@kc_A_ti" in helper && "@kc_B_ti" in helper && "@kc_C_ti" in helper, helper)
+            assertFalse("@kc_Foreign_ti" in helper, helper)
+            assertTrue("memory(none)" in ll, "the address-only classifier should be pure\n$ll")
+            assertTrue("declare zeroext i1 @mk_is_instance(ptr, ptr) #4" in ll, ll)
+            assertTrue("attributes #4 = { nounwind memory(read) }" in ll, ll)
+            assertTrue("call i32 @mkh_type_tag_kc_Base" in body, body)
+            assertTrue("icmp eq ptr" in body && "phi i1" in body, body)
+            assertTrue("call zeroext i1 @mk_is_instance" in body, "unknown tags must retain the generic hierarchy test\n$body")
+        }
+    }
+
+    @Test
+    fun customMkIsInstanceSymbolDoesNotGetRuntimeReadOnlyAttribute() {
+        val valueType = TObject("Base", "kc_Base", true)
+        val targetType = TObject("Target", "kc_Target", false)
+        val value = MirLocal(0, "value", valueType)
+        val target = MirLocal(1, "target", targetType)
+        val customRuntimeSymbol = MirFunction(
+            "customIsInstance", "mk_is_instance", listOf(value, target), TBoolean,
+            listOf(MirStmt.Return(MirExpr.BooleanConst(false))),
+        )
+        val caller = MirFunction(
+            "caller", "kt_caller", listOf(value), TBoolean,
+            listOf(MirStmt.Return(MirExpr.IsInstance(MirExpr.Local(value), targetType))),
+        )
+        val module = MirModule(
+            "test.kt", listOf(customRuntimeSymbol, caller),
+            listOf(
+                MirClass("Base", "kc_Base", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+                MirClass("Target", "kc_Target", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            ),
+        )
+
+        val ll = LlvmEmitter.emit(module)
+
+        assertTrue("define zeroext i1 @mk_is_instance" in ll, ll)
+        assertFalse("memory(read)" in ll, ll)
+    }
+
+    @Test
     fun externalLibraryClassKeepsItsLayoutWithoutRedefiningItsTypeInfo() {
         val base = MirClass("dep.Base", "kc_Base", false, null, listOf(MirField("base", TInt)), emptyList(), emptyList(), emptyList())
         val child = MirClass("app.Child", "kc_Child", false, "kc_Base", listOf(MirField("child", TInt)), emptyList(), emptyList(), emptyList())
