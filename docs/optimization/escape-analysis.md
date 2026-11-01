@@ -1,5 +1,9 @@
 # Continued runtime and escape analysis
 
+Current status: the 1.2x runtime target is **not yet established**. The initial final matrix measured JSON at 1.196x C, but its confidence interval crossed 1.2; the confirmation median was 1.2047x the fastest C variant. Confirmation raw samples were lost before serialization, so no confirmation interval is claimed. N-Body and Fannkuch remain comfortably below the target. The combined self-compilation comparison improved wall time 7.9% and retired instructions 9.6%, with byte-identical outputs. See [the final suite dataset](../../bench/results/campaign-final-suite.json).
+
+The later partial-copy string initialization experiments are rejected and preserved separately: they passed correctness checks but did not show a clear runtime win and increased instructions. Only reports/data are retained on the integration branch; allocator prototype source stays on `codex/escape-string-copy-init`. The next authorized forced-inline prototype has not been implemented or tested because the worker reached its usage limit. The validated integration source remains `713f0fa`; nothing was merged to main or released.
+
 This continues the [first campaign phase](campaign.md). Work stays on the campaign branch; it is not merged or released. The target is at most 1.2 times the runtime of a tuned, semantically equivalent C reference on representative complex workloads. Passing a finite suite cannot establish a universal bound.
 
 ## What escapes
@@ -59,3 +63,5 @@ Classifier-specific inlining is also retained after general and Kotlin review. I
 Validation is now complete within the local scope: the fresh post-fix API bootstrap and C/API end-to-end suites passed again. Targeted WASI compiler memory checks and four compile/run programs passed using local LLVM/lld plus the cached WASI sysroot, with native/WASM LLVM IR equality. The hardcoded YoWASP scripts failed their initial build attempt and are not counted as passing. Linux x64/arm64 were not freshly tested locally.
 
 A fresh unpublished macOS package passed default-API, explicit-C and REPL smoke checks and depended only on macOS system libraries. Strip preserved all 36,772 current external symbols/exports and reduced the same compiler build from 60,962,200 to 47,209,984 bytes (22.56%). The archive was 18,887,075 bytes. These current-build figures are separate from the first phase's matched packaging experiment. Exact scope, commands, warnings and log hashes are recorded in [campaign-validation-latest.json](../../bench/results/campaign-validation-latest.json).
+
+The partial-copy initialization lifetime proof is valid, but that alone does not justify retention. The first implementation added allocator forwarding overhead: JSON instructions rose 1.65%, self-compilation instructions rose 0.79%, and neither showed a clear wall-time gain. A narrower String-only static-inline variant still left an out-of-line core in disassembly and failed the overhead gate before further timing. Both are rejected; see [copy-string-init.md](copy-string-init.md).
