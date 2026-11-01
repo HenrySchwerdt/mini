@@ -167,7 +167,7 @@ private class Lowering<V : Any, B : Any>(
         for (c in module.classes) classes[c.cName] = c
         layouts = Layouts(classes, target)
         throwing = ThrowAnalysis(module, externalFunctionSignatures).run()
-        typeCheckPlan = TypeChecks.analyze(module, externalClassNames)
+        typeCheckPlan = if (customIsInstanceSymbol) TypeCheckPlan.EMPTY else TypeChecks.analyze(module, externalClassNames)
 
         b.beginModule(module.sourceName, module.links, target)
         b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT))

@@ -721,9 +721,7 @@
     "command": "one-stage LLVM API compiler recompiles the same current compiler/llvm-c sources with --opt=O1, then links identical baseline runtime objects",
     "baseline_compiler_wall_seconds": 30.38,
     "candidate_compiler_wall_seconds": 30.6,
-    "baseline_instructions_retired": 152040924,
-    "candidate_instructions_retired": 152047111,
-    "note": "one run per compiler; essentially flat, not a confidence interval"
+    "note": "one run per compiler; essentially flat, not a confidence interval. The macOS time -lp instruction counters are omitted because their units/provenance were not comparable to the earlier 47B profiler count."
   },
   "result": {
     "candidate_vs_baseline_paired_median_ratio": 0.9509070288122934,

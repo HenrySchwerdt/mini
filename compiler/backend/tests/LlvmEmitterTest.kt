@@ -250,31 +250,51 @@ class LlvmEmitterTest {
     }
 
     @Test
-    fun customMkIsInstanceSymbolDoesNotGetRuntimeReadOnlyAttribute() {
+    fun customMkIsInstanceSymbolKeepsRepeatedChecksOnTheOverride() {
         val valueType = TObject("Base", "kc_Base", true)
-        val targetType = TObject("Target", "kc_Target", false)
-        val value = MirLocal(0, "value", valueType)
-        val target = MirLocal(1, "target", targetType)
-        val customRuntimeSymbol = MirFunction(
-            "customIsInstance", "mk_is_instance", listOf(value, target), TBoolean,
-            listOf(MirStmt.Return(MirExpr.BooleanConst(false))),
+        val targets = listOf(
+            TObject("A", "kc_A", false),
+            TObject("B", "kc_B", false),
+            TObject("C", "kc_C", false),
         )
+        val value = MirLocal(0, "value", valueType)
         val caller = MirFunction(
             "caller", "kt_caller", listOf(value), TBoolean,
-            listOf(MirStmt.Return(MirExpr.IsInstance(MirExpr.Local(value), targetType))),
-        )
-        val module = MirModule(
-            "test.kt", listOf(customRuntimeSymbol, caller),
             listOf(
-                MirClass("Base", "kc_Base", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
-                MirClass("Target", "kc_Target", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), targets[0])),
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), targets[1])),
+                MirStmt.Return(MirExpr.IsInstance(MirExpr.Local(value), targets[2])),
             ),
         )
+        val runtimeObject = MirLocal(0, "object", valueType)
+        val runtimeTarget = MirLocal(1, "target", TObject("TypeInfo", "kc_TypeInfo", true))
+        val customRuntimeSymbol = MirFunction(
+            "customIsInstance", "mk_is_instance", listOf(runtimeObject, runtimeTarget), TBoolean,
+            listOf(MirStmt.Return(MirExpr.BooleanConst(false))),
+        )
+        val classes = listOf(
+            MirClass("Base", "kc_Base", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("A", "kc_A", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("B", "kc_B", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("C", "kc_C", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+        )
+        fun assertOverrideCalls(ll: String) {
+            assertFalse("mkh_type_tag_kc_Base" in ll, ll)
+            assertFalse("memory(read)" in ll, ll)
+            val body = ll.substringAfter("define zeroext i1 @kt_caller(").substringBefore("\n}")
+            assertEquals(3, body.split("call zeroext i1 @mk_is_instance").size - 1, body)
+        }
 
-        val ll = LlvmEmitter.emit(module)
+        val localModule = MirModule("test.kt", listOf(customRuntimeSymbol, caller), classes)
+        assertOverrideCalls(LlvmEmitter.emit(localModule))
 
-        assertTrue("define zeroext i1 @mk_is_instance" in ll, ll)
-        assertFalse("memory(read)" in ll, ll)
+        val importedModule = MirModule("test.kt", listOf(caller), classes)
+        val importedLl = LlvmEmitter.emit(
+            importedModule,
+            externalFunctionSignatures = listOf(customRuntimeSymbol),
+            externalFunctions = true,
+        )
+        assertOverrideCalls(importedLl)
     }
 
     @Test

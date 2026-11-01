@@ -22,7 +22,7 @@ The classifier recognizes only canonical type-info globals emitted in the curren
 
 `mk_is_instance` receives LLVM `memory(read)` only for the exact runtime `bool(ptr, ptr)` signature, unless a module or imported signature defines that symbol. LLVM 18’s memory-effect encoding was checked in its local `ModRef.h`; the API attribute value is 21. The classifier remains `memory(none)`.
 
-The family planner indexes superclass children once and stops after nine visited family nodes, so over-budget families fall back without scanning every descendant. A single compiler self-build run was 30.38 s with the baseline compiler and 30.60 s with the candidate; retired instructions were 152,040,924 and 152,047,111. The comparison is essentially flat but has only one run per compiler.
+The family planner indexes superclass children once and stops after nine visited family nodes, so over-budget families fall back without scanning every descendant. A single compiler self-build run was 30.38 s with the baseline compiler and 30.60 s with the candidate. This is essentially flat, but has only one run per compiler. I omitted the macOS `time -lp` instruction counters because their units and provenance were not comparable to the earlier 47B profiler count.
 
 Validation: backend tests passed 95/95. The C and LLVM API end-to-end fixture passed with source stdlib; LLVM API also passed with precompiled `.mlib` stdlib. The suites were run separately because the test harness uses the same temporary basename for each backend.
 
