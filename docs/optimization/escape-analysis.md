@@ -28,7 +28,7 @@ Applications use LLVM API O3, runtime C O2 and matched link flags. C references 
 
 The storage fusion reduced retired instructions from 7.159B to 6.199B (13.4%), while the wall-time change was only 2.3% with overlapping ranges. A large sparse-array control found effectively flat instruction counts and RSS. Sanitizer, pooled-allocator, plain-malloc and statistics configurations passed focused ownership tests. Fresh full integrated validation remains pending.
 
-The current type-classification prototype recognizes canonical local type-info addresses and falls back to the original runtime traversal for unknown or foreign types. It does not assume source-final classes can never have foreign subclasses. Its latest five-way pilot measured 0.41094 s baseline, 0.39810 s classifier only, and 0.39313 s classifier plus an exact read-only runtime declaration, against C at 0.31891 s: **1.233 times C, still above target**. Review and integration are pending; these are pilot results, not a completed outcome.
+The current type-classification prototype recognizes canonical local type-info addresses and falls back to the original runtime traversal for unknown or foreign types. It does not assume source-final classes can never have foreign subclasses. Its latest five-way pilot measured 0.41094 s baseline, 0.39810 s classifier only, and 0.39313 s classifier plus an exact read-only runtime declaration, against C at 0.31891 s: **1.233 times C, still above target**. The source and foreign-override fix have passed independent review and 95 backend tests and are integrated on the campaign branch. Broader integrated validation remains pending; these are pilot results, not a completed outcome.
 
 ## Accounting limits
 
