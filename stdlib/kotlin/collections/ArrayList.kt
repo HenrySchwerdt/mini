@@ -19,7 +19,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     private var length: Int = 0
 
     public constructor() {
-        array = refArrayNew(10)
+        array = refArrayNew(4)
     }
 
     public constructor(initialCapacity: Int) {
