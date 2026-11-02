@@ -54,29 +54,7 @@ try {
         } finally { Pop-Location }
     } finally { Pop-Location }
 
-    # Exercise the native host process contract independently of Mini's Kotlin layer.
-    $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-    $runtime = Join-Path $root 'runtime'
-    $host = Join-Path $root 'compiler/mini-tool/host'
-    $fixture = Join-Path $host 'tests/windows_host_test.c'
-    if (-not (Test-Path -LiteralPath $fixture)) { throw "Windows host fixture missing: $fixture" }
-    $runtimeSources = @(Get-ChildItem -LiteralPath (Join-Path $runtime 'src') -Filter '*.c' -File |
-        Where-Object { $_.Name -ne 'entry.c' } | Sort-Object Name | ForEach-Object FullName)
-    $hostWork = Join-Path $work 'host fixture Ω 😀'
-    New-Item -ItemType Directory -Path $hostWork | Out-Null
-    $hostExe = Join-Path $hostWork 'windows_host_test.exe'
-    $hostArgs = @('--target=x86_64-pc-windows-msvc', '-std=gnu17', '-Wall', '-Wextra', '-Werror',
-        "-I$(Join-Path $runtime 'include')", "-I$host", (Join-Path $host 'mini_host.c'), $fixture) + $runtimeSources + @('-o', $hostExe)
-    Write-Host ('clang ' + ($hostArgs -join ' '))
-    & $cc @hostArgs
-    if ($LASTEXITCODE -ne 0) { throw "Windows host fixture compile failed with exit code $LASTEXITCODE" }
-    $hostOut = Join-Path $hostWork 'host.stdout'
-    $hostErr = Join-Path $hostWork 'host.stderr'
-    $hostProcess = Start-Process -FilePath $hostExe -WorkingDirectory $hostWork -NoNewWindow -Wait -PassThru -RedirectStandardOutput $hostOut -RedirectStandardError $hostErr
-    if ($hostProcess.ExitCode -ne 0) { throw "Windows host fixture exited with $($hostProcess.ExitCode): $([IO.File]::ReadAllText($hostErr))" }
-    if (([IO.File]::ReadAllText($hostOut) -replace "`r`n", "`n") -notmatch 'Windows host argv/env/cwd/dual-stream/exit/error tests passed\.') {
-        throw 'Windows host fixture success output was missing.'
-    }
+
 } finally {
     foreach ($name in @('MINI_ROOT', 'MINIC_NATIVE', 'MINI_CC')) {
         if ($null -eq $savedEnv[$name]) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }

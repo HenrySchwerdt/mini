@@ -222,7 +222,18 @@ static wchar_t *mh_environment(wchar_t **extra,size_t count,wchar_t **path) {
 /* Always quote each argument, applying the MS CRT backslash/quote rules. */
 static wchar_t *mh_command(wchar_t **args,size_t count) {
     size_t cap=1;
-    for(size_t i=0;i<count;i++){size_t n=wcslen(args[i]);if(cap > 32764 || n>(32767-cap-3)/2){SetLastError(ERROR_BAD_LENGTH);return NULL;}cap+=2*n+3;}
+    for (size_t i=0; i<count; i++) {
+        size_t n=2+(i?1:0), slashes=0;
+        for (const wchar_t *p=args[i]; *p; p++) {
+            n++;
+            if (*p==L'\\') slashes++;
+            else { if (*p==L'"') n+=slashes+1; slashes=0; }
+            if (n>32767) { SetLastError(ERROR_BAD_LENGTH); return NULL; }
+        }
+        n+=slashes; /* Double backslashes immediately before the closing quote. */
+        if (n>32768-cap) { SetLastError(ERROR_BAD_LENGTH); return NULL; }
+        cap+=n;
+    }
     wchar_t *s=mh_alloc(cap*sizeof *s),*w=s;
     for(size_t i=0;i<count;i++) {
         if(i)*w++=L' ';*w++=L'"';size_t slashes=0;

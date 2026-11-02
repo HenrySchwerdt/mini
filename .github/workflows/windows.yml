@@ -39,6 +39,11 @@ jobs:
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-runtime.log" -Force
           try { ./scripts/windows/test-runtime.ps1 } finally { Stop-Transcript }
+      - name: Native host process contract tests
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-host.log" -Force
+          try { ./scripts/windows/test-host.ps1 } finally { Stop-Transcript }
       - name: Download and verify portable 0.7.0 C seed
         shell: pwsh
         run: |
