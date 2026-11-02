@@ -33,6 +33,17 @@ class EmitterTest {
         assertTrue(Mangling.function("", "f", listOf(TInt)) != Mangling.function("", "f", listOf(TString)))
     }
 
+    @Test
+    fun typeInfoNamesUseEscapedUtf8Literals() {
+        val name = "D:\\Native\"\n?7é😀"
+        val expected = "\"D:\\134Native\\042\\012\\0777\\303\\251\\360\\237\\230\\200\""
+        for (isInterface in listOf(false, true)) {
+            val cls = mini.backend.MirClass(name, "kc_test", isInterface, null, emptyList(), emptyList(), emptyList(), emptyList())
+            val c = CEmitter.emit(MirModule("test.kt", emptyList(), classes = listOf(cls)))
+            assertTrue("kc_test_ti = {$expected," in c, c)
+        }
+    }
+
     private fun module(vararg f: MirFunction) = MirModule("test.kt", f.toList())
 
     @Test

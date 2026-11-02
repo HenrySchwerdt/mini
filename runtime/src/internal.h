@@ -8,6 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if defined(_WIN32)
+/* `entry.c` owns a converted UTF-16 argv for the process lifetime. B1 borrows
+ * this vector so Kotlin `main(args)` can preserve Windows UTF-16 code units. */
+void mk_b1_set_args_utf16(int argc, const MkChar *const *argv);
+#endif
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
 #endif
