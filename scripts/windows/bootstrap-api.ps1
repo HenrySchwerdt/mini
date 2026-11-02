@@ -96,7 +96,8 @@ foreach ($object in $runtimeObjects) {
             $symbol = $Matches[1]
             # COFF also exposes compiler-generated COMDAT string constants.
             # Only the named Mini runtime ABI is needed by generated modules.
-            if ($symbol.StartsWith('mk_', [StringComparison]::Ordinal) -and $symbol -cne 'mk_pending_exception') {
+            $runtimeAbi = $symbol.StartsWith('mk_', [StringComparison]::Ordinal) -or $symbol.StartsWith('Mk', [StringComparison]::Ordinal)
+            if ($runtimeAbi -and $symbol -cne 'mk_pending_exception') {
                 [void]$exports.Add($symbol)
             }
         }
@@ -124,7 +125,7 @@ function Build-ApiStage([string]$Stage, [string]$InputFile) {
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "CMake did not produce expected executable: $exe" }
     $peExports = @(& $dumpbin.Source /nologo /exports $exe 2>&1)
     if ($LASTEXITCODE -ne 0) { throw "Cannot inspect stage$Stage PE exports." }
-    foreach ($required in @('LLVMOrcThreadSafeContextGetContext', 'mk_pending_slot', 'mk_string_alloc')) {
+    foreach ($required in @('LLVMOrcThreadSafeContextGetContext', 'mk_pending_slot', 'mk_string_alloc', 'MkNullPointerException_ti', 'MkThrowable_new', 'MkIntArray_ti')) {
         if (($peExports -join "`n") -notmatch "(?m)\s+$([regex]::Escape($required))\s*$") {
             throw "Stage$Stage is missing required PE export $required`: $($peExports -join "`n")"
         }
