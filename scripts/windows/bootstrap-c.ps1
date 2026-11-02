@@ -29,9 +29,11 @@ $compilerSources = @()
 foreach ($dir in $compilerDirs) {
     $compilerSources += Get-ChildItem -LiteralPath (Join-Path $root $dir) -Filter '*.kt' -File -Recurse | ForEach-Object FullName
 }
-$compilerSources = [string[]]$compilerSources
+# The 0.7 seed extracts source basenames using forward slashes; pass portable
+# source argument paths to every stage instead of altering emitted C afterward.
+$compilerSources = [string[]]@($compilerSources | ForEach-Object { $_.Replace('\', '/') })
 [Array]::Sort($compilerSources, [StringComparer]::Ordinal)
-$stdlibSources = [string[]]@(Get-ChildItem -LiteralPath (Join-Path $root 'stdlib') -Filter '*.kt' -File -Recurse | ForEach-Object FullName)
+$stdlibSources = [string[]]@(Get-ChildItem -LiteralPath (Join-Path $root 'stdlib') -Filter '*.kt' -File -Recurse | ForEach-Object { $_.FullName.Replace('\', '/') })
 [Array]::Sort($stdlibSources, [StringComparer]::Ordinal)
 if ($compilerSources.Count -eq 0 -or $stdlibSources.Count -eq 0) { throw 'Compiler or stdlib Kotlin source list is empty.' }
 
@@ -112,10 +114,10 @@ Write-Host 'Module source/import smoke passed.'
 $unicodeInputDir = Join-Path $work 'Input Δ 😀 path'
 $unicodeOutputDir = Join-Path $work 'Output Ω 😀 path'
 New-Item -ItemType Directory -Force -Path $unicodeInputDir, $unicodeOutputDir | Out-Null
-$unicodeSource = Join-Path $unicodeInputDir 'hello λ 😀.kt'
+$unicodeSource = Join-Path $unicodeInputDir 'Native Unicode λ 😀.kt'
 $unicodeC = Join-Path $unicodeOutputDir 'hello.c'
 $unicodeExe = Join-Path $unicodeOutputDir 'hello Ω 😀.exe'
-[IO.File]::WriteAllText($unicodeSource, 'fun main() { println("ok Ω 😀") }' + "`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($unicodeSource, 'fun answer(): String = "ok Ω 😀"' + "`n" + 'fun main() { val f: () -> String = ::answer; println(f()) }' + "`n", [Text.UTF8Encoding]::new($false))
 Invoke-Mini $stage3 (@('-o', $unicodeC, $unicodeSource, '--stdlib') + $stdlibSources)
 Build-Stage $unicodeC $unicodeExe
 $unicodeOut = Join-Path $unicodeOutputDir 'hello.stdout'
