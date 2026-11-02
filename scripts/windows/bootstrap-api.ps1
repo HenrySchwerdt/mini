@@ -65,8 +65,9 @@ $apiSources += Get-SortedSources 'compiler/lower/src'
 $apiSources += Get-SortedSources 'compiler/frontend/src'
 $apiSources += Get-SortedSources 'compiler/backend/src'
 $apiSources += Get-SortedSources 'compiler/llvm-c/src'
+[string[]]$apiSources = $apiSources
 [Array]::Sort($apiSources, [StringComparer]::Ordinal)
-$stdlibSources = Get-SortedSources 'stdlib'
+[string[]]$stdlibSources = Get-SortedSources 'stdlib'
 [Array]::Sort($stdlibSources, [StringComparer]::Ordinal)
 if ($apiSources.Count -eq 0 -or $stdlibSources.Count -eq 0) { throw 'API compiler or stdlib Kotlin source list is empty.' }
 
