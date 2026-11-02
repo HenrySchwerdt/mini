@@ -92,7 +92,9 @@ jobs:
             New-Item -ItemType Directory -Path $seed | Out-Null
             $archive = Join-Path $seed $name
             Invoke-WebRequest -Uri "$base/$name" -OutFile $archive
-            $sums = (Invoke-WebRequest -Uri "$base/SHA256SUMS").Content
+            $sumFile = Join-Path $seed 'SHA256SUMS'
+            Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sumFile
+            $sums = Get-Content -LiteralPath $sumFile -Raw
             $entries = @($sums -split "`n" | Where-Object { $_ -match "^[0-9a-fA-F]{64}\s+$([regex]::Escape($name))\s*$" })
             if ($entries.Count -ne 1) { throw 'Expected exactly one portable seed checksum entry.' }
             $expected = ($entries[0] -split '\s+')[0]
