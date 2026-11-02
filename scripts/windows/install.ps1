@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # Experimental C-only Windows source install. Run from a cloned Mini checkout.
 param(
     [string]$Prefix = '',
@@ -18,6 +19,11 @@ $seedName = "mini-$SeedVersion-bootstrap-c"
 $archiveName = "$seedName.tar.gz"
 $baseUrl = "https://github.com/HenrySchwerdt/mini/releases/download/v$SeedVersion"
 $tempBase = if ($env:TEMP) { $env:TEMP } else { [IO.Path]::GetTempPath() }
+$parent = Split-Path -Parent $prefixPath
+if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent | Out-Null }
+# Stage beside the destination: directory moves across Windows volumes are not supported.
+$package = Join-Path $parent ('.mini-install-stage-' + [IO.Path]::GetRandomFileName())
+if (Test-Path -LiteralPath $package) { throw "Staging path already exists: $package" }
 $work = Join-Path $tempBase ("mini-windows-install-" + [IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $work | Out-Null
 
@@ -43,20 +49,18 @@ try {
 
     $bootstrapWork = Join-Path $work 'bootstrap'
     & (Join-Path $PSScriptRoot 'bootstrap-c.ps1') -SeedDirectory $seedDirectory -WorkDirectory $bootstrapWork
-    $package = Join-Path $work 'package'
     & (Join-Path $PSScriptRoot 'build-mini.ps1') -MinicNative (Join-Path $bootstrapWork 'stage3.exe') -OutputDirectory $package
 
     # The build directory contains intermediate C and object files, which are not part of the install.
     Remove-Item -LiteralPath (Join-Path $package 'work') -Recurse -Force
-    $parent = Split-Path -Parent $prefixPath
-    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent | Out-Null }
     if (Test-Path -LiteralPath $prefixPath) { throw "Refusing to overwrite existing install prefix: $prefixPath" }
-    Move-Item -LiteralPath $package -Destination $prefixPath
+    [IO.Directory]::Move($package, $prefixPath)
 
     Write-Host "Installed experimental C-only Mini under $prefixPath"
     Write-Host 'No system or user PATH settings were changed. To add it to this PowerShell session:'
     Write-Host ('$env:PATH = "' + (Join-Path $prefixPath 'bin') + ';$env:PATH"')
     Write-Host 'This source install does not include LLVM API or REPL support and is not a Windows release asset.'
 } finally {
+    if (Test-Path -LiteralPath $package) { Remove-Item -LiteralPath $package -Recurse -Force }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }

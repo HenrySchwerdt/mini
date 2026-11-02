@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # Build a C-backend Windows `mini.exe` and stage a source-only, C-only install.
 param(
     [Parameter(Mandatory = $true)][string]$MinicNative,

@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # Native Windows host process contract tests (independent of compiler bootstrap).
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

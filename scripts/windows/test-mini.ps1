@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # Smoke-test the experimental Windows C-only staged toolchain.
 param([Parameter(Mandatory = $true)][string]$MiniHome)
 Set-StrictMode -Version Latest
@@ -64,3 +65,6 @@ try {
 }
 
 Write-Host 'Windows C-only mini install smoke passed.'
+# The compiler-error fixture deliberately returned 1 and was asserted above.
+# Report this test script's success rather than leaking that expected child status.
+$global:LASTEXITCODE = 0

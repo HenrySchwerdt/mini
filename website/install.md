@@ -5,13 +5,15 @@ description: Install mini and minic together, understand which command to use, a
 
 # Install Mini
 
-One installation gives you both **`mini`**, the project tool, and **`minic`**, the compiler driver. You do not choose between two downloads. Both use Mini's native compiler and standard library.
+The Linux and macOS release installation gives you both **`mini`**, the project tool, and **`minic`**, the compiler driver. You do not choose between two downloads. Both use Mini's native compiler and standard library.
 
 ::: tip Try it first
 You do not need to install anything to try Mini: the [tutorial](/learn/) and the [playground](/playground) run the real compiler in your browser.
 :::
 
 ## One command
+
+For Linux and macOS, use the command below. For native Windows x64, use the [experimental PowerShell source installer](#experimental-windows-source-install).
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
@@ -125,9 +127,10 @@ Windows has no prebuilt release archive. An experimental source install is avail
 
 ### Experimental Windows source install
 
-This path builds the compiler from a checksum-verified published C seed and stages the native `mini.exe` project tool with the C backend. It requires Windows x64, PowerShell, Git, network access, Visual Studio 2022 C++ build tools with the LLVM Clang component and a Windows SDK. The script initializes the Visual Studio developer environment for its build commands.
+This path builds the compiler from a checksum-verified published C seed and stages the native `mini.exe` project tool with the C backend. It requires Windows x64, PowerShell 7 (`pwsh`), Git, network access, Visual Studio 2022 C++ build tools with the LLVM Clang component and a Windows SDK. The script initializes the Visual Studio developer environment for its build commands.
 
 ```powershell
+# Run in PowerShell 7.
 git clone https://github.com/HenrySchwerdt/mini.git
 cd mini
 .\scripts\windows\install.ps1
