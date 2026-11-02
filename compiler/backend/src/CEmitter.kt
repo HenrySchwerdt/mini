@@ -269,7 +269,7 @@ object CEmitter {
                     out.append(c.interfaces.joinToString(", ") { "&${it}_ti" }).append("};\n")
                 }
                 if (c.isInterface) {
-                    out.append("static const MkTypeInfo ${c.cName}_ti = {\"${c.qualifiedName}\", 0, NULL, NULL, NULL, 0, $ifs, ${c.interfaces.size}};\n\n")
+                    out.append("static const MkTypeInfo ${c.cName}_ti = {${cStringLiteral(c.qualifiedName)}, 0, NULL, NULL, NULL, 0, $ifs, ${c.interfaces.size}};\n\n")
                     continue
                 }
                 // layout
@@ -306,7 +306,7 @@ object CEmitter {
                 out.append("static void *const ${c.cName}_vt[] = {${vt.joinToString(", ")}};\n")
                 val superTi = if (sup == null) "&mk_type_Any" else "&${sup.cName}_ti"
                 out.append(
-                    "static const MkTypeInfo ${c.cName}_ti = {\"${c.qualifiedName}\", sizeof(struct ${c.cName}), $superTi, $dispose, " +
+                    "static const MkTypeInfo ${c.cName}_ti = {${cStringLiteral(c.qualifiedName)}, sizeof(struct ${c.cName}), $superTi, $dispose, " +
                         "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}};\n",
                 )
                 if (c.objectCtor != null) {
@@ -1090,6 +1090,21 @@ object CEmitter {
                 to == TChar && from == TDouble -> "((MkChar)(uint16_t)(uint32_t)mkh_d2i($a))"
                 else -> throw EmitError("conversion $from -> $to")
             }
+        }
+
+        /** A narrow UTF-8 C literal independent of source encoding and greedy hex escapes. */
+        fun cStringLiteral(value: String): String {
+            val sb = StringBuilder("\"")
+            for (b in mini.backend.llvm.IrStrings.utf8(value)) {
+                if (b in 0x20..0x7E && b != 34 && b != 92 && b != 63) sb.append(b.toChar())
+                else {
+                    // Exactly three octal digits: the following character cannot extend the escape.
+                    sb.append('\\').append(('0'.code + (b shr 6)).toChar())
+                        .append(('0'.code + ((b shr 3) and 7)).toChar())
+                        .append(('0'.code + (b and 7)).toChar())
+                }
+            }
+            return sb.append('"').toString()
         }
 
         fun utf16Literal(value: String): String {

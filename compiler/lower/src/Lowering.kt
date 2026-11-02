@@ -92,7 +92,9 @@ private fun frontDiag(path: String, text: String, offset: Int, message: String):
 }
 
 fun fileName(path: String): String {
-    val i = path.lastIndexOf('/')
+    val slash = path.lastIndexOf('/')
+    val backslash = path.lastIndexOf('\\')
+    val i = if (slash > backslash) slash else backslash
     return if (i < 0) path else path.substring(i + 1)
 }
 

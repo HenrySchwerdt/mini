@@ -71,10 +71,7 @@ class IrFile(val path: String, val text: String, val packageFqName: String, val 
 
     /** the file name without directories */
     val name: String
-        get() {
-            val i = path.lastIndexOf('/')
-            return if (i < 0) path else path.substring(i + 1)
-        }
+        get() = fileName(path)
 
     fun lineCol(offset: Int): String = line(offset).toString() + ":" + col(offset)
 
