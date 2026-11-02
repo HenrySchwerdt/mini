@@ -32,6 +32,12 @@ static wchar_t *mh_wide(const MkString *s) {
     }
     r[s->length] = 0; return r;
 }
+/* Apply only to API path parameters, never to argv or environment values. */
+static wchar_t *mh_path_separators(wchar_t *p) {
+    if (p) for (wchar_t *w=p; *w; w++) if (*w == L'/') *w = L'\\';
+    return p;
+}
+static wchar_t *mh_path(const MkString *s) { return mh_path_separators(mh_wide(s)); }
 static MkString *mh_from_wide(const wchar_t *s, size_t n) {
     if (n > INT32_MAX) mk_panic("OutOfMemoryError");
     MkString *r = mk_string_alloc((MkInt)n);
@@ -78,7 +84,7 @@ MkInt mh_terminal_width(void) {
 MkLong mh_now_millis(void) { return (MkLong)GetTickCount64(); }
 MkInt mh_kind(const MkString *p) { return mk_b1_file_kind(p); }
 static int mh_attrs(const MkString *s, WIN32_FILE_ATTRIBUTE_DATA *a) {
-    wchar_t *p = mh_wide(s);
+    wchar_t *p = mh_path(s);
     int ok = p && GetFileAttributesExW(p, GetFileExInfoStandard, a);
     free(p); return ok;
 }
@@ -129,11 +135,11 @@ static MkInt mh_remove_wide(const wchar_t *p) {
     (void)RemoveDirectoryW(p); return count;
 }
 MkInt mh_remove(const MkString *s) {
-    wchar_t *p = mh_wide(s); MkInt n = p ? mh_remove_wide(p) : 0; free(p); return n;
+    wchar_t *p = mh_path(s); MkInt n = p ? mh_remove_wide(p) : 0; free(p); return n;
 }
 void mh_make_executable(const MkString *p) { (void)p; }
 MkString *mh_realpath(const MkString *s) {
-    wchar_t *p = mh_wide(s);
+    wchar_t *p = mh_path(s);
     if (!p) return NULL;
     HANDLE h = CreateFileW(p, FILE_READ_ATTRIBUTES, FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
     free(p); if (h == INVALID_HANDLE_VALUE) return NULL;
@@ -276,7 +282,7 @@ MkInt mh_exec(const MkString *argvList,const MkString *cwd,const MkString *envLi
     if(g_out)mk_release(&g_out->header);if(g_err)mk_release(&g_err->header);if(g_start_error)mk_release(&g_start_error->header);
     g_out=g_err=g_start_error=NULL;
     MkInt result=-1;DWORD error=0;
-    wchar_t *argtext=mh_wide(argvList),*envtext=mh_wide(envList),*dir=mh_wide(cwd),*block=NULL,*cmd=NULL,*exe=NULL,*path=NULL;
+    wchar_t *argtext=mh_wide(argvList),*envtext=mh_wide(envList),*dir=mh_path(cwd),*block=NULL,*cmd=NULL,*exe=NULL,*path=NULL;
     wchar_t **args=NULL,**extra=NULL;size_t argc=0,envc=0;
     HANDLE io[3]={INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE};
     LPPROC_THREAD_ATTRIBUTE_LIST attrs=NULL;int initialized=0;
@@ -286,7 +292,7 @@ MkInt mh_exec(const MkString *argvList,const MkString *cwd,const MkString *envLi
     if(!dir){MkString *s=mh_cwd();dir=mh_wide(s);mk_release(&s->header);}
     block=mh_environment(extra,envc,&path);if(!block){error=GetLastError();goto done;}
     cmd=mh_command(args,argc);if(!cmd){error=GetLastError();goto done;}
-    exe=mh_find_exe(args[0],dir,path);if(!exe){error=GetLastError();goto done;}
+    exe=mh_path_separators(mh_find_exe(args[0],dir,path));if(!exe){error=GetLastError();goto done;}
     if(capture){SECURITY_ATTRIBUTES sa={sizeof sa,NULL,TRUE};io[0]=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,0,NULL);io[1]=mh_temp();io[2]=mh_temp();}
     else {io[0]=mh_duplicate(GetStdHandle(STD_INPUT_HANDLE));io[1]=mh_duplicate(GetStdHandle(STD_OUTPUT_HANDLE));io[2]=mh_duplicate(GetStdHandle(STD_ERROR_HANDLE));}
     for(int i=0;i<3;i++)if(io[i]==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}

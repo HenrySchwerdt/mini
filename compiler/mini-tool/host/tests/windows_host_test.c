@@ -35,6 +35,12 @@ int wmain(int argc,wchar_t **argv) {
     }
     check(mh_os()==2,"Windows detection");
     MkString *self=mh_exe_path(),*cwd=mh_cwd(),*empty=str(L""),*args=argv_list(self),*env=str(L"MINI_HOST_TEST=new Ω 😀");
+    wchar_t nativeSelf[32768],extended[32768];
+    DWORD selfLen=GetModuleFileNameW(NULL,nativeSelf,32768);check(selfLen&&selfLen<32760,"module path for extended API test");
+    check(swprintf(extended,32768,L"//?/%ls",nativeSelf)>0,"extended path");
+    for(wchar_t *p=extended;*p;p++)if(*p==L'\\')*p=L'/';
+    MkString *ext=str(extended);check(mh_size(ext)>0,"extended path size");
+    MkString *real=mh_realpath(ext);check(real&&real->length>0,"extended path canonicalization");release(real);release(ext);
     check(SetEnvironmentVariableW(L"MINI_HOST_TEST",L"old"),"parent environment setup");
     check(mh_exec(args,cwd,env,1)==7,"child exit code");outputs();
     wchar_t value[100];check(GetEnvironmentVariableW(L"MINI_HOST_TEST",value,100)&&!wcscmp(value,L"old"),"parent environment unchanged");
