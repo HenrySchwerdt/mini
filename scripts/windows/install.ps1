@@ -59,7 +59,7 @@ try {
     Write-Host "Installed experimental C-only Mini under $prefixPath"
     Write-Host 'No system or user PATH settings were changed. To add it to this PowerShell session:'
     Write-Host ('$env:PATH = "' + (Join-Path $prefixPath 'bin') + ';$env:PATH"')
-    Write-Host 'This source install does not include LLVM API or REPL support and is not a Windows release asset.'
+    Write-Host 'This source install uses the C backend and does not include LLVM API or REPL support.'
 } finally {
     if (Test-Path -LiteralPath $package) { Remove-Item -LiteralPath $package -Recurse -Force }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }

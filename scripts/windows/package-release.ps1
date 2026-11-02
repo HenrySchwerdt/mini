@@ -65,7 +65,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'NOTICE') -Destination $stageRoot
 
     # Point Compress-Archive at the one named root folder (not its contents).
-    Compress-Archive -Path $stageRoot -DestinationPath $zipPath -CompressionLevel Optimal
+    Compress-Archive -LiteralPath $stageRoot -DestinationPath $zipPath -CompressionLevel Optimal
     if (-not (Test-Path -LiteralPath $zipPath -PathType Leaf)) { throw "ZIP creation did not produce $zipPath" }
     Write-Host "Created $zipPath"
     Write-Host "Archive root: mini-$Version-windows-x64/"
