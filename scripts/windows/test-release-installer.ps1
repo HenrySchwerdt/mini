@@ -43,6 +43,11 @@ function Get-Sha256([string]$Path) {
 }
 
 try {
+    $sourceInstaller = Join-Path $repoRoot 'scripts/windows/install.ps1'
+    $invalidSeedPrefix = Join-Path $testRoot 'must-not-install-invalid-seed'
+    Assert-Throws { & $sourceInstaller -SeedVersion '../escape' -Prefix $invalidSeedPrefix } 'Source installer accepted a traversal seed version.' 'Invalid seed version:*'
+    if (Test-Path -LiteralPath $invalidSeedPrefix) { throw 'Invalid seed version created an install prefix.' }
+
     $positiveArchive = Join-Path $testRoot $archiveName
     Copy-Item -LiteralPath $archivePath -Destination $positiveArchive
     Copy-Item -LiteralPath $sourceSums -Destination (Join-Path $testRoot 'SHA256SUMS')

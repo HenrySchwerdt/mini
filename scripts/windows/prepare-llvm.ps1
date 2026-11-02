@@ -29,14 +29,6 @@ foreach ($tool in @(@{ Name = 'curl'; Path = $curl }, @{ Name = '7-Zip'; Path = 
     Write-Host "$($tool.Name): $($tool.Path)"
 }
 
-$metadata = Invoke-RestMethod -Uri $apiUri -Headers @{ Accept = 'application/vnd.github+json' }
-if ($metadata.id -ne $assetId -or $metadata.name -cne $assetName -or [long]$metadata.size -ne $assetSize) {
-    throw "GitHub release asset metadata mismatch: id=$($metadata.id), name=$($metadata.name), size=$($metadata.size)"
-}
-if ([string]$metadata.browser_download_url -notlike "https://github.com/llvm/llvm-project/releases/download/$releaseTag/*") {
-    throw "Unexpected LLVM release asset URL: $($metadata.browser_download_url)"
-}
-
 $Prefix = [IO.Path]::GetFullPath($Prefix)
 $config = Join-Path $Prefix 'lib/cmake/llvm/LLVMConfig.cmake'
 $orcHeader = Join-Path $Prefix 'include/llvm-c/Orc.h'
@@ -45,6 +37,17 @@ $manifestPath = Join-Path $Prefix 'asset-manifest.json'
 if (-not ((Test-Path -LiteralPath $config) -and (Test-Path -LiteralPath $orcHeader))) {
     if (Test-Path -LiteralPath $Prefix) {
         throw "LLVM prefix exists but is incomplete; choose a fresh prefix or repair the CI cache: $Prefix"
+    }
+
+    $metadataHeaders = @{ Accept = 'application/vnd.github+json' }
+    $apiToken = if ($env:GH_TOKEN) { $env:GH_TOKEN } else { $env:GITHUB_TOKEN }
+    if (-not [string]::IsNullOrWhiteSpace($apiToken)) { $metadataHeaders.Authorization = "Bearer $apiToken" }
+    $metadata = Invoke-RestMethod -Uri $apiUri -Headers $metadataHeaders
+    if ($metadata.id -ne $assetId -or $metadata.name -cne $assetName -or [long]$metadata.size -ne $assetSize) {
+        throw "GitHub release asset metadata mismatch: id=$($metadata.id), name=$($metadata.name), size=$($metadata.size)"
+    }
+    if ([string]$metadata.browser_download_url -notlike "https://github.com/llvm/llvm-project/releases/download/$releaseTag/*") {
+        throw "Unexpected LLVM release asset URL: $($metadata.browser_download_url)"
     }
 
     $prefixParent = Split-Path -Parent $Prefix

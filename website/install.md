@@ -159,7 +159,15 @@ mini.exe --version
 
 For later sessions, open **Developer PowerShell for Visual Studio 2022** so Clang can find the MSVC libraries and Windows SDK, then add the install directory to that session’s PATH as above.
 
-The default prefix is `%USERPROFILE%\.mini-windows`. Pass `-Prefix <path>` to choose another new directory; the installer refuses to overwrite an existing prefix and does not change system or user PATH settings. This is an experimental source install, not a Windows release download. It uses the C backend and does not include LLVM API or REPL support.
+The default prefix is `%USERPROFILE%\.mini-windows`. Pass `-Prefix <path>` to choose another new directory; the installer refuses to overwrite an existing prefix and does not change system or user PATH settings. This is an experimental source install, not a Windows release download. By default it uses the C backend and does not include LLVM API or REPL support.
+
+For the experimental LLVM API compiler and native REPL from the current source checkout, select that backend explicitly:
+
+```powershell
+.\scripts\windows\install.ps1 -Backend llvm-api -Prefix "$env:USERPROFILE\.mini-windows-api"
+```
+
+This source build additionally needs **7-Zip, CMake 3.24 or newer, and Ninja**. It downloads the official LLVM 18 development SDK (about 1 GB); the resulting compiler links LLVM statically, so the installed toolchain does not need that SDK to run. `mini run`, `mini build` and `mini test` use the LLVM API by default in this installation, `mini repl` starts the native REPL, and `mini run --backend c` selects the C fallback. Windows threads are not supported. The published 0.8.0 ZIP remains C-only.
 
 ## What the installer does
 

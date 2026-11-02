@@ -38,6 +38,8 @@ jobs:
           path: ${{ runner.temp }}/mini-llvm18-prefix
           key: windows-2022-llvm18.1.8-asset175624214-v1
       - name: Acquire and probe LLVM static C API and ORC
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -85,33 +87,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Start-Transcript -Path (Join-Path $env:RUNNER_TEMP 'mini-windows-llvm-bootstrap.log') -Force
           try {
-            . ./scripts/windows/setup.ps1
-            $clang = Initialize-MiniWindowsToolchain
-            $version = '0.8.0'
-            $name = "mini-$version-bootstrap-c.tar.gz"
-            $base = "https://github.com/HenrySchwerdt/mini/releases/download/v$version"
-            $seed = Join-Path $env:RUNNER_TEMP 'mini-api-seed'
-            New-Item -ItemType Directory -Path $seed | Out-Null
-            $archive = Join-Path $seed $name
-            Invoke-WebRequest -Uri "$base/$name" -OutFile $archive
-            $sumFile = Join-Path $seed 'SHA256SUMS'
-            Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sumFile
-            $sums = Get-Content -LiteralPath $sumFile -Raw
-            $entries = @($sums -split "`n" | Where-Object { $_ -match "^[0-9a-fA-F]{64}\s+$([regex]::Escape($name))\s*$" })
-            if ($entries.Count -ne 1) { throw 'Expected exactly one portable seed checksum entry.' }
-            $expected = ($entries[0] -split '\s+')[0]
-            if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $expected) { throw 'Portable seed checksum mismatch.' }
-            tar.exe -xzf $archive -C $seed
-            if ($LASTEXITCODE -ne 0) { throw 'Portable seed extraction failed.' }
-            $seedC = Join-Path $seed "mini-$version-bootstrap-c/minic.c"
-            $stage0 = Join-Path $seed 'stage0.exe'
-            $runtime = @(Get-ChildItem -LiteralPath runtime/src -Filter '*.c' -File | Sort-Object Name | ForEach-Object FullName)
-            & $clang --target=x86_64-pc-windows-msvc -std=c17 -O1 -w -Iruntime/include $seedC @runtime -o $stage0
-            if ($LASTEXITCODE -ne 0) { throw 'Portable C seed compiler build failed.' }
-            ./scripts/windows/bootstrap-api.ps1 -Stage0 $stage0 -LLVMPrefix (Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix')
-            $apiCompiler = Join-Path $env:RUNNER_TEMP 'mini-windows-llvm-api-bootstrap/stage3-build/minic-api.exe'
             $install = Join-Path $env:RUNNER_TEMP 'Mini LLVM install Δ 😀'
-            ./scripts/windows/build-mini.ps1 -MinicNative $apiCompiler -OutputDirectory $install -Backend llvm-api
+            ./scripts/windows/install.ps1 -Prefix $install -Backend llvm-api -LLVMPrefix (Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix')
             ./scripts/windows/test-mini.ps1 -MiniHome $install
             $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
             $package = Join-Path $env:RUNNER_TEMP 'mini-api-package'
