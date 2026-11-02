@@ -123,7 +123,13 @@ No JDK is needed: the compiler is a native program that compiles itself.
 | Linux arm64 | `mini-<version>-linux-arm64.tar.gz` |
 | macOS on Apple silicon | `mini-<version>-macos-arm64.tar.gz` |
 
-Windows has no prebuilt release archive. An experimental source install is available for native Windows x64 using Visual Studio's LLVM Clang driver and MSVC CRT; it does not require WSL. Intel Macs have no prebuilt archive; [build from source](#build-from-source).
+An experimental Windows x64 C-backend ZIP is available with the 0.8.0 release. LLVM API and REPL are not included in that Windows package. An experimental source install is also available for native Windows x64 using Visual Studio's LLVM Clang driver and MSVC CRT; it does not require WSL. Intel Macs have no prebuilt archive; [build from source](#build-from-source).
+
+### Experimental Windows ZIP
+
+Download `mini-0.8.0-windows-x64.zip` and `SHA256SUMS` from [Mini 0.8.0 on GitHub](https://github.com/HenrySchwerdt/mini/releases/tag/v0.8.0). Verify the ZIP with `Get-FileHash -Algorithm SHA256` against its entry in `SHA256SUMS`, then extract it to a new directory. In Developer PowerShell for Visual Studio 2022, add the extracted `bin` directory to your session's PATH and run `mini.exe --version`.
+
+This package uses the **C backend** and requires Visual Studio's LLVM Clang component and Windows SDK to build programs. It provides the native project tool (`mini.exe`); the Unix `minic` shell wrapper, Windows LLVM API and Windows REPL are not included.
 
 ### Experimental Windows source install
 
