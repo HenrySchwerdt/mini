@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 param(
     [Parameter(Mandatory = $true)]
     [string]$Prefix
@@ -41,7 +42,7 @@ $manifestPath = Join-Path $Prefix 'asset-manifest.json'
 
 if (-not ((Test-Path -LiteralPath $config) -and (Test-Path -LiteralPath $orcHeader))) {
     if (Test-Path -LiteralPath $Prefix) {
-        Remove-Item -LiteralPath $Prefix -Recurse -Force
+        throw "LLVM prefix exists but is incomplete; choose a fresh prefix or repair the CI cache: $Prefix"
     }
 
     $prefixParent = Split-Path -Parent $Prefix

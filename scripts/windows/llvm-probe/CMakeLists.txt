@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(MiniWindowsLLVMProbe LANGUAGES CXX)
+project(MiniWindowsLLVMProbe LANGUAGES C CXX)
 
 find_package(LLVM 18.1.8 EXACT REQUIRED CONFIG)
 
@@ -23,5 +23,5 @@ endforeach()
 
 add_executable(mini-llvm-probe probe.cpp)
 target_include_directories(mini-llvm-probe SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
-target_compile_definitions(mini-llvm-probe PRIVATE ${LLVM_DEFINITIONS})
+add_definitions(${LLVM_DEFINITIONS})
 target_link_libraries(mini-llvm-probe PRIVATE ${MINI_LLVM_LIBS})
