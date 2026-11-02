@@ -94,7 +94,11 @@ foreach ($object in $runtimeObjects) {
     foreach ($line in $nmOutput) {
         if ($line -match '^([^\s]+)\s+([TDBR])(?:\s|$)') {
             $symbol = $Matches[1]
-            if ($symbol -cne 'mk_pending_exception') { [void]$exports.Add($symbol) }
+            # COFF also exposes compiler-generated COMDAT string constants.
+            # Only the named Mini runtime ABI is needed by generated modules.
+            if ($symbol.StartsWith('mk_', [StringComparison]::Ordinal) -and $symbol -cne 'mk_pending_exception') {
+                [void]$exports.Add($symbol)
+            }
         }
     }
 }
