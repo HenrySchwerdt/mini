@@ -12,7 +12,7 @@ message(STATUS "LLVM include directories: ${LLVM_INCLUDE_DIRS}")
 message(STATUS "LLVM library directory: ${LLVM_LIBRARY_DIRS}")
 message(STATUS "LLVM available libraries: ${LLVM_AVAILABLE_LIBS}")
 
-llvm_map_components_to_libnames(MINI_LLVM_LIBS core native orcjit passes x86 aarch64)
+llvm_map_components_to_libnames(MINI_LLVM_LIBS core native orcjit passes X86 AArch64)
 foreach(component IN LISTS MINI_LLVM_LIBS)
     if(NOT TARGET ${component})
         message(FATAL_ERROR "Missing imported LLVM component target: ${component}")

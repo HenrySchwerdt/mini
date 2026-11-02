@@ -11,7 +11,7 @@ endforeach()
 # Match the official LLVM development archive's release MSVC CRT. LLVM itself
 # is linked from static component archives; the Windows CRT remains shared.
 set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
-llvm_map_components_to_libnames(MINI_LLVM_LIBS core native orcjit passes x86 aarch64)
+llvm_map_components_to_libnames(MINI_LLVM_LIBS core native orcjit passes X86 AArch64)
 foreach(component IN LISTS MINI_LLVM_LIBS)
     if(NOT TARGET ${component})
         message(FATAL_ERROR "Missing imported LLVM component target: ${component}")
