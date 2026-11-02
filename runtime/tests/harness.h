@@ -75,7 +75,11 @@ static inline int t_aborts_with(void (*fn)(void *), void *arg, const char *needl
 }
 #define CHECK_ABORTS(fn, arg, needle) CHECK(t_aborts_with((fn), (arg), (needle)))
 #else
-#define CHECK_ABORTS(fn, arg, needle) ((void)0) /* no fork on Windows */
+/* No fork on Windows. Keep compile-time references to callbacks/arguments so
+ * -Werror does not reject the intentionally omitted death tests. Nothing is
+ * evaluated, executed, or counted as a successful assertion. */
+#define CHECK_ABORTS(fn, arg, needle) \
+    do { if (0) { (void)(fn); (void)(arg); (void)(needle); } } while (0)
 #endif
 
 #define TEST_DONE()                                                                     \
