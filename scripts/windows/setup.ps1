@@ -22,7 +22,9 @@ function Initialize-MiniWindowsToolchain {
 
     # This is the documented VS setup entry point; it configures the MSVC linker,
     # CRT and Windows SDK for clang's GNU-style driver.
-    & $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+    # The helper may write informational objects to the success pipeline. Keep
+    # those on the host stream so callers capture only the clang path.
+    & $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Host
 
     $version = & $clang --version 2>&1 | Select-Object -First 1
     if ($LASTEXITCODE -ne 0) { throw "clang.exe --version failed with exit code $LASTEXITCODE" }

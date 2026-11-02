@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Path $out | Out-Null
 
 $targetArgs = @('--target=x86_64-pc-windows-msvc', '-std=c17', '-O1', '-g', '-Wall', '-Wextra', '-Werror', '-D_CRT_SECURE_NO_WARNINGS', "-I$(Join-Path $runtime 'include')", "-I$(Join-Path $runtime 'src')")
 $runtimeSources = @(Get-ChildItem -LiteralPath (Join-Path $runtime 'src') -Filter '*.c' -File | Sort-Object Name | ForEach-Object FullName | Where-Object { [IO.Path]::GetFileName($_) -ne 'entry.c' })
-$excluded = @('test_alloc_small', 'test_threads')
+$excluded = @('test_alloc_small', 'test_threads', 'test_entry_args')
 $tests = @(Get-ChildItem -LiteralPath (Join-Path $runtime 'tests') -Filter 'test_*.c' -File | Sort-Object Name)
 
 function Invoke-Clang([string[]]$Arguments) {
@@ -34,7 +34,8 @@ Write-Host 'CHECK_ABORTS is compiled as a no-op on Windows; external panic behav
 foreach ($test in $tests) {
     $name = [IO.Path]::GetFileNameWithoutExtension($test.Name)
     if ($excluded -contains $name) {
-        Write-Host "SKIP $name (threading test outside this lane)"
+        if ($name -eq 'test_entry_args') { Write-Host "RUN $name separately with runtime/src/entry.c and native process arguments" }
+        else { Write-Host "SKIP $name (threading test outside this lane)" }
         continue
     }
 
@@ -73,4 +74,16 @@ if ($panicExit -eq 0) { throw 'check_panic unexpectedly exited successfully' }
 if ($actualPanicOut -cne "null`n") { throw "check_panic stdout mismatch: $actualPanicOut" }
 if ($actualPanicErr -notmatch 'fatal: boom') { throw "check_panic stderr missing fatal message: $actualPanicErr" }
 Write-Host "PASS check_panic (exit $panicExit, stdout flushed, fatal stderr observed)"
+
+# The Windows fixture has no main of its own: entry.c's wmain must copy the
+# UTF-16 command line into Mini's argv and keep it valid through atexit.
+$argvExe = Join-Path $out 'test_entry_args.exe'
+$argvSource = Join-Path $runtime 'tests/test_entry_args.c'
+$argvArgs = @($targetArgs) + @($argvSource) + $runtimeSources + @((Join-Path $runtime 'src/entry.c'), '-o', $argvExe)
+Invoke-Clang $argvArgs
+$argvOut = Join-Path $out 'entry-args.stdout'
+$argvErr = Join-Path $out 'entry-args.stderr'
+$argvProcess = Start-Process -FilePath $argvExe -ArgumentList @('café', 'emoji😀') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $argvOut -RedirectStandardError $argvErr
+if ($argvProcess.ExitCode -ne 0) { throw "Windows argv/atexit test exited with $($argvProcess.ExitCode): $([IO.File]::ReadAllText($argvErr))" }
+Write-Host 'PASS test_entry_args (UTF-16 café / emoji😀 values survive through atexit)'
 Write-Host 'Windows core runtime tests passed.'

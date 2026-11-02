@@ -101,6 +101,24 @@ if ($moduleProcess.ExitCode -ne 0) { throw "Module smoke exited with $($modulePr
 if (([IO.File]::ReadAllText($moduleOut) -replace "`r`n", "`n") -cne "42`n") { throw 'Module smoke output mismatch.' }
 Write-Host 'Module source/import smoke passed.'
 
+# Exercise the compiler CLI's Windows argument conversion and runtime file IO
+# with non-ASCII source and output paths, including spaces, BMP text and emoji.
+$unicodeInputDir = Join-Path $work 'Input Δ 😀 path'
+$unicodeOutputDir = Join-Path $work 'Output Ω 😀 path'
+New-Item -ItemType Directory -Force -Path $unicodeInputDir, $unicodeOutputDir | Out-Null
+$unicodeSource = Join-Path $unicodeInputDir 'hello λ 😀.kt'
+$unicodeC = Join-Path $unicodeOutputDir 'hello.c'
+$unicodeExe = Join-Path $unicodeOutputDir 'hello Ω 😀.exe'
+[IO.File]::WriteAllText($unicodeSource, 'fun main() { println("ok Ω 😀") }' + "`n", [Text.UTF8Encoding]::new($false))
+Invoke-Mini $stage3 (@('-o', $unicodeC, $unicodeSource, '--stdlib') + $stdlibSources)
+Build-Stage $unicodeC $unicodeExe
+$unicodeOut = Join-Path $unicodeOutputDir 'hello.stdout'
+$unicodeErr = Join-Path $unicodeOutputDir 'hello.stderr'
+$unicodeProcess = Start-Process -FilePath $unicodeExe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $unicodeOut -RedirectStandardError $unicodeErr
+if ($unicodeProcess.ExitCode -ne 0) { throw "Unicode-path smoke exited with $($unicodeProcess.ExitCode): $([IO.File]::ReadAllText($unicodeErr))" }
+if (([IO.File]::ReadAllText($unicodeOut) -replace "`r`n", "`n") -cne "ok Ω 😀`n") { throw 'Unicode-path smoke output mismatch.' }
+Write-Host 'Unicode CLI source/output path smoke passed.'
+
 Write-Host "stage2 C SHA256: $(Hash-File $stage2C)"
 Write-Host "stage3 C SHA256: $(Hash-File $stage3C)"
 Write-Host "stage2 MIR SHA256: $(Hash-File $stage2Mir)"

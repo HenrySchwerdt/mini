@@ -9,8 +9,10 @@ The optional Windows lane runs on the explicitly selected `windows-2022` GitHub 
 - compiles and runs the non-threaded runtime core tests with Clang's GNU-style driver targeting `x86_64-pc-windows-msvc`;
 - skips `test_alloc_small` and `test_threads`, which exercise the current pthread path;
 - runs the external `check_panic` process test and checks its nonzero exit, flushed stdout, and fatal stderr;
+- separately compiles `test_entry_args.c` with `entry.c` and launches it with `café` and `emoji😀`, checking that UTF-16 argv values survive through the atexit callback;
 - verifies the published 0.7.0 C bootstrap seed archive against the release `SHA256SUMS`;
 - links the seed compiler against this checkout's runtime, builds three compiler stages, checks stage 2 and stage 3 C/MIR equality, and compiles/runs a hello program.
+- compiles and runs a multi-file package/import smoke plus a CLI smoke whose source and output paths contain spaces, BMP Unicode and emoji.
 
 `CHECK_ABORTS` is a no-op in the current Windows test harness because it uses `fork` on POSIX. The separate panic process test does not replace those in-process abort assertions. This lane does not run ASan, UBSan, TSan, libuv/thread tests, LLVM API bootstrap, ORC REPL, the `mini` project tool, or release packaging.
 
