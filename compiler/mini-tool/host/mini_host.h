@@ -4,6 +4,7 @@
 #define MINI_HOST_H
 #include "minirt.h"
 
+MkInt mh_os(void); /* 0 Linux, 1 macOS, 2 Windows */
 MkString *mh_env(const MkString *name);
 MkString *mh_cwd(void);
 MkString *mh_exe_path(void);

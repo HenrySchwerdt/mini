@@ -250,7 +250,7 @@ class Builder(val p: Platform, val c: Console, val tc: Toolchain, val project: P
         if (useLibs && !isApp) return buildLib(root)
         val libs = if (useLibs) planLibs(root) else emptyList()
         val outDir = Paths.join(project.buildDir, o.profile)
-        val binary = if (isApp) Paths.join(outDir, root.name) else Paths.join(outDir, ".lib", root.name + ".check")
+        val binary = if (isApp) Paths.join(outDir, root.name + if (p.os == "windows") ".exe" else "") else Paths.join(outDir, ".lib", root.name + ".check" + if (p.os == "windows") ".exe" else "")
         val fpFile = Paths.join(outDir, ".fingerprint", root.name)
         val fp = fingerprint(root, files, "build", libs)
         val start = p.nowMillis()

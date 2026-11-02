@@ -75,15 +75,37 @@ class ExecResult(
     val startError: String? = null,
 )
 
-/** String-based path helpers (pure, POSIX style). */
+/** Pure path helpers with canonical forward slashes and POSIX, drive and UNC roots. */
 object Paths {
-    fun isAbsolute(p: String): Boolean = p.startsWith("/")
+    private fun slashes(p: String): String = p.replace('\\', '/')
 
-    fun join(a: String, b: String): String = when {
-        b.isEmpty() -> a
-        isAbsolute(b) || a.isEmpty() -> b
-        a.endsWith("/") -> a + b
-        else -> "$a/$b"
+    /** Canonical roots retain their slash, including drive and UNC share roots. */
+    private fun root(p: String): String {
+        if (p.length >= 3 && p[1] == ':' && p[2] == '/') return p.substring(0, 3)
+        if (p.startsWith("//") && !p.startsWith("///")) {
+            val start = if (p.length >= 8 && p.substring(0, 8).equals("//?/UNC/", ignoreCase = true)) 8 else 2
+            val server = p.indexOf('/', start)
+            if (server > start) {
+                val share = p.indexOf('/', server + 1)
+                if (share > server + 1) return p.substring(0, share + 1)
+                if (share < 0 && p.length > server + 1) return p + "/"
+            }
+        }
+        return if (p.startsWith("/")) "/" else ""
+    }
+
+    fun isAbsolute(p: String): Boolean = root(slashes(p)).isNotEmpty()
+
+    fun join(a: String, b: String): String {
+        val left = slashes(a)
+        val right = slashes(b)
+        return when {
+            right.isEmpty() -> left
+            right.startsWith("/") && !right.startsWith("//") && root(left).length > 1 -> root(left).removeSuffix("/") + right
+            isAbsolute(right) || left.isEmpty() -> right
+            left.endsWith("/") -> left + right
+            else -> "$left/$right"
+        }
     }
 
     private fun joinAll(parts: Array<out String>): String {
@@ -96,26 +118,28 @@ object Paths {
 
     /** Removes `.`, resolves `..` lexically and collapses duplicate slashes. */
     fun normalize(p: String): String {
-        val abs = isAbsolute(p)
+        val path = slashes(p)
+        val prefix = root(path)
         val out = ArrayList<String>()
-        for (seg in p.split('/')) {
+        for (seg in path.substring(if (prefix.length > path.length) path.length else prefix.length).split('/')) {
             when {
                 seg.isEmpty() || seg == "." -> {}
-                seg == ".." -> if (out.isNotEmpty() && out.last() != "..") out.removeAt(out.size - 1) else if (!abs) out += ".."
+                seg == ".." -> if (out.isNotEmpty() && out.last() != "..") out.removeAt(out.size - 1) else if (prefix.isEmpty()) out += ".."
                 else -> out += seg
             }
         }
         val s = out.joinToString("/")
-        return if (abs) "/$s" else s.ifEmpty { "." }
+        return if (prefix.isNotEmpty()) prefix + s else s.ifEmpty { "." }
     }
 
     fun parent(p: String): String? {
         val n = normalize(p)
-        if (n == "/" || n == ".") return null
+        val prefix = root(n)
+        if (n == prefix || n == ".") return null
         val i = n.lastIndexOf('/')
         return when {
             i < 0 -> "."
-            i == 0 -> "/"
+            i < prefix.length -> prefix
             else -> n.substring(0, i)
         }
     }
@@ -130,10 +154,15 @@ object Paths {
 
     /** [p] relative to [base] (both absolute and normalised), with `..` segments where needed. */
     fun relativize(base: String, p: String): String {
-        val b = normalize(base).split('/').filter { it.isNotEmpty() }
-        val t = normalize(p).split('/').filter { it.isNotEmpty() }
+        val nb = normalize(base)
+        val nt = normalize(p)
+        // A path on another drive/share cannot be expressed relative to this root.
+        if (!root(nb).equals(root(nt), ignoreCase = true)) return nt
+        val b = nb.substring(root(nb).length).split('/').filter { it.isNotEmpty() }
+        val t = nt.substring(root(nt).length).split('/').filter { it.isNotEmpty() }
+        val windowsRoot = root(nb).length > 1
         var i = 0
-        while (i < b.size && i < t.size && b[i] == t[i]) i++
+        while (i < b.size && i < t.size && b[i].equals(t[i], ignoreCase = windowsRoot)) i++
         val parts = ArrayList<String>()
         repeat(b.size - i) { parts += ".." }
         parts.addAll(t.subList(i, t.size))

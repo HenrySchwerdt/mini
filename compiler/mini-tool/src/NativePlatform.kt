@@ -21,6 +21,9 @@ import mini.tool.Stream
  * the JVM is not involved.
  */
 
+@CSymbol("mh_os")
+external fun hostOs(): Int
+
 @CSymbol("mh_env")
 external fun hostEnv(name: String): String?
 
@@ -87,9 +90,9 @@ open class NativePlatform : Platform {
     override val os: String = detectOs()
 
     override fun env(name: String): String? = hostEnv(name)
-    override fun cwd(): String = hostCwd()
-    override fun homeDir(): String? = hostEnv("HOME")
-    override fun exePath(): String? = hostExePath()
+    override fun cwd(): String = Paths.normalize(hostCwd())
+    override fun homeDir(): String? = if (os == "windows") hostEnv("USERPROFILE")?.takeIf { it.isNotEmpty() } ?: hostEnv("HOME") else hostEnv("HOME")
+    override fun exePath(): String? = hostExePath()?.let { Paths.normalize(it) }
 
     override fun isTerminal(stream: Stream): Boolean {
         // the ./mini wrapper tells us exactly (`[ -t 1 ]`), without it the file descriptor decides
@@ -133,7 +136,7 @@ open class NativePlatform : Platform {
 
     override fun realPath(path: String): String {
         val abs = if (Paths.isAbsolute(path)) path else Paths.join(hostCwd(), path)
-        return hostRealPath(abs) ?: Paths.normalize(abs)
+        return Paths.normalize(hostRealPath(abs) ?: abs)
     }
 
     override fun stat(path: String): FileStat? {
@@ -165,8 +168,7 @@ open class NativePlatform : Platform {
     }
 
     private fun detectOs(): String {
-        // /System/Library exists on macOS only
-        return if (hostKind("/System/Library") == 2) "macos" else "linux"
+        return when (hostOs()) { 2 -> "windows"; 1 -> "macos"; else -> "linux" }
     }
 }
 

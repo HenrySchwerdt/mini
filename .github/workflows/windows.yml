@@ -39,6 +39,11 @@ jobs:
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-runtime.log" -Force
           try { ./scripts/windows/test-runtime.ps1 } finally { Stop-Transcript }
+      - name: Native host process contract tests
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-host.log" -Force
+          try { ./scripts/windows/test-host.ps1 } finally { Stop-Transcript }
       - name: Download and verify portable 0.7.0 C seed
         shell: pwsh
         run: |
@@ -69,6 +74,42 @@ jobs:
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-bootstrap.log" -Force
           try { ./scripts/windows/bootstrap-c.ps1 -SeedDirectory $env:MINI_WINDOWS_SEED } finally { Stop-Transcript }
+      - name: Build and smoke-test experimental C-only mini package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:RUNNER_TEMP 'Mini install Δ 😀'
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-mini.log" -Force
+          try {
+            ./scripts/windows/build-mini.ps1 `
+              -MinicNative (Join-Path $env:RUNNER_TEMP 'mini-windows-bootstrap/stage3.exe') `
+              -OutputDirectory $install
+            ./scripts/windows/test-mini.ps1 -MiniHome $install
+          } finally { Stop-Transcript }
+      - name: Verify source installer
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-install.log" -Force
+          try {
+            # Force download/bootstrap work and destination onto different volumes.
+            $env:TEMP = $env:RUNNER_TEMP
+            $prefix = Join-Path $env:USERPROFILE 'Mini source install Ω 😀'
+            if ([IO.Path]::GetPathRoot($env:TEMP) -eq [IO.Path]::GetPathRoot($prefix)) {
+              throw 'Installer cross-volume test requires distinct temp and destination volumes.'
+            }
+            ./scripts/windows/install.ps1 -Prefix $prefix
+            ./scripts/windows/test-mini.ps1 -MiniHome $prefix
+            $before = (Get-FileHash -LiteralPath (Join-Path $prefix 'bin/mini.exe')).Hash
+            $refused = $false
+            try { ./scripts/windows/install.ps1 -Prefix $prefix }
+            catch {
+              if ($_.Exception.Message -notlike 'Refusing to overwrite existing install prefix:*') { throw }
+              $refused = $true
+            }
+            if (-not $refused) { throw 'Installer did not refuse an existing prefix.' }
+            $after = (Get-FileHash -LiteralPath (Join-Path $prefix 'bin/mini.exe')).Hash
+            if ($before -ne $after) { throw 'Existing installed executable was modified.' }
+          } finally { Stop-Transcript }
       - name: Upload Windows logs and bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@v4

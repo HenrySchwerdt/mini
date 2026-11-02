@@ -195,7 +195,7 @@ class TestRunner(val p: Platform, val c: Console, val builder: Builder) {
         p.writeText(shim, TestShim.SOURCE)
         p.writeText(annotations, TestShim.ANNOTATIONS)
         p.writeText(runnerMain, TestDiscovery.runnerSource(all))
-        val binary = Paths.join(dir, "runner")
+        val binary = Paths.join(dir, "runner" + if (p.os == "windows") ".exe" else "")
         c.status("Compiling", "${pkg.id} (tests)")
         val b = builder.compileSet(pkg, files, listOf(shim, runnerMain), listOf(annotations), binary, Paths.join(dir, ".fingerprint"), "test")
         if (!b.success) return 1

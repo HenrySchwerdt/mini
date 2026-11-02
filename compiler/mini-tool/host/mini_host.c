@@ -16,6 +16,9 @@
 char *mk_utf16_to_utf8(const MkChar *chars, size_t length, size_t *out_length);
 void mk_runtime_flush(void);
 
+#ifdef _WIN32
+#include "mini_host_windows.inc"
+#else
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -45,6 +48,14 @@ static char *c_str(const MkString *s) {
 static MkString *mk_str(const char *s) { return s == NULL ? NULL : mk_string_from_utf8(s, strlen(s)); }
 
 /* ---- environment -------------------------------------------------------------------------------------------------- */
+
+MkInt mh_os(void) {
+#ifdef __APPLE__
+    return 1;
+#else
+    return 0;
+#endif
+}
 
 MkString *mh_env(const MkString *name) {
     char *n = c_str(name);
@@ -370,3 +381,5 @@ MkInt mh_exec(const MkString *argvList, const MkString *cwd, const MkString *env
 MkString *mh_exec_stdout(void) { if (g_out != NULL) mk_retain(&g_out->header); return g_out; }
 MkString *mh_exec_stderr(void) { if (g_err != NULL) mk_retain(&g_err->header); return g_err; }
 MkString *mh_exec_error(void) { if (g_start_error != NULL) mk_retain(&g_start_error->header); return g_start_error; }
+
+#endif /* _WIN32 */

@@ -30,7 +30,7 @@ class Doctor(val p: Platform, val c: Console) {
         if (root != null && p.isDirectory(Paths.join(root, "stdlib")) && p.isFile(Paths.join(root, "include/minirt.h"))) ok("Mini root", root)
         else bad("Mini root", "stdlib/ and include/ not found", listOf("install Mini (see the README), or in a source checkout run `./mini` (it builds the toolchain), or set MINI_ROOT"))
 
-        val minic = p.env("MINIC_NATIVE")?.takeIf { it.isNotEmpty() } ?: root?.let { Paths.join(it, Toolchain.MINIC_RELATIVE) }
+        val minic = p.env("MINIC_NATIVE")?.takeIf { it.isNotEmpty() } ?: root?.let { Paths.join(it, Toolchain.MINIC_RELATIVE + if (p.os == "windows") ".exe" else "") }
         if (minic != null && p.isFile(minic)) ok("minic-native", minic)
         else bad("minic-native", "the compiler is not built", listOf("in a source checkout run `./mini` or `scripts/build-mini.sh`"))
         if (root != null && !p.isFile(Paths.join(root, "lib/libminirt.a"))) bad("runtime", "lib/libminirt.a is missing", listOf("reinstall Mini, or run `scripts/build-mini.sh` in a source checkout"))
