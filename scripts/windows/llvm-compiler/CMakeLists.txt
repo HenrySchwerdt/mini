@@ -23,12 +23,14 @@ foreach(component IN LISTS MINI_LLVM_LIBS)
     endif()
 endforeach()
 add_definitions(${LLVM_DEFINITIONS})
-add_executable(minic-api "${MINI_COMPILER_INPUT}" ${MINI_RUNTIME_OBJECTS} "${MINI_EXPORTS_FILE}")
+add_executable(minic-api "${MINI_COMPILER_INPUT}" ${MINI_RUNTIME_OBJECTS})
+set_property(TARGET minic-api APPEND PROPERTY LINK_DEPENDS "${MINI_EXPORTS_FILE}")
 set_target_properties(minic-api PROPERTIES LINKER_LANGUAGE CXX C_STANDARD 17)
 target_include_directories(minic-api SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 target_include_directories(minic-api PRIVATE "${MINI_RUNTIME_INCLUDE}")
 target_compile_options(minic-api PRIVATE /w)
 # The runtime's wmain owns UTF-16 argv. Retain it even when the compiler's
 # generated object also contains a main symbol.
-target_link_options(minic-api PRIVATE /INCLUDE:wmain)
+# CMake does not apply a .def source to an ordinary executable automatically.
+target_link_options(minic-api PRIVATE /INCLUDE:wmain "/DEF:${MINI_EXPORTS_FILE}")
 target_link_libraries(minic-api PRIVATE ${MINI_LLVM_LIBS})

@@ -119,9 +119,17 @@ function Build-ApiStage([string]$Stage, [string]$InputFile) {
         "-DMINI_COMPILER_INPUT=$($InputFile.Replace('\', '/'))", "-DMINI_RUNTIME_OBJECTS=$runtimeObjectList",
         "-DMINI_EXPORTS_FILE=$($exportsFile.Replace('\', '/'))", "-DMINI_RUNTIME_INCLUDE=$($runtimeInclude.Replace('\', '/'))")
     Invoke-Native "stage$Stage CMake configure" $cmake.Source $configure
-    Invoke-Native "stage$Stage CMake build" $cmake.Source @('--build', $buildDir, '--config', 'Release')
+    Invoke-Native "stage$Stage CMake build" $cmake.Source @('--build', $buildDir, '--config', 'Release', '--verbose')
     $exe = Join-Path $buildDir 'minic-api.exe'
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "CMake did not produce expected executable: $exe" }
+    $peExports = @(& $dumpbin.Source /nologo /exports $exe 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw "Cannot inspect stage$Stage PE exports." }
+    foreach ($required in @('LLVMOrcThreadSafeContextGetContext', 'mk_pending_slot', 'mk_string_alloc')) {
+        if (($peExports -join "`n") -notmatch "(?m)\s+$([regex]::Escape($required))\s*$") {
+            throw "Stage$Stage is missing required PE export $required`: $($peExports -join "`n")"
+        }
+    }
+    Write-Host "Stage$Stage PE exports include the LLVM context and Mini runtime ABI."
     return $exe
 }
 function Elapsed([Diagnostics.Stopwatch]$Timer) { return ('{0:N1}s' -f $Timer.Elapsed.TotalSeconds) }
