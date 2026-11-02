@@ -20,10 +20,12 @@ function Require-Command([string]$Name) {
 }
 
 $curl = Require-Command 'curl.exe'
-$tar = Require-Command 'tar.exe'
+$sevenZipCommand = Get-Command '7z.exe' -ErrorAction SilentlyContinue
+$sevenZip = if ($sevenZipCommand) { $sevenZipCommand.Source } else { Join-Path $env:ProgramFiles '7-Zip/7z.exe' }
+if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) { throw '7-Zip is required to extract the official LLVM development archive.' }
 $cmake = Require-Command 'cmake.exe'
 $ninja = Require-Command 'ninja.exe'
-foreach ($tool in @(@{ Name = 'curl'; Path = $curl }, @{ Name = 'tar'; Path = $tar }, @{ Name = 'cmake'; Path = $cmake }, @{ Name = 'ninja'; Path = $ninja })) {
+foreach ($tool in @(@{ Name = 'curl'; Path = $curl }, @{ Name = '7-Zip'; Path = $sevenZip }, @{ Name = 'cmake'; Path = $cmake }, @{ Name = 'ninja'; Path = $ninja })) {
     Write-Host "$($tool.Name): $($tool.Path)"
 }
 
@@ -52,16 +54,26 @@ if (-not ((Test-Path -LiteralPath $config) -and (Test-Path -LiteralPath $orcHead
     try {
         $archive = Join-Path $work $assetName
         Write-Host "Downloading LLVM development asset $assetId ($assetSize bytes)"
-        & $curl --fail --location --retry 3 --retry-delay 2 --output $archive $metadata.browser_download_url
+        & $curl --fail --location --connect-timeout 30 --max-time 900 --retry 3 --retry-delay 2 --retry-max-time 1000 --output $archive $metadata.browser_download_url
         if ($LASTEXITCODE -ne 0) { throw "curl failed with exit code $LASTEXITCODE" }
         $downloadedSize = (Get-Item -LiteralPath $archive).Length
         if ($downloadedSize -ne $assetSize) { throw "LLVM asset size mismatch: expected $assetSize, got $downloadedSize" }
 
+        Write-Host "Download complete; hashing $downloadedSize bytes at $([DateTime]::UtcNow.ToString('o'))"
         $sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
         $extract = Join-Path $work 'extract'
         New-Item -ItemType Directory -Path $extract | Out-Null
-        & $tar -xf $archive -C $extract
-        if ($LASTEXITCODE -ne 0) { throw "tar extraction failed with exit code $LASTEXITCODE" }
+        # Use native 7-Zip rather than Windows' bundled libarchive XZ reader.
+        # Keep binary data out of the PowerShell text pipeline.
+        Write-Host "SHA256 $sha256; decompressing XZ at $([DateTime]::UtcNow.ToString('o'))"
+        & $sevenZip x -y -bd $archive "-o$work"
+        if ($LASTEXITCODE -ne 0) { throw "7-Zip XZ decompression failed with exit code $LASTEXITCODE" }
+        $tarArchive = Join-Path $work ($assetName.Substring(0, $assetName.Length - 3))
+        if (-not (Test-Path -LiteralPath $tarArchive -PathType Leaf)) { throw "Decompressed TAR missing: $tarArchive" }
+        Write-Host "Extracting TAR at $([DateTime]::UtcNow.ToString('o'))"
+        & $sevenZip x -y -bd $tarArchive "-o$extract"
+        if ($LASTEXITCODE -ne 0) { throw "7-Zip TAR extraction failed with exit code $LASTEXITCODE" }
+        Write-Host "Extraction complete at $([DateTime]::UtcNow.ToString('o'))"
 
         $roots = @(Get-ChildItem -LiteralPath $extract -Directory)
         if ($roots.Count -ne 1) { throw "Expected one root directory in LLVM archive; found $($roots.Count)" }
