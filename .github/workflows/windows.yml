@@ -1,0 +1,78 @@
+name: Windows native bootstrap
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'compiler/**'
+      - 'stdlib/**'
+      - 'runtime/**'
+      - 'scripts/windows/**'
+      - '.github/workflows/windows.yml'
+  pull_request:
+    paths:
+      - 'compiler/**'
+      - 'stdlib/**'
+      - 'runtime/**'
+      - 'scripts/windows/**'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-native-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  windows-x64:
+    name: Windows x64 (native clang/MSVC)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize pinned Windows x64 toolchain
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-setup.log" -Force
+          try { ./scripts/windows/setup.ps1 } finally { Stop-Transcript }
+      - name: Runtime core tests
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-runtime.log" -Force
+          try { ./scripts/windows/test-runtime.ps1 } finally { Stop-Transcript }
+      - name: Download and verify portable 0.7.0 C seed
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-seed.log" -Force
+          try {
+          $ErrorActionPreference = 'Stop'
+          $version = '0.7.0'
+          $name = "mini-$version-bootstrap-c.tar.gz"
+          $url = "https://github.com/HenrySchwerdt/mini/releases/download/v$version/$name"
+          $sumUrl = "https://github.com/HenrySchwerdt/mini/releases/download/v$version/SHA256SUMS"
+          $dir = Join-Path $env:RUNNER_TEMP 'mini-c-seed'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $archive = Join-Path $dir $name
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $sums = Join-Path $dir 'SHA256SUMS'
+          Invoke-WebRequest -Uri $sumUrl -OutFile $sums
+          $line = Get-Content $sums | Where-Object { $_ -match "\s+$([regex]::Escape($name))$" } | Select-Object -First 1
+          if (-not $line) { throw "No checksum entry for $name" }
+          $expected = ($line -split '\s+')[0].ToLowerInvariant()
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Seed SHA256 mismatch: expected $expected, got $actual" }
+          tar.exe -xzf $archive -C $dir
+          if ($LASTEXITCODE -ne 0) { throw "tar extraction failed with $LASTEXITCODE" }
+          "MINI_WINDOWS_SEED=$dir/mini-$version-bootstrap-c" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } finally { Stop-Transcript }
+      - name: Bootstrap current compiler from C seed
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-bootstrap.log" -Force
+          try { ./scripts/windows/bootstrap-c.ps1 -SeedDirectory $env:MINI_WINDOWS_SEED } finally { Stop-Transcript }
+      - name: Upload Windows logs and bootstrap artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-${{ github.run_id }}
+          path: ${{ runner.temp }}/mini-windows-*
+          if-no-files-found: warn
