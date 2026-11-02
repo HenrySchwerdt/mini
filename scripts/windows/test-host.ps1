@@ -17,7 +17,7 @@ try {
     $hostWork = Join-Path $work 'host fixture Ω 😀'
     New-Item -ItemType Directory -Path $hostWork | Out-Null
     $hostExe = Join-Path $hostWork 'windows_host_test.exe'
-    $hostArgs = @('--target=x86_64-pc-windows-msvc', '-std=gnu17', '-Wall', '-Wextra', '-Werror',
+    $hostArgs = @('--target=x86_64-pc-windows-msvc', '-std=gnu17', '-Wall', '-Wextra', '-Werror', '-D_CRT_SECURE_NO_WARNINGS',
         "-I$(Join-Path $runtime 'include')", "-I$hostDir", (Join-Path $hostDir 'mini_host.c'), $fixture) + $runtimeSources + @('-o', $hostExe)
     Write-Host ('clang ' + ($hostArgs -join ' '))
     & $cc @hostArgs
