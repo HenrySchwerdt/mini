@@ -30,7 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Cache official LLVM 18.1.8 development archive prefix
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
+        id: llvm-cache
         with:
           path: ${{ runner.temp }}/mini-llvm18-prefix
           key: windows-2022-llvm18.1.8-asset175624214-v1
@@ -69,6 +70,12 @@ jobs:
             }
             Write-Host 'Static-link check: no LLVM*.dll dependency found.'
           } finally { Stop-Transcript }
+      - name: Save verified LLVM development prefix
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/mini-llvm18-prefix
+          key: windows-2022-llvm18.1.8-asset175624214-v1
       - name: Bootstrap and exercise Windows LLVM API compiler
         shell: pwsh
         run: |
@@ -97,6 +104,10 @@ jobs:
             & $clang --target=x86_64-pc-windows-msvc -std=c17 -O1 -w -Iruntime/include $seedC @runtime -o $stage0
             if ($LASTEXITCODE -ne 0) { throw 'Portable C seed compiler build failed.' }
             ./scripts/windows/bootstrap-api.ps1 -Stage0 $stage0 -LLVMPrefix (Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix')
+            $apiCompiler = Join-Path $env:RUNNER_TEMP 'mini-windows-llvm-api-bootstrap/stage3-build/minic-api.exe'
+            $install = Join-Path $env:RUNNER_TEMP 'Mini LLVM install Δ 😀'
+            ./scripts/windows/build-mini.ps1 -MinicNative $apiCompiler -OutputDirectory $install -Backend llvm-api
+            ./scripts/windows/test-mini.ps1 -MiniHome $install
           } finally { Stop-Transcript }
       - name: Upload LLVM probe logs
         if: always()

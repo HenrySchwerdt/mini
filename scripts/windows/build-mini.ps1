@@ -1,8 +1,9 @@
 #Requires -Version 7.0
-# Build a C-backend Windows `mini.exe` and stage a source-only, C-only install.
+# Build Windows `mini.exe` through C and stage a source-only toolchain.
 param(
     [Parameter(Mandatory = $true)][string]$MinicNative,
-    [Parameter(Mandatory = $true)][string]$OutputDirectory
+    [Parameter(Mandatory = $true)][string]$OutputDirectory,
+    [ValidateSet('c', 'llvm-api')][string]$Backend = 'c'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -78,7 +79,8 @@ Copy-Item -LiteralPath $compiler -Destination (Join-Path $bin 'minic-native.exe'
 Copy-Item -Path (Join-Path $runtime 'include/*.h') -Destination $include
 Copy-Item -LiteralPath (Join-Path $root 'stdlib') -Destination (Join-Path $stage 'stdlib') -Recurse
 Copy-Item -LiteralPath (Join-Path $root 'VERSION') -Destination $stage
-Set-Content -LiteralPath (Join-Path $stage 'TOOLCHAIN-BACKEND') -Value 'c' -NoNewline -Encoding ascii
+Set-Content -LiteralPath (Join-Path $stage 'TOOLCHAIN-BACKEND') -Value $Backend -NoNewline -Encoding ascii
 
-Write-Host "Staged C-only Windows toolchain at $stage"
-Write-Host 'This experimental package has no LLVM API backend or REPL support.'
+Write-Host "Staged Windows $Backend toolchain at $stage"
+if ($Backend -eq 'c') { Write-Host 'This experimental package uses the C backend by default.' }
+else { Write-Host 'The supplied minic-native must include the LLVM C API backend; the staged mini.exe uses C and supports explicit C fallback.' }

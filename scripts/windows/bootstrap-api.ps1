@@ -106,7 +106,7 @@ $exportsFile = Join-Path $work 'runtime-exports.def'
 Write-Host "Runtime exports: $($exports.Count)"
 
 $runtimeObjectList = $runtimeObjects -join ';'
-function Build-ApiStage([int]$Stage, [string]$InputFile) {
+function Build-ApiStage([string]$Stage, [string]$InputFile) {
     $buildDir = Join-Path $work "stage$Stage-build"
     $configure = @('-S', (Join-Path $PSScriptRoot 'llvm-compiler'), '-B', $buildDir, '-G', 'Ninja',
         "-DCMAKE_C_COMPILER=$clangCl", "-DCMAKE_CXX_COMPILER=$clangCl", "-DCMAKE_MAKE_PROGRAM=$($ninja.Source)",
@@ -182,6 +182,16 @@ $replOutput = $replInput | & $stage3 --backend=llvm-api --repl --stdlib @stdlibS
 if ($LASTEXITCODE -ne 0) { throw "LLVM API REPL failed with exit code $LASTEXITCODE`: $($replOutput -join "`n")" }
 if (($replOutput -join "`n") -notmatch '(?m)^42\r?$') { throw "LLVM API REPL output did not contain 42: $($replOutput -join "`n")" }
 Write-Host 'LLVM API piped REPL smoke passed.'
+
+# Reuse the existing session ownership/rollback harness on native Windows,
+# outside an outer JIT, with the exact compiler and runtime objects just built.
+$sessionSources = @($apiSources | Where-Object { [IO.Path]::GetFileName($_) -cne 'MainApi.kt' })
+$sessionSources += (Join-Path $root 'compiler/llvm-c/tests/LlvmJitSessionSmoke.kt').Replace('\', '/')
+$sessionObject = Join-Path $work 'session-api-smoke.obj'
+Invoke-Mini $stage3 (@('--backend=llvm-api', '--opt=O1', '-o', $sessionObject) + $sessionSources + @('--stdlib') + $stdlibSources)
+$sessionExe = Build-ApiStage 'session' $sessionObject
+Invoke-Native 'ORC ownership and rollback smoke' $sessionExe @()
+Write-Host 'Native Windows ORC session ownership/rollback smoke passed.'
 
 foreach ($key in @('C', 'Mir', 'Ll', 'Object')) {
     Write-Host "stage2 $key SHA256: $(Hash-File $stageFiles[2][$key])"
