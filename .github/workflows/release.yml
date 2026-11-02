@@ -117,21 +117,28 @@ jobs:
           if-no-files-found: error
 
   build-windows:
+    permissions:
+      contents: read
     needs: version
-    name: build (windows-x64 C-only)
+    name: build (windows-x64 LLVM API)
     runs-on: windows-2022
     timeout-minutes: 60
     env:
+      GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install experimental C-only package
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/mini-llvm18-prefix
+          key: windows-2022-llvm18.1.8-asset175624214-v1
+      - name: Install experimental LLVM API package
         shell: pwsh
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-release-build.log" -Force
           try {
             $prefix = Join-Path $env:USERPROFILE ("mini-release-" + $env:GITHUB_RUN_ID)
-            ./scripts/windows/install.ps1 -Prefix $prefix
+            ./scripts/windows/install.ps1 -Prefix $prefix -Backend llvm-api -LLVMPrefix (Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix')
             ./scripts/windows/test-host.ps1
             ./scripts/windows/test-mini.ps1 -MiniHome $prefix
           } finally { Stop-Transcript }
@@ -142,11 +149,14 @@ jobs:
           try {
             $prefix = Join-Path $env:USERPROFILE ("mini-release-" + $env:GITHUB_RUN_ID)
             $out = Join-Path $env:RUNNER_TEMP 'dist-windows'
-            ./scripts/windows/package-release.ps1 -Version $env:VERSION -MiniHome $prefix -OutDirectory $out
+            ./scripts/windows/package-release.ps1 -Version $env:VERSION -MiniHome $prefix -OutDirectory $out -Backend llvm-api
             $unpack = Join-Path $env:RUNNER_TEMP 'windows-release-unpacked'
             if (Test-Path -LiteralPath $unpack) { throw "Unpack directory must be fresh: $unpack" }
             New-Item -ItemType Directory -Path $unpack | Out-Null
             $zip = Join-Path $out "mini-$env:VERSION-windows-x64.zip"
+            $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$sha  $([IO.Path]::GetFileName($zip))" | Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS') -Encoding ascii
+            ./scripts/windows/test-release-installer.ps1 -Archive $zip
             Expand-Archive -LiteralPath $zip -DestinationPath $unpack
             $extracted = Join-Path $unpack "mini-$env:VERSION-windows-x64"
             ./scripts/windows/test-host.ps1
@@ -214,7 +224,7 @@ jobs:
 
           **What is in the release**
           * `mini-<version>-<target>.tar.gz` for linux-x64, linux-arm64 and macos-arm64: `bin/mini` (the project tool: `mini new`, `build`, `run`, `test`, `check`; itself compiled by Mini, no JVM), `bin/minic` (`minic run foo.kt`, `minic build foo.kt`, `minic check foo.kt`), `bin/minic-native`, `lib/libminirt.a`, `include/`, `stdlib/`.
-          * `mini-<version>-windows-x64.zip`: an experimental native Windows package with the C backend only. It does not include the LLVM API backend or REPL.
+          * `mini-<version>-windows-x64.zip`: an experimental native Windows package with the LLVM API backend and `mini repl`; the C backend remains available explicitly. Windows threads are not included.
           * `mini-<version>-bootstrap-c.tar.gz`: the generated C of the compiler plus the runtime sources; a C compiler alone builds a working compiler from it.
           * `SHA256SUMS`. Install with `curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh`.
 

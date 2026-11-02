@@ -1,13 +1,12 @@
 package mini.llvmapi
 
-import kotlin.native.CName
-import kotlinx.cinterop.*
 import mini.backend.MirModule
-import mini.llvm.*
 import mini.minicnative.LlvmApi
+import mini.internal.CSymbol
+import mini.io.deletePath
 
-@CName("system") external fun cSystem(command: CPointer<ByteVar>): Int
-@CName("remove") external fun cRemove(path: CPointer<ByteVar>): Int
+@CSymbol("mk_platform_spawn")
+external fun spawnLinker(argv: String): Int
 
 /** `minic-native` with the LLVM C API bound in: object files through the target machine, linking with the system C compiler, the ORC JIT. */
 class LlvmApiImpl : LlvmApi {
@@ -16,18 +15,17 @@ class LlvmApiImpl : LlvmApi {
     }
 
     override fun link(objects: List<String>, exe: String, libs: List<String>, linkArgs: List<String>, cc: String): Int {
-        val cmd = StringBuilder()
-        cmd.append(shellQuote(cc)).append(" -o ").append(shellQuote(exe))
-        for (o in objects) cmd.append(' ').append(shellQuote(o))
-        for (a in linkArgs) cmd.append(' ').append(shellQuote(a))
-        cmd.append(" -lm")
-        for (l in libs) cmd.append(" -l").append(shellQuote(l))
-        val status = memScoped { cSystem(cmd.toString().cstr.ptr) }
+        val args = ArrayList<String>()
+        args += cc; args += "-o"; args += exe
+        args += objects; args += linkArgs
+        if (LlvmApiEmitter.defaultTriple().contains("windows")) args += "-Wl,/include:wmain" else args += "-lm"
+        for (l in libs) args += "-l" + l
+        require(args.none { it.contains('\u0000') || it.contains('\u0001') }) { "linker arguments contain a reserved separator" }
+        val status = spawnLinker(args.joinToString("\u0001"))
         if (status == 0) {
-            // the temporary object `--exe` made next to the executable
-            for (o in objects) if (o == exe + ".o") memScoped { cRemove(o.cstr.ptr) }
+            for (o in objects) if (o == exe + ".o") deletePath(o)
         }
-        return (status shr 8) and 255
+        return status
     }
 
     override fun run(module: MirModule, programArgs: List<String>, optLevel: Int, rcOpt: Boolean, timing: Boolean): Int =
@@ -50,5 +48,4 @@ class LlvmApiImpl : LlvmApi {
         override fun close() = jit.close()
     }
 
-    private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 }

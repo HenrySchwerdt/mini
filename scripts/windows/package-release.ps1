@@ -1,11 +1,11 @@
-# Package the tested experimental C-only Windows x64 install as a ZIP asset.
+# Package a tested Windows x64 install as a ZIP asset.
 # The archive contains one root directory: mini-<version>-windows-x64.
-# No LLVM API or REPL binaries are included.
 #Requires -Version 7.0
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [Parameter(Mandatory = $true)][string]$MiniHome,
-    [Parameter(Mandatory = $true)][string]$OutDirectory
+    [Parameter(Mandatory = $true)][string]$OutDirectory,
+    [ValidateSet('c', 'llvm-api')][string]$Backend = 'c'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -18,8 +18,8 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $installedVersion = (Get-Content -LiteralPath (Join-Path $installRoot 'VERSION' -ErrorAction Stop) -Raw).Trim()
 if ($installedVersion -cne $Version) { throw "Install version mismatch: expected $Version, got $installedVersion" }
 $backendFile = Join-Path $installRoot 'TOOLCHAIN-BACKEND'
-if (-not (Test-Path -LiteralPath $backendFile) -or (Get-Content -LiteralPath $backendFile -Raw).Trim() -cne 'c') {
-    throw 'Refusing to package a toolchain that is not explicitly marked TOOLCHAIN-BACKEND=c.'
+if (-not (Test-Path -LiteralPath $backendFile) -or (Get-Content -LiteralPath $backendFile -Raw).Trim() -cne $Backend) {
+    throw "Refusing to package a toolchain without the requested TOOLCHAIN-BACKEND=$Backend marker."
 }
 
 $required = @(
@@ -69,7 +69,7 @@ try {
     if (-not (Test-Path -LiteralPath $zipPath -PathType Leaf)) { throw "ZIP creation did not produce $zipPath" }
     Write-Host "Created $zipPath"
     Write-Host "Archive root: mini-$Version-windows-x64/"
-    Write-Host 'Package contains the experimental C backend only; no LLVM API or REPL.'
+    Write-Host "Package contains the tested $Backend Windows toolchain."
 } finally {
     if (Test-Path -LiteralPath $stageParent) { Remove-Item -LiteralPath $stageParent -Recurse -Force }
 }

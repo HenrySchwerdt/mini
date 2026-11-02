@@ -1,11 +1,16 @@
 #Requires -Version 7.0
-# Experimental C-only Windows source install. Run from a cloned Mini checkout.
+# Experimental Windows source install. Run from a cloned Mini checkout.
 param(
     [string]$Prefix = '',
-    [string]$SeedVersion = '0.7.0'
+    [string]$SeedVersion = '0.7.0',
+    [ValidateSet('c', 'llvm-api')][string]$Backend = 'c',
+    [string]$LLVMPrefix = ''
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($SeedVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+    throw "Invalid seed version: $SeedVersion"
+}
 
 . (Join-Path $PSScriptRoot 'setup.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -49,17 +54,40 @@ try {
 
     $bootstrapWork = Join-Path $work 'bootstrap'
     & (Join-Path $PSScriptRoot 'bootstrap-c.ps1') -SeedDirectory $seedDirectory -WorkDirectory $bootstrapWork
-    & (Join-Path $PSScriptRoot 'build-mini.ps1') -MinicNative (Join-Path $bootstrapWork 'stage3.exe') -OutputDirectory $package
+    $minicNative = Join-Path $bootstrapWork 'stage3.exe'
+
+    if ($Backend -eq 'llvm-api') {
+        $sdkPrefix = if ([string]::IsNullOrWhiteSpace($LLVMPrefix)) {
+            Join-Path $work 'llvm18'
+        } else {
+            [IO.Path]::GetFullPath($LLVMPrefix)
+        }
+        Write-Host 'Preparing the LLVM 18 SDK for the opt-in LLVM API backend...'
+        & (Join-Path $PSScriptRoot 'prepare-llvm.ps1') -Prefix $sdkPrefix
+
+        $apiBootstrapWork = Join-Path $work 'api-bootstrap'
+        & (Join-Path $PSScriptRoot 'bootstrap-api.ps1') -Stage0 $minicNative -LLVMPrefix $sdkPrefix -WorkDirectory $apiBootstrapWork
+        $minicNative = Join-Path $apiBootstrapWork 'stage3-build/minic-api.exe'
+        if (-not (Test-Path -LiteralPath $minicNative -PathType Leaf)) {
+            throw "LLVM API bootstrap did not produce the expected stage3 compiler: $minicNative"
+        }
+    }
+
+    & (Join-Path $PSScriptRoot 'build-mini.ps1') -MinicNative $minicNative -OutputDirectory $package -Backend $Backend
 
     # The build directory contains intermediate C and object files, which are not part of the install.
     Remove-Item -LiteralPath (Join-Path $package 'work') -Recurse -Force
     if (Test-Path -LiteralPath $prefixPath) { throw "Refusing to overwrite existing install prefix: $prefixPath" }
     [IO.Directory]::Move($package, $prefixPath)
 
-    Write-Host "Installed experimental C-only Mini under $prefixPath"
+    Write-Host "Installed experimental Windows Mini ($Backend backend) under $prefixPath"
     Write-Host 'No system or user PATH settings were changed. To add it to this PowerShell session:'
     Write-Host ('$env:PATH = "' + (Join-Path $prefixPath 'bin') + ';$env:PATH"')
-    Write-Host 'This source install uses the C backend and does not include LLVM API or REPL support.'
+    if ($Backend -eq 'c') {
+        Write-Host 'This source install uses the C backend and does not include LLVM API or REPL support.'
+    } else {
+        Write-Host 'This experimental source install uses the LLVM API backend and includes the native REPL.'
+    }
 } finally {
     if (Test-Path -LiteralPath $package) { Remove-Item -LiteralPath $package -Recurse -Force }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }

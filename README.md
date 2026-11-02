@@ -97,10 +97,10 @@ In Strict mode a separate checker runs before code generation.
 | Reflection (static metadata, ownership-aware) and a compiler-plugin API in the toolchain; JSON (`mini-serialization`) and a web framework with compile-time DI and one arena per request (`mini-web`) as separate libraries | Planned after B3. |
 | LLVM API compiler, statically linked LLVM, API default, C fallback, and ORC REPL | **Done.** Release compilers include LLVM 18 with no LLVM runtime dependency; building programs still uses the platform C linker. |
 | Embedded lld, statically bundled libuv, `.kts` scripts | Planned. |
-| Native Windows x64 C compiler and project tool | Experimental; see [Windows support](docs/windows.md). LLVM API/REPL and thread support remain open. |
+| Native Windows x64 C compatibility build and project tool | Experimental; see [Windows support](docs/windows.md). An opt-in LLVM API source install includes the native REPL. Windows threads remain unsupported. |
 | Coroutines and async IO on libuv, runtime written in Kotlin | Later. |
 
-Platforms: Linux and macOS with the LLVM API backend; experimental native Windows x64 with the C backend (CI). The full plan is in
+Platforms: Linux and macOS with the LLVM API backend; experimental native Windows x64 with a C compatibility lane and an opt-in LLVM API source build. The published 0.8.0 Windows ZIP remains C-only. The full plan is in
 [docs/plan-kotlin.md](docs/plan-kotlin.md).
 
 ## Quickstart
