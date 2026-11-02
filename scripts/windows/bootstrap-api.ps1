@@ -110,14 +110,14 @@ $exportsFile = Join-Path $work 'runtime-exports.def'
 [IO.File]::WriteAllLines($exportsFile, @('EXPORTS') + @($exports), [Text.UTF8Encoding]::new($false))
 Write-Host "Runtime exports: $($exports.Count)"
 
-$runtimeObjectList = $runtimeObjects -join ';'
+$runtimeObjectList = ($runtimeObjects | ForEach-Object { $_.Replace('\', '/') }) -join ';'
 function Build-ApiStage([string]$Stage, [string]$InputFile) {
     $buildDir = Join-Path $work "stage$Stage-build"
     $configure = @('-S', (Join-Path $PSScriptRoot 'llvm-compiler'), '-B', $buildDir, '-G', 'Ninja',
         "-DCMAKE_C_COMPILER=$clangCl", "-DCMAKE_CXX_COMPILER=$clangCl", "-DCMAKE_MAKE_PROGRAM=$($ninja.Source)",
         '-DCMAKE_BUILD_TYPE=Release', "-DLLVM_DIR=$(Join-Path $LLVMPrefix 'lib/cmake/llvm')",
-        "-DMINI_COMPILER_INPUT=$InputFile", "-DMINI_RUNTIME_OBJECTS=$runtimeObjectList",
-        "-DMINI_EXPORTS_FILE=$exportsFile", "-DMINI_RUNTIME_INCLUDE=$runtimeInclude")
+        "-DMINI_COMPILER_INPUT=$($InputFile.Replace('\', '/'))", "-DMINI_RUNTIME_OBJECTS=$runtimeObjectList",
+        "-DMINI_EXPORTS_FILE=$($exportsFile.Replace('\', '/'))", "-DMINI_RUNTIME_INCLUDE=$($runtimeInclude.Replace('\', '/'))")
     Invoke-Native "stage$Stage CMake configure" $cmake.Source $configure
     Invoke-Native "stage$Stage CMake build" $cmake.Source @('--build', $buildDir, '--config', 'Release')
     $exe = Join-Path $buildDir 'minic-api.exe'
