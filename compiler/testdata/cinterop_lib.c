@@ -6,6 +6,17 @@
 
 #include "cinterop_lib.h"
 
+static MkTypeInfo foreign_child_type = {
+    "test.ForeignChild", sizeof(MkObject), NULL, NULL, NULL, 0, NULL, 0,
+};
+static MkObject foreign_child_object = {NULL, 0, MK_FLAG_STATIC};
+
+MkObject *foreign_child(MkObject *value) {
+    foreign_child_type.super = value->type;
+    foreign_child_object.type = &foreign_child_type;
+    return &foreign_child_object;
+}
+
 void rec_fill(record_t *r, int id) {
     memset(r, 0, sizeof *r);
     r->id = id;

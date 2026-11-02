@@ -1,0 +1,410 @@
+{
+  "schema_version": 1,
+  "kind": "candidate_json_profile",
+  "date": "2026-11-01",
+  "purpose": "Short fresh CPU profile of the accepted hot/cold runtime candidate on the JSON workload; no comparative timing run.",
+  "host": {
+    "os": "macOS 26.2",
+    "architecture": "arm64",
+    "cpu": "Apple M4",
+    "logical_cpu_count": 10,
+    "clang": "Apple clang 17.0.6 (clang-1700.6.4.2)"
+  },
+  "source_and_build": {
+    "integration_source_commit": "3a9c8a4",
+    "current_evidence_head_at_capture": "366f3e206c77ac390a7d0ea30a40a2173d8e4a1c",
+    "source_delta_note": "The later evidence commit changed documentation/results only; bench/json/json.kt and the 62 stdlib Kotlin sources are unchanged from integration_source_commit.",
+    "candidate_compiler_source_commit": "16b537336591cd8751ef52edae62112084db5637",
+    "candidate_compiler_sha256": "18590f7d8ca9a313faa8df46825d63ad035f89e53303fadaae1e6d51def46f6d",
+    "candidate_compiler_profile_build": "LLVM API backend, --opt=O3",
+    "normal_reps5_object": {
+      "path": "$CAMPAIGN_LLVM/build/campaign-validation/typecheck-candidate/json-candidate.o",
+      "sha256": "5f0eb17a27567058628e3d2ecc571efc706e07f44d688c31848e2d1c43e38534",
+      "used_for_profile": false,
+      "profile_only_object_rebuilt_for_REPS50": true
+    },
+    "profile_compile_command_template": [
+      "$CANDIDATE_MINIC",
+      "--backend=llvm-api",
+      "--opt=O3",
+      "-o",
+      "$TMP/json-reps50.o",
+      "$TMP/json-reps50.kt",
+      "--stdlib",
+      "<62 sorted stdlib Kotlin source files>"
+    ],
+    "profile_object": {
+      "sha256": "6248e3d80eada659ab22f8333771735658ae57cd9427b6ef1aeb5e9a0443d90d",
+      "bytes": 90568
+    },
+    "runtime_archive": {
+      "variant": "accepted hot/cold runtime, plain non-MK_STATS archive",
+      "path": "$TMP/campaign-builder-hotcold-pilot/candidate-runtime-plain/libminirt.a",
+      "sha256": "0aedbd0b22020138a8c79c9fb14dcf387d25f3ab9397df5e973c483c166a31b7"
+    },
+    "link_command_template": [
+      "clang",
+      "$TMP/json-reps50.o",
+      "$TMP/campaign-builder-hotcold-pilot/candidate-runtime-plain/libminirt.a",
+      "-lm",
+      "-Wl,-dead_strip",
+      "-o",
+      "$TMP/json-reps50"
+    ],
+    "profile_executable": {
+      "sha256": "17891633459f2504814bfe37096f704af3b399ff484129a4771120ea434e4208",
+      "bytes": 102488
+    },
+    "profile_only_input": {
+      "path": "$TMP/json-reps50.kt",
+      "sha256": "1b23f0dfdce6d40fdab5ea04b3d00e48bfe6d8baa9ad817c99be8ace675497aa",
+      "source_change": "only REPS changed from 5 to 50",
+      "checked_in_source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd"
+    }
+  },
+  "output_validation": {
+    "profile_stdout": "7055506 1072916 885982430\n",
+    "expected_reps5_stdout": "7055506 1072916 885982430\n",
+    "matches_reps5_output": true,
+    "profile_returncode": 0,
+    "reps5_reference_binary_path": "$TMP/campaign-builder-hotcold-pilot/json-hotcold",
+    "reps5_reference_binary_sha256": "ccbdcb90c8e2d330dd5ead7a4d2fd1e19173ecff958c7712e89cd2a891dc4f2a"
+  },
+  "measurement": {
+    "tool": "/usr/bin/sample",
+    "requested_interval_ms": 1,
+    "sampled_main_thread_samples": 3228,
+    "profile_duration_observed_seconds_approx": 3.228,
+    "sample_file_sha256": "03aed07ee0d0b8a85558d29fe36b045ce95581275b4a7a71b5608218fc1f0dcd",
+    "sample_file_path": "$TMP/campaign-json-profile-latest/json-reps50.sample.txt",
+    "note": "Sampling ended when this REPS50 process completed; counts are sampled stacks, not instrumentation or elapsed-time benchmarks. No full REPS5 timing samples were run in this task."
+  },
+  "exclusive_top_of_stack": {
+    "section": "Sort by top of stack, same collapsed (when >=5)",
+    "semantics": "Each row is an exclusive sampled top frame; counts are mutually exclusive. Rows below the tool threshold are omitted.",
+    "listed_samples": 3210,
+    "below_threshold_samples": 18,
+    "minimum_reported_count": 5,
+    "rows": [
+      {
+        "symbol": "kc_Parser_MparseValue",
+        "image": "json-reps50",
+        "samples": 546
+      },
+      {
+        "symbol": "mk_release",
+        "image": "json-reps50",
+        "samples": 352
+      },
+      {
+        "symbol": "mkh_type_tag_kc_J",
+        "image": "json-reps50",
+        "samples": 291
+      },
+      {
+        "symbol": "kt_walk_ALkc_J_ELkc_Stats_E",
+        "image": "json-reps50",
+        "samples": 255
+      },
+      {
+        "symbol": "mk_alloc_sized_site",
+        "image": "json-reps50",
+        "samples": 244
+      },
+      {
+        "symbol": "kc_Parser_MparseString",
+        "image": "json-reps50",
+        "samples": 208
+      },
+      {
+        "symbol": "mk_free_object_memory",
+        "image": "json-reps50",
+        "samples": 177
+      },
+      {
+        "symbol": "_platform_memset",
+        "image": "libsystem_platform.dylib",
+        "samples": 165
+      },
+      {
+        "symbol": "ref_array_dispose",
+        "image": "json-reps50",
+        "samples": 163
+      },
+      {
+        "symbol": "_tlv_get_addr",
+        "image": "libdyld.dylib",
+        "samples": 136
+      },
+      {
+        "symbol": "kc_JObj_dispose",
+        "image": "json-reps50",
+        "samples": 68
+      },
+      {
+        "symbol": "kc_JArr_dispose",
+        "image": "json-reps50",
+        "samples": 58
+      },
+      {
+        "symbol": "kc_JStr_dispose",
+        "image": "json-reps50",
+        "samples": 51
+      },
+      {
+        "symbol": "mk_alloc",
+        "image": "json-reps50",
+        "samples": 46
+      },
+      {
+        "symbol": "DYLD-STUB$$bzero",
+        "image": "json-reps50",
+        "samples": 43
+      },
+      {
+        "symbol": "kc_kotlin_Dcollections_DArrayList_McheckElementIndex_AI",
+        "image": "json-reps50",
+        "samples": 38
+      },
+      {
+        "symbol": "kc_kotlin_Dcollections_DArrayList_Mget_AI",
+        "image": "json-reps50",
+        "samples": 34
+      },
+      {
+        "symbol": "kc_kotlin_Dcollections_DArrayList_MensureCapacity_AI",
+        "image": "json-reps50",
+        "samples": 32
+      },
+      {
+        "symbol": "mk_ref_array_set_o",
+        "image": "json-reps50",
+        "samples": 30
+      },
+      {
+        "symbol": "__bzero",
+        "image": "libsystem_platform.dylib",
+        "samples": 28
+      },
+      {
+        "symbol": "kc_kotlin_Dcollections_DArrayList_Madd_AQLmk_Any_E",
+        "image": "json-reps50",
+        "samples": 27
+      },
+      {
+        "symbol": "mk_ref_array_get",
+        "image": "json-reps50",
+        "samples": 27
+      },
+      {
+        "symbol": "mk_string_substring",
+        "image": "json-reps50",
+        "samples": 24
+      },
+      {
+        "symbol": "_platform_memmove",
+        "image": "libsystem_platform.dylib",
+        "samples": 23
+      },
+      {
+        "symbol": "mk_sb_append_char",
+        "image": "json-reps50",
+        "samples": 23
+      },
+      {
+        "symbol": "mk_ref_array_new",
+        "image": "json-reps50",
+        "samples": 21
+      },
+      {
+        "symbol": "mk_ref_array_get_b",
+        "image": "json-reps50",
+        "samples": 18
+      },
+      {
+        "symbol": "mk_ref_array_length",
+        "image": "json-reps50",
+        "samples": 17
+      },
+      {
+        "symbol": "DYLD-STUB$$memcpy",
+        "image": "json-reps50",
+        "samples": 16
+      },
+      {
+        "symbol": "kt_kotlin_Dtext_Dsubstring_ASII",
+        "image": "json-reps50",
+        "samples": 16
+      },
+      {
+        "symbol": "mk_string_alloc",
+        "image": "json-reps50",
+        "samples": 12
+      },
+      {
+        "symbol": "kc_kotlin_Dcollections_DArrayList_M_x003Cget_x002Dsize_x003E",
+        "image": "json-reps50",
+        "samples": 9
+      },
+      {
+        "symbol": "kc_kotlin_Dcollections_DArrayList_dispose",
+        "image": "json-reps50",
+        "samples": 7
+      },
+      {
+        "symbol": "mk_retain",
+        "image": "json-reps50",
+        "samples": 5
+      }
+    ]
+  },
+  "inclusive_callgraph": {
+    "section": "Total number in stack (recursive counted multiple, when >=5)",
+    "semantics": "Rows are inclusive callgraph frame counts; recursive descendants are counted multiple times and duplicate symbols at different offsets are kept separate. Do not sum as a percentage of total.",
+    "rows": [
+      {
+        "samples": 64,
+        "frame": "mk_free_object_memory",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 51,
+        "frame": "_tlv_get_addr",
+        "image": "libdyld.dylib"
+      },
+      {
+        "samples": 46,
+        "frame": "mk_alloc_sized_site",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 36,
+        "frame": "mk_release",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 33,
+        "frame": "mk_release",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 31,
+        "frame": "mk_free_object_memory",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 22,
+        "frame": "mk_alloc",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 19,
+        "frame": "ref_array_dispose",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 18,
+        "frame": "mk_alloc_sized_site",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 18,
+        "frame": "ref_array_dispose",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 16,
+        "frame": "_platform_memset",
+        "image": "libsystem_platform.dylib"
+      },
+      {
+        "samples": 15,
+        "frame": "DYLD-STUB$$bzero",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 14,
+        "frame": "mk_alloc_sized_site",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 12,
+        "frame": "__bzero",
+        "image": "libsystem_platform.dylib"
+      },
+      {
+        "samples": 10,
+        "frame": "mk_alloc",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 8,
+        "frame": "kc_JObj_dispose",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 6,
+        "frame": "kc_JObj_dispose",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 6,
+        "frame": "kc_JStr_dispose",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 6,
+        "frame": "mk_ref_array_new",
+        "image": "json-reps50"
+      },
+      {
+        "samples": 5,
+        "frame": "kc_JArr_dispose",
+        "image": "json-reps50"
+      }
+    ]
+  },
+  "remaining_hotspots": [
+    {
+      "symbol": "kc_Parser_MparseValue",
+      "exclusive_samples": 546,
+      "share_of_main_thread_samples": 0.1691
+    },
+    {
+      "symbol": "mk_release",
+      "exclusive_samples": 352,
+      "share_of_main_thread_samples": 0.109
+    },
+    {
+      "symbol": "mkh_type_tag_kc_J",
+      "exclusive_samples": 291,
+      "share_of_main_thread_samples": 0.0901
+    },
+    {
+      "symbol": "kt_walk_ALkc_J_ELkc_Stats_E",
+      "exclusive_samples": 255,
+      "share_of_main_thread_samples": 0.079
+    },
+    {
+      "symbol": "mk_alloc_sized_site",
+      "exclusive_samples": 244,
+      "share_of_main_thread_samples": 0.0756
+    },
+    {
+      "symbol": "kc_Parser_MparseString",
+      "exclusive_samples": 208,
+      "share_of_main_thread_samples": 0.0644
+    },
+    {
+      "symbol": "mk_free_object_memory",
+      "exclusive_samples": 177,
+      "share_of_main_thread_samples": 0.0548
+    },
+    {
+      "symbol": "ref_array_dispose",
+      "exclusive_samples": 163,
+      "share_of_main_thread_samples": 0.0505
+    }
+  ],
+  "interpretation": "Parsing, recursive object teardown, sealed-type dispatch, tree walking, and allocation remain visible costs. This profile identifies where follow-up may focus; without a matched baseline profile under identical build/runtime conditions, it does not establish a regression or improvement from the hot/cold candidate."
+}

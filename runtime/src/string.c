@@ -27,7 +27,8 @@ MkString *mk_string_alloc(MkInt length) {
 MkInt mk_string_length(const MkString *s) { return s ? s->length : 0; }
 
 MkString *mk_string_from_utf8(const char *utf8, size_t length) {
-    const uint8_t *begin = (const uint8_t *)utf8;
+    static const uint8_t empty_utf8 = 0;
+    const uint8_t *begin = utf8 ? (const uint8_t *)utf8 : &empty_utf8;
     const uint8_t *end = begin + (utf8 ? length : 0);
     size_t units = 0;
     uint32_t cp;

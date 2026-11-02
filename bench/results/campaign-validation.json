@@ -1,0 +1,79 @@
+{
+  "tested_commit": "aaa8758",
+  "source_changes_after_tests": "none; report/results-only followups",
+  "host": "macOS 26.2 arm64 Apple M4",
+  "llvm": "18.1.8",
+  "bootstrap": {
+    "c_stage2_stage3": [
+      "C byte-identical",
+      "MIR byte-identical",
+      "memory checker probes passed"
+    ],
+    "api_stage2_stage3": [
+      "C byte-identical",
+      "MIR byte-identical",
+      "LLVM IR byte-identical",
+      "object byte-identical"
+    ],
+    "cross_backend": "API-built plain compiler C/MIR byte-identical to C bootstrap"
+  },
+  "tests": {
+    "compiler_modules": {
+      "backend": 85,
+      "frontend": 32,
+      "native_driver": 2,
+      "failed": 0
+    },
+    "c_e2e": {
+      "passed": 329,
+      "failed": 0,
+      "skipped": 1,
+      "skip": "memrun::ok_thread_move; thread support not exercised",
+      "suites": [
+        "c",
+        "leak",
+        "memcheck",
+        "memrun",
+        "multifile",
+        "mlib"
+      ],
+      "sanitizers": "ASan/UBSan; macOS has no LSan"
+    },
+    "llvm_api_e2e": {
+      "passed": 74,
+      "failed": 0
+    },
+    "repl_session": "passed",
+    "orc_session_api": "passed; expected unresolved-symbol diagnostic within rollback test",
+    "package_default_api_c_fallback_repl": "passed; output 42"
+  },
+  "package": {
+    "version": "0.7.0-campaign",
+    "published": false,
+    "target": "macos-arm64",
+    "compiler_bytes_before": 60849928,
+    "compiler_bytes_after": 47100464,
+    "installed_file_bytes_before": 65592105,
+    "installed_file_bytes_after": 51842641,
+    "matched_archive_bytes_before": 20770837,
+    "matched_archive_bytes_after": 18831916,
+    "archive_method": "same extracted installation tree and tar flags; only compiler replaced",
+    "local_symbols_before": 132542,
+    "local_symbols_after": 1,
+    "external_and_dyld_export_count": 36692,
+    "sorted_export_names_sha256": "fb27b4187c3a715bb74803acbf954c071aa9863703e8b1c504a1c6b3af754894",
+    "dynamic_dependencies": "only /usr/lib system libraries; no Homebrew or external LLVM dependency",
+    "unstripped_stage3_sha256_after": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+    "stage3_unchanged_by_packaging": true
+  },
+  "warnings": [
+    "duplicate -lm",
+    "Homebrew llvm@18 libunwind re-export warning; final dependency check system-only"
+  ],
+  "not_rerun": [
+    "Linux platform matrix",
+    "fresh browser/WASM compiler bundle",
+    "full runtime sanitizer/thread unit matrix"
+  ],
+  "logs_directory": "build/campaign-validation (ignored local artifacts)"
+}

@@ -49,6 +49,25 @@ fun main() {
     list.forEach { print(it + 1) }
     println()
 
+    // Default-capacity lists grow across the initial boundary and preserve logical contents.
+    val grown = ArrayList<Int?>()
+    grown.add(null)
+    grown.add(1)
+    grown.add(2)
+    grown.add(3)
+    grown.add(4)
+    grown.add(5)
+    grown.add(2, 99)
+    println(grown)
+    println(grown.removeAt(3))
+    println(grown)
+    println(grown.joinToString())
+
+    // Explicit initial capacities keep the existing constructor behavior.
+    val zeroCapacity = ArrayList<Int>(0)
+    zeroCapacity.add(7)
+    println(zeroCapacity)
+
     val sb = StringBuilder()
     sb.append("n=").append(5).append(',').append(true)
     println(sb.toString())

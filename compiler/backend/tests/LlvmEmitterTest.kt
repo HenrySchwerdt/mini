@@ -12,9 +12,11 @@ import mini.backend.MirWasmExport
 import mini.backend.TString
 import mini.backend.WasmGlue
 import mini.backend.TBoolean
+import mini.backend.TChar
 import mini.backend.TDouble
 import mini.backend.TInt
 import mini.backend.TLong
+import mini.backend.TNString
 import mini.backend.TNothing
 import mini.backend.TUnit
 import mini.backend.TObject
@@ -148,6 +150,153 @@ class LlvmEmitterTest {
         val wasm = LlvmEmitter.emit(m, target = LlvmTarget.WASM32)
         assertTrue("target triple = \"wasm32-unknown-wasi\"" in wasm)
         assertTrue("%MkTypeInfo = type <{ ptr, i32, ptr, ptr, ptr, i32, ptr, i32 }>" in wasm, wasm)
+    }
+
+    @Test
+    fun stringFastPathsUseTargetLayoutAndPreserveRuntimeColdPaths() {
+        val text = MirLocal(0, "text", TString)
+        val index = MirLocal(1, "index", TInt)
+        val at = MirFunction(
+            "at", "kt_at", listOf(text, index), TChar,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_char_at", listOf(MirExpr.Local(text), MirExpr.Local(index)), TChar))),
+        )
+        val length = MirFunction(
+            "length", "kt_length", listOf(text), TInt,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_length", listOf(MirExpr.Local(text)), TInt))),
+        )
+
+        for ((target, charsOffset) in listOf(LlvmTarget.HOST to 20, LlvmTarget.WASM32 to 16)) {
+            val ll = LlvmEmitter.emit(module(at, length), target = target)
+            val atBody = ll.substringAfter("define zeroext i16 @kt_at(").substringBefore("\n}")
+            val lenBody = ll.substringAfter("define i32 @kt_length(").substringBefore("\n}")
+            assertTrue("icmp eq ptr" in atBody, atBody)
+            assertTrue("icmp uge i32" in atBody, "unsigned comparison covers negative indexes\n$atBody")
+            assertTrue(", $charsOffset" in atBody, "UTF-16 data offset must follow target header + length\n$atBody")
+            assertTrue("call zeroext i16 @mk_string_char_at" in atBody, "cold path must preserve runtime panic behavior\n$atBody")
+            assertTrue("phi i16" in atBody, atBody)
+            assertTrue("icmp eq ptr" in lenBody, lenBody)
+            assertTrue("call i32 @mk_string_length" in lenBody, "null must preserve the runtime's zero result\n$lenBody")
+            assertTrue("phi i32" in lenBody, lenBody)
+            assertFalse("mk_pending_exception" in atBody || "mk_pending_exception" in lenBody, ll)
+        }
+    }
+
+    @Test
+    fun stringCharAtEvaluatesArgumentsOnceInSourceOrder() {
+        val indexArg = MirFunction("indexArg", "kt_index_arg", emptyList(), TInt, listOf(MirStmt.Return(MirExpr.IntConst(0))))
+        val text = MirLocal(0, "text", TString)
+        val at = MirFunction(
+            "at", "kt_at", listOf(text), TChar,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall(
+                "mk_string_char_at",
+                listOf(MirExpr.Local(text), MirExpr.Call("kt_index_arg", emptyList(), TInt)),
+                TChar,
+            ))),
+        )
+        val ll = LlvmEmitter.emit(module(indexArg, at))
+        val body = ll.substringAfter("define zeroext i16 @kt_at(").substringBefore("\n}")
+        assertTrue(body.indexOf("load ptr, ptr %v_text_0") < body.indexOf("call i32 @kt_index_arg"), body)
+        assertEquals(1, occurrences(body, "call i32 @kt_index_arg"), body)
+    }
+
+    @Test
+    fun nullableExternalStringCallsKeepTheirRuntimeNullSemantics() {
+        val text = MirLocal(0, "text", TNString)
+        val f = MirFunction(
+            "length", "kt_nullable_length", listOf(text), TInt,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_length", listOf(MirExpr.Local(text)), TInt))),
+        )
+        val body = LlvmEmitter.emit(module(f)).substringAfter("define i32 @kt_nullable_length(").substringBefore("\n}")
+        assertTrue("call i32 @mk_string_length" in body, body)
+        assertFalse("icmp eq ptr" in body || "phi i32" in body, body)
+    }
+
+    @Test
+    fun repeatedIsChecksUseBoundedTagHelperAndUnknownTypesFallback() {
+        val baseType = TObject("Base", "kc_Base", true)
+        val value = MirLocal(0, "value", baseType)
+        val interfaceType = TObject("Named", "kc_Named", false, true)
+        val test = MirFunction(
+            "test", "kt_test", listOf(value), TBoolean,
+            listOf(
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), TObject("A", "kc_A", false))),
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), TObject("B", "kc_B", false))),
+                MirStmt.Return(MirExpr.IsInstance(MirExpr.Local(value), interfaceType)),
+            ),
+        )
+        val classes = listOf(
+            MirClass("Base", "kc_Base", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("Named", "kc_Named", true, null, emptyList(), emptyList(), emptyList(), emptyList()),
+            MirClass("A", "kc_A", false, "kc_Base", emptyList(), listOf("kc_Named"), listOf(null, null, null), emptyList()),
+            MirClass("B", "kc_B", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("C", "kc_C", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("Foreign", "kc_Foreign", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList(), external = true),
+        )
+        val m = MirModule("test.kt", listOf(test), classes)
+
+        for (target in listOf(LlvmTarget.HOST, LlvmTarget.WASM32)) {
+            val ll = LlvmEmitter.emit(m, target = target)
+            val helper = ll.substringAfter("define internal i32 @mkh_type_tag_kc_Base(").substringBefore("\n}")
+            val body = ll.substringAfter("define zeroext i1 @kt_test(").substringBefore("\n}")
+            assertTrue("icmp eq ptr" in helper && "@kc_A_ti" in helper && "@kc_B_ti" in helper && "@kc_C_ti" in helper, helper)
+            assertFalse("@kc_Foreign_ti" in helper, helper)
+            assertTrue("memory(none)" in ll, "the address-only classifier should be pure\n$ll")
+            assertTrue("define internal i32 @mkh_type_tag_kc_Base(ptr %type) #5" in ll, ll)
+            assertTrue("attributes #5 = { nounwind alwaysinline memory(none) }" in ll, ll)
+            assertTrue("declare zeroext i1 @mk_is_instance(ptr, ptr) #4" in ll, ll)
+            assertTrue("attributes #4 = { nounwind memory(read) }" in ll, ll)
+            assertTrue("call i32 @mkh_type_tag_kc_Base" in body, body)
+            assertTrue("icmp eq ptr" in body && "phi i1" in body, body)
+            assertTrue("call zeroext i1 @mk_is_instance" in body, "unknown tags must retain the generic hierarchy test\n$body")
+        }
+    }
+
+    @Test
+    fun customMkIsInstanceSymbolKeepsRepeatedChecksOnTheOverride() {
+        val valueType = TObject("Base", "kc_Base", true)
+        val targets = listOf(
+            TObject("A", "kc_A", false),
+            TObject("B", "kc_B", false),
+            TObject("C", "kc_C", false),
+        )
+        val value = MirLocal(0, "value", valueType)
+        val caller = MirFunction(
+            "caller", "kt_caller", listOf(value), TBoolean,
+            listOf(
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), targets[0])),
+                MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(value), targets[1])),
+                MirStmt.Return(MirExpr.IsInstance(MirExpr.Local(value), targets[2])),
+            ),
+        )
+        val runtimeObject = MirLocal(0, "object", valueType)
+        val runtimeTarget = MirLocal(1, "target", TObject("TypeInfo", "kc_TypeInfo", true))
+        val customRuntimeSymbol = MirFunction(
+            "customIsInstance", "mk_is_instance", listOf(runtimeObject, runtimeTarget), TBoolean,
+            listOf(MirStmt.Return(MirExpr.BooleanConst(false))),
+        )
+        val classes = listOf(
+            MirClass("Base", "kc_Base", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("A", "kc_A", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("B", "kc_B", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("C", "kc_C", false, "kc_Base", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+        )
+        fun assertOverrideCalls(ll: String) {
+            assertFalse("mkh_type_tag_kc_Base" in ll, ll)
+            assertFalse("memory(read)" in ll, ll)
+            val body = ll.substringAfter("define zeroext i1 @kt_caller(").substringBefore("\n}")
+            assertEquals(3, body.split("call zeroext i1 @mk_is_instance").size - 1, body)
+        }
+
+        val localModule = MirModule("test.kt", listOf(customRuntimeSymbol, caller), classes)
+        assertOverrideCalls(LlvmEmitter.emit(localModule))
+
+        val importedModule = MirModule("test.kt", listOf(caller), classes)
+        val importedLl = LlvmEmitter.emit(
+            importedModule,
+            externalFunctionSignatures = listOf(customRuntimeSymbol),
+            externalFunctions = true,
+        )
+        assertOverrideCalls(importedLl)
     }
 
     @Test

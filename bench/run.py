@@ -5,7 +5,7 @@
 
 For every program in bench/<name>/ and every language/variant it
   1. builds the implementation (C: clang -O2, Rust: rustc -C opt-level=3, Go: go build, Kotlin/JVM: kotlinc,
-     Kotlin/Native: kotlinc-native -opt, Mini: `minic build --cflag -O2` with the C backend and with --backend=llvm),
+     Kotlin/Native: kotlinc-native -opt, Mini: `minic build -O2 --backend=c` and with `--backend=llvm-api`),
   2. checks that stdout equals bench/<name>/expected.txt,
   3. runs it N times and keeps the best wall time; peak RSS comes from wait4()'s rusage of that very child,
   4. records the binary size (and the stripped size).
@@ -27,14 +27,14 @@ LANGS = [
     ("kotlin-jvm", "Kotlin/JVM"),
     ("kotlin-native", "Kotlin/Native"),
     ("mini-managed", "Mini Managed (C)"),
-    ("mini-managed-llvm", "Mini Managed (LLVM)"),
+    ("mini-managed-llvm", "Mini Managed (LLVM API)"),
     ("mini-arena", "Mini Arena (C)"),
-    ("mini-arena-llvm", "Mini Arena (LLVM)"),
+    ("mini-arena-llvm", "Mini Arena (LLVM API)"),
     ("mini-strict", "Mini Strict (C)"),
-    ("mini-strict-llvm", "Mini Strict (LLVM)"),
+    ("mini-strict-llvm", "Mini Strict (LLVM API)"),
 ]
-SHORT = {"c": "C", "rust": "Rust", "go": "Go", "kotlin-jvm": "JVM", "kotlin-native": "K/N", "mini-managed": "Mini-M", "mini-managed-llvm": "Mini-M-ll",
-         "mini-arena": "Mini-A", "mini-arena-llvm": "Mini-A-ll", "mini-strict": "Mini-S", "mini-strict-llvm": "Mini-S-ll"}
+SHORT = {"c": "C", "rust": "Rust", "go": "Go", "kotlin-jvm": "JVM", "kotlin-native": "K/N", "mini-managed": "Mini-M", "mini-managed-llvm": "Mini-M-API",
+         "mini-arena": "Mini-A", "mini-arena-llvm": "Mini-A-API", "mini-strict": "Mini-S", "mini-strict-llvm": "Mini-S-API"}
 
 
 def sh(cmd, env=None, timeout=900, cwd=None):
@@ -65,7 +65,7 @@ class Tools:
         self.java = which("java", "JAVA")
         self.kotlinc = which("kotlinc", "KOTLINC")
         self.kotlinc_native = which("kotlinc-native", "KOTLINC_NATIVE")
-        self.minic = os.path.join(ROOT, "minic")
+        self.minic = os.environ.get("MINIC", os.path.join(ROOT, "minic"))
         self.kotlin_stdlib = None
         if self.kotlinc:
             home = os.path.dirname(os.path.dirname(os.path.realpath(self.kotlinc)))
@@ -88,14 +88,30 @@ class Tools:
         if self.java: v["java"] = first([self.java, "-version"])
         if self.kotlinc: v["kotlinc"] = first([self.kotlinc, "-version"])
         if self.kotlinc_native: v["kotlinc-native"] = first([self.kotlinc_native, "-version"])
+        if self.minic: v["minic"] = first([self.minic, "version"])
         return v
 
 
-def build(tools, prog, lang_id, src, outdir, stats=False):
+def mini_build_options(lang_id):
+    """Return explicit backend and optimization arguments for a Mini benchmark ID."""
+    backend = "llvm-api" if lang_id.endswith("-llvm") else "c"
+    return backend, ["-O2", "--backend", backend]
+
+
+def mini_stats_unavailable():
+    """Stats need a separately compiled MK_STATS runtime, which this runner does not currently build."""
+    return {
+        "status": "unavailable",
+        "reason": "--stats is not supported by the current CLI; MK_STATS requires a separately compiled runtime.",
+        "raw": [],
+    }
+
+
+def build(tools, prog, lang_id, src, outdir):
     """Returns (cmd_to_run list or None, artifact_path, error string or None, build_seconds)."""
     os.makedirs(outdir, exist_ok=True)
     name = prog
-    exe = os.path.join(outdir, name + (".stats" if stats else ""))
+    exe = os.path.join(outdir, name)
     t0 = time.perf_counter()
     err = None
     run_cmd = [exe]
@@ -125,11 +141,14 @@ def build(tools, prog, lang_id, src, outdir, stats=False):
         run_cmd = [exe]
         artifact = exe
     else:  # mini-*
-        backend = ["--backend=llvm"] if lang_id.endswith("-llvm") else []
+        backend, options = mini_build_options(lang_id)
         srcs = [src]
-        cmd = [tools.minic, "build"] + srcs + ["-o", exe, "--cflag", "-O2"] + backend
-        if stats: cmd.append("--stats")
+        cmd = [tools.minic, "build"] + srcs + ["-o", exe] + options
         rc, out = sh(cmd, timeout=1800)
+        if rc == 0:
+            with open(exe + ".bench.json", "w") as f:
+                compiler_source = "MINIC environment override" if os.environ.get("MINIC") else "repository wrapper"
+                json.dump({"compiler": "minic", "compiler_source": compiler_source, "backend": backend, "compiler_flags": options}, f)
     if rc != 0:
         err = "build failed: " + "\n".join(l for l in out.splitlines() if not l.startswith("Picked up"))[-800:]
     return run_cmd, artifact, err, time.perf_counter() - t0
@@ -200,6 +219,14 @@ def parse_stats(text):
 
 def measure(tools, prog, lang_id, src, build_dir, expected, reps, do_stats, no_build):
     r = {"bench": prog, "lang": lang_id, "source": os.path.relpath(src, ROOT)}
+    if lang_id.startswith("mini-"):
+        backend, options = mini_build_options(lang_id)
+        r["backend"] = backend
+        r["compiler_flags"] = options
+        r["compiler"] = "minic"
+        r["compiler_source"] = "MINIC environment override" if os.environ.get("MINIC") else "repository wrapper"
+        if do_stats and lang_id == "mini-managed":
+            r["stats"] = mini_stats_unavailable()
     outdir = os.path.join(build_dir, lang_id)
     if no_build and os.path.exists(os.path.join(outdir, prog)) or no_build and os.path.isdir(os.path.join(outdir, prog + ".classes")):
         run_cmd, artifact, err, bsec = None, None, None, 0
@@ -211,6 +238,17 @@ def measure(tools, prog, lang_id, src, build_dir, expected, reps, do_stats, no_b
             artifact = os.path.join(outdir, prog + ".kexe"); run_cmd = [artifact]
         else:
             artifact = os.path.join(outdir, prog); run_cmd = [artifact]
+        if lang_id.startswith("mini-"):
+            try:
+                with open(artifact + ".bench.json") as f:
+                    r.update(json.load(f))
+                    r["build_reused"] = True
+            except (OSError, ValueError):
+                r["backend"] = "unknown (pre-existing artifact)"
+                r["compiler_flags"] = None
+                r["compiler"] = None
+                r["compiler_source"] = None
+                r["build_reused"] = True
     else:
         run_cmd, artifact, err, bsec = build(tools, prog, lang_id, src, outdir)
     r["build_seconds"] = round(bsec, 2)
@@ -235,11 +273,6 @@ def measure(tools, prog, lang_id, src, build_dir, expected, reps, do_stats, no_b
     r["times_s"] = [round(t, 4) for t in times]
     r["rss_kb"] = max(rss)  # peak over the runs (they are almost identical)
     r["size_bytes"], r["size_stripped_bytes"] = sizes(artifact)
-    if lang_id == "mini-managed" and do_stats and not no_build:
-        run_cmd2, art2, err2, _ = build(tools, prog, lang_id, src, outdir, stats=True)
-        if not err2:
-            _, _, _, errt, _ = run_once(run_cmd2)
-            r["stats"] = parse_stats(errt)
     return r
 
 
@@ -314,11 +347,14 @@ def markdown(data):
         L.append("Not measured / failed: " + ", ".join(f"{SHORT.get(l, l)} ({s})" for l, s in missing) + "\n")
     stats = [r for r in data["results"] if r.get("stats")]
     if stats:
-        L.append("**Mini Managed counters** (`--stats` build)\n")
+        L.append("**Mini Managed counters** (stats request status)\n")
         L.append("| benchmark | raw mk-stats lines |")
         L.append("|---|---|")
         for r in stats:
-            L.append(f"| {r['bench']} | " + "<br>".join(r["stats"].get("raw", [])) + " |")
+            if r["stats"].get("status") == "unavailable":
+                L.append(f"| {r['bench']} | unavailable: {r['stats']['reason']} |")
+            else:
+                L.append(f"| {r['bench']} | " + "<br>".join(r["stats"].get("raw", [])) + " |")
         L.append("")
     return "\n".join(L)
 
@@ -340,7 +376,7 @@ def main():
     ap.add_argument("--out", default=os.path.join(BENCH, "results"))
     ap.add_argument("--build-dir", default=os.path.join(BENCH, "build"))
     ap.add_argument("--no-build", action="store_true", help="reuse the binaries of an earlier run")
-    ap.add_argument("--stats", action="store_true", help="also run a --stats build of Mini Managed for the RC/alloc counters")
+    ap.add_argument("--stats", action="store_true", help="request Mini Managed counters (currently reported unavailable; this CLI has no --stats and the runner does not rebuild MK_STATS runtime)")
     ap.add_argument("--no-startup", action="store_true")
     ap.add_argument("--update-expected", action="store_true", help="rewrite bench/<name>/expected.txt from the C implementation")
     a = ap.parse_args()
@@ -382,7 +418,9 @@ def main():
         "tools": tools.versions(),
         "minic_commit": sh(["git", "-C", ROOT, "rev-parse", "--short", "HEAD"])[1].strip(),
         "flags": {"c": "clang -O2", "rust": "rustc -C opt-level=3 -C codegen-units=1", "go": "go build (CGO off)", "kotlin-jvm": "kotlinc; java (default JVM flags)",
-                  "kotlin-native": "kotlinc-native -opt", "mini": "minic build --cflag -O2 [--backend=llvm]"},
+                  "kotlin-native": "kotlinc-native -opt", "mini": "minic build -O2 --backend=c or --backend=llvm-api"},
+        "mini_backend_flags": {lang: {"backend": mini_build_options(lang)[0], "compiler_flags": mini_build_options(lang)[1]} for lang, _ in LANGS if lang.startswith("mini-")},
+        "mini_stats": ("unavailable: the CLI has no --stats option and this runner does not build an MK_STATS runtime" if a.stats else "not requested"),
         "results": results,
         "startup": startup_res,
     }

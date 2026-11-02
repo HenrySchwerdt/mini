@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "kind": "fresh-compiler-campaign-baseline",
+  "date": "2026-10-31",
+  "source_commit": "8ce0e5c61ddf7fe2992777b9e6b5c753070e555e",
+  "branch": "codex/campaign-benchmark",
+  "host": {
+    "cpu": "Apple M4",
+    "os": "macOS 26.2",
+    "architecture": "arm64",
+    "cores": 10,
+    "cc": "Apple clang 17.0.0 (clang-1700.6.4.2)"
+  },
+  "compiler": {
+    "stage0_release": "Mini 0.7.0",
+    "release_source_commit": "f353826",
+    "source_equivalence": "compiler/minic-native, frontend, lower, backend, stdlib and runtime have no diff between f353826 and baseline commit",
+    "stage0_binary_sha256": "1b55365a43db6ab17085598d29c3aa571b9ff5b77b2b89ea879d30f90b15c624",
+    "invocation_backend": "C backend (`--backend=c`); native compiler generated C and MIR; clang is not involved in frontend/self-compilation timing",
+    "output_compiler_backend": "CEmitter; native compiler binary is existing published 0.7.0 compiler"
+  },
+  "self_compilation": {
+    "workload": "all 91 compiler Kotlin sources from minic-native, lower, frontend, backend plus 62 stdlib Kotlin sources",
+    "command_template": "<published-0.7.0-minic-native> --backend=c -o OUT.c --emit-mir OUT.mir <91 compiler Kotlin paths, sorted> --stdlib <62 stdlib Kotlin paths, sorted>",
+    "warmup_runs": 1,
+    "measured_runs": [
+      {
+        "real": 2.63,
+        "user": 2.55,
+        "sys": 0.06,
+        "max_rss_bytes": 700432384,
+        "instructions_retired": 47724147841
+      },
+      {
+        "real": 2.57,
+        "user": 2.5,
+        "sys": 0.06,
+        "max_rss_bytes": 699727872,
+        "instructions_retired": 47678207258
+      },
+      {
+        "real": 2.57,
+        "user": 2.51,
+        "sys": 0.05,
+        "max_rss_bytes": 699760640,
+        "instructions_retired": 47709656641
+      },
+      {
+        "real": 2.58,
+        "user": 2.5,
+        "sys": 0.06,
+        "max_rss_bytes": 699777024,
+        "instructions_retired": 47677806739
+      },
+      {
+        "real": 2.61,
+        "user": 2.54,
+        "sys": 0.06,
+        "max_rss_bytes": 700416000,
+        "instructions_retired": 47705125617
+      }
+    ],
+    "wall_seconds_median": 2.58,
+    "wall_seconds_range": [
+      2.57,
+      2.63
+    ],
+    "user_seconds_median": 2.51,
+    "max_rss_bytes_median": 699777024,
+    "instructions_retired_median": 47705125617,
+    "c_bytes": 25248236,
+    "mir_bytes": 18533493,
+    "c_sha256": "a882afa376e862b647d5abf512b327849f4c4653b113442c956b93d5f500d33e",
+    "mir_sha256": "7abf6027e765fedd96ffac6e9b995968d53de676d1ca539ccc0d3d209d22a943",
+    "all_six_outputs_byte_identical": true,
+    "notes": "Frontend+lower+backend emit only. Parsing/sema/lowering, RcOpt and C emission are included; clang compile/link are excluded and recorded separately in runtime subset."
+  },
+  "profile": {
+    "tool": "/usr/bin/sample",
+    "duration_seconds": 3,
+    "interval_ms": 1,
+    "main_thread_samples": 2147,
+    "top_observed_symbols": [
+      "kotlin.collections.HashMap.findNode",
+      "kotlin.collections.HashMap.resize",
+      "kotlin.collections.HashMap.dispose",
+      "mini.frontend.sema.TypeOps.closure",
+      "mini.frontend.sema.TypeOps.directSupertypes",
+      "mini.frontend.sema.Sema.addFile",
+      "mini.backend.RcOpt.analyze",
+      "mini.backend.CEmitter.emit"
+    ],
+    "raw_profile_retained_outside_repo": true
+  },
+  "runtime_subset": {
+    "method": "Existing bench source files; exact published compiler direct `--backend=c`, clang -O2 linked with current runtime/src; compile/link and execution separately measured; 3 timed executions after one warmup; expected stdout checked.",
+    "results": [
+      {
+        "bench": "nbody",
+        "emit_seconds": 0.1346,
+        "clang_link_seconds": 0.4763,
+        "runtime_seconds": [
+          0.8366,
+          0.8354,
+          0.8353
+        ],
+        "median_seconds": 0.8354,
+        "binary_bytes": 109112,
+        "c_bytes": 67940,
+        "output_matches_expected": true
+      },
+      {
+        "bench": "mandelbrot",
+        "emit_seconds": 0.1358,
+        "clang_link_seconds": 0.4589,
+        "runtime_seconds": [
+          0.6748,
+          0.6765,
+          0.6732
+        ],
+        "median_seconds": 0.6748,
+        "binary_bytes": 107208,
+        "c_bytes": 45360,
+        "output_matches_expected": true
+      },
+      {
+        "bench": "json",
+        "emit_seconds": 0.1549,
+        "clang_link_seconds": 0.5741,
+        "runtime_seconds": [
+          0.4834,
+          0.4781,
+          0.4789
+        ],
+        "median_seconds": 0.4789,
+        "binary_bytes": 157464,
+        "c_bytes": 209542,
+        "output_matches_expected": true
+      },
+      {
+        "bench": "wordcount",
+        "emit_seconds": 0.1611,
+        "clang_link_seconds": 0.6998,
+        "runtime_seconds": [
+          1.5854,
+          1.6334,
+          1.5679
+        ],
+        "median_seconds": 1.5854,
+        "binary_bytes": 211000,
+        "c_bytes": 391838,
+        "output_matches_expected": true
+      }
+    ]
+  },
+  "unavailable": "Compiler --time phase reporting is only exposed by the LLVM C API run path in this CLI, so not available for plain C self-compilation. MK_STATS requires separate runtime+program stats build; not collected. wasm/archive/install size artifacts not rebuilt or measured. No hardware performance counters beyond macOS time(1) retired instruction count."
+}

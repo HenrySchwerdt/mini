@@ -1,0 +1,1259 @@
+{
+  "schema_version": 1,
+  "kind": "json-api-o3-profile-and-runtime-stats",
+  "date": "2026-11-01",
+  "source_commit": "8433c381a416c0819caab32fb6704b3d0c983171",
+  "host": {
+    "cpu": "Apple M4",
+    "os": "macOS 26.2",
+    "architecture": "arm64",
+    "clang": "Apple clang version 17.0.0 (clang-1700.6.4.2)"
+  },
+  "source": {
+    "mini": "bench/json/json.kt",
+    "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+    "expected_sha256": "0f3864e5576c5693037e942ef5f7730e0bba174981fa79dcbc639539db3f9ef6",
+    "expected_stdout": "7055506 1072916 885982430\n",
+    "normal_reps": 5,
+    "profile_only_reps": 50,
+    "top": 60000
+  },
+  "compiler": {
+    "binary": "$REPO/build/campaign-validation/api/stage3",
+    "sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+    "backend": "LLVM C API",
+    "optimization": "O3",
+    "target": "host triple/data layout, generic CPU"
+  },
+  "builds": {
+    "mini_api_o3": {
+      "compiler": "$REPO/build/campaign-validation/api/stage3",
+      "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+      "source": "json.kt",
+      "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+      "compiler_command": [
+        "$REPO/build/campaign-validation/api/stage3",
+        "--backend=llvm-api",
+        "--opt=O3",
+        "-o",
+        "$TMP/campaign-json-profile/json-api-o3.o",
+        "--emit-ll",
+        "$TMP/campaign-json-profile/json-api-o3.ll",
+        "$REPO/bench/json/json.kt",
+        "--stdlib",
+        "$REPO/stdlib/java/lang/Thread.kt",
+        "$REPO/stdlib/kotlin/Annotations.kt",
+        "$REPO/stdlib/kotlin/ArrayIndices.kt",
+        "$REPO/stdlib/kotlin/Arrays.kt",
+        "$REPO/stdlib/kotlin/Builtins.kt",
+        "$REPO/stdlib/kotlin/Comparator.kt",
+        "$REPO/stdlib/kotlin/ContextParameters.kt",
+        "$REPO/stdlib/kotlin/Lazy.kt",
+        "$REPO/stdlib/kotlin/NumbersMore.kt",
+        "$REPO/stdlib/kotlin/Platform.kt",
+        "$REPO/stdlib/kotlin/Preconditions.kt",
+        "$REPO/stdlib/kotlin/PrimitiveArrays.kt",
+        "$REPO/stdlib/kotlin/Primitives.kt",
+        "$REPO/stdlib/kotlin/Ranges.kt",
+        "$REPO/stdlib/kotlin/Result.kt",
+        "$REPO/stdlib/kotlin/Standard.kt",
+        "$REPO/stdlib/kotlin/Throwable.kt",
+        "$REPO/stdlib/kotlin/Tuples.kt",
+        "$REPO/stdlib/kotlin/annotation/Annotations.kt",
+        "$REPO/stdlib/kotlin/collections/AbstractCollections.kt",
+        "$REPO/stdlib/kotlin/collections/ArrayDeque.kt",
+        "$REPO/stdlib/kotlin/collections/ArrayList.kt",
+        "$REPO/stdlib/kotlin/collections/Builders.kt",
+        "$REPO/stdlib/kotlin/collections/Collections.kt",
+        "$REPO/stdlib/kotlin/collections/HashMap.kt",
+        "$REPO/stdlib/kotlin/collections/HashSet.kt",
+        "$REPO/stdlib/kotlin/collections/Iterables.kt",
+        "$REPO/stdlib/kotlin/collections/IterablesMore.kt",
+        "$REPO/stdlib/kotlin/collections/Iterator.kt",
+        "$REPO/stdlib/kotlin/collections/MapsMore.kt",
+        "$REPO/stdlib/kotlin/collections/PrimitiveIterators.kt",
+        "$REPO/stdlib/kotlin/comparisons/Comparisons.kt",
+        "$REPO/stdlib/kotlin/concurrent/Thread.kt",
+        "$REPO/stdlib/kotlin/internal/Builtin.kt",
+        "$REPO/stdlib/kotlin/internal/Conventions.kt",
+        "$REPO/stdlib/kotlin/io/Console.kt",
+        "$REPO/stdlib/kotlin/jvm/JvmInline.kt",
+        "$REPO/stdlib/kotlin/math/Math.kt",
+        "$REPO/stdlib/kotlin/native/CName.kt",
+        "$REPO/stdlib/kotlin/ranges/Coerce.kt",
+        "$REPO/stdlib/kotlin/reflect/KClass.kt",
+        "$REPO/stdlib/kotlin/text/Char.kt",
+        "$REPO/stdlib/kotlin/text/StringBuilder.kt",
+        "$REPO/stdlib/kotlin/text/StringNumberConversions.kt",
+        "$REPO/stdlib/kotlin/text/Strings.kt",
+        "$REPO/stdlib/kotlin/text/StringsMore.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Annotations.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Intrinsics.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Memory.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Pointers.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Strings.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Types.kt",
+        "$REPO/stdlib/mini/display/Display.kt",
+        "$REPO/stdlib/mini/internal/B1Intrinsics.kt",
+        "$REPO/stdlib/mini/internal/CSymbol.kt",
+        "$REPO/stdlib/mini/internal/Intrinsics.kt",
+        "$REPO/stdlib/mini/io/Files.kt",
+        "$REPO/stdlib/mini/memory/Allocator.kt",
+        "$REPO/stdlib/mini/memory/Allocators.kt",
+        "$REPO/stdlib/mini/memory/Annotations.kt",
+        "$REPO/stdlib/mini/memory/Spawn.kt",
+        "$REPO/stdlib/mini/wasm/WasmExport.kt"
+      ],
+      "link_command": [
+        "clang",
+        "$TMP/campaign-json-profile/json-api-o3.o",
+        "$TMP/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "-lm",
+        "-Wl,-dead_strip",
+        "-o",
+        "$TMP/campaign-json-profile/json-api-o3"
+      ],
+      "compile_timing": {
+        "wall_seconds": 0.4878654159838334,
+        "user_seconds": 0.37,
+        "sys_seconds": 0.03,
+        "max_rss_bytes": 97157120.0,
+        "instructions_retired": 5629944388.0,
+        "cycles_elapsed": 1598153074.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr": "real 0.48\nuser 0.37\nsys 0.03\n            97157120  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4404  page reclaims\n                1693  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                1094  involuntary context switches\n          5629944388  instructions retired\n          1598153074  cycles elapsed\n            70255048  peak memory footprint\n"
+      },
+      "link_timing": {
+        "wall_seconds": 0.12136250000912696,
+        "user_seconds": 0.03,
+        "sys_seconds": 0.06,
+        "max_rss_bytes": 44711936.0,
+        "instructions_retired": 70757025.0,
+        "cycles_elapsed": 35322643.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr": "real 0.11\nuser 0.03\nsys 0.06\n            44711936  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4107  page reclaims\n                 927  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                 300  voluntary context switches\n                 760  involuntary context switches\n            70757025  instructions retired\n            35322643  cycles elapsed\n             2425120  peak memory footprint\n"
+      },
+      "object_bytes": 89088,
+      "object_sha256": "972d4403ad906ce52891bfb6d48bb628e63da1039263de92dda239f6e3b032d1",
+      "ir_bytes": 410708,
+      "ir_sha256": "91154f181519eea7b8e0a770496c1b017d662fb0b7fe6de9deec67c4af00fb85",
+      "executable_bytes": 102424,
+      "executable_sha256": "f5a4ded2d21f18903c087ca4a5fb2e4fb2956f5fd81155e79f0c6eb47f7d7dd0",
+      "runtime_archive_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b"
+    },
+    "mini_c_o3": {
+      "compiler": "$REPO/build/campaign-validation/api/stage3",
+      "compiler_sha256": "f3c1d043792df053f00986fa905ac2b4c2de60c9a710a90c44baa44e751c57c3",
+      "source": "json.kt",
+      "source_sha256": "1151edd9163df5ef34f0c53d03d695ea35007a0b6c86c01563321beb4bbf2acd",
+      "emit_command": [
+        "$REPO/build/campaign-validation/api/stage3",
+        "-o",
+        "$TMP/campaign-json-profile/json-mini-c-o3.c",
+        "--emit-mir",
+        "$TMP/campaign-json-profile/json-mini-c-o3.mir",
+        "$REPO/bench/json/json.kt",
+        "--stdlib",
+        "$REPO/stdlib/java/lang/Thread.kt",
+        "$REPO/stdlib/kotlin/Annotations.kt",
+        "$REPO/stdlib/kotlin/ArrayIndices.kt",
+        "$REPO/stdlib/kotlin/Arrays.kt",
+        "$REPO/stdlib/kotlin/Builtins.kt",
+        "$REPO/stdlib/kotlin/Comparator.kt",
+        "$REPO/stdlib/kotlin/ContextParameters.kt",
+        "$REPO/stdlib/kotlin/Lazy.kt",
+        "$REPO/stdlib/kotlin/NumbersMore.kt",
+        "$REPO/stdlib/kotlin/Platform.kt",
+        "$REPO/stdlib/kotlin/Preconditions.kt",
+        "$REPO/stdlib/kotlin/PrimitiveArrays.kt",
+        "$REPO/stdlib/kotlin/Primitives.kt",
+        "$REPO/stdlib/kotlin/Ranges.kt",
+        "$REPO/stdlib/kotlin/Result.kt",
+        "$REPO/stdlib/kotlin/Standard.kt",
+        "$REPO/stdlib/kotlin/Throwable.kt",
+        "$REPO/stdlib/kotlin/Tuples.kt",
+        "$REPO/stdlib/kotlin/annotation/Annotations.kt",
+        "$REPO/stdlib/kotlin/collections/AbstractCollections.kt",
+        "$REPO/stdlib/kotlin/collections/ArrayDeque.kt",
+        "$REPO/stdlib/kotlin/collections/ArrayList.kt",
+        "$REPO/stdlib/kotlin/collections/Builders.kt",
+        "$REPO/stdlib/kotlin/collections/Collections.kt",
+        "$REPO/stdlib/kotlin/collections/HashMap.kt",
+        "$REPO/stdlib/kotlin/collections/HashSet.kt",
+        "$REPO/stdlib/kotlin/collections/Iterables.kt",
+        "$REPO/stdlib/kotlin/collections/IterablesMore.kt",
+        "$REPO/stdlib/kotlin/collections/Iterator.kt",
+        "$REPO/stdlib/kotlin/collections/MapsMore.kt",
+        "$REPO/stdlib/kotlin/collections/PrimitiveIterators.kt",
+        "$REPO/stdlib/kotlin/comparisons/Comparisons.kt",
+        "$REPO/stdlib/kotlin/concurrent/Thread.kt",
+        "$REPO/stdlib/kotlin/internal/Builtin.kt",
+        "$REPO/stdlib/kotlin/internal/Conventions.kt",
+        "$REPO/stdlib/kotlin/io/Console.kt",
+        "$REPO/stdlib/kotlin/jvm/JvmInline.kt",
+        "$REPO/stdlib/kotlin/math/Math.kt",
+        "$REPO/stdlib/kotlin/native/CName.kt",
+        "$REPO/stdlib/kotlin/ranges/Coerce.kt",
+        "$REPO/stdlib/kotlin/reflect/KClass.kt",
+        "$REPO/stdlib/kotlin/text/Char.kt",
+        "$REPO/stdlib/kotlin/text/StringBuilder.kt",
+        "$REPO/stdlib/kotlin/text/StringNumberConversions.kt",
+        "$REPO/stdlib/kotlin/text/Strings.kt",
+        "$REPO/stdlib/kotlin/text/StringsMore.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Annotations.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Intrinsics.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Memory.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Pointers.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Strings.kt",
+        "$REPO/stdlib/kotlinx/cinterop/Types.kt",
+        "$REPO/stdlib/mini/display/Display.kt",
+        "$REPO/stdlib/mini/internal/B1Intrinsics.kt",
+        "$REPO/stdlib/mini/internal/CSymbol.kt",
+        "$REPO/stdlib/mini/internal/Intrinsics.kt",
+        "$REPO/stdlib/mini/io/Files.kt",
+        "$REPO/stdlib/mini/memory/Allocator.kt",
+        "$REPO/stdlib/mini/memory/Allocators.kt",
+        "$REPO/stdlib/mini/memory/Annotations.kt",
+        "$REPO/stdlib/mini/memory/Spawn.kt",
+        "$REPO/stdlib/mini/wasm/WasmExport.kt"
+      ],
+      "clang_compile_command": [
+        "clang",
+        "-std=c17",
+        "-O3",
+        "-w",
+        "-I",
+        "$REPO/runtime/include",
+        "-c",
+        "$TMP/campaign-json-profile/json-mini-c-o3.c",
+        "-o",
+        "$TMP/campaign-json-profile/json-mini-c-o3.o"
+      ],
+      "link_command": [
+        "clang",
+        "$TMP/campaign-json-profile/json-mini-c-o3.o",
+        "$TMP/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "-lm",
+        "-Wl,-dead_strip",
+        "-o",
+        "$TMP/campaign-json-profile/json-mini-c-o3"
+      ],
+      "emit_timing": {
+        "wall_seconds": 0.1599169169785455,
+        "user_seconds": 0.14,
+        "sys_seconds": 0.0,
+        "max_rss_bytes": 64389120.0,
+        "instructions_retired": 2745085799.0,
+        "cycles_elapsed": 623349976.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr": "real 0.15\nuser 0.14\nsys 0.00\n            64389120  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4049  page reclaims\n                  48  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  43  involuntary context switches\n          2745085799  instructions retired\n           623349976  cycles elapsed\n            50119040  peak memory footprint\n"
+      },
+      "clang_compile_timing": {
+        "wall_seconds": 0.17286337504629046,
+        "user_seconds": 0.15,
+        "sys_seconds": 0.01,
+        "max_rss_bytes": 69124096.0,
+        "instructions_retired": 68072275.0,
+        "cycles_elapsed": 27612913.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr": "real 0.17\nuser 0.15\nsys 0.01\n            69124096  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5773  page reclaims\n                 206  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   3  voluntary context switches\n                  26  involuntary context switches\n            68072275  instructions retired\n            27612913  cycles elapsed\n             2523448  peak memory footprint\n"
+      },
+      "link_timing": {
+        "wall_seconds": 0.0292925420217216,
+        "user_seconds": 0.04,
+        "sys_seconds": 0.01,
+        "max_rss_bytes": 44662784.0,
+        "instructions_retired": 68287862.0,
+        "cycles_elapsed": 28646993.0,
+        "returncode": 0,
+        "stdout": null,
+        "stderr": "real 0.02\nuser 0.04\nsys 0.01\n            44662784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4841  page reclaims\n                  97  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                 415  involuntary context switches\n            68287862  instructions retired\n            28646993  cycles elapsed\n             2474296  peak memory footprint\n"
+      },
+      "generated_c_bytes": 209542,
+      "generated_c_sha256": "983e4679d5411454c76b74e47484acce07d906e3ea88f10894292a8ea596f245",
+      "mir_bytes": 172002,
+      "mir_sha256": "b7bc62e35494b7dd587635b6a08e3251ccae2ccf55084e6ab53b40bd384edfe9",
+      "object_bytes": 87712,
+      "object_sha256": "86f1772ac39ea22237a20425bbd2e4d5fb24d6c1f04970eb22cd72df131dd5a5",
+      "executable_bytes": 102432,
+      "executable_sha256": "6447c6308c7aaf525d8193c258f29e5a2d1442dcd90a2ae41d9676919217184a",
+      "runtime_archive_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b"
+    },
+    "runtime_plain": {
+      "compile_commands": [
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/alloc.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_arena.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/alloc_arena.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_debug.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/alloc_debug.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_pool.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/alloc_pool.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_small.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/alloc_small.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/b1.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/b1.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/cinterop.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/cinterop.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/classes.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/classes.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/console.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/console.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/entry.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/entry.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/numfmt.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/numfmt.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/object.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/object.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/stats.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/stats.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/string.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/string.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/utf.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/utf.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/v1l.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/v1l.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/v1s.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/v1s.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/wasmlib.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-plain/wasmlib.o"
+        ]
+      ],
+      "archive_command": [
+        "ar",
+        "rcs",
+        "$TMP/campaign-json-profile/rt-plain/libminirt_plain.a",
+        "$TMP/campaign-json-profile/rt-plain/alloc.o",
+        "$TMP/campaign-json-profile/rt-plain/alloc_arena.o",
+        "$TMP/campaign-json-profile/rt-plain/alloc_debug.o",
+        "$TMP/campaign-json-profile/rt-plain/alloc_pool.o",
+        "$TMP/campaign-json-profile/rt-plain/alloc_small.o",
+        "$TMP/campaign-json-profile/rt-plain/b1.o",
+        "$TMP/campaign-json-profile/rt-plain/cinterop.o",
+        "$TMP/campaign-json-profile/rt-plain/classes.o",
+        "$TMP/campaign-json-profile/rt-plain/console.o",
+        "$TMP/campaign-json-profile/rt-plain/entry.o",
+        "$TMP/campaign-json-profile/rt-plain/numfmt.o",
+        "$TMP/campaign-json-profile/rt-plain/object.o",
+        "$TMP/campaign-json-profile/rt-plain/stats.o",
+        "$TMP/campaign-json-profile/rt-plain/string.o",
+        "$TMP/campaign-json-profile/rt-plain/utf.o",
+        "$TMP/campaign-json-profile/rt-plain/v1l.o",
+        "$TMP/campaign-json-profile/rt-plain/v1s.o",
+        "$TMP/campaign-json-profile/rt-plain/wasmlib.o"
+      ],
+      "archive_bytes": 102728,
+      "archive_sha256": "782e807749d2c06e22682860b0f1ee824d37776c00d2342647abeb14b916777b",
+      "object_count": 18,
+      "build_flags": [
+        "-std=c17",
+        "-O2"
+      ]
+    },
+    "runtime_stats": {
+      "compile_commands": [
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/alloc.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_arena.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/alloc_arena.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_debug.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/alloc_debug.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_pool.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/alloc_pool.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/alloc_small.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/alloc_small.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/b1.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/b1.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/cinterop.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/cinterop.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/classes.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/classes.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/console.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/console.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/entry.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/entry.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/numfmt.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/numfmt.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/object.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/object.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/stats.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/stats.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/string.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/string.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/utf.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/utf.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/v1l.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/v1l.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/v1s.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/v1s.o"
+        ],
+        [
+          "clang",
+          "-std=c17",
+          "-O2",
+          "-DMK_STATS",
+          "-I",
+          "$REPO/runtime/include",
+          "-c",
+          "$REPO/runtime/src/wasmlib.c",
+          "-o",
+          "$TMP/campaign-json-profile/rt-stats/wasmlib.o"
+        ]
+      ],
+      "archive_command": [
+        "ar",
+        "rcs",
+        "$TMP/campaign-json-profile/rt-stats/libminirt_stats.a",
+        "$TMP/campaign-json-profile/rt-stats/alloc.o",
+        "$TMP/campaign-json-profile/rt-stats/alloc_arena.o",
+        "$TMP/campaign-json-profile/rt-stats/alloc_debug.o",
+        "$TMP/campaign-json-profile/rt-stats/alloc_pool.o",
+        "$TMP/campaign-json-profile/rt-stats/alloc_small.o",
+        "$TMP/campaign-json-profile/rt-stats/b1.o",
+        "$TMP/campaign-json-profile/rt-stats/cinterop.o",
+        "$TMP/campaign-json-profile/rt-stats/classes.o",
+        "$TMP/campaign-json-profile/rt-stats/console.o",
+        "$TMP/campaign-json-profile/rt-stats/entry.o",
+        "$TMP/campaign-json-profile/rt-stats/numfmt.o",
+        "$TMP/campaign-json-profile/rt-stats/object.o",
+        "$TMP/campaign-json-profile/rt-stats/stats.o",
+        "$TMP/campaign-json-profile/rt-stats/string.o",
+        "$TMP/campaign-json-profile/rt-stats/utf.o",
+        "$TMP/campaign-json-profile/rt-stats/v1l.o",
+        "$TMP/campaign-json-profile/rt-stats/v1s.o",
+        "$TMP/campaign-json-profile/rt-stats/wasmlib.o"
+      ],
+      "archive_bytes": 108072,
+      "archive_sha256": "74c1d30f957e5c21ccfd078eb980d4b366126ccaeab2f4aa5f6f0d57f4f05246",
+      "object_count": 18,
+      "build_flags": [
+        "-std=c17",
+        "-O2",
+        "-DMK_STATS"
+      ]
+    },
+    "mk_stats_relink_commands": [
+      {
+        "command": [
+          "clang",
+          "$TMP/campaign-json-profile/json-api-o3.o",
+          "$TMP/campaign-json-profile/rt-stats/libminirt_stats.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "$TMP/campaign-json-profile/json-api-o3"
+        ],
+        "executable_bytes": 102968,
+        "executable_sha256": "7b8ece1c2293f68ddd4e27d97d0a7cfd46726bbf7477cb83bbf7101f58096254"
+      },
+      {
+        "command": [
+          "clang",
+          "$TMP/campaign-json-profile/json-mini-c-o3.o",
+          "$TMP/campaign-json-profile/rt-stats/libminirt_stats.a",
+          "-lm",
+          "-Wl,-dead_strip",
+          "-o",
+          "$TMP/campaign-json-profile/json-mini-c-o3"
+        ],
+        "executable_bytes": 102976,
+        "executable_sha256": "639e803d50a86d8a237fd621fa79eb9fee245a0eaa80f977cf0ff3ce39b9a485"
+      }
+    ]
+  },
+  "normal_timing_noninstrumented": {
+    "mini-api-o3": {
+      "warmup": {
+        "wall_seconds": 0.869741415954195,
+        "user_seconds": 0.5,
+        "sys_seconds": 0.01,
+        "max_rss_bytes": 168312832.0,
+        "instructions_retired": 7886464411.0,
+        "cycles_elapsed": 2009157339.0,
+        "returncode": 0,
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "real 0.86\nuser 0.50\nsys 0.01\n           168312832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10500  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  87  involuntary context switches\n          7886464411  instructions retired\n          2009157339  cycles elapsed\n           168034760  peak memory footprint\n",
+        "output_matches_expected": true
+      },
+      "samples": [
+        {
+          "wall_seconds": 0.4971686670323834,
+          "user_seconds": 0.47,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7884763948.0,
+          "cycles_elapsed": 1988102161.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.49\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  80  involuntary context switches\n          7884763948  instructions retired\n          1988102161  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.49654025002382696,
+          "user_seconds": 0.47,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7885175682.0,
+          "cycles_elapsed": 1989817169.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.49\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  33  involuntary context switches\n          7885175682  instructions retired\n          1989817169  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.50486283400096,
+          "user_seconds": 0.48,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166150144.0,
+          "instructions_retired": 7864904990.0,
+          "cycles_elapsed": 2006142800.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.50\nuser 0.48\nsys 0.01\n           166150144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10368  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 147  involuntary context switches\n          7864904990  instructions retired\n          2006142800  cycles elapsed\n           165872072  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.5170258750440553,
+          "user_seconds": 0.49,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166150144.0,
+          "instructions_retired": 7852598159.0,
+          "cycles_elapsed": 2006566901.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.51\nuser 0.49\nsys 0.01\n           166150144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 441  involuntary context switches\n          7852598159  instructions retired\n          2006566901  cycles elapsed\n           165872072  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.5192505840677768,
+          "user_seconds": 0.49,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7880947969.0,
+          "cycles_elapsed": 2016312717.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.51\nuser 0.49\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 502  involuntary context switches\n          7880947969  instructions retired\n          2016312717  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "median_wall_seconds": 0.50486283400096,
+      "wall_range_seconds": [
+        0.49654025002382696,
+        0.5192505840677768
+      ],
+      "all_outputs_match_expected": true
+    },
+    "mini-c-o3": {
+      "warmup": {
+        "wall_seconds": 0.818530417047441,
+        "user_seconds": 0.49,
+        "sys_seconds": 0.01,
+        "max_rss_bytes": 168280064.0,
+        "instructions_retired": 7627652074.0,
+        "cycles_elapsed": 1993394653.0,
+        "returncode": 0,
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "real 0.81\nuser 0.49\nsys 0.01\n           168280064  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10499  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 442  involuntary context switches\n          7627652074  instructions retired\n          1993394653  cycles elapsed\n           168001992  peak memory footprint\n",
+        "output_matches_expected": true
+      },
+      "samples": [
+        {
+          "wall_seconds": 0.5218002079054713,
+          "user_seconds": 0.49,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7646154393.0,
+          "cycles_elapsed": 1994384236.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.51\nuser 0.49\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 506  involuntary context switches\n          7646154393  instructions retired\n          1994384236  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4957223329693079,
+          "user_seconds": 0.47,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166150144.0,
+          "instructions_retired": 7613447967.0,
+          "cycles_elapsed": 1952230573.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.49\nuser 0.47\nsys 0.01\n           166150144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 183  involuntary context switches\n          7613447967  instructions retired\n          1952230573  cycles elapsed\n           165872072  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.516674582962878,
+          "user_seconds": 0.49,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166199296.0,
+          "instructions_retired": 7644833183.0,
+          "cycles_elapsed": 1984181289.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.51\nuser 0.49\nsys 0.01\n           166199296  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10391  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 591  involuntary context switches\n          7644833183  instructions retired\n          1984181289  cycles elapsed\n           165921224  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.5007420839974657,
+          "user_seconds": 0.47,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166166528.0,
+          "instructions_retired": 7645050862.0,
+          "cycles_elapsed": 1941068867.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.49\nuser 0.47\nsys 0.01\n           166166528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10369  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 398  involuntary context switches\n          7645050862  instructions retired\n          1941068867  cycles elapsed\n           165888456  peak memory footprint\n",
+          "output_matches_expected": true
+        },
+        {
+          "wall_seconds": 0.4858205409254879,
+          "user_seconds": 0.46,
+          "sys_seconds": 0.01,
+          "max_rss_bytes": 166133760.0,
+          "instructions_retired": 7638372404.0,
+          "cycles_elapsed": 1930563703.0,
+          "returncode": 0,
+          "stdout": "7055506 1072916 885982430\n",
+          "stderr": "real 0.48\nuser 0.46\nsys 0.01\n           166133760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10367  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  74  involuntary context switches\n          7638372404  instructions retired\n          1930563703  cycles elapsed\n           165855688  peak memory footprint\n",
+          "output_matches_expected": true
+        }
+      ],
+      "median_wall_seconds": 0.5007420839974657,
+      "wall_range_seconds": [
+        0.4858205409254879,
+        0.5218002079054713
+      ],
+      "all_outputs_match_expected": true
+    },
+    "mini_api_vs_mini_c_o3": {
+      "median_wall_ratio": 1.0082292863635467,
+      "interpretation": "API and CEmitter codegen have essentially the same timing on this Mini source and runtime."
+    }
+  },
+  "mk_stats_instrumented_counts": {
+    "mini-api-o3": {
+      "returncode": 0,
+      "stdout": "7055506 1072916 885982430\n",
+      "stderr_lines": [
+        "mk-stats: allocs=11224983 frees=11224981 live_at_exit=2 peak_live=2027260",
+        "mk-stats: bytes_total=539268314 bytes_live_at_exit=80 bytes_peak=107997794",
+        "mk-stats: retains=819100 retains_nonatomic=819100 retains_atomic=0 retains_noop=0",
+        "mk-stats: releases=34850826 releases_nonatomic=11994426 releases_atomic=0 releases_noop=22856400",
+        "mk-stats: heap_small=11224982 heap_large=1 small_chunks=384 small_chunk_bytes=99860480 central_refills=31652 overflows=39584",
+        "mk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0"
+      ],
+      "counters": {
+        "allocs": 11224983,
+        "frees": 11224981,
+        "live_at_exit": 2,
+        "peak_live": 2027260,
+        "bytes_total": 539268314,
+        "bytes_live_at_exit": 80,
+        "bytes_peak": 107997794,
+        "retains": 819100,
+        "retains_nonatomic": 819100,
+        "retains_atomic": 0,
+        "retains_noop": 0,
+        "releases": 34850826,
+        "releases_nonatomic": 11994426,
+        "releases_atomic": 0,
+        "releases_noop": 22856400,
+        "heap_small": 11224982,
+        "heap_large": 1,
+        "small_chunks": 384,
+        "small_chunk_bytes": 99860480,
+        "central_refills": 31652,
+        "overflows": 39584,
+        "arena_allocs": 0,
+        "arena_slow_allocs": 0,
+        "arena_chunks": 0,
+        "arena_chunk_bytes": 0
+      },
+      "output_matches_expected": true
+    },
+    "mini-c-o3": {
+      "returncode": 0,
+      "stdout": "7055506 1072916 885982430\n",
+      "stderr_lines": [
+        "mk-stats: allocs=11224983 frees=11224981 live_at_exit=2 peak_live=2027260",
+        "mk-stats: bytes_total=539268314 bytes_live_at_exit=80 bytes_peak=107997794",
+        "mk-stats: retains=819100 retains_nonatomic=819100 retains_atomic=0 retains_noop=0",
+        "mk-stats: releases=34850826 releases_nonatomic=11994426 releases_atomic=0 releases_noop=22856400",
+        "mk-stats: heap_small=11224982 heap_large=1 small_chunks=384 small_chunk_bytes=99860480 central_refills=31652 overflows=39584",
+        "mk-stats: arena_allocs=0 arena_slow_allocs=0 arena_chunks=0 arena_chunk_bytes=0"
+      ],
+      "counters": {
+        "allocs": 11224983,
+        "frees": 11224981,
+        "live_at_exit": 2,
+        "peak_live": 2027260,
+        "bytes_total": 539268314,
+        "bytes_live_at_exit": 80,
+        "bytes_peak": 107997794,
+        "retains": 819100,
+        "retains_nonatomic": 819100,
+        "retains_atomic": 0,
+        "retains_noop": 0,
+        "releases": 34850826,
+        "releases_nonatomic": 11994426,
+        "releases_atomic": 0,
+        "releases_noop": 22856400,
+        "heap_small": 11224982,
+        "heap_large": 1,
+        "small_chunks": 384,
+        "small_chunk_bytes": 99860480,
+        "central_refills": 31652,
+        "overflows": 39584,
+        "arena_allocs": 0,
+        "arena_slow_allocs": 0,
+        "arena_chunks": 0,
+        "arena_chunk_bytes": 0
+      },
+      "output_matches_expected": true
+    },
+    "instrumentation": "same API O3 object and Mini CEmitter O3 object as normal builds; runtime C objects rebuilt at -O2 -DMK_STATS; instrumentation timings excluded from normal timing",
+    "backend_counter_comparison": {
+      "exactly_equal": true,
+      "note": "The stats-instrumented API and Mini-CEmitter O3 executables report identical runtime counters."
+    },
+    "interpretation": {
+      "scope": "One REPS=5 run per instrumented binary; includes all five generate/parse/walk passes and runtime cleanup.",
+      "managed_allocs_per_visited_node_estimate": 2.0924253156817496,
+      "managed_allocation_volume_per_pass_bytes_estimate": 107853662.8,
+      "largest_observed_cost_family": "AST/object allocation and recursive disposal; release traffic greatly exceeds retain traffic.",
+      "no_op_release_fraction": 0.6558352447657912,
+      "limitations": "Per-source allocation-site counts are not exposed by existing MK_STATS hooks; these totals exclude libc malloc/realloc. No C malloc interposition was added."
+    }
+  },
+  "profile": {
+    "tool": "/usr/bin/sample",
+    "target": "JSON Mini LLVM C API O3, profile-only temporary REPS=50 copy; fixed generator/input/algorithm/checksum",
+    "duration_seconds": 3,
+    "sampling_interval_ms": 1,
+    "sample_tool_returncode": 0,
+    "sample_tool_stderr": "Sampling process 62880 for 3 seconds with 1 millisecond of run time between samples\nSampling completed, processing symbols...\nSample analysis of process 62880 written to file $TMP/campaign-json-profile/json-api-o3.sample.txt\n",
+    "profile_file_bytes": 83774,
+    "profile_file_sha256": "fd60b3be725ad97182c7c808c9bbd031f48d9ef9e677bc2e0745e24314801066",
+    "profile_stdout_matches_REPS5_expected": true,
+    "profile_raw_path": "$TMP/campaign-json-profile/json-api-o3.sample.txt",
+    "profile_summary": {
+      "thread_sample_count": 2532,
+      "sample_interval_ms": 1,
+      "function_sample_nodes": [
+        {
+          "symbol": "mkh_user_main",
+          "max_reported_node_samples": 696,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "mk_release",
+          "max_reported_node_samples": 696,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "ref_array_dispose",
+          "max_reported_node_samples": 696,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "mk_free_object_memory",
+          "max_reported_node_samples": 46,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "kc_Parser_MparseValue",
+          "max_reported_node_samples": 222,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "kc_Parser_MparseString",
+          "max_reported_node_samples": 102,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "kt_walk_ALkc_J_ELkc_Stats_E",
+          "max_reported_node_samples": 51,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_Madd_AQLmk_Any_E",
+          "max_reported_node_samples": 40,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "mk_alloc_sized_site",
+          "max_reported_node_samples": 38,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_MensureCapacity_AI",
+          "max_reported_node_samples": 31,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "mk_alloc",
+          "max_reported_node_samples": 36,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "kc_kotlin_Dcollections_DArrayList_Mget_AI",
+          "max_reported_node_samples": 23,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "type_is",
+          "max_reported_node_samples": 45,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "mk_string_char_at",
+          "max_reported_node_samples": 44,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "mk_string_length",
+          "max_reported_node_samples": 18,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        },
+        {
+          "symbol": "mk_string_substring",
+          "max_reported_node_samples": 65,
+          "semantics": "inclusive sample call-tree node; recursive/nested nodes overlap and must not be summed"
+        }
+      ],
+      "observed_hot_stack": "mkh_user_main -> repeated mk_release -> ref_array_dispose -> repeated mk_release -> recursive object disposal/free",
+      "interpretation": "Observed profile is weighted toward recursive managed-tree cleanup, with parseValue/parseString, ArrayList add/growth/read, allocation helpers and type/string access also visible. This is a profile sample, not an instrumentation count."
+    },
+    "profile_variant_source_sha256": "1b23f0dfdce6d40fdab5ea04b3d00e48bfe6d8baa9ad817c99be8ace675497aa",
+    "profile_variant_change": "Temporary copy of bench/json/json.kt with only REPS changed from 5 to 50 to hold the process long enough for a 3-second sample; generator/parser/walk logic and stdout checksum unchanged."
+  },
+  "limitations": [
+    "MK_STATS reports aggregate Mini managed-object allocation/free and reference-count events, not per-source callsite attribution; it does not count libc malloc/realloc from C helpers.",
+    "C handwritten reference uses malloc/realloc and has no existing MK_STATS hooks; no C allocator interposition was added.",
+    "Profile-only REPS=50 source is temporary and outside the repository; it repeats the same deterministic generator/parser/walk 50 times and matches REPS=5 stdout.",
+    "MK_STATS instrumented binaries are used for counts only; their elapsed time is not compared with normal timing."
+  ],
+  "handwritten_c_o3_reference_from_existing_baseline": {
+    "source": "bench/json/json.c",
+    "source_sha256": "3c81b54a7cfca91b1cfaa0ded38e493b3ba71534880b1ada64692a308d4354ef",
+    "source_unchanged_from_commit": "8ce0e5c61ddf7fe2992777b9e6b5c753070e555e",
+    "actual_source_unchanged_between_8ce_and_8433": true,
+    "compiler_flags": [
+      "-O3",
+      "-fno-fast-math",
+      "-ffp-contract=off"
+    ],
+    "warmup": {
+      "wall_seconds": 0.620634,
+      "rss_raw": 81674240,
+      "rss_unit": "bytes",
+      "stdout": "7055506 1072916 885982430\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "samples": [
+      {
+        "wall_seconds": 0.333376,
+        "rss_raw": 81133568,
+        "rss_unit": "bytes",
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "",
+        "returncode": 0
+      },
+      {
+        "wall_seconds": 0.3308,
+        "rss_raw": 81182720,
+        "rss_unit": "bytes",
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "",
+        "returncode": 0
+      },
+      {
+        "wall_seconds": 0.334232,
+        "rss_raw": 81199104,
+        "rss_unit": "bytes",
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "",
+        "returncode": 0
+      },
+      {
+        "wall_seconds": 0.343661,
+        "rss_raw": 81149952,
+        "rss_unit": "bytes",
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "",
+        "returncode": 0
+      },
+      {
+        "wall_seconds": 0.32914,
+        "rss_raw": 81117184,
+        "rss_unit": "bytes",
+        "stdout": "7055506 1072916 885982430\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    ],
+    "summary": {
+      "median_wall_seconds": 0.333376,
+      "range_wall_seconds": [
+        0.32914,
+        0.343661
+      ],
+      "median_rss_bytes": 81149952,
+      "api_mini_ratio": 1.5143946594864657,
+      "mini_c_emitter_ratio": 1.502033991641467,
+      "stdout": "7055506 1072916 885982430\n"
+    },
+    "source_commit_of_existing_measurement": "f353826",
+    "caveat": "Existing strict hand-C O3 data reused; bench/json/json.c and expected output are unchanged through 8433c38. C uses custom byte-string buffers/nodes, while Mini uses UTF-16 strings, sealed objects, ArrayLists and managed allocation.",
+    "compiler_source_commit_at_existing_measurement": "f353826"
+  },
+  "analysis": {
+    "api_o3_vs_hand_c_o3_ratio": 1.5143946594864657,
+    "mini_c_emitter_vs_hand_c_o3_ratio": 1.502033991641467,
+    "api_o3_vs_mini_c_emitter_ratio": 1.0082292863635467,
+    "high_confidence_observations": [
+      "Mini API O3 and Mini CEmitter O3 have identical MK_STATS counters and nearly identical elapsed time.",
+      "The strict hand-C O3 implementation is about 1.51x faster than Mini API O3 on the same checksum; the source structure differs, so this includes representation/runtime costs.",
+      "The Mini workload performs over 11 million managed object allocations and over 34 million release calls for REPS=5; over two thirds of releases are no-op events.",
+      "The sampled API hotpath highlights recursive release/disposal and ArrayList growth/access, not a distinct API-only codegen bottleneck."
+    ],
+    "follow_up_proposal": "Prioritize managed allocation and release traffic in JSON-like object/collection lifetimes (especially recursive collection disposal and ArrayList growth). Use a structurally matched optimized C variant or allocation-site profiling before selecting a specific compiler/runtime change; current C/API equality indicates switching codegen backend is not a useful lever for this gap.",
+    "api_vs_hand_c_rss_ratio": 2.047647890167575
+  }
+}

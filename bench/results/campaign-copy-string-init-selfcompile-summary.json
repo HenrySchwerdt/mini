@@ -1,0 +1,96 @@
+{
+  "raw": "/tmp/escape-string-copy-init-pilot/selfcompile-pilot.jsonl",
+  "samples": 10,
+  "per_variant": {
+    "base": {
+      "elapsed_ns": {
+        "median": 2324312833,
+        "min": 2283527417,
+        "max": 2368447583
+      },
+      "instructions_retired": {
+        "median": 41482175227,
+        "min": 41463030945,
+        "max": 41486915880
+      },
+      "cycles_elapsed": {
+        "median": 9380240598,
+        "min": 9364808323,
+        "max": 9445254039
+      },
+      "max_rss_bytes": {
+        "median": 673677312,
+        "min": 673611776,
+        "max": 673808384
+      }
+    },
+    "candidate": {
+      "elapsed_ns": {
+        "median": 2311125625,
+        "min": 2290263709,
+        "max": 2353868416
+      },
+      "instructions_retired": {
+        "median": 41811102003,
+        "min": 41792103559,
+        "max": 41837829247
+      },
+      "cycles_elapsed": {
+        "median": 9350719628,
+        "min": 9334186277,
+        "max": 9473869641
+      },
+      "max_rss_bytes": {
+        "median": 673595392,
+        "min": 673546240,
+        "max": 673644544
+      }
+    }
+  },
+  "paired_candidate_over_base": {
+    "elapsed_ns": {
+      "median_ratio": 0.9997150292235554,
+      "range": [
+        0.973803392380164,
+        1.0058744273548506
+      ],
+      "bootstrap_95_ci": [
+        0.973803392380164,
+        1.0058744273548506
+      ]
+    },
+    "instructions_retired": {
+      "median_ratio": 1.0079293521663228,
+      "range": [
+        1.0075922500420156,
+        1.0086249970968795
+      ],
+      "bootstrap_95_ci": [
+        1.0075922500420156,
+        1.0086249970968795
+      ]
+    },
+    "cycles_elapsed": {
+      "median_ratio": 0.9977489413219847,
+      "range": [
+        0.9896863215538971,
+        1.0047249110622933
+      ],
+      "bootstrap_95_ci": [
+        0.9896863215538971,
+        1.0047249110622933
+      ]
+    },
+    "max_rss_bytes": {
+      "median_ratio": 0.9998783987548032,
+      "range": [
+        0.9997568448183631,
+        0.9999756773848324
+      ],
+      "bootstrap_95_ci": [
+        0.9997568448183631,
+        0.9999756773848324
+      ]
+    }
+  }
+}

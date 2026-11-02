@@ -62,6 +62,18 @@ mkdir -p "$STAGE/bin" "$STAGE/lib" "$STAGE/include"
 echo "== minic-native (static LLVM C API)"
 cp "$WORK/stage3" "$STAGE/bin/minic-native"
 chmod +x "$STAGE/bin/minic-native"
+if [ "$TARGET" = macos-arm64 ]; then
+    [ "$(uname -s)" = Darwin ] || { echo "package-release.sh: macos-arm64 packages must be created on macOS" >&2; exit 1; }
+    STRIP_TOOL="$(command -v strip || true)"
+    [ -n "$STRIP_TOOL" ] || { echo "package-release.sh: strip is required to package macos-arm64" >&2; exit 1; }
+    if ! "$STRIP_TOOL" -x "$STAGE/bin/minic-native"; then
+        echo "package-release.sh: strip -x failed for the macos-arm64 compiler copy" >&2
+        exit 1
+    fi
+    # Exercise the actual staged copy: local symbols must be removed, while both the
+    # Mach-O export trie (used by ORC process lookup) and the external symbol set stay intact.
+    "$ROOT/scripts/test-package-release-symbols.sh" "$WORK/stage3" "$STAGE/bin/minic-native"
+fi
 
 echo "== mini (-O2, compiled by the minic-native above)"
 MINI_BUILD="$(mktemp -d)"
