@@ -69,6 +69,18 @@ jobs:
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-bootstrap.log" -Force
           try { ./scripts/windows/bootstrap-c.ps1 -SeedDirectory $env:MINI_WINDOWS_SEED } finally { Stop-Transcript }
+      - name: Build and smoke-test experimental C-only mini package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $install = Join-Path $env:RUNNER_TEMP 'Mini install Δ 😀'
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-mini.log" -Force
+          try {
+            ./scripts/windows/build-mini.ps1 `
+              -MinicNative (Join-Path $env:RUNNER_TEMP 'mini-windows-bootstrap/stage3.exe') `
+              -OutputDirectory $install
+            ./scripts/windows/test-mini.ps1 -MiniHome $install
+          } finally { Stop-Transcript }
       - name: Upload Windows logs and bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@v4
