@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(MiniWindowsLLVMProbe LANGUAGES C CXX)
 
 find_package(LLVM 18.1.8 EXACT REQUIRED CONFIG)
+include("${CMAKE_CURRENT_LIST_DIR}/../llvm-common.cmake")
 
 if(NOT LLVM_PACKAGE_VERSION VERSION_EQUAL "18.1.8")
     message(FATAL_ERROR "Expected LLVM 18.1.8 exactly; found ${LLVM_PACKAGE_VERSION}")

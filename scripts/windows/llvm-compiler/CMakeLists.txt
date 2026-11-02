@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(MiniWindowsLLVMCompiler LANGUAGES C CXX)
 
 find_package(LLVM 18.1.8 EXACT REQUIRED CONFIG)
+include("${CMAKE_CURRENT_LIST_DIR}/../llvm-common.cmake")
 foreach(required IN ITEMS MINI_COMPILER_INPUT MINI_RUNTIME_OBJECTS MINI_EXPORTS_FILE MINI_RUNTIME_INCLUDE)
     if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
         message(FATAL_ERROR "Missing ${required}")
