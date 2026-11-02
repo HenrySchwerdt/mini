@@ -16,7 +16,10 @@ function Initialize-MiniWindowsToolchain {
     $vsInstall = ([string]$vsInstallOutput[0]).Trim()
 
     $devShell = Join-Path $vsInstall 'Common7\Tools\Launch-VsDevShell.ps1'
-    $clang = Join-Path $vsInstall 'VC\Tools\Llvm\bin\clang.exe'
+    $clang = Join-Path $vsInstall 'VC\Tools\Llvm\x64\bin\clang.exe'
+    if (-not (Test-Path -LiteralPath $clang)) {
+        $clang = Join-Path $vsInstall 'VC\Tools\Llvm\bin\clang.exe'
+    }
     if (-not (Test-Path -LiteralPath $devShell)) { throw "VS developer shell script missing: $devShell" }
     if (-not (Test-Path -LiteralPath $clang)) { throw "VS clang.exe missing: $clang" }
 

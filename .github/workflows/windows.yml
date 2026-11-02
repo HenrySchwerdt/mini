@@ -76,3 +76,4 @@ jobs:
           name: windows-native-${{ github.run_id }}
           path: ${{ runner.temp }}/mini-windows-*
           if-no-files-found: warn
+          retention-days: 7

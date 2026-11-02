@@ -1,7 +1,11 @@
 /* Windows CI links this callback with runtime/src/entry.c and launches the
  * resulting wmain executable with a BMP argument and an emoji argument. The
  * POSIX runtime suite uses the same checks with synthetic UTF-8 argv. */
-#include "harness.h"
+#include "../src/internal.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static const MkChar expected_bmp[] = {'c', 'a', 'f', 0x00e9};
 static const MkChar expected_emoji[] = {'e', 'm', 'o', 'j', 'i', 0xd83d, 0xde00};

@@ -2,7 +2,7 @@
 # using native Windows clang/MSVC CRT; no Bash, WSL, or MSYS runtime is used.
 param(
     [Parameter(Mandatory = $true)][string]$SeedDirectory,
-    [string]$WorkDirectory = (Join-Path $env:RUNNER_TEMP 'mini-windows-bootstrap')
+    [string]$WorkDirectory = ''
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -14,7 +14,13 @@ $script:cc = Initialize-MiniWindowsToolchain
 if (-not (Test-Path (Join-Path $seed 'minic.c'))) { throw "C seed source missing in $seed" }
 if (-not (Test-Path (Join-Path $seed 'runtime/include/minirt.h'))) { throw "C seed runtime headers missing in $seed" }
 
-if (Test-Path $WorkDirectory) { Remove-Item -LiteralPath $WorkDirectory -Recurse -Force }
+if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
+    $base = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+    $WorkDirectory = Join-Path $base 'mini-windows-bootstrap'
+}
+if (Test-Path -LiteralPath $WorkDirectory) {
+    throw "Work directory already exists; choose a new -WorkDirectory: $WorkDirectory"
+}
 New-Item -ItemType Directory -Path $WorkDirectory | Out-Null
 $work = (Resolve-Path $WorkDirectory).Path
 $runtimeSources = @(Get-ChildItem -LiteralPath (Join-Path $root 'runtime/src') -Filter '*.c' -File | Sort-Object Name | ForEach-Object FullName)
