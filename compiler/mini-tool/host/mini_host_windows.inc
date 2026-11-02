@@ -231,7 +231,7 @@ static wchar_t *mh_command(wchar_t **args,size_t count) {
             if (n>32767) { SetLastError(ERROR_BAD_LENGTH); return NULL; }
         }
         n+=slashes; /* Double backslashes immediately before the closing quote. */
-        if (n>32768-cap) { SetLastError(ERROR_BAD_LENGTH); return NULL; }
+        if (n>32767-cap) { SetLastError(ERROR_BAD_LENGTH); return NULL; }
         cap+=n;
     }
     wchar_t *s=mh_alloc(cap*sizeof *s),*w=s;

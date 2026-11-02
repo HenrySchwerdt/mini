@@ -24,6 +24,11 @@ static void outputs(void) {
     release(a);release(b);check(mh_exec_error()==NULL,"no stale start error");
 }
 int wmain(int argc,wchar_t **argv) {
+    if(argc==3&&!wcscmp(argv[1],L"--long")) {
+        check(wcslen(argv[2])==20000,"long argument length");
+        for(size_t i=0;i<20000;i++)check(argv[2][i]==L'x',"long argument content");
+        return 0;
+    }
     if(argc==2&&!wcscmp(argv[1],L"--exit")) { puts("inherited stdout");fputs("inherited stderr\n",stderr);return 23; }
     if(argc>1&&!wcscmp(argv[1],L"--child")) {
         const wchar_t *expected[]={L"",L"space value",L"tail\\",L"quote\"value",L"café 😀",L"&|<>^%"};
@@ -61,6 +66,12 @@ int wmain(int argc,wchar_t **argv) {
     check(mh_exec(exitArgs,cwd,empty,0)==23,"inherited stdio exit code");
     check(mh_exec_stdout()==NULL&&mh_exec_stderr()==NULL,"inherited mode has no stale capture");release(exitArgs);
     release(probe);release(probeArgs);release(pathEnv);check(DeleteFileW(copy)&&RemoveDirectoryW(dir),"test cleanup");release(dirString);
+    MkString *longTail=mk_string_alloc(20008);
+    const wchar_t *prefix=L"\1--long\1";
+    for(int i=0;i<8;i++)longTail->chars[i]=(MkChar)prefix[i];
+    for(int i=8;i<20008;i++)longTail->chars[i]='x';
+    MkString *longArgs=mk_string_concat(self,longTail);release(longTail);
+    check(mh_exec(longArgs,cwd,empty,1)==0,"valid command longer than 16K");release(longArgs);
     release(args);release(self);release(cwd);release(env);release(empty);
     puts("Windows host argv/env/cwd/dual-stream/exit/error tests passed.");return 0;
 }
