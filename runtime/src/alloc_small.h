@@ -19,7 +19,9 @@
 
 #include "internal.h"
 
-#if defined(MK_PLAIN_MALLOC) || defined(MK_HAS_ASAN)
+/* Windows currently has no per-thread cache-exit callback here. Keep the
+ * default allocator on malloc until an FLS cleanup path can return caches. */
+#if defined(MK_PLAIN_MALLOC) || defined(MK_HAS_ASAN) || defined(_WIN32)
 #define MK_SMALL_ALLOC 0
 #else
 #define MK_SMALL_ALLOC 1
