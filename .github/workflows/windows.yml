@@ -110,6 +110,24 @@ jobs:
             $after = (Get-FileHash -LiteralPath (Join-Path $prefix 'bin/mini.exe')).Hash
             if ($before -ne $after) { throw 'Existing installed executable was modified.' }
           } finally { Stop-Transcript }
+      - name: Package and test the Windows ZIP
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-package.log" -Force
+          try {
+            $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
+            $prefix = Join-Path $env:USERPROFILE 'Mini source install Ω 😀'
+            $packageDirectory = Join-Path $env:RUNNER_TEMP 'mini-windows-package'
+            ./scripts/windows/package-release.ps1 -Version $version -MiniHome $prefix -OutDirectory $packageDirectory
+            $unpack = Join-Path $env:RUNNER_TEMP 'mini-windows-package-unpacked'
+            if (Test-Path -LiteralPath $unpack) { throw "Unpack directory must be fresh: $unpack" }
+            New-Item -ItemType Directory -Path $unpack | Out-Null
+            $zip = Join-Path $packageDirectory "mini-$version-windows-x64.zip"
+            Expand-Archive -LiteralPath $zip -DestinationPath $unpack
+            $extracted = Join-Path $unpack "mini-$version-windows-x64"
+            ./scripts/windows/test-host.ps1
+            ./scripts/windows/test-mini.ps1 -MiniHome $extracted
+          } finally { Stop-Transcript }
       - name: Upload Windows logs and bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@v4

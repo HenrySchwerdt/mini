@@ -116,8 +116,50 @@ jobs:
           path: dist/*.tar.gz
           if-no-files-found: error
 
+  build-windows:
+    needs: version
+    name: build (windows-x64 C-only)
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install experimental C-only package
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-release-build.log" -Force
+          try {
+            $prefix = Join-Path $env:USERPROFILE ("mini-release-" + $env:GITHUB_RUN_ID)
+            ./scripts/windows/install.ps1 -Prefix $prefix
+            ./scripts/windows/test-host.ps1
+            ./scripts/windows/test-mini.ps1 -MiniHome $prefix
+          } finally { Stop-Transcript }
+      - name: Package and test the ZIP
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-release-package.log" -Force
+          try {
+            $prefix = Join-Path $env:USERPROFILE ("mini-release-" + $env:GITHUB_RUN_ID)
+            $out = Join-Path $env:RUNNER_TEMP 'dist-windows'
+            ./scripts/windows/package-release.ps1 -Version $env:VERSION -MiniHome $prefix -OutDirectory $out
+            $unpack = Join-Path $env:RUNNER_TEMP 'windows-release-unpacked'
+            if (Test-Path -LiteralPath $unpack) { throw "Unpack directory must be fresh: $unpack" }
+            New-Item -ItemType Directory -Path $unpack | Out-Null
+            $zip = Join-Path $out "mini-$env:VERSION-windows-x64.zip"
+            Expand-Archive -LiteralPath $zip -DestinationPath $unpack
+            $extracted = Join-Path $unpack "mini-$env:VERSION-windows-x64"
+            ./scripts/windows/test-host.ps1
+            ./scripts/windows/test-mini.ps1 -MiniHome $extracted
+          } finally { Stop-Transcript }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows-x64
+          path: ${{ runner.temp }}/dist-windows/*.zip
+          if-no-files-found: error
+
   release:
-    needs: [version, build]
+    needs: [version, build, build-windows]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -133,7 +175,13 @@ jobs:
           path: dist
       - name: Checksums
         working-directory: dist
-        run: sha256sum *.tar.gz | tee SHA256SUMS
+        run: |
+          for target in linux-x64 linux-arm64 macos-arm64; do
+            test -f "mini-$VERSION-$target.tar.gz"
+          done
+          test -f "mini-$VERSION-bootstrap-c.tar.gz"
+          test -f "mini-$VERSION-windows-x64.zip"
+          sha256sum *.tar.gz *.zip | tee SHA256SUMS
       - name: Release notes
         run: |
           tag="v$VERSION"
@@ -166,12 +214,13 @@ jobs:
 
           **What is in the release**
           * `mini-<version>-<target>.tar.gz` for linux-x64, linux-arm64 and macos-arm64: `bin/mini` (the project tool: `mini new`, `build`, `run`, `test`, `check`; itself compiled by Mini, no JVM), `bin/minic` (`minic run foo.kt`, `minic build foo.kt`, `minic check foo.kt`), `bin/minic-native`, `lib/libminirt.a`, `include/`, `stdlib/`.
+          * `mini-<version>-windows-x64.zip`: an experimental native Windows package with the C backend only. It does not include the LLVM API backend or REPL.
           * `mini-<version>-bootstrap-c.tar.gz`: the generated C of the compiler plus the runtime sources; a C compiler alone builds a working compiler from it.
           * `SHA256SUMS`. Install with `curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh`.
 
           **Known gaps**
           * A C compiler (clang or gcc) is still needed at build time; `minic` is a thin wrapper around `minic-native` and `cc`.
-                    * No Windows, no coroutines or async IO, no reflection or JSON yet. Strict-mode codegen and the stdlib on the memory model are in progress.
+          * The Windows zip is experimental and C-backend-only; it has no LLVM API or REPL support. No coroutines or async IO, no reflection or JSON yet. Strict-mode codegen and the stdlib on the memory model are in progress.
           EOF
           fi
           cat notes.md
@@ -184,5 +233,5 @@ jobs:
             echo "release $tag already exists"; exit 1
           fi
           # --target creates the tag on this commit when it does not exist yet (workflow_dispatch)
-          gh release create "$tag" dist/*.tar.gz dist/SHA256SUMS \
+          gh release create "$tag" dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
             --title "Mini $VERSION" --notes-file notes.md --target "$GITHUB_SHA" $pre
