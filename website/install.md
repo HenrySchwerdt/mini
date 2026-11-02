@@ -124,7 +124,7 @@ No JDK is needed: the compiler is a native program that compiles itself.
 | macOS on Apple silicon | `mini-<version>-macos-arm64.tar.gz` |
 | Windows x64 (experimental) | `mini-<version>-windows-x64.zip` |
 
-An experimental Windows x64 C-backend ZIP is available with the 0.8.0 release. LLVM API and REPL are not included in that Windows package. An experimental source install is also available for native Windows x64 using Visual Studio's LLVM Clang driver and MSVC CRT; it does not require WSL. Intel Macs have no prebuilt archive; [build from source](#build-from-source).
+Windows x64 ZIPs from 0.9.0 include the LLVM API compiler and native REPL. The older 0.8.0 Windows package is C-only. An experimental source install is also available for native Windows x64 using Visual Studio's LLVM Clang driver and MSVC CRT; it does not require WSL. Intel Macs have no prebuilt archive; [build from source](#build-from-source).
 
 ### Windows PowerShell
 
@@ -136,9 +136,9 @@ $env:PATH = "$env:USERPROFILE\.mini-windows\bin;$env:PATH"
 mini.exe --version
 ```
 
-The standalone script downloads the latest Windows release ZIP, verifies its entry in `SHA256SUMS`, and installs it into a **new** `%USERPROFILE%\.mini-windows` directory. No Git clone, JDK, or compiler bootstrap is needed to install the release. It refuses to overwrite an existing installation and does not change persistent PATH settings. Pass `-Prefix <new-directory>` or `-Version 0.8.0` to the downloaded script to choose a destination or pin a release.
+The standalone script downloads the latest Windows release ZIP, verifies its entry in `SHA256SUMS`, and installs it into a **new** `%USERPROFILE%\.mini-windows` directory. No Git clone, JDK, or compiler bootstrap is needed to install the release. It refuses to overwrite an existing installation and does not change persistent PATH settings. Pass `-Prefix <new-directory>` or `-Version 0.9.0` to the downloaded script to choose a destination or pin a release.
 
-The published **0.8.0 Windows package uses the C backend**. It provides `mini.exe` and requires Visual Studio 2022 C++ build tools with the LLVM Clang component and a Windows SDK to build programs. Open Developer PowerShell for Visual Studio when building. The Unix `minic` wrapper and Windows LLVM API/REPL are not included in 0.8.0.
+**Windows 0.9.0 packages use the LLVM API by default and include `mini repl`**. Use `mini run --backend c` for the C fallback. Building native programs requires Visual Studio 2022 C++ build tools with the LLVM Clang component and a Windows SDK; open Developer PowerShell for Visual Studio when building. The LLVM development SDK is not needed to run the installed compiler. The Unix `minic` shell wrapper is not included on Windows. The older 0.8.0 Windows package uses the C backend without REPL support.
 
 Prefer manual installation? Download the Windows ZIP and `SHA256SUMS` from [GitHub Releases](https://github.com/HenrySchwerdt/mini/releases), verify it with `Get-FileHash -Algorithm SHA256`, and extract it into a new directory. Add that directory's `bin` to your session's PATH.
 
@@ -167,7 +167,7 @@ For the experimental LLVM API compiler and native REPL from the current source c
 .\scripts\windows\install.ps1 -Backend llvm-api -Prefix "$env:USERPROFILE\.mini-windows-api"
 ```
 
-This source build additionally needs **7-Zip, CMake 3.24 or newer, and Ninja**. It downloads the official LLVM 18 development SDK (about 1 GB); the resulting compiler links LLVM statically, so the installed toolchain does not need that SDK to run. `mini run`, `mini build` and `mini test` use the LLVM API by default in this installation, `mini repl` starts the native REPL, and `mini run --backend c` selects the C fallback. Windows threads are not supported. The published 0.8.0 ZIP remains C-only.
+This source build additionally needs **7-Zip, CMake 3.24 or newer, and Ninja**. It downloads the official LLVM 18 development SDK (about 1 GB); the resulting compiler links LLVM statically, so the installed toolchain does not need that SDK to run. `mini run`, `mini build` and `mini test` use the LLVM API by default in this installation, `mini repl` starts the native REPL, and `mini run --backend c` selects the C fallback. Windows threads are not supported. The older 0.8.0 ZIP remains C-only.
 
 ## What the installer does
 

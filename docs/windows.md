@@ -1,6 +1,6 @@
 # Windows support status
 
-Windows x64 has two experimental build paths. The C compatibility lane uses the Visual Studio LLVM Clang toolset with the MSVC CRT and Windows SDK. An opt-in source install also builds the LLVM API compiler and native ORC REPL. Neither path uses WSL or an MSYS runtime as a product dependency. The published 0.8.0 Windows ZIP remains C-only; the LLVM API build is not yet a published Windows release.
+Windows x64 has two experimental build paths. The C compatibility lane uses the Visual Studio LLVM Clang toolset with the MSVC CRT and Windows SDK. An opt-in source install also builds the LLVM API compiler and native ORC REPL. Neither path uses WSL or an MSYS runtime as a product dependency. Windows packages from 0.9.0 include the LLVM API compiler and REPL; the older 0.8.0 ZIP is C-only.
 
 ## CI coverage
 
@@ -24,7 +24,7 @@ The separate LLVM API workflow is configured to validate the official LLVM 18 st
 
 ## Support boundary
 
-Linux and macOS remain the stable LLVM API release platforms. The standalone root `install.ps1` downloads the latest Windows release ZIP, verifies its `SHA256SUMS` entry, and installs into a new prefix without a Git clone or source bootstrap. The currently published 0.8.0 Windows ZIP is C-only and was built and smoke-tested with the C compatibility lane. The PowerShell source installer still defaults to the C backend: it downloads and verifies the published 0.7.0 C seed, bootstraps the current compiler, and stages the native project tool under `%USERPROFILE%\.mini-windows` by default. Both installers refuse to overwrite a prefix and do not modify persistent PATH settings.
+Linux and macOS remain the stable LLVM API release platforms. The standalone root `install.ps1` downloads the latest Windows release ZIP, verifies its `SHA256SUMS` entry, and installs into a new prefix without a Git clone or source bootstrap. Version 0.9.0 Windows packages use the LLVM API backend and include the REPL; the older 0.8.0 ZIP is C-only. The PowerShell source installer still defaults to the C backend: it downloads and verifies the published 0.7.0 C seed, bootstraps the current compiler, and stages the native project tool under `%USERPROFILE%\.mini-windows` by default. Both installers refuse to overwrite a prefix and do not modify persistent PATH settings.
 
 Selecting `-Backend llvm-api` opts into the separate Windows LLVM API source build. It requires Windows x64, PowerShell 7, Git, Visual Studio 2022 C++ tools with LLVM Clang and the Windows SDK, CMake 3.24 or newer, Ninja, and 7-Zip. The installer downloads and prepares the official LLVM 18 development archive (about 1 GB). `-LLVMPrefix` can reuse a prefix created by `scripts/windows/prepare-llvm.ps1`, including its asset manifest. The resulting compiler links LLVM statically, so the SDK is not needed to run the installed toolchain. In this install, `mini build`, `mini run`, and `mini test` use the LLVM API by default; `mini run --backend c` selects the C fallback, and `mini repl` starts the native REPL. Windows threads are unsupported.
 

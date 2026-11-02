@@ -62,6 +62,9 @@ try {
         } else {
             [IO.Path]::GetFullPath($LLVMPrefix)
         }
+        $llvmLicense = Join-Path $work 'LLVM-LICENSE.txt'
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/llvm/LICENSE.TXT' -OutFile $llvmLicense
+        if ((Get-Item -LiteralPath $llvmLicense).Length -eq 0) { throw 'LLVM license download is empty.' }
         Write-Host 'Preparing the LLVM 18 SDK for the opt-in LLVM API backend...'
         & (Join-Path $PSScriptRoot 'prepare-llvm.ps1') -Prefix $sdkPrefix
 
@@ -74,6 +77,10 @@ try {
     }
 
     & (Join-Path $PSScriptRoot 'build-mini.ps1') -MinicNative $minicNative -OutputDirectory $package -Backend $Backend
+
+    if ($Backend -eq 'llvm-api') {
+        Copy-Item -LiteralPath $llvmLicense -Destination (Join-Path $package 'LLVM-LICENSE.txt')
+    }
 
     # The build directory contains intermediate C and object files, which are not part of the install.
     Remove-Item -LiteralPath (Join-Path $package 'work') -Recurse -Force

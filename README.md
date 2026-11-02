@@ -100,7 +100,7 @@ In Strict mode a separate checker runs before code generation.
 | Native Windows x64 C compatibility build and project tool | Experimental; see [Windows support](docs/windows.md). An opt-in LLVM API source install includes the native REPL. Windows threads remain unsupported. |
 | Coroutines and async IO on libuv, runtime written in Kotlin | Later. |
 
-Platforms: Linux and macOS with the LLVM API backend; experimental native Windows x64 with a C compatibility lane and an opt-in LLVM API source build. The published 0.8.0 Windows ZIP remains C-only. The full plan is in
+Platforms: Linux and macOS with the LLVM API backend; experimental native Windows x64 with a C compatibility lane and an opt-in LLVM API source build. Windows packages from 0.9.0 include the LLVM API and REPL; the older 0.8.0 ZIP is C-only. The full plan is in
 [docs/plan-kotlin.md](docs/plan-kotlin.md).
 
 ## Quickstart
