@@ -94,7 +94,7 @@ class Toolchain(
                 throw MiniError("MINI_ROOT=$root does not contain stdlib/ and include/minirt.h", "point MINI_ROOT at an installed Mini, or run `scripts/build-mini.sh` in a source checkout and use `build/native`")
             }
             val explicit = p.env("MINIC_NATIVE")?.takeIf { it.isNotEmpty() }
-            val inTree = Paths.join(root, MINIC_RELATIVE)
+            val inTree = Paths.join(root, MINIC_RELATIVE + if (p.os == "windows") ".exe" else "")
             val minic = when {
                 explicit != null -> explicit
                 p.isFile(inTree) -> inTree
@@ -165,7 +165,8 @@ class Toolchain(
         }
         cmd += listOf(cFile)
         cmd += cSources
-        cmd += listOf(runtimeLib, "-o", out, "-lm")
+        cmd += listOf(runtimeLib, "-o", out)
+        if (p.os != "windows") cmd += "-lm"
         cmd += links
         val cr = p.exec(Exec(cmd))
         p.remove(cFile)

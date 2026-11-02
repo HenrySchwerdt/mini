@@ -101,6 +101,25 @@ class SupportTest {
     }
 
     @Test
+    fun windowsPaths() {
+        assertTrue(Paths.isAbsolute("C:\\work\\app"))
+        assertEquals("C:/work/app", Paths.normalize("C:\\work\\lib\\..\\app"))
+        assertEquals("C:/", Paths.normalize("C:/../../"))
+        assertEquals("C:/", Paths.parent("C:/app"))
+        assertNull(Paths.parent("C:/"))
+        assertEquals("//server/share/", Paths.normalize("\\\\server\\share\\..\\.."))
+        assertNull(Paths.parent("//server/share/"))
+        assertEquals("//?/UNC/server/share/", Paths.normalize("//?/UNC/server/share/../.."))
+        assertEquals("//server/share/", Paths.parent("//server/share/app"))
+        assertEquals("D:/app", Paths.relativize("C:/work", "D:/app"))
+        assertEquals("../lib", Paths.relativize("C:/work/app", "C:/work/lib"))
+        assertEquals("D:/app", Paths.resolve("C:/work", "D:/app"))
+        assertEquals("D:/app", Paths.resolve("D:/work", "/app"))
+        assertEquals("lib", Paths.relativize("C:/work", "c:/work/lib"))
+        assertEquals("app", Paths.relativize("C:/Work", "c:/work/app"))
+    }
+
+    @Test
     fun paths() {
         assertEquals("/a/c", Paths.normalize("/a/b/../c/./"))
         assertEquals("../x", Paths.normalize("a/../../x"))
