@@ -31,6 +31,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: ./scripts/windows/test-syntax.ps1
       - name: Cache official LLVM 18.1.8 development archive prefix
         uses: actions/cache/restore@v4
         id: llvm-cache

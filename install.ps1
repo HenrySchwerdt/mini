@@ -127,7 +127,7 @@ try {
 
     $expected = Get-Checksum -ChecksumFile $stagedSums -FileName $archiveName
     $actual = (Get-FileHash -LiteralPath $stagedArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actual -cne $expected) { throw "SHA256 mismatch for $archiveName: expected $expected, got $actual." }
+    if ($actual -cne $expected) { throw "SHA256 mismatch for ${archiveName}: expected $expected, got $actual." }
 
     $rootName = "mini-$version-windows-x64"
     Assert-SafeArchive -ZipPath $stagedArchive -RootName $rootName
