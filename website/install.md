@@ -106,7 +106,7 @@ Once installed, local programs without uncached git dependencies can build offli
 
 | You need | Why |
 |---|---|
-| A **C compiler** (`clang` or `gcc`, found as `cc`) | `minic` translates Kotlin to C and the C compiler turns it into a native executable. Install `clang` with `sudo apt install clang`, `sudo dnf install clang` or `xcode-select --install`. Use another compiler with `--cc` or the `CC` variable. |
+| A **C compiler** (`clang` or `gcc`, found as `cc`) | On Linux or macOS, `minic` translates Kotlin to C and the C compiler turns it into a native executable. Use another compiler with `--cc` or the `CC` variable. Windows source installs use Visual Studio's LLVM Clang toolset, MSVC CRT and Windows SDK. |
 | `curl`, `tar` | for the copy-and-paste installer command; the installer can use `wget` with an explicitly pinned `MINI_VERSION` |
 | `git` | for project repository creation and git dependencies; `mini new hello --no-git` skips repository creation |
 | `sha256sum` or `shasum` | the installer verifies the download |
@@ -121,11 +121,27 @@ No JDK is needed: the compiler is a native program that compiles itself.
 | Linux arm64 | `mini-<version>-linux-arm64.tar.gz` |
 | macOS on Apple silicon | `mini-<version>-macos-arm64.tar.gz` |
 
-**Windows is not supported yet** (the generated C uses GNU extensions that MSVC does not have). Use WSL, which gives you the Linux build. Intel Macs have no prebuilt archive; [build from source](#build-from-source).
+Windows has no prebuilt release archive. An experimental source install is available for native Windows x64 using Visual Studio's LLVM Clang driver and MSVC CRT; it does not require WSL. Intel Macs have no prebuilt archive; [build from source](#build-from-source).
+
+### Experimental Windows source install
+
+This path builds the compiler from a checksum-verified published C seed and stages the native `mini.exe` project tool with the C backend. It requires Windows x64, PowerShell, Git, network access, Visual Studio 2022 C++ build tools with the LLVM Clang component and a Windows SDK. The script initializes the Visual Studio developer environment for its build commands.
+
+```powershell
+git clone https://github.com/HenrySchwerdt/mini.git
+cd mini
+.\scripts\windows\install.ps1
+
+# Add the default install to this PowerShell session's PATH.
+$env:PATH = "$env:USERPROFILE\.mini-windows\bin;$env:PATH"
+mini.exe --version
+```
+
+The default prefix is `%USERPROFILE%\.mini-windows`. Pass `-Prefix <path>` to choose another new directory; the installer refuses to overwrite an existing prefix and does not change system or user PATH settings. This is an experimental source install, not a Windows release download. It uses the C backend and does not include LLVM API or REPL support.
 
 ## What the installer does
 
-1. Detects your platform from `uname` (`Linux/x86_64`, `Linux/aarch64`, `Darwin/arm64`). Anything else stops with the list above.
+1. Detects the Unix release platform from `uname` (`Linux/x86_64`, `Linux/aarch64`, `Darwin/arm64`). Anything else stops with the list above.
 2. Finds the latest release by following the redirect of `https://github.com/HenrySchwerdt/mini/releases/latest`, which needs no API call and has no rate limit. `MINI_VERSION` pins a version.
 3. Downloads `mini-<version>-<target>.tar.gz` and `SHA256SUMS` from the release and **verifies the checksum**. A mismatch aborts the installation.
 4. Unpacks the archive into `$MINI_HOME` (default `~/.mini`), replacing the previous `bin`, `lib`, `include` and `stdlib`.

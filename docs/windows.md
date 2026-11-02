@@ -13,12 +13,13 @@ The optional Windows lane runs on the explicitly selected `windows-2022` GitHub 
 - verifies the published 0.7.0 C bootstrap seed archive against the release `SHA256SUMS`;
 - links the seed compiler against this checkout's runtime, builds three compiler stages, checks stage 2 and stage 3 C/MIR equality, and compiles/runs a hello program;
 - compiles and runs a multi-file package/import smoke plus a CLI smoke whose source and output paths contain spaces, BMP Unicode and emoji.
+- builds an experimental C-only `mini.exe` install using the Windows host layer and source stdlib, then exercises `mini new`, `mini run`, `mini test`, `mini check`, and propagation of a failed compiler subprocess from paths containing spaces and Unicode.
 
-`CHECK_ABORTS` is a no-op in the current Windows test harness because it uses `fork` on POSIX. The separate panic process test does not replace those in-process abort assertions. This lane does not run ASan, UBSan, TSan, libuv/thread tests, LLVM API bootstrap, ORC REPL, the `mini` project tool, or release packaging.
+`CHECK_ABORTS` is a no-op in the current Windows test harness because it uses `fork` on POSIX. The separate panic process test does not replace those in-process abort assertions. This lane does not run ASan, UBSan, TSan, libuv/thread tests, LLVM API bootstrap, ORC REPL, or release packaging.
 
 ## Support boundary
 
-Linux and macOS remain the release platforms. Passing this lane is evidence for the native Windows C seed bootstrap and the listed runtime tests only. It does not establish full Windows support, a Windows release asset, or support for `minic.sh` and other POSIX shell entry points.
+Linux and macOS remain the release platforms. The PowerShell source installer downloads and verifies the published 0.7.0 C seed, bootstraps the current compiler, and stages an experimental C-only native project tool under `%USERPROFILE%\.mini-windows` by default. It refuses to overwrite a prefix and does not modify PATH. Passing this lane covers the bootstrap, listed runtime tests, and the specific `mini.exe` commands above; it does not establish a Windows release asset or full Windows support. The install is not an LLVM API build and does not provide the LLVM REPL. POSIX shell entry points such as `minic.sh` are not supported natively on Windows.
 
 The workflow invokes PowerShell scripts directly and uses the Visual Studio developer-shell setup plus `clang.exe --target=x86_64-pc-windows-msvc`. The runner label is explicitly `windows-2022`; the workflow logs the runner image, Windows version, installed Clang version, and checks the expected target triple so image updates are visible.
 
