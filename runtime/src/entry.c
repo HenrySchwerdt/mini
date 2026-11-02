@@ -55,6 +55,7 @@ static int copy_wide_argv(int argc, wchar_t **argv) {
 }
 
 int wmain(int argc, wchar_t **argv) {
+    (void)_set_abort_behavior(0, _CALL_REPORTFAULT);
     set_binary_stdio();
     if (!copy_wide_argv(argc, argv)) {
         free_owned_argv();
