@@ -38,7 +38,7 @@ foreach ($source in $runtimeSources) {
     $runtimeObjects += $object
 }
 
-$llvmAr = Join-Path (Split-Path -Parent $cc) 'llvm-ar.exe'
+$llvmAr = Join-Path (Split-Path -Parent $script:cc) 'llvm-ar.exe'
 $runtimeArchive = Join-Path $lib 'libminirt.a'
 if (Test-Path -LiteralPath $llvmAr) {
     & $llvmAr rcs $runtimeArchive @runtimeObjects
@@ -71,7 +71,7 @@ Write-Host ("compiler --backend=c -o $toolC " + ($toolSources -join ' ') + ' --s
 if ($LASTEXITCODE -ne 0) { throw "minic-native failed generating mini C with exit code $LASTEXITCODE" }
 
 Invoke-Clang ($target + @('-std=gnu17', '-O2', '-Werror', "-I$(Join-Path $runtime 'include')", "-I$toolHost", '-c', $toolHostSource, '-o', $hostObject))
-Invoke-Clang ($target + @('-std=c17', '-O2', '-w', "-I$(Join-Path $runtime 'include')", "-I$toolHost", $toolC, $hostObject, $runtimeArchive, '-o', $toolExe))
+Invoke-Clang ($target + @('-std=c17', '-O2', '-w', "-I$(Join-Path $runtime 'include')", "-I$toolHost", $toolC, $hostObject, $runtimeArchive, '-Wl,/include:wmain', '-o', $toolExe))
 
 Copy-Item -LiteralPath $compiler -Destination (Join-Path $bin 'minic-native.exe')
 Copy-Item -Path (Join-Path $runtime 'include/*.h') -Destination $include

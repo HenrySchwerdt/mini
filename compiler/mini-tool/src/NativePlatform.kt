@@ -91,7 +91,7 @@ open class NativePlatform : Platform {
 
     override fun env(name: String): String? = hostEnv(name)
     override fun cwd(): String = Paths.normalize(hostCwd())
-    override fun homeDir(): String? = hostEnv("HOME") ?: if (os == "windows") hostEnv("USERPROFILE") else null
+    override fun homeDir(): String? = if (os == "windows") hostEnv("USERPROFILE")?.takeIf { it.isNotEmpty() } ?: hostEnv("HOME") else hostEnv("HOME")
     override fun exePath(): String? = hostExePath()?.let { Paths.normalize(it) }
 
     override fun isTerminal(stream: Stream): Boolean {

@@ -106,7 +106,7 @@ class Toolchain(
             if (!p.isFile(Paths.join(root, "lib/libminirt.a"))) {
                 throw MiniError("the runtime library lib/libminirt.a is missing under $root", "reinstall Mini, or in a source checkout run `scripts/build-mini.sh`")
             }
-            val cc = if (requireCompiler) findCompiler(p) ?: throw MiniError("no C compiler found (tried clang and gcc)", "install one (`sudo apt install clang` or `xcode-select --install`), then run `mini doctor`") else null
+            val cc = if (requireCompiler) findCompiler(p) ?: throw MiniError("no C compiler found (tried clang and gcc)", if (p.os == "windows") "open Developer PowerShell for Visual Studio 2022 with the LLVM Clang component and Windows SDK, then run `mini doctor`" else "install one (`sudo apt install clang` or `xcode-select --install`), then run `mini doctor`") else null
             val defaultBackend = if (explicit == null && p.readText(Paths.join(root, "TOOLCHAIN-BACKEND"))?.trim() == "llvm-api") "llvm-api" else "c"
             return Toolchain(root, minic, cc?.first ?: "", cc?.first ?: "", defaultBackend)
         }
@@ -166,7 +166,7 @@ class Toolchain(
         cmd += listOf(cFile)
         cmd += cSources
         cmd += listOf(runtimeLib, "-o", out)
-        if (p.os != "windows") cmd += "-lm"
+        if (p.os == "windows") cmd += "-Wl,/include:wmain" else cmd += "-lm"
         cmd += links
         val cr = p.exec(Exec(cmd))
         p.remove(cFile)

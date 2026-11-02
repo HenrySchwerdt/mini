@@ -137,6 +137,8 @@ $env:PATH = "$env:USERPROFILE\.mini-windows\bin;$env:PATH"
 mini.exe --version
 ```
 
+For later sessions, open **Developer PowerShell for Visual Studio 2022** so Clang can find the MSVC libraries and Windows SDK, then add the install directory to that session’s PATH as above.
+
 The default prefix is `%USERPROFILE%\.mini-windows`. Pass `-Prefix <path>` to choose another new directory; the installer refuses to overwrite an existing prefix and does not change system or user PATH settings. This is an experimental source install, not a Windows release download. It uses the C backend and does not include LLVM API or REPL support.
 
 ## What the installer does

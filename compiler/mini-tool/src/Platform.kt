@@ -101,7 +101,7 @@ object Paths {
         val right = slashes(b)
         return when {
             right.isEmpty() -> left
-            right.startsWith("/") && !right.startsWith("//") && left.length >= 2 && left[1] == ':' -> left.substring(0, 2) + right
+            right.startsWith("/") && !right.startsWith("//") && root(left).length > 1 -> root(left).removeSuffix("/") + right
             isAbsolute(right) || left.isEmpty() -> right
             left.endsWith("/") -> left + right
             else -> "$left/$right"

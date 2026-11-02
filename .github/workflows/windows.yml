@@ -81,6 +81,15 @@ jobs:
               -OutputDirectory $install
             ./scripts/windows/test-mini.ps1 -MiniHome $install
           } finally { Stop-Transcript }
+      - name: Verify source installer
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-install.log" -Force
+          try {
+            $prefix = Join-Path $env:RUNNER_TEMP 'Mini source install Ω 😀'
+            ./scripts/windows/install.ps1 -Prefix $prefix
+            ./scripts/windows/test-mini.ps1 -MiniHome $prefix
+          } finally { Stop-Transcript }
       - name: Upload Windows logs and bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,6 +1,6 @@
 # Experimental C-only Windows source install. Run from a cloned Mini checkout.
 param(
-    [string]$Prefix = (Join-Path $env:USERPROFILE '.mini-windows'),
+    [string]$Prefix = '',
     [string]$SeedVersion = '0.7.0'
 )
 Set-StrictMode -Version Latest
@@ -8,10 +8,12 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'setup.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+if ([string]::IsNullOrWhiteSpace($Prefix)) {
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) { throw 'USERPROFILE is not set; pass -Prefix explicitly.' }
+    $Prefix = Join-Path $env:USERPROFILE '.mini-windows'
+}
 $prefixPath = [IO.Path]::GetFullPath($Prefix)
 if (Test-Path -LiteralPath $prefixPath) { throw "Refusing to overwrite existing install prefix: $prefixPath" }
-if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) { throw 'USERPROFILE is not set; pass -Prefix explicitly.' }
-
 $seedName = "mini-$SeedVersion-bootstrap-c"
 $archiveName = "$seedName.tar.gz"
 $baseUrl = "https://github.com/HenrySchwerdt/mini/releases/download/v$SeedVersion"

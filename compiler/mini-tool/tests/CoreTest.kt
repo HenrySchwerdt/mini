@@ -115,6 +115,7 @@ class SupportTest {
         assertEquals("../lib", Paths.relativize("C:/work/app", "C:/work/lib"))
         assertEquals("D:/app", Paths.resolve("C:/work", "D:/app"))
         assertEquals("D:/app", Paths.resolve("D:/work", "/app"))
+        assertEquals("//server/share/app", Paths.resolve("//server/share/work", "/app"))
         assertEquals("lib", Paths.relativize("C:/work", "c:/work/lib"))
         assertEquals("app", Paths.relativize("C:/Work", "c:/work/app"))
     }
