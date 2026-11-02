@@ -1,0 +1,72 @@
+name: Windows LLVM 18 static API probe
+on:
+  pull_request:
+    paths:
+      - 'compiler/llvm-c/**'
+      - 'compiler/llvm/**'
+      - 'compiler/bootstrap.sh'
+      - 'scripts/windows/prepare-llvm.ps1'
+      - 'scripts/windows/llvm-probe/**'
+      - '.github/workflows/windows-llvm.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-llvm-probe-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x64-llvm18-probe:
+    name: Windows x64 LLVM 18 static API probe
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache official LLVM 18.1.8 development archive prefix
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/mini-llvm18-prefix
+          key: windows-2022-llvm18.1.8-asset175624214-v1
+      - name: Acquire and probe LLVM static C API and ORC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:RUNNER_TEMP 'mini-windows-llvm-probe.log'
+          Start-Transcript -Path $log -Force
+          try {
+            . ./scripts/windows/setup.ps1
+            $clang = Initialize-MiniWindowsToolchain
+            $clangCl = Join-Path (Split-Path -Parent $clang) 'clang-cl.exe'
+            if (-not (Test-Path -LiteralPath $clangCl)) { throw "VS clang-cl.exe not found beside clang.exe: $clangCl" }
+            foreach ($tool in @('cmake.exe', 'ninja.exe', 'dumpbin.exe')) {
+              if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Required probe tool not found on PATH: $tool" }
+            }
+            & ./scripts/windows/prepare-llvm.ps1 -Prefix (Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix')
+            $prefix = Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix'
+            $build = Join-Path $env:RUNNER_TEMP 'mini-llvm18-probe-build'
+            cmake.exe -S ./scripts/windows/llvm-probe -B $build -G Ninja `
+              "-DCMAKE_CXX_COMPILER=$clangCl" `
+              "-DLLVM_DIR=$(Join-Path $prefix 'lib/cmake/llvm')" `
+              -DCMAKE_BUILD_TYPE=Release
+            if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE" }
+            cmake.exe --build $build --verbose
+            if ($LASTEXITCODE -ne 0) { throw "LLVM probe build failed with exit code $LASTEXITCODE" }
+            $probe = Join-Path $build 'mini-llvm-probe.exe'
+            & $probe
+            if ($LASTEXITCODE -ne 0) { throw "LLVM API/ORC probe failed with exit code $LASTEXITCODE" }
+            $dependencies = & dumpbin.exe /DEPENDENTS $probe 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "dumpbin /DEPENDENTS failed with exit code $LASTEXITCODE`n$($dependencies -join "`n")" }
+            $dependencies | ForEach-Object { Write-Host $_ }
+            if (($dependencies -join "`n") -match '(?i)LLVM[^\r\n]*\.dll') {
+              throw 'Probe executable unexpectedly depends on an LLVM DLL; expected static LLVM component linkage.'
+            }
+            Write-Host 'Static-link check: no LLVM*.dll dependency found.'
+          } finally { Stop-Transcript }
+      - name: Upload LLVM probe logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-llvm-probe-${{ github.run_id }}
+          path: ${{ runner.temp }}/mini-windows-llvm-probe.log
+          if-no-files-found: warn
+          retention-days: 7
