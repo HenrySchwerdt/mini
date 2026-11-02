@@ -159,7 +159,6 @@ foreach ($key in @('C', 'Mir', 'Ll', 'Object')) {
 Write-Host 'stage2 == stage3 (C, MIR, LLVM module text and object file byte-identical).'
 
 $stage3 = $stageFiles[3].Exe
-Invoke-Mini $stage3 @('--version')
 $dependencies = @(& $dumpbin.Source /nologo /dependents $stage3 2>&1)
 if ($LASTEXITCODE -ne 0) { throw "dumpbin /dependents failed: $($dependencies -join "`n")" }
 if (($dependencies -join "`n") -match '(?im)^\s*LLVM[^\r\n]*\.dll\s*$') { throw 'stage3 has a runtime dependency on an LLVM DLL.' }
@@ -170,6 +169,7 @@ $smokeDir = Join-Path $work 'API smoke Δ 😀 path'
 New-Item -ItemType Directory -Path $smokeDir | Out-Null
 $hello = Join-Path $smokeDir 'Hello 42 Ω 😀.kt'
 [IO.File]::WriteAllText($hello, "fun main() { println(42) }`n", [Text.UTF8Encoding]::new($false))
+Invoke-Mini $stage3 (@('--backend=llvm-api', '--check', $hello, '--stdlib') + $stdlibSources)
 Invoke-Mini $stage3 (@('--backend=llvm-api', '--run', $hello, '--stdlib') + $stdlibSources)
 $helloExe = Join-Path $smokeDir 'hello.exe'
 $linkArgs = @('--backend=llvm-api', '--opt=O1', '--exe', $helloExe, '--cc', $script:clang, '--link-arg', '-fms-runtime-lib=dll')
