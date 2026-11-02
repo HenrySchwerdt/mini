@@ -53,6 +53,7 @@ jobs:
             $prefix = Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix'
             $build = Join-Path $env:RUNNER_TEMP 'mini-llvm18-probe-build'
             cmake.exe -S ./scripts/windows/llvm-probe -B $build -G Ninja `
+              "-DCMAKE_C_COMPILER=$clangCl" `
               "-DCMAKE_CXX_COMPILER=$clangCl" `
               "-DLLVM_DIR=$(Join-Path $prefix 'lib/cmake/llvm')" `
               -DCMAKE_BUILD_TYPE=Release
