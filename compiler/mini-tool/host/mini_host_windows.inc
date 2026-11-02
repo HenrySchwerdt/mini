@@ -219,35 +219,7 @@ static wchar_t *mh_environment(wchar_t **extra,size_t count,wchar_t **path) {
     *w=0;if(w==out)w[1]=0;
     free(all);FreeEnvironmentStringsW(base);return out;
 }
-/* Always quote each argument, applying the MS CRT backslash/quote rules. */
-static wchar_t *mh_command(wchar_t **args,size_t count) {
-    size_t cap=1;
-    for (size_t i=0; i<count; i++) {
-        size_t n=2+(i?1:0), slashes=0;
-        for (const wchar_t *p=args[i]; *p; p++) {
-            n++;
-            if (*p==L'\\') slashes++;
-            else { if (*p==L'"') n+=slashes+1; slashes=0; }
-            if (n>32767) { SetLastError(ERROR_BAD_LENGTH); return NULL; }
-        }
-        n+=slashes; /* Double backslashes immediately before the closing quote. */
-        if (n>32767-cap) { SetLastError(ERROR_BAD_LENGTH); return NULL; }
-        cap+=n;
-    }
-    wchar_t *s=mh_alloc(cap*sizeof *s),*w=s;
-    for(size_t i=0;i<count;i++) {
-        if(i)*w++=L' ';*w++=L'"';size_t slashes=0;
-        for(const wchar_t *p=args[i];;p++) {
-            if(*p==L'\\'){slashes++;continue;}
-            size_t copies=slashes*((*p==L'"'||!*p)?2:1);
-            while(copies--)*w++=L'\\';slashes=0;
-            if(*p==L'"')*w++=L'\\';
-            if(!*p)break;*w++=*p;
-        }
-        *w++=L'"';
-    }
-    *w=0;return s;
-}
+#include "../../../runtime/src/windows_command.h"
 static int mh_absolute(const wchar_t *p) { return p[0]==L'/'||p[0]==L'\\'||(p[0]&&p[1]==L':'); }
 static wchar_t *mh_find_exe(const wchar_t *name,const wchar_t *cwd,const wchar_t *path) {
     if(wcschr(name,L'/')||wcschr(name,L'\\')||wcschr(name,L':'))return mh_absolute(name)?mh_wcopy(name,wcslen(name)):mh_join(cwd,name);
@@ -302,7 +274,7 @@ MkInt mh_exec(const MkString *argvList,const MkString *cwd,const MkString *envLi
     if(!argc||!*args[0]||wcschr(args[0],L'"')||(cwd&&!dir)||(envList&&!envtext)){error=ERROR_INVALID_PARAMETER;goto done;}
     if(!dir){MkString *s=mh_cwd();dir=mh_wide(s);mk_release(&s->header);}
     block=mh_environment(extra,envc,&path);if(!block){error=GetLastError();goto done;}
-    cmd=mh_command(args,argc);if(!cmd){error=GetLastError();goto done;}
+    cmd=mk_windows_command(args,argc);if(!cmd){error=GetLastError();goto done;}
     exe=mh_path_separators(mh_find_exe(args[0],dir,path));if(!exe){error=GetLastError();goto done;}
     if(capture){SECURITY_ATTRIBUTES sa={sizeof sa,NULL,TRUE};io[0]=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,0,NULL);io[1]=mh_temp();io[2]=mh_temp();}
     else {io[0]=mh_duplicate(GetStdHandle(STD_INPUT_HANDLE));io[1]=mh_duplicate(GetStdHandle(STD_OUTPUT_HANDLE));io[2]=mh_duplicate(GetStdHandle(STD_ERROR_HANDLE));}

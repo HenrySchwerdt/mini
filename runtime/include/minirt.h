@@ -600,6 +600,11 @@ const MkString *mk_array_content_to_string(const MkObject *array);
 /* Used by the self-hosted backend driver (compiler/native-driver). Arguments are borrowed,
  * reference results are owned (+1). Text files are UTF-8. */
 
+/* Compiler host support. Spawn takes a borrowed U+0001-separated argv (no shell),
+ * inherits streams/environment/cwd and returns a direct exit status, or -1. */
+MkInt mk_platform_spawn(const MkString *argv);
+MkLong mk_platform_nanos(void);
+
 /* Reads the whole file and decodes it as UTF-8; NULL when it cannot be opened or read. */
 MkString *mk_b1_read_file(const MkString *path);
 /* Writes `text` as UTF-8 (create/truncate); false when it cannot be written. */

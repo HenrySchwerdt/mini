@@ -1,12 +1,19 @@
 name: Windows LLVM 18 static API probe
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'compiler/**'
+      - 'stdlib/**'
+      - 'runtime/**'
+      - 'scripts/windows/**'
+      - '.github/workflows/windows-llvm.yml'
   pull_request:
     paths:
-      - 'compiler/llvm-c/**'
-      - 'compiler/llvm/**'
-      - 'compiler/bootstrap.sh'
-      - 'scripts/windows/prepare-llvm.ps1'
-      - 'scripts/windows/llvm-probe/**'
+      - 'compiler/**'
+      - 'stdlib/**'
+      - 'runtime/**'
+      - 'scripts/windows/**'
       - '.github/workflows/windows-llvm.yml'
   workflow_dispatch:
 permissions:
@@ -62,11 +69,40 @@ jobs:
             }
             Write-Host 'Static-link check: no LLVM*.dll dependency found.'
           } finally { Stop-Transcript }
+      - name: Bootstrap and exercise Windows LLVM API compiler
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Transcript -Path (Join-Path $env:RUNNER_TEMP 'mini-windows-llvm-bootstrap.log') -Force
+          try {
+            . ./scripts/windows/setup.ps1
+            $clang = Initialize-MiniWindowsToolchain
+            $version = '0.8.0'
+            $name = "mini-$version-bootstrap-c.tar.gz"
+            $base = "https://github.com/HenrySchwerdt/mini/releases/download/v$version"
+            $seed = Join-Path $env:RUNNER_TEMP 'mini-api-seed'
+            New-Item -ItemType Directory -Path $seed | Out-Null
+            $archive = Join-Path $seed $name
+            Invoke-WebRequest -Uri "$base/$name" -OutFile $archive
+            $sums = (Invoke-WebRequest -Uri "$base/SHA256SUMS").Content
+            $entries = @($sums -split "`n" | Where-Object { $_ -match "^[0-9a-fA-F]{64}\s+$([regex]::Escape($name))\s*$" })
+            if ($entries.Count -ne 1) { throw 'Expected exactly one portable seed checksum entry.' }
+            $expected = ($entries[0] -split '\s+')[0]
+            if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $expected) { throw 'Portable seed checksum mismatch.' }
+            tar.exe -xzf $archive -C $seed
+            if ($LASTEXITCODE -ne 0) { throw 'Portable seed extraction failed.' }
+            $seedC = Join-Path $seed "mini-$version-bootstrap-c/minic.c"
+            $stage0 = Join-Path $seed 'stage0.exe'
+            $runtime = @(Get-ChildItem -LiteralPath runtime/src -Filter '*.c' -File | Sort-Object Name | ForEach-Object FullName)
+            & $clang --target=x86_64-pc-windows-msvc -std=c17 -O1 -w -Iruntime/include $seedC @runtime -o $stage0
+            if ($LASTEXITCODE -ne 0) { throw 'Portable C seed compiler build failed.' }
+            ./scripts/windows/bootstrap-api.ps1 -Stage0 $stage0 -LLVMPrefix (Join-Path $env:RUNNER_TEMP 'mini-llvm18-prefix')
+          } finally { Stop-Transcript }
       - name: Upload LLVM probe logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: windows-llvm-probe-${{ github.run_id }}
-          path: ${{ runner.temp }}/mini-windows-llvm-probe.log
+          path: ${{ runner.temp }}/mini-windows-llvm-*.log
           if-no-files-found: warn
           retention-days: 7

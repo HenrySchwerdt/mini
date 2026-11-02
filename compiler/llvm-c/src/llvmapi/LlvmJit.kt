@@ -1,5 +1,4 @@
-@file:CInclude("time.h")
-@file:CInclude("unistd.h")
+@file:CInclude("minirt.h")
 @file:Suppress("WRONG_MODIFIER_TARGET")
 
 package mini.llvmapi
@@ -13,15 +12,9 @@ import mini.backend.RcOpt
 import mini.backend.Tracking
 import mini.backend.llvm.IrStrings
 import mini.llvm.*
+import mini.internal.stderrWrite
 
-@CStruct("timespec")
-external class MkTimespec : CStructVar {
-    var tv_sec: Long
-    var tv_nsec: Long
-}
-
-@CName("clock_gettime") external fun cClockGettime(clock: Int, ts: CPointer<MkTimespec>): Int
-@CName("write") external fun cWrite(fd: Int, buf: CPointer<ByteVar>, n: Long): Long
+@CName("mk_platform_nanos") external fun platformNanos(): Long
 
 /** The runtime this process already runs (the compiler is a Mini program): flushing its stdout buffer and setting `main`'s `args`. */
 @CName("mk_runtime_flush") external fun mkRuntimeFlush()
@@ -29,18 +22,9 @@ external class MkTimespec : CStructVar {
 @CName("dlopen") external fun cDlopen(filename: CPointer<ByteVar>?, flags: Int): COpaquePointer?
 @CName("dlsym") external fun cDlsym(handle: COpaquePointer?, name: CPointer<ByteVar>): COpaquePointer?
 
-fun nowNanos(): Long = memScoped {
-    val ts = alloc<MkTimespec>()
-    cClockGettime(1, ts.ptr)
-    ts.tv_sec * 1000000000L + ts.tv_nsec
-}
+fun nowNanos(): Long = platformNanos()
 
-fun eprintln(text: String) {
-    memScoped {
-        val line = text + "\n"
-        cWrite(2, line.cstr.ptr, utf8Size(line))
-    }
-}
+fun eprintln(text: String) { stderrWrite(text + "\n") }
 
 /** The UTF-8 length of a string (what `cstr` writes, without the NUL). */
 fun utf8Size(s: String): Long = IrStrings.utf8(s).size.toLong()
