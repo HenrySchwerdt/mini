@@ -13,7 +13,7 @@ You do not need to install anything to try Mini: the [tutorial](/learn/) and the
 
 ## One command
 
-For Linux and macOS, use the command below. For native Windows x64, use the [experimental PowerShell source installer](#experimental-windows-source-install).
+For Linux and macOS, use the command below. For native Windows x64, use the [PowerShell release installer](#windows-powershell).
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
@@ -122,14 +122,25 @@ No JDK is needed: the compiler is a native program that compiles itself.
 | Linux x86-64 | `mini-<version>-linux-x64.tar.gz` |
 | Linux arm64 | `mini-<version>-linux-arm64.tar.gz` |
 | macOS on Apple silicon | `mini-<version>-macos-arm64.tar.gz` |
+| Windows x64 (experimental) | `mini-<version>-windows-x64.zip` |
 
 An experimental Windows x64 C-backend ZIP is available with the 0.8.0 release. LLVM API and REPL are not included in that Windows package. An experimental source install is also available for native Windows x64 using Visual Studio's LLVM Clang driver and MSVC CRT; it does not require WSL. Intel Macs have no prebuilt archive; [build from source](#build-from-source).
 
-### Experimental Windows ZIP
+### Windows PowerShell
 
-Download `mini-0.8.0-windows-x64.zip` and `SHA256SUMS` from [Mini 0.8.0 on GitHub](https://github.com/HenrySchwerdt/mini/releases/tag/v0.8.0). Verify the ZIP with `Get-FileHash -Algorithm SHA256` against its entry in `SHA256SUMS`, then extract it to a new directory. In Developer PowerShell for Visual Studio 2022, add the extracted `bin` directory to your session's PATH and run `mini.exe --version`.
+Run this in **PowerShell 7** (`pwsh`) on Windows x64:
 
-This package uses the **C backend** and requires Visual Studio's LLVM Clang component and Windows SDK to build programs. It provides the native project tool (`mini.exe`); the Unix `minic` shell wrapper, Windows LLVM API and Windows REPL are not included.
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.ps1 -o install-mini.ps1 && pwsh -File .\install-mini.ps1
+$env:PATH = "$env:USERPROFILE\.mini-windows\bin;$env:PATH"
+mini.exe --version
+```
+
+The standalone script downloads the latest Windows release ZIP, verifies its entry in `SHA256SUMS`, and installs it into a **new** `%USERPROFILE%\.mini-windows` directory. No Git clone, JDK, or compiler bootstrap is needed to install the release. It refuses to overwrite an existing installation and does not change persistent PATH settings. Pass `-Prefix <new-directory>` or `-Version 0.8.0` to the downloaded script to choose a destination or pin a release.
+
+The published **0.8.0 Windows package uses the C backend**. It provides `mini.exe` and requires Visual Studio 2022 C++ build tools with the LLVM Clang component and a Windows SDK to build programs. Open Developer PowerShell for Visual Studio when building. The Unix `minic` wrapper and Windows LLVM API/REPL are not included in 0.8.0.
+
+Prefer manual installation? Download the Windows ZIP and `SHA256SUMS` from [GitHub Releases](https://github.com/HenrySchwerdt/mini/releases), verify it with `Get-FileHash -Algorithm SHA256`, and extract it into a new directory. Add that directory's `bin` to your session's PATH.
 
 ### Experimental Windows source install
 

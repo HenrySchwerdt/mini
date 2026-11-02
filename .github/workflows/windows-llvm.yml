@@ -7,6 +7,7 @@ on:
       - 'stdlib/**'
       - 'runtime/**'
       - 'scripts/windows/**'
+      - 'install.ps1'
       - '.github/workflows/windows-llvm.yml'
   pull_request:
     paths:
@@ -14,6 +15,7 @@ on:
       - 'stdlib/**'
       - 'runtime/**'
       - 'scripts/windows/**'
+      - 'install.ps1'
       - '.github/workflows/windows-llvm.yml'
   workflow_dispatch:
 permissions:
@@ -111,6 +113,13 @@ jobs:
             $install = Join-Path $env:RUNNER_TEMP 'Mini LLVM install Δ 😀'
             ./scripts/windows/build-mini.ps1 -MinicNative $apiCompiler -OutputDirectory $install -Backend llvm-api
             ./scripts/windows/test-mini.ps1 -MiniHome $install
+            $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
+            $package = Join-Path $env:RUNNER_TEMP 'mini-api-package'
+            ./scripts/windows/package-release.ps1 -Version $version -MiniHome $install -OutDirectory $package -Backend llvm-api
+            $zip = Join-Path $package "mini-$version-windows-x64.zip"
+            $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$sha  $([IO.Path]::GetFileName($zip))" | Set-Content -LiteralPath (Join-Path $package 'SHA256SUMS') -Encoding ascii
+            ./scripts/windows/test-release-installer.ps1 -Archive $zip
           } finally { Stop-Transcript }
       - name: Upload LLVM probe logs
         if: always()

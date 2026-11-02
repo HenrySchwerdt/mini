@@ -51,6 +51,22 @@ features:
 
 <div class="home-body">
 
+## Install Mini
+
+::: code-group
+
+```sh [Linux / macOS]
+curl -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.sh | sh
+```
+
+```powershell [Windows (PowerShell 7)]
+curl.exe -fsSL https://raw.githubusercontent.com/HenrySchwerdt/mini/main/install.ps1 -o install-mini.ps1 && pwsh -File .\install-mini.ps1
+```
+
+:::
+
+The installers verify the release download and print the command to add Mini to your `PATH`. Windows x64 support is experimental. See [installation and requirements](/install).
+
 ## Train it. Draw it. Try it.
 
 Teach a model to recognize handwritten digits, then test it with your own mouse or touch input. The [**digit lab**](/libraries/digits) downloads real data over HTTPS, compares raw matrix multiplication with **Linear**, and shows three **mini.plot** APIs — all in an editable Mini notebook in your browser.
@@ -83,7 +99,7 @@ Mini translates Kotlin through C17 (or LLVM IR) and links a small C runtime. The
 - **Under the hood?** [How it works](/internals/), the [benchmarks](/benchmarks) and the [roadmap](/roadmap).
 
 ::: tip Status
-Mini is a working research compiler. Linux and macOS are supported; Windows, coroutines and a native `mini` tool are [planned](/roadmap). Strict mode is checked today, but native code generation for programs that use allocator types is still in progress. See [Roadmap and status](/roadmap) for the honest list.
+Mini is a working research compiler. Linux and macOS are supported, and native Windows x64 support is experimental. The native `mini` project tool is available; coroutines and Windows threads remain [planned](/roadmap). Strict mode is checked today, but native code generation for programs that use allocator types is still in progress. See [Roadmap and status](/roadmap) for the honest list.
 :::
 
 </div>
