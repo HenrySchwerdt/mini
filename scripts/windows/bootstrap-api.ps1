@@ -180,8 +180,19 @@ $hello = Join-Path $smokeDir 'Hello 42 Ω 😀.kt'
 Invoke-Mini $stage3 (@('--backend=llvm-api', '--check', $hello, '--stdlib') + $stdlibSources)
 Invoke-Mini $stage3 (@('--backend=llvm-api', '--run', $hello, '--stdlib') + $stdlibSources)
 $helloExe = Join-Path $smokeDir 'hello.exe'
-$linkArgs = @('--backend=llvm-api', '--opt=O1', '--exe', $helloExe, '--cc', $script:clang, '--link-arg', '-fms-runtime-lib=dll')
-foreach ($runtimeObject in $runtimeObjects) { $linkArgs += @('--link-arg', $runtimeObject) }
+# The compiler's runtime uses the LLVM SDK's DLL CRT. User executables use
+# the static CRT, just like the installed libminirt.a built by build-mini.ps1.
+# A link-only clang invocation does not apply -fms-runtime-lib to its defaults.
+$programRuntimeDir = Join-Path $work 'program-runtime-objects'
+New-Item -ItemType Directory -Path $programRuntimeDir | Out-Null
+$programRuntimeObjects = @()
+foreach ($source in $runtimeSourceFiles) {
+    $programObject = Join-Path $programRuntimeDir ($source.BaseName + '.obj')
+    Invoke-Native 'program runtime clang' $script:clang @('--target=x86_64-pc-windows-msvc', '-fms-runtime-lib=static', '-std=c17', '-O1', '-w', "-I$runtimeInclude", '-c', $source.FullName, '-o', $programObject)
+    $programRuntimeObjects += $programObject
+}
+$linkArgs = @('--backend=llvm-api', '--opt=O1', '--exe', $helloExe, '--cc', $script:clang)
+foreach ($runtimeObject in $programRuntimeObjects) { $linkArgs += @('--link-arg', $runtimeObject) }
 $linkArgs += @($hello, '--stdlib') + $stdlibSources
 Invoke-Mini $stage3 $linkArgs
 if (-not (Test-Path -LiteralPath $helloExe -PathType Leaf)) { throw 'LLVM API executable-link smoke did not produce hello.exe.' }
