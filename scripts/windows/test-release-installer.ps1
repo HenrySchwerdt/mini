@@ -69,6 +69,9 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $prefix 'stdlib') -PathType Container)) {
         throw 'Installed stdlib directory is missing.'
     }
+    if ($backend -eq 'llvm-api' -and -not (Test-Path -LiteralPath (Join-Path $prefix 'LLVM-LICENSE.txt') -PathType Leaf)) {
+        throw 'The installed LLVM API package is missing its LLVM license.'
+    }
     $miniExe = Join-Path $prefix 'bin/mini.exe'
     $miniHashBefore = Get-Sha256 $miniExe
     & $miniExe --version

@@ -31,6 +31,13 @@ $required = @(
     'VERSION',
     'TOOLCHAIN-BACKEND'
 )
+if ($Backend -eq 'llvm-api') {
+    $required += 'LLVM-LICENSE.txt'
+    $llvmLicense = Join-Path $installRoot 'LLVM-LICENSE.txt'
+    if (-not (Test-Path -LiteralPath $llvmLicense -PathType Leaf) -or (Get-Item -LiteralPath $llvmLicense).Length -eq 0) {
+        throw 'The LLVM API package requires a nonempty LLVM-LICENSE.txt.'
+    }
+}
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $installRoot $relative))) {
         throw "Required Windows package input is missing: $relative"
@@ -59,6 +66,9 @@ try {
         $destinationParent = Split-Path -Parent $destination
         if (-not (Test-Path -LiteralPath $destinationParent)) { New-Item -ItemType Directory -Path $destinationParent | Out-Null }
         Copy-Item -LiteralPath $source -Destination $destination
+    }
+    if ($Backend -eq 'llvm-api') {
+        Copy-Item -LiteralPath $llvmLicense -Destination (Join-Path $stageRoot 'LLVM-LICENSE.txt')
     }
     Copy-Item -LiteralPath (Join-Path $installRoot 'stdlib') -Destination (Join-Path $stageRoot 'stdlib') -Recurse
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination $stageRoot

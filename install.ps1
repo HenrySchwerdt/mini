@@ -159,6 +159,13 @@ try {
     $backend = (Get-Content -LiteralPath (Join-Path $installRoot 'TOOLCHAIN-BACKEND' -ErrorAction Stop) -Raw).Trim()
     if ($backend -cnotin @('c', 'llvm-api')) { throw "Unsupported TOOLCHAIN-BACKEND value: $backend" }
 
+    if ($backend -eq 'llvm-api') {
+        $llvmLicense = Join-Path $installRoot 'LLVM-LICENSE.txt'
+        if (-not (Test-Path -LiteralPath $llvmLicense -PathType Leaf) -or (Get-Item -LiteralPath $llvmLicense).Length -eq 0) {
+            throw 'The LLVM API package is missing its LLVM license.'
+        }
+    }
+
     if (Test-Path -LiteralPath $prefixPath) { throw "Refusing to overwrite existing install prefix: $prefixPath" }
     [IO.Directory]::Move($installRoot, $prefixPath)
 
