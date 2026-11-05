@@ -114,11 +114,16 @@ internal fun Ir2Mir.arrayFunction(c: IrCall, name: String, pkg: String, out: Mut
         if (arrayKindOf(v.type) == null) return null
         return MirExpr.RuntimeCall("mk_array_content_to_string", listOf(v), TString)
     }
-    if (pkg == "kotlin.collections" && (name == "<get-indices>" || name == "<get-lastIndex>") && a.size == 1) {
+    if ((pkg == "kotlin.collections" || (pkg == "kotlin" && name == "<get-indices>")) && (name == "<get-indices>" || name == "<get-lastIndex>") && a.size == 1) {
         val v = operands(a, out)[0]
         if (arrayKindOf(v.type) == null) return null
         if (name == "<get-lastIndex>") return MirExpr.Binary(BinaryOp.Sub, arrayLength(v), MirExpr.IntConst(1))
-        unsupported(c, "`indices` used as a value (only `for (i in array.indices)` is supported)")
+        // `indices` as a value: the range 0 .. size - 1
+        val cls = c.type.classOrNull ?: unsupported(c, "`indices` used as a value")
+        val ctor = cls.constructors.firstOrNull() ?: unsupported(c, "`indices` used as a value")
+        val cName = functionNames[ctor] ?: unsupported(c, "`indices` used as a value (IntRange is not available)")
+        val len = tmpOfPlain(arrayLength(v), out)
+        return MirExpr.New(cName, listOf(MirExpr.IntConst(0), MirExpr.Binary(BinaryOp.Sub, len, MirExpr.IntConst(1))), typeOf(cls))
     }
     return null
 }

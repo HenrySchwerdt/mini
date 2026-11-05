@@ -265,6 +265,14 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                     addReceiverGroups(nrt, name, groups, nref)
                     seenRecv = true
                 }
+                // `values()` / `valueOf(s)` written in the companion object of an enum class
+                if (!s.instance && s.cls.isEnum && (name == "values" || name == "valueOf")) {
+                    for (f in sema.members.staticFuns(s.cls, name)) {
+                        if (f.kind != FunKind.SYNTH) continue
+                        sema.ensureSig(f)
+                        groups.add(listOf(Candidate(f, HashMap(), null)))
+                    }
+                }
                 val comp = s.cls.companion
                 if (comp != null) addReceiverGroups(comp.thisType(), name, groups, RecvRef(comp, null, true))
                 if (s.cls.isObject && !s.instance) addReceiverGroups(s.cls.thisType(), name, groups, RecvRef(s.cls, null, true))
@@ -489,7 +497,11 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
         for (g in unqualifiedGroups(u.name)) for (c in g) funRefCand(c, false, cands)
         if (cands.isEmpty()) return true
         val want = pt.params.size + (if (pt.receiver != null) 1 else 0)
-        for (c in cands) if (c.params.size == want) return true
+        for (c in cands) {
+            if (c.params.size == want) return true
+            val fn = c.sym as? FunSym ?: continue
+            if (c.params.size == fn.params.size && adaptMapping(fn.params, 0, want) != null) return true
+        }
         return false
     }
     return true
@@ -800,6 +812,7 @@ fun BodyChecker.byLambdaResult(ok: List<Attempt>, args: List<Arg>): List<Attempt
     cs.fixVarsOf(FunType(ft.receiver, ft.params, sema.unitType, false, false))
     val ef = cs.resolveFixed(FunType(ft.receiver, ft.params, sema.nullableAny, false, false)) as? FunType ?: return ok
     probeLambda = true
+    inlineLambdaNext = isInlinableParam(first.cand.fn, first.params[first.binding.paramOfArg[li]])
     val lt = analyzeLambda(lam, ef, cs) as? FunType ?: return ok
     val res = lt.ret
     if (containsError(res)) return ok
@@ -810,6 +823,9 @@ fun BodyChecker.byLambdaResult(ok: List<Attempt>, args: List<Arg>): List<Attempt
     }
     return if (keep.isEmpty()) ok else keep
 }
+
+/** is a lambda argument of [p] expanded at the call site: [fn] is a non-suspend `inline` function and [p] neither noinline nor crossinline */
+fun isInlinableParam(fn: FunSym, p: VarSym): Boolean = fn.isInline && !p.isNoinline && !p.isCrossinline
 
 /** analyses postponed arguments of a call that could not be resolved, so that their bodies are still checked */
 fun BodyChecker.leftoverArgs(args: List<Arg>) {
@@ -861,6 +877,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     cs.unfixedVars(cs.resolveFixed(expectedFun.ret), rv)
                     for (v in rv) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) cs.fix(v)
                     val ef = cs.resolveFixed(expectedFun) as FunType
+                    inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
                     val lt = analyzeLambda(u, ef, cs)
                     cs.addSub(lt, pt)
                     // the lambda is recorded with the final types later
@@ -869,6 +886,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     cs.addSub(lt, pt)
                 }
             } else if (u is AnonFunExpr) {
+                inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
                 val lt = anonFunWith(u, if (expectedFun != null) cs.resolveFixed(expectedFun) as FunType else null)
                 cs.addSub(lt, pt)
             } else if (u is CallableRefExpr) {
@@ -920,16 +938,19 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
 }
 
 fun BodyChecker.samFunType(t: ClassType): FunType? {
-    val c = t.cls
-    // the single abstract method of a fun interface
-    for ((_, l) in c.funs) {
-        for (f in l) {
-            if (f.isAbstract) {
-                sema.ensureSig(f)
-                val m = ops.substOf(t)
-                val ps = ArrayList<Type>()
-                for (p in f.params) ps.add(ops.substitute(p.type ?: ErrType("sam"), m))
-                return FunType(null, ps, ops.substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
+    // the single abstract method of a fun interface (of the interface itself, or inherited from `fun interface C : G<Char>`)
+    for (st in ops.closure(t)) {
+        val c = st.cls
+        if (c === sema.anyType.cls) continue
+        for ((_, l) in c.funs) {
+            for (f in l) {
+                if (f.isAbstract) {
+                    sema.ensureSig(f)
+                    val m = ops.substOf(st)
+                    val ps = ArrayList<Type>()
+                    for (p in f.params) ps.add(ops.substitute(p.type ?: ErrType("sam"), m))
+                    return FunType(null, ps, ops.substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
+                }
             }
         }
     }

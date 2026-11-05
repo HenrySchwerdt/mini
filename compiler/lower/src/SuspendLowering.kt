@@ -769,6 +769,7 @@ fun Ast2Ir.makeSuspend(fn: IrFunction, declaredReturn: Type) {
 
 /** The body of a suspend function [fn] in the form described above. */
 fun Ast2Ir.lowerSuspendBody(fn: IrFunction, body: IrBlockBody): IrBlockBody {
+    expandSuspendingInlineCalls(fn, body)
     val b = SmBuilder(this, fn)
     var any = false
     for (s in body.statements) if (b.hasSuspend(s)) any = true

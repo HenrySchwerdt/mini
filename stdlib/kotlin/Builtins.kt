@@ -122,7 +122,6 @@ public class Array<T> {
     public operator fun get(index: Int): T
     public operator fun set(index: Int, value: T): Unit
     public val size: Int
-    public operator fun iterator(): Iterator<T>
 }
 
 public interface Function<out R>

@@ -157,6 +157,8 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
     var isInline = false
     var isExternal = false
     var isSuspend = false
+    /** the body of a `suspend inline` function before the state machine was built (calls with suspending lambdas expand this) */
+    var suspendInlineTemplate: IrBlockBody? = null
     /** the declared return type of a suspend function (its IR return type is Any?: the value or COROUTINE_SUSPENDED) */
     var origReturnType: Type? = null
     var isOperator = false

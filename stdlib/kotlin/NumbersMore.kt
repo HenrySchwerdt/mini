@@ -16,3 +16,7 @@ public fun Float.isNaN(): Boolean = this != this
 public fun Float.isInfinite(): Boolean = this == Float.POSITIVE_INFINITY || this == Float.NEGATIVE_INFINITY
 
 public fun Float.isFinite(): Boolean = !isInfinite() && !isNaN()
+
+public fun Char.toByte(): Byte = this.code.toByte()
+
+public fun Char.toShort(): Short = this.code.toShort()
