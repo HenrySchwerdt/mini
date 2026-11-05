@@ -85,7 +85,10 @@ class MLocal(
     val name: String,
     val type: MType,
     val pos: Pos = Pos.NONE,
-)
+) {
+    /** A `var`: a closure that captures it shares a heap cell with the declaring function. */
+    var isVar: Boolean = false
+}
 
 /** Annotation facts of one declaration site. [owned]/[borrowed] hold the position of the annotation if present. */
 class MAnnot(val owned: Pos? = null, val borrowed: Pos? = null) {
@@ -176,7 +179,15 @@ sealed class MExpr {
     }
 
     /** Allocation site of a class instance (or allocator object). [args] align with the constructor's parameters. */
-    class New(val ctor: MFun, val cls: MClass?, val args: List<MExpr>, override val type: MType, override val pos: Pos) : MExpr()
+    class New(
+        val ctor: MFun,
+        val cls: MClass?,
+        val args: List<MExpr>,
+        override val type: MType,
+        override val pos: Pos,
+        /** Outer values a local or anonymous class captures (hidden fields of the instance); read like the captures of a lambda. */
+        val captures: List<MLocal> = emptyList(),
+    ) : MExpr()
 
     /** [args] align with [MFun.params] (context arguments included); defaults omitted are [Opaque]. */
     class Call(

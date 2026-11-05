@@ -75,7 +75,7 @@ The checker can see the release within `repeat` and `run`. Moving the same body 
 
 <<< @/samples/memory/escaping_lambda.kt{kotlin}
 
-The second sample is expected to report `M0112`. General escaping closures that own captured tracked values are not supported yet. A borrowed capture can also outlive its lender, and an arena capture can outlive its region.
+The second sample is expected to report `M0112`. A closure that captures a tracked value only borrows it, so it must not outlive the owner. A borrowed capture can also outlive its lender, and an arena capture can outlive its region.
 
 Possible redesigns include computing a scalar result before creating the callback, passing an object as a parameter when the callback is invoked, or keeping the callback inside the region. Choose based on the intended behavior; copying a scalar snapshot is wrong if the callback is supposed to observe live state.
 

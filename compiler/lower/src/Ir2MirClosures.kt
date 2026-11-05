@@ -156,6 +156,7 @@ internal fun Ir2Mir.closureClass(
     arity: Int,
     capTypes: List<MirType>,
     sam: SamTarget? = null,
+    borrowedCaps: List<Boolean> = emptyList(),
     makeBody: (self: MirLocal, args: List<MirLocal>, caps: List<MirLocal>, out: MutableList<MirStmt>) -> Unit,
 ): Pair<String, TObject> {
     val iface = if (sam == null) functionInterface(arity) else null
@@ -165,7 +166,7 @@ internal fun Ir2Mir.closureClass(
     val qualified = "$hint\$$n"
     val cName = Mangling.className("", listOf("\$closure$nameTag$n"))
     val type = TObject(qualified, cName, false)
-    val fields = capTypes.mapIndexed { i, t -> MirField("c$i", t) }
+    val fields = capTypes.mapIndexed { i, t -> MirField("c$i", t, borrowedCaps.getOrElse(i) { false }) }
     // constructor
     val ctorName = Mangling.constructor(cName, capTypes)
     run {
@@ -223,9 +224,10 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
     if (fn in closure.inlinedLambdas) unsupported(e, "lambda passed to an inline function that cannot be expanded in place")
     val caps = closure.capturesOf(fn)
     val capTypes = caps.map { capturedType(it) }
+    val borrowed = caps.map { borrowedCapture(it) }
     val arity = fn.parameters.size
     val ret = mirType(fn.returnType, fn)
-    val (ctor, type) = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam) { _, args, capLocals, body ->
+    val (ctor, type) = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam, borrowed) { _, args, capLocals, body ->
         for ((i, v) in caps.withIndex()) locals[v] = capLocals[i]
         currentFunction = fn
         currentReturn = if (sam != null) sam.ret else if (ret == TUnit) TUnit else anyNullable
@@ -244,6 +246,17 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
     }
     val values = caps.map { MirExpr.Local(localOf(it, e)) }
     return MirExpr.New(ctor, values, type)
+}
+
+/**
+ * A closure created in Strict code does not count references to the Strict objects it captures (the capture field is `borrowed`):
+ * the ownership checker proved the closure does not outlive the owner (docs/memory-model.md, borrowing captures). A `var` lives in a
+ * counted cell and keeps its count (the checker rejects owned `var` captures).
+ */
+internal fun Ir2Mir.borrowedCapture(d: IrValueDeclaration): Boolean {
+    if (!currentStrict || d in closure.boxed) return false
+    val c = d.type.classOrNull ?: return false
+    return isStrictClass(c)
 }
 
 internal fun Ir2Mir.currentFunctionName(): String = currentFunction?.name ?: "<module>"

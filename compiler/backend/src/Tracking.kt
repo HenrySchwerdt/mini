@@ -103,8 +103,8 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
     fun borrowedField(owner: String, field: String): Boolean {
         if (!enabled) return false
         val c = classes[owner] ?: return false
-        if (!c.strict) return false
-        for (f in c.fields) if (f.name == field) return f.borrowed && f.type.isRef
+        // closures of Strict code (not Strict classes themselves) borrow their captured Strict objects, too
+        for (f in c.fields) if (f.name == field) return f.borrowed && f.type.isRef && (c.strict || isTrackedType(f.type))
         return false
     }
 
@@ -116,5 +116,5 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
 
     /** The field holds a reference count in the object of class [owner] (released by its dispose). */
     fun rcField(owner: MirClass, f: MirField): Boolean =
-        f.type.isRef && !(enabled && owner.strict && (isTrackedType(f.type) || f.borrowed))
+        f.type.isRef && !(enabled && ((owner.strict && (isTrackedType(f.type) || f.borrowed)) || (f.borrowed && isTrackedType(f.type))))
 }

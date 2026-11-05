@@ -92,6 +92,17 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     }
 
     private var curModule: IrModule? = null
+    private var closureOf: Pair<IrModule, ClosureInfo>? = null
+
+    /** Which outer values the local and anonymous classes of the module capture. */
+    private fun closureInfo(): ClosureInfo {
+        val mod = curModule!!
+        closureOf?.let { if (it.first === mod) return it.second }
+        val ci = ClosureInfo()
+        ci.analyze(mod)
+        closureOf = Pair(mod, ci)
+        return ci
+    }
     private var overrideIndex: HashMap<IrSimpleFunction, ArrayList<IrSimpleFunction>>? = null
 
     /** All functions that (transitively) override [f] in the classes of the module (user code, library stubs, standard library). */
@@ -507,6 +518,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 l = paramLocals[v]
                 if (l == null) {
                     l = newLocal(v.name, mapType(v.type), pos(v))
+                    l.isVar = (v as? IrVariable)?.isVar == true
                     owner[l.id] = frames.size
                 }
                 locals[v] = l
@@ -523,6 +535,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
 
         private fun declareLocal(v: IrValueDeclaration, name: String = v.name): MLocal {
             val l = paramLocals[v] ?: newLocal(name, mapType(v.type), pos(v))
+            l.isVar = (v as? IrVariable)?.isVar == true
             owner[l.id] = frames.size
             locals[v] = l
             return l
@@ -1181,11 +1194,17 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             var i = 0
             for (p in ps) {
                 val a = args[i]
-                val v: MExpr = if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out)
+                var v: MExpr = if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out)
+                if (v is MExpr.Local && v.pos.line == 0) v = MExpr.Local(v.local, pos(c))   // the function value of `f(x)` has no position of its own
                 if (p.kind == IrParameterKind.DispatchReceiver || p.kind == IrParameterKind.ExtensionReceiver) {
                     if (recv == null) recv = v
                 } else margs.add(v)
                 i++
+            }
+            // a call of a local function / lambda value that the compiler resolved statically still reads what the closure captured:
+            // the extra arguments are uses of the captured values (the owners must be alive)
+            if (callee.origin == "LOCAL_FUNCTION_FOR_LAMBDA" || callee.origin == "LOCAL_FUNCTION" || callee.visibility == "local") {
+                for (v in closureInfo().capturesOf(callee)) margs.add(MExpr.Local(local(v), pos(c)))
             }
             return MExpr.Call(m, recv, margs, mapType(c.type), pos(c))
         }
@@ -1213,7 +1232,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 margs.add(if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out))
             }
             val mc = classOf(cls)
-            return MExpr.New(m, mc, margs, mapType(c.type), pos(c))
+            // a local or anonymous class keeps the outer values it uses in hidden fields: its instance is a closure
+            val caps = if (cls.visibility == "local") closureInfo().capturesOf(cls).map { local(it) } else emptyList()
+            // an object expression may carry no position of its own: the class declaration stands in
+            val np = pos(c).let { if (it.line > 0 || caps.isEmpty()) it else pos(cls) }
+            return MExpr.New(m, mc, margs, mapType(c.type), np, caps)
         }
 
         /** Calls with lambda arguments read like code (use, context, run, let, repeat, thread boundaries...). */

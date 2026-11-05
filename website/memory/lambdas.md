@@ -18,7 +18,7 @@ Owners may be freed or moved inside the block, and locals created inside are che
 
 <<< @/samples/memory/escaping_lambda.kt{kotlin}
 
-Rejected with [M0112](/reference/diagnostics/M0112): closures as owners (move capture) are not supported yet. Read the data you need before creating the lambda and capture that, or pass the value as a parameter.
+A closure that captures an owned object *borrows* it: it may be called, held in a local and passed to functions that do not keep it, as long as it does not outlive the owner. Using it after the owner was freed is [M0101](/reference/diagnostics/M0101); letting it escape (returning it, storing it in a field, passing it to a function that keeps it) is rejected with [M0112](/reference/diagnostics/M0112). Read the data you need before creating the lambda and capture that, or pass the value as a parameter.
 
 Further rules for escaping lambdas:
 
