@@ -277,7 +277,14 @@ fun Ast2Ir.localClass(d: ClassDecl): IrStatement {
 
 fun Ast2Ir.irLocalClass(sym: ClassSym): IrClass {
     val ex = classMap[sym]
-    if (ex != null) return ex
+    if (ex != null) {
+        // the class was created earlier through its type (`object : T { ... }.f()`): its members still need this context
+        if (localClassCtxs[ex] == null && ctx != null) {
+            localClassCtxs[ex] = ctx
+            ex.parent = enclosingParent()
+        }
+        return ex
+    }
     val saved = pendingLocalCtx
     pendingLocalCtx = ctx
     val c = irClass(sym)

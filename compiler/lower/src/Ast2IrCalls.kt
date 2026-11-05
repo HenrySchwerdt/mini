@@ -191,7 +191,7 @@ fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): 
     val cs = info.fn.owner
     if (outer == null && cs != null && cs.isInner) {
         val oc = cs.outer
-        if (oc != null) outer = implicitReceiver(RecvRef(oc, null, false), node)
+        if (oc != null) outer = receiverOfClass(oc)
     }
     fillCallArgs(call, k, info, outer, null, info.fn.name)
     return call
@@ -206,7 +206,7 @@ fun Ast2Ir.delegatingCall(info: CallInfo, c: IrClass, type: Type, argExprs: List
     val cs = info.fn.owner
     if (cs != null && cs.isInner) {
         val oc = cs.outer
-        if (oc != null) outer = implicitReceiver(RecvRef(oc, null, false), null)
+        if (oc != null) outer = receiverOfClass(oc)
     }
     fillCallArgs(call, k, info, outer, null, null)
     return call
@@ -402,7 +402,7 @@ fun Ast2Ir.callOperator(info: CallInfo, recv: IrExpression, args: List<IrExpress
                     val du = info.dispatch
                     val owner = fn.owner
                     if (du != null && (du.expr != null || du.ref != null)) adaptReceiver(recvValue(du, null), p)
-                    else if (owner != null) adaptReceiver(implicitReceiver(RecvRef(owner, null, false), null), p)
+                    else if (owner != null) adaptReceiver(receiverOfClass(owner), p)
                     else null
                 },
             )
@@ -648,4 +648,30 @@ fun Ast2Ir.indexExpr(e: IndexExpr): IrExpression {
     val args = ArrayList<IrExpression>()
     for (i in e.indices) args.add(convert(i))
     return callOperator(info, recv, args, irType(r.type), "GET_ARRAY_ELEMENT")
+}
+
+/** the innermost receiver in scope (class `this`, extension or lambda receiver) whose type is the class [owner] */
+fun Ast2Ir.receiverOfClass(owner: ClassSym): IrExpression {
+    var c = ctx
+    while (c != null) {
+        for (i in c.recvs.indices.reversed()) {
+            val r = c.recvs[i]
+            val rc = r.cls ?: (r.param.type as? ClassType)?.cls
+            if (rc != null && classExtends(rc, owner, 0)) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
+        }
+        c = c.parent
+    }
+    return implicitReceiver(RecvRef(owner, null, false), null)
+}
+
+/** whether [c] is [base] or inherits from it */
+fun Ast2Ir.classExtends(c: ClassSym, base: ClassSym, depth: Int): Boolean {
+    if (c === base) return true
+    if (depth > 24) return false
+    sema.ensureSupertypes(c)
+    for (t in c.supertypes) {
+        val sc = (t as? ClassType)?.cls ?: continue
+        if (classExtends(sc, base, depth + 1)) return true
+    }
+    return false
 }

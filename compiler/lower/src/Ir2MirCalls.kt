@@ -329,7 +329,7 @@ internal fun Ir2Mir.consoleCall(c: IrCall, name: String, args: List<IrExpression
         unsupported(c, "print() without argument")
     }
     if (args.size != 1) unsupported(c, "call to '$name'")
-    val v = operands(args, out)[0]
+    val v = operands(args, out)[0].let { if (it.type == TUnit) unitAsRef(it, out) else it }
     if (name == "print") {
         val fn = when (v.type) {
             TString -> "mk_print_string"
