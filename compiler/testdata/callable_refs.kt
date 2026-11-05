@@ -61,7 +61,6 @@ fun main() {
     println(people.map(P::name))
     println(people.map(P::age).sum())
     println(people.sortedBy(P::age).map { it.name })
-    println(people.groupBy(P::age).keys)
     println(readAll(people, P::name))
     println(readAll(people, P::label))
     println(show(::top))

@@ -13,7 +13,6 @@ RED
 true
 [low, mid, high]
 true
-1
 0:RED 1:GREEN 2:BLUE 
 no PINK
 op +

@@ -51,8 +51,6 @@ fun main() {
     println(Color.RED == Color.RED)
     println(Level.entries.map(::describe))
     println(Planet.EARTH.gravity > Planet.MERCURY.gravity)
-    val byName = Color.entries.associateBy { it.name }
-    println(byName["GREEN"]?.ordinal)
     for (c in Color.entries) print("${c.ordinal}:${c.name} ")
     println()
     try {

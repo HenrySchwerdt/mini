@@ -93,7 +93,7 @@ fun main() {
     println(total(*arr, 10, *arr))
     println(d(1, c = 5))
     println(d(b = 9, a = 1))
-    for ((k, vv) in mapOf(1 to "a", 2 to "b")) println("$k$vv")
+    for ((k, vv) in listOf(1 to "a", 2 to "b")) println("$k$vv")
     listOf(Pt(1, 2)).forEach { (x, y) -> println(x + y) }
     val (qa, qb) = Q(7, "z")
     println("$qa$qb")

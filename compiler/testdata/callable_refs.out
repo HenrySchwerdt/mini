@@ -17,7 +17,6 @@ ann
 [bob, al, cy]
 90
 [bob, cy, al]
-[20, 40, 30]
 [bob, al, cy]
 [P:bob, P:al, P:cy]
 top=5

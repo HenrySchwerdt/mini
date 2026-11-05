@@ -3,7 +3,7 @@ typealias IntList = List<Int>
 typealias Str = String
 typealias Pred<T> = (T) -> Boolean
 typealias BinOp = (Int, Int) -> Int
-typealias Table<V> = MutableMap<String, V>
+typealias Table<V> = MutableList<V>
 typealias Pairs<A, B> = List<Pair<A, B>>
 typealias Names = List<Str>
 typealias Handler = (String) -> Unit
@@ -30,7 +30,7 @@ typealias AnyShape = Shape
 
 fun count(l: IntList, p: Pred<Int>): Int = l.count(p)
 fun apply(op: BinOp, a: Int, b: Int) = op(a, b)
-fun fill(t: Table<Int>, k: String, v: Int) { t[k] = v }
+fun fill(t: Table<Int>, k: String, v: Int) { t.add(v + k.length) }
 fun firsts(p: Pairs<Int, String>): List<Int> = p.map { it.first }
 fun joinAll(n: Names): Str = n.joinToString("+")
 fun run(h: Handler, s: Str) = h(s)
@@ -48,7 +48,7 @@ fun main() {
     val sum: BinOp = { a, b -> a + b }
     println(apply(sum, 2, 3))
     println(apply({ a, b -> a * b }, 4, 5))
-    val t: Table<Int> = mutableMapOf()
+    val t: Table<Int> = mutableListOf()
     fill(t, "k", 7)
     println(t)
     println(firsts(listOf(1 to "a", 2 to "b")))
