@@ -689,6 +689,12 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         k.returnType = irType(c.sym!!.thisType())
         k.bodyBuilder = { buildConstructorBody(k, sym, c) }
         if (inLib(sym.file)) k.stub = true
+        if (cs != null && cs.isAnnotation) {
+            // an annotation class has no code: its parameter defaults (`[]`, enum entries) are only read by tools
+            for (p in k.parameters) p.defaultValueBuilder = null
+            k.bodyBuilder = null
+            k.stub = true
+        }
         return k
     }
 

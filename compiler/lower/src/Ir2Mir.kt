@@ -98,7 +98,7 @@ class Ir2Mir {
                 when (d) {
                     // an inline function with a reified type parameter only exists expanded at its call sites
                     is IrSimpleFunction -> if (!(d.isInline && d.typeParameters.any { it.reified })) tops += file to d
-                    is IrClass -> if (!isRuntimeProvided(d)) collectClass(d, pkg, listOf(d.name), file)
+                    is IrClass -> if (!isRuntimeProvided(d) && d.kind != IrClassKind.ANNOTATION_CLASS) collectClass(d, pkg, listOf(d.name), file)
                     is IrProperty -> {
                         d.getter?.takeIf { !it.isExternal && hasBodyIn(file, it) }?.let { tops += file to it }
                         d.setter?.takeIf { !it.isExternal && hasBodyIn(file, it) }?.let { tops += file to it }
