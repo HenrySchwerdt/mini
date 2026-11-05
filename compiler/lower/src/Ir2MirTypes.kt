@@ -51,7 +51,6 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         else -> null
     }
     if (prim != null) {
-        if (prim.isInteropScalar && nullable) unsupported(at, "nullable type '$n?' (Byte and Short cannot be boxed; use a non-null type)")
         return if (nullable) TBoxed(prim) else prim
     }
     val ptrClass = t.classOrNull
@@ -63,10 +62,12 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         "kotlin.Unit" -> if (nullable) anyNullable else TUnit
         "kotlin.Nothing" -> if (nullable) TNull else TNothing
         // Comparable values are boxed primitives, strings or user objects: represented as Any (compareTo: mk_compare_to)
-        "kotlin.Any", "kotlin.Comparable" -> if (nullable) anyNullable else anyType
+        "kotlin.Any", "kotlin.Comparable", "kotlin.Number" -> if (nullable) anyNullable else anyType
         else -> {
             val c = t.classOrNull
-            if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
+            val inl = if (c != null && c in classInfos) inlineTypeOf(c) else null
+            if (inl != null) (if (nullable) TBoxed(inl) else inl)
+            else if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
         }
     }
 }

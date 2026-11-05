@@ -82,6 +82,7 @@ object Mangling {
         TNString -> "QS"
         TNull -> "QN"
         is TBoxed -> "Q" + typeLetter(type.prim)
+        is TInline -> "W" + type.cName + "_E"
         is TObject -> (if (type.nullable) "Q" else "") + "L" + type.cName + "_E"
     }
 

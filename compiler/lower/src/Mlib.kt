@@ -7,6 +7,8 @@ import mini.backend.MirStmt
 import mini.backend.MirType
 import mini.backend.MirFunction
 import mini.backend.TObject
+import mini.backend.TInline
+import mini.backend.TBoxed
 import mini.backend.ANY_CNAME
 import mini.backend.MirReader
 import mini.backend.MirWriter
@@ -155,6 +157,8 @@ private fun referencedClasses(functions: List<MirFunction>): Set<String> {
     val out = LinkedHashSet<String>()
     fun type(t: MirType?) {
         if (t is TObject && t.cName != ANY_CNAME) out.add(t.cName)
+        else if (t is TInline) out.add(t.cName)
+        else if (t is TBoxed && t.prim is TInline) out.add(t.prim.cName)
     }
     lateinit var expr: (MirExpr) -> Unit
     lateinit var stmt: (MirStmt) -> Unit

@@ -82,7 +82,7 @@ Float32 products with BLAS run in single precision (like PyTorch); without BLAS 
 
 Tensors are ordinary reference counted objects (the default Managed mode): a temporary is freed when its last reference goes away, `view`/`reshape` share the storage array.
 The backward closures hold the inputs of an operation but never its output, so there are no reference cycles.
-Arena / allocator support: `mini.memory` allocators do not build natively yet (`unsupported construct: value class 'NativePtr'`), so there is no `context(arena)` example; tensors do not take an allocator parameter.
+Arena / allocator support: `mini.memory` allocators build natively now, but tensors do not take an allocator parameter yet and there is no `context(arena)` example.
 
 ## Examples and tests
 

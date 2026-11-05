@@ -13,6 +13,8 @@ typedef struct MkBoxLong { MkObject header; MkLong value; } MkBoxLong;
 typedef struct MkBoxBoolean { MkObject header; MkBoolean value; } MkBoxBoolean;
 typedef struct MkBoxDouble { MkObject header; MkDouble value; } MkBoxDouble;
 typedef struct MkBoxFloat { MkObject header; MkFloat value; } MkBoxFloat;
+typedef struct MkBoxByte { MkObject header; MkByte value; } MkBoxByte;
+typedef struct MkBoxShort { MkObject header; MkShort value; } MkBoxShort;
 typedef struct MkBoxChar { MkObject header; MkChar value; } MkBoxChar;
 
 const MkTypeInfo mk_type_Int = {"kotlin.Int", sizeof(MkBoxInt), &mk_type_Any, NULL, NULL, 0, NULL, 0};
@@ -20,6 +22,8 @@ const MkTypeInfo mk_type_Long = {"kotlin.Long", sizeof(MkBoxLong), &mk_type_Any,
 const MkTypeInfo mk_type_Boolean = {"kotlin.Boolean", sizeof(MkBoxBoolean), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Double = {"kotlin.Double", sizeof(MkBoxDouble), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Float = {"kotlin.Float", sizeof(MkBoxFloat), &mk_type_Any, NULL, NULL, 0, NULL, 0};
+const MkTypeInfo mk_type_Byte = {"kotlin.Byte", sizeof(MkBoxByte), &mk_type_Any, NULL, NULL, 0, NULL, 0};
+const MkTypeInfo mk_type_Short = {"kotlin.Short", sizeof(MkBoxShort), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Char = {"kotlin.Char", sizeof(MkBoxChar), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 
 MkObject *mk_box_int(MkInt value) {
@@ -47,6 +51,16 @@ MkObject *mk_box_float(MkFloat value) {
     b->value = value;
     return &b->header;
 }
+MkObject *mk_box_byte(MkByte value) {
+    MkBoxByte *b = (MkBoxByte *)mk_alloc(&mk_type_Byte);
+    b->value = value;
+    return &b->header;
+}
+MkObject *mk_box_short(MkShort value) {
+    MkBoxShort *b = (MkBoxShort *)mk_alloc(&mk_type_Short);
+    b->value = value;
+    return &b->header;
+}
 MkObject *mk_box_char(MkChar value) {
     MkBoxChar *b = (MkBoxChar *)mk_alloc(&mk_type_Char);
     b->value = value;
@@ -69,6 +83,8 @@ MkDouble mk_unbox_double(const MkObject *box) {
 MkFloat mk_unbox_float(const MkObject *box) {
     return ((const MkBoxFloat *)unbox_check(box, &mk_type_Float))->value;
 }
+MkByte mk_unbox_byte(const MkObject *box) { return ((const MkBoxByte *)unbox_check(box, &mk_type_Byte))->value; }
+MkShort mk_unbox_short(const MkObject *box) { return ((const MkBoxShort *)unbox_check(box, &mk_type_Short))->value; }
 MkChar mk_unbox_char(const MkObject *box) { return ((const MkBoxChar *)unbox_check(box, &mk_type_Char))->value; }
 
 /* ---- failures ------------------------------------------------------------------ */
@@ -141,6 +157,8 @@ MkString *mk_to_string(MkObject *o) {
     if (t == &mk_type_Boolean) return mk_string_from_boolean(((MkBoxBoolean *)o)->value);
     if (t == &mk_type_Double) return mk_string_from_double(((MkBoxDouble *)o)->value);
     if (t == &mk_type_Float) return mk_string_from_float(((MkBoxFloat *)o)->value);
+    if (t == &mk_type_Byte) return mk_string_from_byte(((MkBoxByte *)o)->value);
+    if (t == &mk_type_Short) return mk_string_from_short(((MkBoxShort *)o)->value);
     if (t == &mk_type_Char) return mk_string_from_char(((MkBoxChar *)o)->value);
     void *f = slot(o, MK_VSLOT_TO_STRING);
     return (MkString *)(f ? ((ToStringFn)f)(o) : mk_any_to_string(o));
@@ -172,6 +190,8 @@ MkInt mk_hash_code(MkObject *o) {
     if (t == &mk_type_Boolean) return ((MkBoxBoolean *)o)->value ? 1231 : 1237;
     if (t == &mk_type_Double) return double_bits_hash(((MkBoxDouble *)o)->value);
     if (t == &mk_type_Float) return float_bits_hash(((MkBoxFloat *)o)->value);
+    if (t == &mk_type_Byte) return (MkInt)((MkBoxByte *)o)->value;
+    if (t == &mk_type_Short) return (MkInt)((MkBoxShort *)o)->value;
     if (t == &mk_type_Char) return (MkInt)((MkBoxChar *)o)->value;
     void *f = slot(o, MK_VSLOT_HASH_CODE);
     return f ? ((HashFn)f)(o) : mk_any_hash_code(o);
@@ -187,6 +207,8 @@ bool mk_equals(MkObject *a, MkObject *b) {
     if (t == &mk_type_Long) return b->type == t && ((MkBoxLong *)a)->value == ((MkBoxLong *)b)->value;
     if (t == &mk_type_Boolean) return b->type == t && ((MkBoxBoolean *)a)->value == ((MkBoxBoolean *)b)->value;
     if (t == &mk_type_Char) return b->type == t && ((MkBoxChar *)a)->value == ((MkBoxChar *)b)->value;
+    if (t == &mk_type_Byte) return b->type == t && ((MkBoxByte *)a)->value == ((MkBoxByte *)b)->value;
+    if (t == &mk_type_Short) return b->type == t && ((MkBoxShort *)a)->value == ((MkBoxShort *)b)->value;
     if (t == &mk_type_Double) {
         if (b->type != t) return false;
         MkDouble x = ((MkBoxDouble *)a)->value, y = ((MkBoxDouble *)b)->value;

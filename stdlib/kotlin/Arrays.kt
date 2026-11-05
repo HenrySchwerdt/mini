@@ -15,6 +15,10 @@ public fun doubleArrayOf(vararg elements: Double): DoubleArray = elements
 
 public fun floatArrayOf(vararg elements: Float): FloatArray = elements
 
+public fun byteArrayOf(vararg elements: Byte): ByteArray = elements
+
+public fun shortArrayOf(vararg elements: Short): ShortArray = elements
+
 public fun booleanArrayOf(vararg elements: Boolean): BooleanArray = elements
 
 public fun charArrayOf(vararg elements: Char): CharArray = elements
@@ -42,6 +46,12 @@ public val DoubleArray.lastIndex: Int
     get() = size - 1
 
 public val FloatArray.lastIndex: Int
+    get() = size - 1
+
+public val ByteArray.lastIndex: Int
+    get() = size - 1
+
+public val ShortArray.lastIndex: Int
     get() = size - 1
 
 public val BooleanArray.lastIndex: Int
@@ -113,6 +123,28 @@ public fun DoubleArray.contentToString(): String {
 }
 
 public fun FloatArray.contentToString(): String {
+    val sb = StringBuilder()
+    sb.append('[')
+    for (i in 0 until size) {
+        if (i > 0) sb.append(", ")
+        sb.append(this[i])
+    }
+    sb.append(']')
+    return sb.toString()
+}
+
+public fun ByteArray.contentToString(): String {
+    val sb = StringBuilder()
+    sb.append('[')
+    for (i in 0 until size) {
+        if (i > 0) sb.append(", ")
+        sb.append(this[i])
+    }
+    sb.append(']')
+    return sb.toString()
+}
+
+public fun ShortArray.contentToString(): String {
     val sb = StringBuilder()
     sb.append('[')
     for (i in 0 until size) {
