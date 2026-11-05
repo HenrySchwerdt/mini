@@ -173,7 +173,7 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val call = IrFunctionReference(target, t)
         val rv = e.receiver
         for (p in target.parameters) call.arguments.add(null)
-        val objQ = if (rv != null) objectQualifier(rv) else null
+        val objQ = if (rv != null) objectQualifier(rv, r) else null
         if (rv != null && (objQ != null || !isClassQualifier(rv))) {
             val bound = if (objQ != null) IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)) else convert(rv)
             var k = 0
@@ -191,7 +191,7 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val p = propertyOf(sym)
         val ref = IrPropertyReference(p, t)
         val rv = e.receiver
-        val objQ = if (rv != null) objectQualifier(rv) else null
+        val objQ = if (rv != null) objectQualifier(rv, r) else null
         if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
         else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
         else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
@@ -304,9 +304,8 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
 }
 
 /** `Obj::member` of an object (or companion): the object, to which the reference is bound; null for other qualifiers. */
-private fun Ast2Ir.objectQualifier(e: Expr): IrClass? {
-    if (!isClassQualifier(e)) return null
-    val t = rec(unparen(e))?.type as? ClassType ?: return null
-    if (!t.cls.isObject) return null
-    return irClass(t.cls)
+private fun Ast2Ir.objectQualifier(e: Expr, r: ExprRec): IrClass? {
+    if (r.kind != "objbound") return null
+    val c = (r.target as? ClassType)?.cls ?: return null
+    return irClass(c)
 }

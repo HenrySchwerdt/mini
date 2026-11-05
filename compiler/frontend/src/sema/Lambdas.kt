@@ -200,6 +200,9 @@ class RefCand(val sym: Sym, val params: List<Type>, val ret: Type, val tps: List
     var isProp = false
     var mutable = false
     var propReceiver = false
+    /** `Obj::member` of an object: bound to the object */
+    var objBound = false
+    var objType: Type? = null
 }
 
 internal fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<RefCand>) {
@@ -252,7 +255,10 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 val ps = ArrayList<Type>()
                 if (!objBound) ps.add(ct)
                 for (p in fn.params) ps.add(ops.substitute(p.type ?: ErrType("param"), m.subst))
-                cands.add(RefCand(fn, ps, ops.substitute(sema.returnTypeOf(fn), m.subst), fn.typeParams, m.subst))
+                val frc = RefCand(fn, ps, ops.substitute(sema.returnTypeOf(fn), m.subst), fn.typeParams, m.subst)
+                frc.objBound = objBound
+                if (objBound) frc.objType = ct
+                cands.add(frc)
             }
             if (ri.cls.isEnum && (name == "valueOf" || name == "values")) {
                 // the synthesized static functions of an enum class
@@ -272,6 +278,8 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 rc.isProp = true
                 rc.mutable = mp.prop.isVar
                 rc.propReceiver = !objBound
+                rc.objBound = objBound
+                if (objBound) rc.objType = ct
                 cands.add(rc)
             }
             val xp = extensionProp(name, ct)
@@ -420,6 +428,10 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         t = ClassType(cls, args, false)
     }
     val rr = record(e, t, chosen.sym)
+    if (chosen.objBound) {
+        rr.kind = "objbound"
+        rr.target = chosen.objType
+    }
     if (adapted != null) {
         val targs = ArrayList<Type>()
         for (tp in chosen.tps) targs.add(cs.resolveFixed(m[tp] ?: ErrType("type argument")))
