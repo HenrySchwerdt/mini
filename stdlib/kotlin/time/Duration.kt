@@ -25,6 +25,28 @@ public class Duration internal constructor(internal val nanos: Long) : Comparabl
 
         public fun convert(value: Double, sourceUnit: DurationUnit, targetUnit: DurationUnit): Double =
             value * sourceUnit.nanos.toDouble() / targetUnit.nanos.toDouble()
+
+        public val Int.nanoseconds: Duration get() = toDuration(DurationUnit.NANOSECONDS)
+        public val Long.nanoseconds: Duration get() = toDuration(DurationUnit.NANOSECONDS)
+        public val Double.nanoseconds: Duration get() = toDuration(DurationUnit.NANOSECONDS)
+        public val Int.microseconds: Duration get() = toDuration(DurationUnit.MICROSECONDS)
+        public val Long.microseconds: Duration get() = toDuration(DurationUnit.MICROSECONDS)
+        public val Double.microseconds: Duration get() = toDuration(DurationUnit.MICROSECONDS)
+        public val Int.milliseconds: Duration get() = toDuration(DurationUnit.MILLISECONDS)
+        public val Long.milliseconds: Duration get() = toDuration(DurationUnit.MILLISECONDS)
+        public val Double.milliseconds: Duration get() = toDuration(DurationUnit.MILLISECONDS)
+        public val Int.seconds: Duration get() = toDuration(DurationUnit.SECONDS)
+        public val Long.seconds: Duration get() = toDuration(DurationUnit.SECONDS)
+        public val Double.seconds: Duration get() = toDuration(DurationUnit.SECONDS)
+        public val Int.minutes: Duration get() = toDuration(DurationUnit.MINUTES)
+        public val Long.minutes: Duration get() = toDuration(DurationUnit.MINUTES)
+        public val Double.minutes: Duration get() = toDuration(DurationUnit.MINUTES)
+        public val Int.hours: Duration get() = toDuration(DurationUnit.HOURS)
+        public val Long.hours: Duration get() = toDuration(DurationUnit.HOURS)
+        public val Double.hours: Duration get() = toDuration(DurationUnit.HOURS)
+        public val Int.days: Duration get() = toDuration(DurationUnit.DAYS)
+        public val Long.days: Duration get() = toDuration(DurationUnit.DAYS)
+        public val Double.days: Duration get() = toDuration(DurationUnit.DAYS)
     }
 
     public fun isNegative(): Boolean = nanos < 0L
@@ -242,28 +264,6 @@ public fun Double.toDuration(unit: DurationUnit): Duration {
 public operator fun Int.times(duration: Duration): Duration = duration * this
 
 public operator fun Double.times(duration: Duration): Duration = duration * this
-
-public val Int.nanoseconds: Duration get() = toDuration(DurationUnit.NANOSECONDS)
-public val Long.nanoseconds: Duration get() = toDuration(DurationUnit.NANOSECONDS)
-public val Double.nanoseconds: Duration get() = toDuration(DurationUnit.NANOSECONDS)
-public val Int.microseconds: Duration get() = toDuration(DurationUnit.MICROSECONDS)
-public val Long.microseconds: Duration get() = toDuration(DurationUnit.MICROSECONDS)
-public val Double.microseconds: Duration get() = toDuration(DurationUnit.MICROSECONDS)
-public val Int.milliseconds: Duration get() = toDuration(DurationUnit.MILLISECONDS)
-public val Long.milliseconds: Duration get() = toDuration(DurationUnit.MILLISECONDS)
-public val Double.milliseconds: Duration get() = toDuration(DurationUnit.MILLISECONDS)
-public val Int.seconds: Duration get() = toDuration(DurationUnit.SECONDS)
-public val Long.seconds: Duration get() = toDuration(DurationUnit.SECONDS)
-public val Double.seconds: Duration get() = toDuration(DurationUnit.SECONDS)
-public val Int.minutes: Duration get() = toDuration(DurationUnit.MINUTES)
-public val Long.minutes: Duration get() = toDuration(DurationUnit.MINUTES)
-public val Double.minutes: Duration get() = toDuration(DurationUnit.MINUTES)
-public val Int.hours: Duration get() = toDuration(DurationUnit.HOURS)
-public val Long.hours: Duration get() = toDuration(DurationUnit.HOURS)
-public val Double.hours: Duration get() = toDuration(DurationUnit.HOURS)
-public val Int.days: Duration get() = toDuration(DurationUnit.DAYS)
-public val Long.days: Duration get() = toDuration(DurationUnit.DAYS)
-public val Double.days: Duration get() = toDuration(DurationUnit.DAYS)
 
 // ---- time sources --------------------------------------------------------------------------------
 

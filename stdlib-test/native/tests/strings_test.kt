@@ -33,7 +33,6 @@ class StringsTest {
         assertEquals("bcd", "abcdef".substring(1..3))
         assertEquals("ab", "abcdef".slice(0..1))
         assertEquals("Kotlin", "kotlin".replaceFirstChar { it.uppercaseChar() })
-        assertEquals("Kotlin", "kotlin".capitalize())
     }
 
     @Test

@@ -1,0 +1,23 @@
+fun main() {
+    println(generateSequence(1) { it * 2 }.take(5).toList())
+    println(listOf(1, 2, 3).asSequence().map { it * 2 }.toList())
+    println(generateSequence(1) { if (it < 5) it + 1 else null }.toList())
+    val seq = (1..20).asSequence().filter { it % 2 == 0 }.map { it * it }
+    println(seq.take(3).toList())
+    println(seq.sum())
+    println(seq.first())
+    println(sequenceOf(3, 1, 2).sorted().joinToString("-"))
+    println(listOf("a", "bb").asSequence().flatMap { it.toList().asSequence() }.toList())
+    println(sequenceOf(listOf(1), listOf(2, 3)).flatten().toList())
+    println(listOf(1, 2, 3, 4, 5).asSequence().windowed(2).toList())
+    println(sequenceOf(1, 2, 3).zip(sequenceOf("a", "b")).toList())
+    println(sequenceOf(1, 1, 2).distinct().toList())
+    println(sequenceOf(1, 2, 3, 4).takeWhile { it < 3 }.toList() + sequenceOf(1, 2, 3, 4).dropWhile { it < 3 }.toList())
+    println(mapOf(1 to 2).asSequence().map { it.key + it.value }.toList())
+    println(generateSequence { 1 }.take(2).count())
+    println(sequenceOf(1, 2).withIndex().toList())
+    println(sequenceOf(1, 2, 3).drop(1).onEach { print(it) }.toList())
+    for (x in sequenceOf(7, 8)) print(x)
+    println()
+    println(sequenceOf(1.5, 2.5).sum())
+}

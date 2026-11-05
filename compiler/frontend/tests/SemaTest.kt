@@ -205,4 +205,20 @@ class SemaTest {
         val r = analyze(code)
         assertEquals(1, r.diags.count { "ambiguous assignment" in it }, r.diags.toString())
     }
+
+    @Test
+    fun extensionOverloadsOnOtherReceiverClassesKeepTheArgumentExpectation() {
+        // `Array<T>.foo` must not hide the expected type `Comparator<in T>` of `MutableList<T>.foo`'s argument
+        val code = """
+            fun <T> Array<T>.foo(c: Comparator<in T>): Int = 1
+            fun <T> MutableList<T>.foo(c: Comparator<in T>): Int = 2
+            fun main() {
+                val l = mutableListOf(3, 1)
+                println(l.foo(Comparator { a, b -> a - b }))
+                println(arrayOf(1).foo(Comparator { a, b -> a - b }))
+            }
+        """.trimIndent()
+        val r = analyze(code)
+        assertEquals(emptyList(), r.diags)
+    }
 }
