@@ -46,3 +46,22 @@ Rejected / not done (reasons)
 * Guarded (bimorphic) devirtualization: after RTA + exact types no hot virtual call is left in the benchmarks (graph, wordcount, json); not started.
 * Unboxing of `Int` values in `HashMap<String, Int>`: the box escapes into the map node; needs a representation change of the node (runtime/stdlib) or a small-int box cache (perf-hillclimb's area).
 * RC elision across calls with callee summaries: RcOpt (1.1k lines, Strict interplay) - left for later; the scalar replacement removes the RC traffic of the objects it touches.
+
+## Final run on the merged tree (main 3772a8c + this branch), 5 runs, CPU s, noopt -> opt  (C | API)
+| bench | C | API |
+|---|---|---|
+| binarytrees | 1.17 -> 1.17 | 1.20 -> 1.20 |
+| nbody | 1.18 -> 1.19 | 1.19 -> 1.10 |
+| fannkuch | 2.94 -> 2.45 | 2.48 -> 2.26 |
+| spectralnorm | 1.26 -> 1.68 (cv 10%, rerun showed 1.26 vs 1.26 in earlier rounds: noise) | 1.47 -> 1.29 |
+| mandelbrot | 0.98 -> 0.93 | 1.00 -> 1.01 |
+| wordcount | 3.16 -> 2.73 | 2.99 -> 2.82 |
+| strbuild | 0.75 -> 0.78 | 0.71 -> 0.78 |
+| json | 1.07 -> 0.97 | 1.02 -> 0.94 |
+| graph | 3.15 -> 1.75 | 3.04 -> 1.62 |
+mini/Rust (noopt -> opt): score S 1.483 -> 1.407 (C 1.495 -> 1.438, API 1.471 -> 1.376). The host was shared and noisy during this run
+(cv up to 11%); earlier paired runs gave graph -7..-17%, wordcount -4..-14% and everything else within noise.
+Inlining policy that survived: callees that take or return a reference only (pure arithmetic functions such as spectralnorm's `a(i, j)`
+are left to the C compiler / LLVM: inlining them at MIR level cost 4% on spectralnorm API), size <= 40 nodes inside loops, any
+size <= 70 when an argument is a fresh local object (scalar replacement fuel), program-wide budget of 60000 expanded nodes
+(self-compile of the compiler: +6..15% over -Xno-mir-opt, was +55% without the budget).
