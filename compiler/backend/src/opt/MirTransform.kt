@@ -97,7 +97,7 @@ open class MirTransform {
         is MirExpr.Unreachable, is MirExpr.CaughtException, is MirExpr.TypeInfoOf, is MirExpr.FuncAddr -> e
     }
 
-    private fun <T : MirStmt> keep(old: MirStmt, n: T): T {
+    fun <T : MirStmt> keep(old: MirStmt, n: T): T {
         n.srcLine = old.srcLine
         n.srcFile = old.srcFile
         return n
