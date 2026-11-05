@@ -89,6 +89,24 @@ int main(void) {
     mk_release(&s1->header);
     mk_release(&s2->header);
 
+    /* small values share immortal boxes, big ones are fresh heap boxes */
+    {
+        MkObject *s1 = mk_box_int(-128), *s2 = mk_box_int(-128), *s3 = mk_box_int(1023), *b1 = mk_box_int(1024), *b2 = mk_box_int(1024);
+        CHECK(s1 == s2);
+        CHECK(s1->flags & MK_FLAG_STATIC);
+        CHECK(s3->flags & MK_FLAG_STATIC);
+        CHECK(b1 != b2);
+        CHECK(!(b1->flags & MK_FLAG_STATIC));
+        CHECK_EQ_INT(mk_unbox_int(s1), -128);
+        CHECK_EQ_INT(mk_unbox_int(s3), 1023);
+        CHECK(mk_box_boolean(true) == mk_box_boolean(true) && mk_box_boolean(true) != mk_box_boolean(false));
+        CHECK(mk_box_char('a') == mk_box_char('a'));
+        MkObject *c300 = mk_box_char(300);
+        CHECK(!(c300->flags & MK_FLAG_STATIC));
+        mk_release(b1);
+        mk_release(b2);
+        mk_release(c300);
+    }
     MkObject *i1 = mk_box_int(7), *i2 = mk_box_int(7), *l1 = mk_box_long(7);
     CHECK(mk_equals(i1, i2));
     CHECK(!mk_equals(i1, l1));

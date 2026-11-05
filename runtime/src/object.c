@@ -2,6 +2,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include "alloc_small.h"
 #include "internal.h"
 #include "lock.h"
 
@@ -119,6 +120,12 @@ MK_INLINE void free_dead(MkObject *object, bool buffered, bool watch) {
     }
     if (watch && MK_UNLIKELY(pending_n != 0)) pending_drain(false);
     if (MK_UNLIKELY(buffered)) mk_cycles_forget(object); /* (its slot in the candidate buffer) */
+#if MK_SMALL_ALLOC
+    if (!(object->flags & MK_FLAG_PREFIXED)) {
+        mk_small_free_object(object);
+        return;
+    }
+#endif
     mk_free_object_memory(object);
 }
 
@@ -214,7 +221,16 @@ static bool type_is(const MkTypeInfo *t, const MkTypeInfo *target) {
 
 bool mk_is_instance(const MkObject *object, const MkTypeInfo *type) {
     if (object == NULL || type == NULL) return false;
-    return type_is(object->type, type);
+    const MkTypeInfo *t = object->type;
+    if (t == type) return true;
+    if (type->instance_size != 0) {
+        /* a class (interfaces have no instance size): only the superclass chain can contain it */
+        for (t = t->super; t != NULL; t = t->super) {
+            if (t == type) return true;
+        }
+        return false;
+    }
+    return type_is(t, type);
 }
 
 /* ---- thread-safe lazy initialisation of objects and top-level properties ---- */

@@ -15,15 +15,14 @@
  * objects are exact). While threads run, candidates are still recorded under a spin lock (bounded) and collected after the last
  * one ended. */
 #include "internal.h"
+#include "alloc_small.h"
 
 #include <string.h>
 
 #define COLOR_MASK (7u << MK_COLOR_SHIFT)
-/* A buffered object keeps its slot in the candidate buffer in the upper flag bits, so that it can be freed at once when its
- * count reaches zero (the slot is cleared) instead of lingering as a zombie until the next collection. */
-#define IDX_SHIFT 11
-#define IDX_MASK (~0u << IDX_SHIFT)
-#define UNBUFFER (MK_FLAG_BUFFERED | COLOR_MASK | IDX_MASK)
+/* (A buffered object that dies is freed at once, not as a zombie of the next collection: its slot in the candidate buffer is found
+ * through `slots` below and cleared.) */
+#define UNBUFFER (MK_FLAG_BUFFERED | COLOR_MASK)
 #define COLOR(o) (((o)->flags >> MK_COLOR_SHIFT) & 7u)
 #define SET_COLOR(o, c) ((o)->flags = ((o)->flags & ~COLOR_MASK) | ((uint32_t)(c) << MK_COLOR_SHIFT))
 enum { BLACK = 0, GRAY = 1, WHITE = 2, PURPLE = 3, DEAD = 4 /* = MK_CYCLES_ZOMBIE, also: a collected garbage object */, DYING = 5 };
@@ -47,6 +46,70 @@ static int trace_enabled = -1;
 static unsigned backoff = 1; /* grows while collections find (almost) nothing to free, back to 1 when they do */
 static bool in_collect;
 static volatile int roots_lock;
+
+/* Where every buffered object sits in `roots` (so that one that dies can clear its slot): open addressing, linear probing, backward
+ * shift deletion; guarded by roots_lock when threads run. Empty while no candidates are buffered. */
+static struct { MkObject **key; uint32_t *val; size_t cap, n; } slots;
+
+static inline size_t slot_home(const MkObject *o, size_t cap) {
+    return (size_t)((((uint64_t)(uintptr_t)o >> 4) * 0x9E3779B97F4A7C15ull) >> 24) & (cap - 1);
+}
+
+static void slots_put(MkObject *o, uint32_t idx) {
+    if (slots.n * 2 >= slots.cap) { /* grow (or create) */
+        size_t ncap = slots.cap ? slots.cap * 2 : 4096;
+        MkObject **nk = (MkObject **)calloc(ncap, sizeof(MkObject *));
+        uint32_t *nv = (uint32_t *)malloc(ncap * sizeof(uint32_t));
+        if (nk == NULL || nv == NULL) mk_panic("out of memory");
+        for (size_t i = 0; i < slots.cap; i++) {
+            if (slots.key[i] == NULL) continue;
+            size_t h = slot_home(slots.key[i], ncap);
+            while (nk[h] != NULL) h = (h + 1) & (ncap - 1);
+            nk[h] = slots.key[i];
+            nv[h] = slots.val[i];
+        }
+        free(slots.key);
+        free(slots.val);
+        slots.key = nk;
+        slots.val = nv;
+        slots.cap = ncap;
+    }
+    size_t h = slot_home(o, slots.cap);
+    while (slots.key[h] != NULL) h = (h + 1) & (slots.cap - 1);
+    slots.key[h] = o;
+    slots.val[h] = idx;
+    slots.n++;
+}
+
+static bool slots_take(const MkObject *o, uint32_t *idx) {
+    if (slots.n == 0) return false;
+    size_t mask = slots.cap - 1, h = slot_home(o, slots.cap);
+    while (slots.key[h] != o) {
+        if (slots.key[h] == NULL) return false;
+        h = (h + 1) & mask;
+    }
+    *idx = slots.val[h];
+    /* backward shift: close the hole so that no probe sequence is cut */
+    size_t hole = h, j = h;
+    for (;;) {
+        j = (j + 1) & mask;
+        if (slots.key[j] == NULL) break;
+        size_t home = slot_home(slots.key[j], slots.cap);
+        if (((j - home) & mask) >= ((j - hole) & mask)) {
+            slots.key[hole] = slots.key[j];
+            slots.val[hole] = slots.val[j];
+            hole = j;
+        }
+    }
+    slots.key[hole] = NULL;
+    slots.n--;
+    return true;
+}
+
+static void slots_clear(void) {
+    if (slots.n != 0) memset(slots.key, 0, slots.cap * sizeof(MkObject *));
+    slots.n = 0;
+}
 
 typedef struct { MkObject **v; size_t n, cap; } Stack;
 static Stack stack_a, stack_b, garbage, carry;
@@ -112,6 +175,9 @@ static void visit_collect(MkObject *c, void *ctx) { /* collect white */
 }
 
 static inline size_t block_bytes(const MkObject *o) {
+#if MK_SMALL_ALLOC
+    if (!(o->flags & MK_FLAG_PREFIXED)) return (size_t)((o->flags >> SMALL_CLASS_SHIFT) & SMALL_CLASS_MASK) * MK_SMALL_GRAN;
+#endif
     return *(const size_t *)(const void *)((const unsigned char *)o - MK_PREFIX_SIZE + sizeof(void *));
 }
 
@@ -181,6 +247,7 @@ size_t mk_cycles_collect(void) {
     MkObject **list = roots;
     size_t n = roots_n, list_cap = roots_cap;
     roots = NULL; roots_n = roots_cap = 0; /* candidates that appear during the collection go to a fresh buffer */
+    slots_clear();
     work = 0;
     work_bytes = 0;
     carry.n = 0;
@@ -197,7 +264,7 @@ size_t mk_cycles_collect(void) {
             mark_gray(s);
             list[keep++] = s;
         } else { /* gray: part of the subgraph of an earlier root, handled with it */
-            s->flags = (s->flags & ~(MK_FLAG_BUFFERED | IDX_MASK)) | MK_FLAG_ARMED;
+            s->flags = (s->flags & ~MK_FLAG_BUFFERED) | MK_FLAG_ARMED;
         }
     }
     n = keep;
@@ -218,7 +285,7 @@ size_t mk_cycles_collect(void) {
             roots = (MkObject **)realloc(roots, roots_cap * sizeof(MkObject *));
             if (roots == NULL) mk_panic("out of memory");
         }
-        carry.v[i]->flags = (carry.v[i]->flags & ~IDX_MASK) | ((uint32_t)roots_n << IDX_SHIFT);
+        slots_put(carry.v[i], (uint32_t)roots_n);
         roots[roots_n++] = carry.v[i];
     }
     carry.n = 0;
@@ -271,13 +338,13 @@ void mk_cycles_candidate(MkObject *o) {
                 roots = (MkObject **)realloc(roots, roots_cap * sizeof(MkObject *));
                 if (roots == NULL) mk_panic("out of memory");
             }
-            uint32_t idx = (uint32_t)roots_n;
+            slots_put(o, (uint32_t)roots_n);
             roots[roots_n++] = o;
             if (threaded) {
-                __atomic_fetch_and(&o->flags, ~(MK_FLAG_ARMED | COLOR_MASK | IDX_MASK), __ATOMIC_ACQ_REL);
-                __atomic_fetch_or(&o->flags, MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT) | (idx << IDX_SHIFT), __ATOMIC_ACQ_REL);
+                __atomic_fetch_and(&o->flags, ~(MK_FLAG_ARMED | COLOR_MASK), __ATOMIC_ACQ_REL);
+                __atomic_fetch_or(&o->flags, MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT), __ATOMIC_ACQ_REL);
             } else {
-                o->flags = (o->flags & ~(MK_FLAG_ARMED | COLOR_MASK | IDX_MASK)) | MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT) | (idx << IDX_SHIFT);
+                o->flags = (o->flags & ~(MK_FLAG_ARMED | COLOR_MASK)) | MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT);
             }
         }
     }
@@ -299,8 +366,8 @@ void mk_cycles_state(MkObject *o, unsigned state) {
 void mk_cycles_forget(MkObject *o) {
     bool threaded = __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0;
     if (threaded) roots_lock_acquire();
-    size_t idx = o->flags >> IDX_SHIFT;
-    if (idx < roots_n && roots[idx] == o) roots[idx] = NULL;
+    uint32_t idx;
+    if (slots_take(o, &idx)) roots[idx] = NULL;
     if (threaded) roots_lock_release();
 }
 

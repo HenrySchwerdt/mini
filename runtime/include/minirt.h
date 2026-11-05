@@ -67,11 +67,16 @@ enum {
     MK_FLAG_FREED = 1u << 3,  /* set by the runtime when the memory is returned; lets
                                  mk_free / mk_release diagnose double frees. Never set
                                  it from generated code. */
-    MK_FLAG_ARMED = 1u << 4,  /* cycle collection: a Managed object of a class with a trace function that is not in the
+    MK_FLAG_PREFIXED = 1u << 4, /* runtime-private: the block starts MK_PREFIX_SIZE bytes before the object and holds the
+                                 owning allocator and the block size (every object of an allocator other than Rc/Heap, and
+                                 large Rc/Heap objects). Never set it from generated code. */
+    MK_FLAG_HEAP = 1u << 5,     /* runtime-private: an unprefixed block of the Heap allocator (else of the Rc allocator) */
+    MK_FLAG_ARMED = 1u << 6,    /* cycle collection: a Managed object of a class with a trace function that is not in the
                                  candidate buffer. A release that leaves it alive must go through mk_release (the inline
                                  fast path of generated code tests this bit together with MK_FLAG_SHARED). */
-    MK_FLAG_BUFFERED = 1u << 5, /* cycle collection: in the candidate buffer (runtime only) */
-    MK_COLOR_SHIFT = 8,         /* cycle collection: colour of the object during a collection (bits 8..10, runtime only) */
+    MK_FLAG_BUFFERED = 1u << 7, /* cycle collection: in the candidate buffer (runtime only) */
+    /* bits 8..15 are runtime-private too: the small-object size class of an unprefixed block */
+    MK_COLOR_SHIFT = 16,        /* cycle collection: colour of the object during a collection (bits 16..18, runtime only) */
 };
 
 /* Initialiser for an MkObject header in static storage. */
@@ -274,6 +279,11 @@ MkString *mk_string_from_utf8(const char *utf8, size_t length); /* refcount 1 */
 MkString *mk_string_alloc(MkInt length);
 MkInt mk_string_length(const MkString *string); /* 0 for NULL */
 MkString *mk_string_concat(const MkString *left, const MkString *right);
+/* a + b + c ... in one allocation (a NULL operand is "null", like mk_string_concat) */
+MkString *mk_string_concat3(const MkString *a, const MkString *b, const MkString *c);
+MkString *mk_string_concat4(const MkString *a, const MkString *b, const MkString *c, const MkString *d);
+MkString *mk_string_concat5(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e);
+MkString *mk_string_concat6(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e, const MkString *f);
 MkString *mk_string_from_int(MkInt value);
 MkString *mk_string_from_long(MkLong value);
 MkString *mk_string_from_float(MkFloat value); /* Kotlin/JVM Float.toString */
@@ -431,6 +441,9 @@ void mk_ref_array_set(MkObject *array, MkInt index, MkObject *value); /* retains
 MkInt mk_ref_array_length(MkObject *array);
 MkObject *mk_ref_array_get_b(MkObject *array, MkInt index); /* D2: borrowed, no retain (valid while the array keeps the slot) */
 void mk_ref_array_set_o(MkObject *array, MkInt index, MkObject *value); /* D2: takes over the caller's reference to value */
+/* Moves the first `count` slots of `src` into the same slots of `dst` (whose slots there must be NULL): no reference count changes,
+ * the slots of `src` are NULL afterwards. Growing a collection's storage. */
+void mk_ref_array_move(MkObject *dst, MkObject *src, MkInt count);
 
 /* Failures of the stdlib (until exceptions exist): print "fatal: <Kind>: <message>" to stderr and abort. */
 _Noreturn void mk_throw_illegal_argument(const MkString *message);

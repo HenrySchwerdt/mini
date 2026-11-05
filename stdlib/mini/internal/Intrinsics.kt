@@ -89,6 +89,13 @@ public external fun refArraySetOwned(array: Any, index: Int, value: Any?)
 @CSymbol("mk_ref_array_length")
 public external fun refArrayLength(array: Any): Int
 
+/**
+ * Moves the first [count] slots of [from] into the same slots of [to] (which must be empty there): no reference count changes,
+ * the slots of [from] are empty afterwards. For growing a collection's storage.
+ */
+@CSymbol("mk_ref_array_move")
+public external fun refArrayMove(to: Any, from: Any, count: Int)
+
 // ---- failures ------------------------------------------------------------------------------
 // Every `throw` of the stdlib goes through these functions (one seam). The backend supports exceptions
 // natively (error-return ABI, see compiler/README.md), so they are ordinary Kotlin `throw`s. The native
