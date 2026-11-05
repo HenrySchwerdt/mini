@@ -628,6 +628,15 @@ void mk_b1_exit(MkInt status);
 
 /* ---- end B1 ----------------------------------------------------------------------- */
 
+/* ---- SYS: standard input and clocks (stdlib/mini/internal/SysIntrinsics.kt, runtime/src/sysio.c) ---- */
+/* One line of standard input without its terminator, NULL at end of input. */
+MkString *mk_sys_read_line(void);
+/* Monotonic clock in nanoseconds. */
+MkLong mk_sys_nano_time(void);
+/* Milliseconds since the Unix epoch. */
+MkLong mk_sys_epoch_millis(void);
+/* ---- end SYS ---- */
+
 /* ---- D1 ---- */
 /* Runtime statistics (docs/benchmarks.md). Compile the runtime AND the generated code with
  * -DMK_STATS (`minic build --stats`) to count allocations, frees, retains and releases (split

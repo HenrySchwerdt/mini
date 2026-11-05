@@ -77,8 +77,14 @@ public fun Double.pow(n: Int): Double = this.pow(n.toDouble())
 public fun log(x: Double, base: Double): Double =
     if (base <= 0.0 || base == 1.0) Double.NaN else ln(x) / ln(base)
 
+/** Ties are rounded towards positive infinity (like `Math.round`). */
 public fun Double.roundToInt(): Int =
-    if (this != this) 0 else if (this >= 2147483647.0) Int.MAX_VALUE else if (this <= -2147483648.0) Int.MIN_VALUE else round(this).toInt()
+    if (this != this) 0 else if (this >= 2147483647.0) Int.MAX_VALUE else if (this <= -2147483648.0) Int.MIN_VALUE else roundHalfUp(this).toInt()
 
 public fun Double.roundToLong(): Long =
-    if (this != this) 0L else if (this >= 9.223372036854775807E18) Long.MAX_VALUE else if (this <= -9.223372036854775808E18) Long.MIN_VALUE else round(this).toLong()
+    if (this != this) 0L else if (this >= 9.223372036854775807E18) Long.MAX_VALUE else if (this <= -9.223372036854775808E18) Long.MIN_VALUE else roundHalfUp(this).toLong()
+
+private fun roundHalfUp(x: Double): Double {
+    val f = floor(x)
+    return if (x - f >= 0.5) f + 1.0 else f
+}
