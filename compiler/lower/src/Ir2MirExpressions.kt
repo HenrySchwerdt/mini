@@ -80,7 +80,8 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrGetValue -> {
         val owner = e.owner
         if (owner is IrValueParameter && owner.kind == IrParameterKind.ExtensionReceiver && owner !in locals) unsupported(e, "receiver parameter")
-        val l = localOf(owner, e)
+        val l = if (owner in unitVars) null else localOf(owner, e)
+        if (l == null) MirExpr.UnitValue else {
         if (owner is IrVariable && owner.isLateinit) {
             val body = ArrayList<MirStmt>()
             val msg = MirExpr.StringConst("lateinit property " + owner.name + " has not been initialized")
@@ -91,6 +92,7 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
             val rc = refClassFor(declType(owner))
             MirExpr.FieldGet(MirExpr.Local(l), rc.cName, "value", rc.valueType)
         } else MirExpr.Local(l)
+        }
     }
     is IrCall -> if (isNoWhenBranch(e)) {
         out += MirStmt.Panic("NoWhenBranchMatchedException")
@@ -115,7 +117,7 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrVararg -> varargValue(e, out)
     is IrFunctionReference -> functionReference(e, out)
     is IrPropertyReference ->
-        if (e.origin == "PROPERTY_REFERENCE_FOR_DELEGATE") MirExpr.NullConst(anyNullable)
+        if (e.origin == "PROPERTY_REFERENCE_FOR_DELEGATE") delegateProperty(e, out)
         else propertyReference(e, out)
     is IrThrow -> { throwStmt(e, out); MirExpr.Unreachable(TNothing) }
     is IrWhen -> whenValue(e, out)
@@ -237,6 +239,8 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
         return unboxCast(e, to, MirExpr.CastMode.Unchecked)
     }
     if (from.isRef && to.isRef) return e // C-level retyping is done by the emitter
+    // a generic result (`T` = Unit, an `Any?` at run time) where Unit is expected: the callers discard the value
+    if (to == TUnit && from.isRef) return e
     unsupported(at, "conversion from $from to $to")
 }
 

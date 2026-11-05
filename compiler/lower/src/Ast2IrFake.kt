@@ -92,7 +92,69 @@ private class InhFun(val fn: IrSimpleFunction, val site: ClassType, val subst: M
 
 private class InhProp(val prop: IrProperty, val site: ClassType, val subst: Map<TypeParamSym, Type>)
 
+/** `class C : I by expr`: the synthetic field that holds the delegate, one per `by` supertype. */
+private class DelegateField(val type: ClassType, val field: IrField)
+
+private fun Ast2Ir.delegateFields(c: IrClass, cs: ClassSym): List<DelegateField> {
+    val d = cs.decl ?: return emptyList()
+    val out = ArrayList<DelegateField>()
+    for (s in d.supers) {
+        if (s !is mini.frontend.SuperDelegate) continue
+        val t = sema.resolveType(s.type, cs.headerScope ?: continue)
+        if (t !is ClassType) continue
+        val f = IrField("\$\$delegate_" + out.size, irType(t))
+        f.origin = "DELEGATE"
+        f.parent = c
+        f.isFinal = true
+        val expr = s.delegate
+        f.initializerBuilder = { withCtx(initCtx(c)) { IrExpressionBody(convertWithExpected(expr, f.type)) } }
+        out.add(DelegateField(t, f))
+    }
+    if (out.isEmpty()) return out
+    // initialized before the initializers of the class body
+    var at = c.declarations.size
+    for ((i, x) in c.declarations.withIndex()) {
+        if (x is IrAnonymousInitializer || x is IrSimpleFunction || (x is IrProperty && x.sym?.decl != null)) {
+            at = i
+            break
+        }
+    }
+    for ((i, df) in out.withIndex()) c.declarations.add(at + i, df.field)
+    return out
+}
+
+private fun Ast2Ir.delegateOf(delegates: List<DelegateField>, site: ClassType): DelegateField? {
+    for (d in delegates) if (d.type.cls === site.cls) return d
+    return null
+}
+
+private fun isAnyMember(f: IrSimpleFunction): Boolean {
+    for (o in f.overridden) {
+        if ((o.parent as? IrClass)?.kotlinFqName == "kotlin.Any" || isAnyMember(o)) return true
+    }
+    return false
+}
+
+/** turns the fake override [f] into a function that forwards to [target] of the delegate in [df] */
+private fun Ast2Ir.forwardTo(f: IrSimpleFunction, target: IrSimpleFunction, df: DelegateField, extraArgs: Boolean) {
+    f.isFakeOverride = false
+    f.origin = "DELEGATED_MEMBER"
+    if (f.modality == IrModality.ABSTRACT) f.modality = IrModality.OPEN
+    f.bodyBuilder = {
+        val call = IrCall(target, f.returnType)
+        call.typeArguments = f.typeParameters.map { TypeParamType(it, false, false) }
+        for ((i, p) in f.parameters.withIndex()) {
+            if (i == 0 && p.kind == IrParameterKind.DispatchReceiver) call.arguments.add(IrGetField(df.field, getValue(p), df.field.type))
+            else call.arguments.add(getValue(p))
+        }
+        val stmts = ArrayList<IrStatement>()
+        stmts.add(IrReturn(f, call, sema.nothingType))
+        IrBlockBody(stmts)
+    }
+}
+
 fun Ast2Ir.buildFakeOverrides(c: IrClass, cs: ClassSym) {
+    val delegates = delegateFields(c, cs)
     val funGroups = LinkedHashMap<String, ArrayList<InhFun>>()
     val propGroups = LinkedHashMap<String, ArrayList<InhProp>>()
     for (st in c.superTypes) {
@@ -157,8 +219,19 @@ fun Ast2Ir.buildFakeOverrides(c: IrClass, cs: ClassSym) {
             if (ds != null) ds.overridden = ss
             continue
         }
-        val first = group[0]
-        val fp = makeFakeProperty(c, group, minimal)
+        val dg = group.firstOrNull { delegateOf(delegates, it.site) != null }
+        val fp = if (dg == null) makeFakeProperty(c, group, minimal) else makeFakeProperty(c, listOf(dg) + group.filter { it !== dg }, minimal)
+        if (dg != null) {
+            val df = delegateOf(delegates, dg.site)!!
+            fp.isFakeOverride = false
+            fp.origin = "DELEGATED_MEMBER"
+            val g = fp.getter
+            val tg = dg.prop.getter
+            if (g != null && tg != null) forwardTo(g, tg, df, false)
+            val st = fp.setter
+            val ts = dg.prop.setter
+            if (st != null && ts != null) forwardTo(st, ts, df, false)
+        }
         fakes.add(fp)
     }
     val funKeys = ArrayList<String>(funGroups.keys)
@@ -171,6 +244,13 @@ fun Ast2Ir.buildFakeOverrides(c: IrClass, cs: ClassSym) {
         val declared = declaredFuns[k]
         if (declared != null) {
             declared.overridden = minimal
+            continue
+        }
+        val dgf = group.firstOrNull { delegateOf(delegates, it.site) != null }
+        if (dgf != null && !isAnyMember(dgf.fn) && minimal.none { (it.parent as? IrClass)?.kotlinFqName == "kotlin.Any" }) {
+            val fk = makeFakeFunction(c, dgf.site, dgf.subst, dgf.fn, minimal, null)
+            forwardTo(fk, dgf.fn, delegateOf(delegates, dgf.site)!!, false)
+            fakes.add(fk)
             continue
         }
         // the most specific result type among the inherited members wins (K2 intersects them)

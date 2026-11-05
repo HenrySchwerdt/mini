@@ -118,8 +118,9 @@ private fun Ast2Ir.destructureParam(names: List<DestructEntry>, p: IrValueParame
     }
 }
 
-fun Ast2Ir.anonFunExpr(e: AnonFunExpr): IrExpression {
+fun Ast2Ir.anonFunExpr(e: AnonFunExpr, label: String? = null): IrExpression {
     val sym = sema.declSyms[e.fn] as? FunSym ?: fail(e, "anonymous function without symbol")
+    if (label != null) anonFunLabels[sym] = label
     val r = rec(e) ?: fail(e, "anonymous function without record")
     val fn = irFunction(sym)
     fn.name = "<anonymous>"

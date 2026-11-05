@@ -65,6 +65,8 @@ class Ir2Mir {
     internal val builtinInfos = HashMap<IrClass, ClassInfo>()
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val typeSubst = HashMap<TypeParamSym, Type>()
+    /** local `val x = unitReturningCall()`: no storage, every read is the Unit value */
+    internal val unitVars = HashSet<IrValueDeclaration>()
 
     /** C interop (Ir2MirInterop.kt): classes that are plain addresses, struct layouts, the C functions called. */
     internal val ptrClassCache = HashMap<IrClass, Boolean>()

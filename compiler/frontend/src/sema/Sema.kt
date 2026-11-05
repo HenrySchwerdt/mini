@@ -412,6 +412,22 @@ class Sema {
         val segs = ref.segments
         var cur: Sym? = lookupClassifier(scope, segs[0].name)
         var idx = 0
+        if (cur == null && segs.size == 1) {
+            // `Function2<A, B, R>` / `SuspendFunction1<A, R>` written as class names: the function types
+            val nm = segs[0].name
+            val susp = nm.startsWith("SuspendFunction")
+            val digits = if (susp) nm.substring(15) else if (nm.startsWith("Function")) nm.substring(8) else ""
+            val arity = if (digits.isNotEmpty() && digits.length < 4 && digits.all { it in '0'..'9' }) digits.toInt() else -1
+            val targs = segs[0].args
+            if (arity >= 0 && targs.size == arity + 1) {
+                val ts = ArrayList<Type>()
+                for (a in targs) {
+                    val t = a.type
+                    ts.add(if (a.star || t == null) nullableAny else resolveType0(t, scope, file))
+                }
+                return FunType(null, ts.subList(0, arity), ts[arity], false, susp)
+            }
+        }
         if (cur == null) {
             // qualified by a package
             var k = 1

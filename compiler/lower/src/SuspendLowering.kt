@@ -394,7 +394,7 @@ private class SmBuilder(val a: Ast2Ir, val fn: IrFunction) {
 
     fun isCoroutinePkg(f: IrSimpleFunction): Boolean {
         val p = f.parent
-        return p is IrFile && p.packageFqName == "kotlin.coroutines"
+        return p is IrFile && (p.packageFqName == "kotlin.coroutines" || p.packageFqName == "kotlin.coroutines.intrinsics")
     }
 
     // ---- statements ----------------------------------------------------------------------------------------------
