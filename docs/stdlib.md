@@ -232,5 +232,5 @@ Ported from the Kotlin 2.4.21 stdlib sources (Apache-2.0 headers kept) or reimpl
   `groupBy(key, value)`, `runningFold`, `putIfAbsent`, more `Map` functions (`mapNotNull`, `flatMap`, `maxByOrNull`, `filterTo`, `minus(keys)`, ...), `String.iterator()`/`withIndex()`.
 * `kotlin.text`: `Char` delimiters for `substringBefore/After(Last)`, `ifEmpty/ifBlank/orEmpty`, `map/mapIndexed/forEachIndexed/indexOfFirst/indexOfLast/takeWhile/...`, `chunked`, `removeSurrounding`, `toCharArray`.
 * `kotlin.comparisons`: `compareBy(vararg selectors)`, `thenByDescending`, `thenComparator`, `then`.
-* `kotlin`: `Result`/`runCatching` (an ordinary class, not a value class), `Double.isNaN/isInfinite/isFinite`, `Double/Float.MIN_VALUE/MAX_VALUE`,
+* `kotlin`: unsigned types `UByte`/`UShort`/`UInt`/`ULong` as value classes (`Unsigned.kt`, generated pattern: arithmetic wraps, `/`, `%`, comparison, `toString` are unsigned; `UIntArray` & co., `UIntRange`, `toUInt()`...), `ByteArray`/`ShortArray`, `String.encodeToByteArray()`/`ByteArray.decodeToString()` (UTF-8), `Char(code)`, `Int/Long.countOneBits()/rotateLeft()`, `Result`/`runCatching` (an ordinary class, not a value class), `Double.isNaN/isInfinite/isFinite`, `Double/Float.MIN_VALUE/MAX_VALUE`,
   `KClass.simpleName/qualifiedName` (`KClassImpl`, created by the backend for `Foo::class` / `x::class` from the type info name).

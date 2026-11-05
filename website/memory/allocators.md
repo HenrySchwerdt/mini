@@ -43,7 +43,7 @@ The next sample shows both. `range` allocates from whatever arena its caller pro
 
 <<< @/samples/memory/context_fn.kt{kotlin}
 
-The checker accepts this program (verified in CI with `./minic check`). It prints `10` on the JVM.
+The checker accepts this program, and it runs natively: it prints `10`.
 
 ## How an allocation site picks its allocator
 

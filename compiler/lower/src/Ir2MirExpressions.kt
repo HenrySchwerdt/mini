@@ -144,6 +144,10 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             var v = value(e.argument, out)
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
             val target = mirType(e.typeOperand, e)
+            if (e.typeOperand.classFqName == "kotlin.Number") {
+                val isNum = MirExpr.RuntimeCall("mk_is_number", listOf(asAny(v)), TBoolean)
+                return if (e.operator == IrTypeOperator.INSTANCEOF) isNum else MirExpr.Unary(UnaryOp.Not, isNum)
+            }
             val test: MirExpr = MirExpr.IsInstance(v, if (target.isPrimitive) TBoxed(target) else target.nonNull())
             return if (e.operator == IrTypeOperator.INSTANCEOF) test else MirExpr.Unary(UnaryOp.Not, test)
         }
@@ -153,7 +157,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             val safe = e.operator == IrTypeOperator.SAFE_CAST
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
             if (target.isPrimitive) {
-                return MirExpr.Unbox(MirExpr.Cast(v, TBoxed(target), MirExpr.CastMode.Checked), target)
+                return unboxCast(v, target, MirExpr.CastMode.Checked)
             }
             return MirExpr.Cast(v, target, if (safe) MirExpr.CastMode.Safe else MirExpr.CastMode.Checked)
         }
@@ -164,7 +168,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             if (v.type == target || v.type == TNothing) return v
             if (v.type.isRef && target.isRef) return MirExpr.Cast(v, target, MirExpr.CastMode.Unchecked)
             if (v.type.isRef && v.type !is TBoxed && target.isPrimitive) {
-                return MirExpr.Unbox(MirExpr.Cast(v, TBoxed(target), MirExpr.CastMode.Unchecked), target)
+                return unboxCast(v, target, MirExpr.CastMode.Unchecked)
             }
             return coerceOperand(v, target, e, out)
         }
@@ -208,8 +212,12 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (from === TNull && (to.isRef || to is TPtr)) return MirExpr.NullConst(to)
     if (from == TUnit && to.isRef && e === MirExpr.UnitValue) return unitInstance()
     if ((from.isInteropScalar || to.isInteropScalar) && (from.isRef || to.isRef)) {
-        unsupported(at, "boxing of a value of type ${from.displayName} as ${to.displayName} (Byte, Short and C pointers cannot be stored in Any, collections or generic code)")
+        unsupported(at, "boxing of a value of type ${from.displayName} as ${to.displayName} (C pointers cannot be stored in Any, collections or generic code)")
     }
+    if (from is TInline && to.isRef) {
+        return boxVc(e, to)
+    }
+    if (to is TInline && from.isRef) return unboxVc(e, to, MirExpr.CastMode.Unchecked)
     if (from.isPrimitive && to.isRef) {
         if (to == TBoxed(from) || (to is TObject && to.cName == ANY_CNAME)) return MirExpr.Box(e, to)
         unsupported(at, "conversion from $from to $to")
@@ -219,7 +227,7 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
         unsupported(at, "conversion from $from to $to")
     }
     if (from is TObject && from.cName == ANY_CNAME && to.isPrimitive) {
-        return MirExpr.Unbox(MirExpr.Cast(e, TBoxed(to), MirExpr.CastMode.Unchecked), to)
+        return unboxCast(e, to, MirExpr.CastMode.Unchecked)
     }
     if (from.isRef && to.isRef) return e // C-level retyping is done by the emitter
     unsupported(at, "conversion from $from to $to")
@@ -240,6 +248,7 @@ internal fun Ir2Mir.toStringExpr(e: MirExpr, at: IrElement, out: MutableList<Mir
         TDouble -> MirExpr.RuntimeCall("mk_string_from_double", listOf(e), TString)
         TFloat -> MirExpr.RuntimeCall("mk_string_from_float", listOf(e), TString)
         TByte, TShort -> MirExpr.RuntimeCall("mk_string_from_int", listOf(MirExpr.Convert(e, TInt)), TString)
+        is TInline -> valueClassAnyMember(e, 0, emptyList(), at) ?: MirExpr.RuntimeCall("mk_to_string", listOf(asAny(coerceOperand(e, anyNullable, at, out))), TString)
         TBoolean -> MirExpr.RuntimeCall("mk_string_from_boolean", listOf(e), TString)
         TChar -> MirExpr.RuntimeCall("mk_string_from_char", listOf(e), TString)
         else -> if (e.type.isRef) MirExpr.RuntimeCall("mk_to_string", listOf(asAny(e)), TString)
@@ -270,6 +279,9 @@ internal fun typeQualifiedName(t: MirType): String? = when (t) {
     TBoolean -> "kotlin.Boolean"
     TDouble -> "kotlin.Double"
     TFloat -> "kotlin.Float"
+    TByte -> "kotlin.Byte"
+    is TInline -> t.qualifiedName
+    TShort -> "kotlin.Short"
     TChar -> "kotlin.Char"
     TString, TNString -> "kotlin.String"
     is TBoxed -> typeQualifiedName(t.prim)

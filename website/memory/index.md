@@ -28,8 +28,8 @@ The memory features are not new syntax. Allocators are classes in the package `m
 
 ## How the samples are checked
 
-Every listing in this guide is a file under `website/samples/memory/`, and CI runs the compiler on each of them. Memory samples are verified with `./minic check`: either the checker accepts the program, or it rejects it with exactly the error code stated on the page.
+Every listing in this guide is a file under `website/samples/memory/`, and CI runs the compiler on each of them. Accepted samples are built, run and compared with their expected output; rejected samples are verified with `./minic check` against exactly the error code stated on the page.
 
-::: warning Current status of Strict mode
-The **checker** implements the rules of the specification (a few are deliberately approximate, see the limits on each page) and is tested against a corpus of 56 programs with expected diagnostics and 33 accepted programs. **Native code generation** for programs that use `Heap`, `Arena` or `Pool` is not finished: `minic build` currently stops while compiling `mini.memory` (`unsupported construct: value class 'NativePtr'`). Programs that are Managed, or Strict but without allocator types, build and run natively; the samples that do so have an output shown on the page. The rest are shown with the checker's verdict only. This is tracked as milestone D2 on the [roadmap](/roadmap).
+::: tip Current status of Strict mode
+The **checker** implements the rules of the specification (a few are deliberately approximate, see the limits on each page) and is tested against a corpus of 56 programs with expected diagnostics and 33 accepted programs. Programs that use `Heap`, `Arena` and `Pool` build and run natively (C and LLVM backends), so every accepted sample has a Run cell. Only the samples that use `spawn` stay check-only, because threads are not available yet.
 :::

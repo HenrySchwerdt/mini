@@ -1,0 +1,45 @@
+Outer(i=Inner(x=7))
+7
+Flag(on=true)
+true
+true
+true
+$10.50
+[$1.0, $2.0, $3.0]
+AB!
+Label(text=ab)
+Temp(deg=3.5)
+true
+Sec(s=90)
+3
+Flag(on=true)
+false
+user4
+hi user4
+hi user4
+Inner(x=8)
+Inner(x=7)
+null
+7
+null
+Inner(x=7)
+Inner(x=0)
+Inner(x=9)
+9
+Inner(x=3)
+6
+Inner(x=2)
+7
+[Inner(x=3), Inner(x=1)]
+[6, 2]
+8
+8
+on
+Inner(x=101)
+1
+1
+true
+false
+false
+1231
+v=Inner(x=5) w=Flag(on=true)
