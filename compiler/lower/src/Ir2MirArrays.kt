@@ -29,7 +29,7 @@ private val ARRAY_KINDS = listOf(
 
 internal fun arrayKindOfFq(fq: String?): ArrayKind? = when (fq) {
     null -> null
-    "kotlin.Array", "kotlin.enums.EnumEntries" -> ARRAY_KINDS[5]
+    "kotlin.Array" -> ARRAY_KINDS[5]
     else -> ARRAY_KINDS.firstOrNull { it.qualified == fq }
 }
 

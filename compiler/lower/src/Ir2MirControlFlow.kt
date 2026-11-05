@@ -56,7 +56,7 @@ internal fun Ir2Mir.progressionOrNull(e: IrExpression): Progression? {
         if (parent is IrFile && parent.packageFqName == "kotlin.ranges") {
             when (name) {
                 "downTo" -> return Progression(args[0]!!, args[1]!!, null, ascending = false, inclusive = true)
-                "until" -> return Progression(args[0]!!, args[1]!!, null, ascending = true, inclusive = false)
+                "until", "rangeUntil" -> return Progression(args[0]!!, args[1]!!, null, ascending = true, inclusive = false)
                 "step" -> {
                     val inner = progressionOrNull(args[0]!!) ?: return null
                     if (inner.step != null) return null

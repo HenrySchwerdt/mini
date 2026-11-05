@@ -64,6 +64,27 @@ internal fun Ir2Mir.refClassFor(t: MirType): RefClass = refClasses.getOrPut(t) {
     RefClass(cName, ctorName, type, t)
 }
 
+/** The `Unit` object (what a `Unit` value is when it is stored as `Any?` / `Unit?`): the singleton of a generated object class. */
+internal fun Ir2Mir.unitInstance(): MirExpr {
+    val uc = unitClass ?: run {
+        val cName = Mangling.className("kotlin", listOf("UnitValue"))
+        val type = TObject("kotlin.Unit", cName, false)
+        val ctorName = Mangling.constructor(cName, emptyList())
+        val toStr = Mangling.method(cName, "toString", emptyList())
+        extraClasses += MirClass("kotlin.Unit", cName, false, null, emptyList(), emptyList(), listOf(toStr, null, null), emptyList(), ctorName)
+        extraFunctions += MirFunction("kotlin.Unit.<init>", ctorName, listOf(MirLocal(0, "this", type)), TUnit, emptyList(), cName)
+        extraFunctions += MirFunction("kotlin.Unit.toString", toStr, listOf(MirLocal(0, "this", type)), TString, listOf(MirStmt.Return(MirExpr.StringConst("kotlin.Unit"))))
+        type.also { unitClass = it }
+    }
+    return MirExpr.Cast(MirExpr.ObjectGet(uc.cName, uc), anyNullable, MirExpr.CastMode.Unchecked)
+}
+
+/** A `Unit`-typed value [v] used where a reference is needed: [v] runs for its effects, the result is the Unit object. */
+internal fun Ir2Mir.unitAsRef(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
+    if (v !== MirExpr.UnitValue && v !is MirExpr.Local) out += MirStmt.Eval(v)
+    return unitInstance()
+}
+
 internal fun zeroOf(t: MirType): MirExpr = when (t) {
     TInt -> MirExpr.IntConst(0)
     TLong -> MirExpr.LongConst(0)
@@ -386,12 +407,19 @@ internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: Ir
         return MirExpr.Call(liftedFn.cName, args, mirType(target.returnType, target))
     }
     val parent = target.parent
-    if (parent is IrClass) {
-        if (parent !in classInfos) unsupported(at, "reference to '${parent.kotlinFqName}.${target.name}'")
-        return memberDispatch(target, false, args, at, out)
+    if (parent is IrClass && parent in classInfos) return memberDispatch(target, false, args, at, out)
+    val cName = if (parent is IrClass) null else functionNames[target]
+    if (cName != null) return MirExpr.Call(cName, args, mirType(target.returnType, target))
+    // builtin members and functions the backend knows (`String::length`, `Int::plus`, `Any::toString`): an ordinary call of the arguments
+    val call = IrCall(target, target.returnType)
+    for ((i, p) in target.parameters.withIndex()) {
+        val tp = IrValueParameter("\$ref$i", p.type, p.kind, i)
+        tp.parent = target
+        val l = tmpOfPlain(args[i], out) as MirExpr.Local
+        locals[tp] = l.local
+        call.arguments.add(IrGetValue(tp, p.type))
     }
-    val cName = functionNames[target] ?: unsupported(at, "reference to function '${target.name}'")
-    return MirExpr.Call(cName, args, mirType(target.returnType, target))
+    return value(call, out)
 }
 
 // ---- SAM conversion (fun interface) ---------------------------------------------------------------------------
@@ -424,4 +452,42 @@ internal fun Ir2Mir.samValue(e: IrTypeOperatorCall, out: MutableList<MirStmt>): 
         body += if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(coerceFlexible(call, sam.ret, e, body))
     }
     return MirExpr.New(ctor, listOf(MirExpr.Cast(fv, fType, MirExpr.CastMode.Unchecked)), type)
+}
+
+// ---- property references -----------------------------------------------------------------------------------
+
+/**
+ * `::prop`, `obj::prop`, `Class::prop`: an instance of the stdlib class KProperty0Impl / KMutableProperty0Impl (bound or top-level) or
+ * KProperty1Impl / KMutableProperty1Impl (unbound), created with the name and closures for the getter (and setter).
+ */
+internal fun Ir2Mir.propertyReference(e: IrPropertyReference, out: MutableList<MirStmt>): MirExpr {
+    val prop = e.property
+    val fq = e.type.classFqName ?: unsupported(e, "property reference")
+    val mutable = fq.contains("Mutable")
+    val k = fq.last() - '0'
+    if (k !in 0..1) unsupported(e, "reference to a property with two receivers")
+    val getter = prop.getter ?: unsupported(e, "reference to property '${prop.name}' without getter")
+    val setter = if (mutable) prop.setter ?: unsupported(e, "reference to read-only property '${prop.name}' as a var") else null
+    val implFq = REFLECT_PKG + "." + (if (mutable) "KMutableProperty" else "KProperty") + k + "Impl"
+    val impl = classInfos.keys.firstOrNull { it.kotlinFqName == implFq } ?: unsupported(e, "property reference (the stdlib class $implFq is not available)")
+    val ctor = impl.declarations.filterIsInstance<IrConstructor>().firstOrNull()
+    val cName = ctor?.let { functionNames[it] } ?: unsupported(e, "property reference ($implFq was pruned)")
+    val bound = e.arguments.firstOrNull { it != null }
+    fun accessor(f: IrSimpleFunction): MirExpr {
+        val ref = IrFunctionReference(f, e.type)
+        for (p in f.parameters) ref.arguments.add(null)
+        if (bound != null) {
+            val i = f.parameters.indexOfFirst { it.kind == IrParameterKind.DispatchReceiver || it.kind == IrParameterKind.ExtensionReceiver }
+            if (i >= 0) ref.arguments[i] = bound
+        }
+        val arity = f.parameters.size - (if (bound != null && f.parameters.any { it.kind == IrParameterKind.DispatchReceiver || it.kind == IrParameterKind.ExtensionReceiver }) 1 else 0)
+        val c = tmpOf(functionReference(ref, out), out)
+        return MirExpr.Cast(c, functionInterface(arity), MirExpr.CastMode.Unchecked)
+    }
+    val args = ArrayList<MirExpr>()
+    args += MirExpr.StringConst(prop.name)
+    args += accessor(getter)
+    if (setter != null) args += accessor(setter)
+    val made = tmpOf(MirExpr.New(cName, args, typeOf(impl)), out)
+    return MirExpr.Cast(made, mirType(e.type, e), MirExpr.CastMode.Unchecked)
 }

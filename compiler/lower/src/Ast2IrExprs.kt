@@ -336,12 +336,17 @@ fun Ast2Ir.thisExprAt(node: Ast, label: String?): IrExpression {
     val r = rec(node) ?: fail(node, "this without record")
     // the receiver the keyword denotes: innermost class / lambda receiver (or the labelled one)
     val t = irType(r.type)
+    // an unlabelled `this` of a class is that class, not one of the enclosing classes of an inner class (those come after it)
+    val want = if (label == null) (r.type as? ClassType)?.cls else null
     var c = ctx
     while (c != null) {
         for (i in c.recvs.indices.reversed()) {
             val re = c.recvs[i]
             if (label == null) {
-                if (re.cls != null && re.cls.isCompanion && false) continue
+                if (want != null && re.cls != null && re.cls !== want) {
+                    val own = c.recvs.firstOrNull { it.cls === want }
+                    if (own != null) return IrGetValue(own.param, own.param.type, null)
+                }
                 return IrGetValue(re.param, re.param.type, null)
             }
             if (re.cls != null && re.cls.name == label) return IrGetValue(re.param, re.param.type, null)
@@ -381,6 +386,9 @@ fun Ast2Ir.nameExpr(e: NameExpr, node: Ast): IrExpression {
         else -> {
             val tg = r.target
             if (tg is ClassType && tg.cls.isObject) return IrGetObjectValue(irClass(tg.cls), irType(tg))
+            // a class name used as a value is its companion object
+            val rt = r.type
+            if (rt is ClassType && rt.cls.isCompanion) return IrGetObjectValue(irClass(rt.cls), irType(rt))
             fail(node, "name " + e.name + " is not a value")
         }
     }

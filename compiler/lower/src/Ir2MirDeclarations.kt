@@ -24,7 +24,7 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
         try {
             if (f is IrConstructor) {
                 params += MirLocal(localCounter++, "this", typeOf(f.parent as IrClass))
-                if ((f.parent as IrClass).kind == IrClassKind.ENUM_CLASS) {
+                if ((f.parent as IrClass).kind == IrClassKind.ENUM_CLASS || isEnumBody(f.parent as IrClass)) {
                     params += MirLocal(localCounter++, "\$name", TString)
                     params += MirLocal(localCounter++, "\$ordinal", TInt)
                 }
@@ -49,9 +49,10 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         val self = MirLocal(localCounter++, "this", typeOf(cls))
         params += self
         f.parent.let { (it as IrClass).thisReceiver }?.let { locals[it] = self }
-        if (cls.kind == IrClassKind.ENUM_CLASS) {
+        if (cls.kind == IrClassKind.ENUM_CLASS || isEnumBody(cls)) {
             params += MirLocal(localCounter++, "\$name", TString)
             params += MirLocal(localCounter++, "\$ordinal", TInt)
+            enumHidden = params.subList(1, 3).toList()
         }
     }
     for (p in f.parameters) {
@@ -84,7 +85,25 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$name", TString, MirExpr.Local(params[1]))
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$ordinal", TInt, MirExpr.Local(params[2]))
     }
-    convertBody(f, ret, out)
+    val tails = if (f is IrSimpleFunction && f.sym?.has("tailrec") == true && f.parameters.none { it in closure.boxed }) tailCallsOf(f) else emptySet()
+    if (tails.isNotEmpty()) {
+        // the body runs in a loop over copies of the parameters; a tail call assigns the copies and continues
+        val copies = HashMap<IrValueParameter, MirLocal>()
+        for (p in f.parameters) {
+            if (p.kind != IrParameterKind.Regular) continue
+            val orig = locals[p] ?: continue
+            val cp = MirLocal(localCounter++, p.name, orig.type)
+            out += MirStmt.Declare(cp, MirExpr.Local(orig))
+            locals[p] = cp
+            copies[p] = cp
+        }
+        val label = MirLabel(labelCounter++)
+        tailLoop = TailLoop(label, copies, tails)
+        val inner = ArrayList<MirStmt>()
+        try { convertBody(f, ret, inner) } finally { tailLoop = null }
+        if (ret == TUnit) inner += MirStmt.Break(label)
+        out += MirStmt.Loop(label, inner)
+    } else convertBody(f, ret, out)
     return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
 }
 
@@ -231,6 +250,11 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
         out += MirStmt.Break(r.label)
         return
     }
+    val tl = tailLoop
+    if (tl != null && target === f && finallyStack.isEmpty() && hasTailCall(s.value, tl.calls)) {
+        returnWithTail(s.value, tl, out)
+        return
+    }
     if (target !== f) unsupported(s, "return from a lambda or nested function (target ${(target as? IrFunction)?.name}, in ${f.name}, inline stack ${returnTargets.keys.map { it.name }})")
     if (currentReturn == TUnit) {
         stmt(s.value, out)
@@ -289,7 +313,8 @@ internal fun Ir2Mir.delegatingCall(c: IrDelegatingConstructorCall, out: MutableL
     val cName = functionNames[k] ?: unsupported(c, "call of constructor of '${cls.kotlinFqName}'")
     val self = MirExpr.Local(locals.values.first { it.name == "this" && it.id == 0 })
     val args = callArgs(c, k, out)
-    out += MirStmt.Eval(MirExpr.Call(cName, listOf<MirExpr>(self) + args + captureArgsFor(cls, c), TUnit))
+    val hidden = if (cls.kind == IrClassKind.ENUM_CLASS) enumHidden.map { MirExpr.Local(it) } else emptyList()
+    out += MirStmt.Eval(MirExpr.Call(cName, listOf<MirExpr>(self) + hidden + args + captureArgsFor(cls, c), TUnit))
 }
 
 internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirStmt>): MirExpr {

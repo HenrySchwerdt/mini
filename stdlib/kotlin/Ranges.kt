@@ -258,6 +258,12 @@ public infix fun Long.downTo(to: Long): LongProgression = LongProgression.fromCl
 
 public infix fun Char.downTo(to: Char): CharProgression = CharProgression.fromClosedRange(this, to, -1)
 
+public operator fun Int.rangeUntil(to: Int): IntRange = this until to
+
+public operator fun Long.rangeUntil(to: Long): LongRange = this until to
+
+public operator fun Char.rangeUntil(to: Char): CharRange = this until to
+
 public infix fun Int.until(to: Int): IntRange {
     if (to <= Int.MIN_VALUE) return IntRange.EMPTY
     return IntRange(this, to - 1)

@@ -34,6 +34,7 @@ internal fun Ir2Mir.inlineLambdaOf(e: IrExpression?): InlineLambda? = when (e) {
 internal fun Ir2Mir.coerceFlexible(v: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     if (v.type == t || v.type == TNothing) return v
     if (t == TUnit) return v
+    if (v.type == TUnit && t.isRef) return unitAsRef(v, out)
     val x = if (v.isOwned() || (v is MirExpr.FieldGet && v.type.isRef)) tmpOf(v, out) else v
     return when {
         x.type.isPrimitive && t.isPrimitive -> coerceOperand(x, t, at, out)

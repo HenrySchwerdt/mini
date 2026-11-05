@@ -444,7 +444,9 @@ block `/* ---- v1-L ---- */` in `minirt.h` / `src/v1l.c` (tests: `tests/test_v1l
 * Local functions are **lambda-lifted**: a C function whose leading parameters are the captured values (cells for
   `var`s), calls are direct (recursion and mutual recursion work). `::local` creates a closure object.
 * Function references: top-level, member (`obj::m` bound, `Type::m` unbound), constructors, local functions.
-  Property references are unsupported (except `::lateinitProp.isInitialized`).
+  Property references (`::prop`, `obj::prop`, `Class::prop`) create the stdlib classes `KProperty0Impl` / `KMutableProperty0Impl` / `KProperty1Impl` /
+  `KMutableProperty1Impl` (`Ir2MirClosures.propertyReference`) with closures for the getter and setter; `::lateinitProp.isInitialized` is lowered inline.
+  A class may implement a function type (`class F : (Int) -> Int`): its `invoke` is added to the itable of `FunctionN` (`Ir2MirClasses.functionSupertypes`).
 * `fun interface` / SAM conversions are not supported.
 
 ### Inline functions
@@ -554,12 +556,13 @@ constructors. `Comparable` and `CharSequence` are erased (`Any` / `String`); `co
   Gaps of the stdlib itself (ranges as iterables, `entries`-style APIs, JDK message wording) are not backend issues.
   The stdlib's hash maps keep before/after links (reference cycles) and therefore leak under RC
   (`stdlib_maps.noleakcheck` excludes that test from the leak check).
-* No property references (`::prop`), `suspend`/coroutines, type aliases are ignored (no code),
-  annotations with arguments, `fun main(args)`, enum entries with bodies,
-  `Unit?`, local `object` declarations, nested classes inside local classes. SAM conversion works for `fun interface`s
+* No `suspend`/coroutines. SAM conversion works for `fun interface`s
   (lambda literals and function values), not for Java interfaces.
 * A lambda parameter of an `inline` function may only be invoked or forwarded to another inline function.
-* Unit values boxed in generic code are `null` (`println(listOf(f()))` of a Unit lambda prints `null`).
+* A `Unit` stored as `Any?` / `Unit?` / a generic value is the singleton `kotlin.Unit` object (`Ir2MirClosures.unitInstance`); `println(listOf(f()))` of a Unit lambda prints `[kotlin.Unit]`.
+* Enum entries with bodies are anonymous subclasses nested in the enum (constructor `(name, ordinal, args...)` calls the enum constructor, `Ast2IrMembers.enumBodyConstructor`);
+  `entries` is a read-only `EnumEntries` list over the `values()` array. `tailrec` functions run their body in a loop over copies of the parameters (`Ir2MirTailrec`).
+* Annotation classes generate no code; the annotations stay in the IR (`IrAnnotation` with the argument texts and names).
 * Reference cycles leak (no cycle collector): e.g. a closure stored in a field of the object it captures.
 * `>>` on negative Int/Long relies on arithmetic shift (clang/gcc behaviour, implementation-defined in C17).
 * The generated C uses GNU statement expressions (clang and gcc; not MSVC).

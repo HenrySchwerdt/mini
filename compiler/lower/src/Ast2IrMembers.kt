@@ -29,6 +29,41 @@ fun Ast2Ir.buildObjectCtorBody(k: IrConstructor, c: IrClass): IrBody {
     }
 }
 
+/**
+ * The constructor of the anonymous subclass that is the body of an enum entry (`A(1) { ... }`): it takes the parameters of the
+ * enum constructor the entry calls and passes them on (the hidden name and ordinal are added by the MIR conversion).
+ */
+fun Ast2Ir.enumBodyConstructor(c: IrClass, sym: ClassSym): IrConstructor? {
+    val enumSym = sym.outer ?: return null
+    var es: EnumEntrySym? = null
+    for (x in enumSym.entries) if (sema.enumEntryBodies[x.decl] === sym) es = x
+    val en = es ?: return null
+    val info = rec(en.decl)?.call ?: return null
+    val ec = irClass(enumSym)
+    val target = funMap[info.fn] as? IrConstructor ?: irConstructor(info.fn, ec)
+    val k = IrConstructor()
+    k.parent = c
+    k.isPrimary = true
+    k.visibility = "private"
+    k.returnType = irType(sym.thisType())
+    val del = IrDelegatingConstructorCall(target, sema.unitType)
+    for (p in target.parameters) {
+        val np = IrValueParameter(p.name, p.type, p.kind, p.index)
+        np.parent = k
+        np.varargElementType = p.varargElementType
+        np.defaultValueBuilder = { p.defaultValue }
+        k.parameters.add(np)
+        del.arguments.add(IrGetValue(np, np.type))
+    }
+    k.bodyBuilder = {
+        val stmts = ArrayList<IrStatement>()
+        stmts.add(del)
+        stmts.add(IrInstanceInitializerCall(c, sema.unitType))
+        IrBlockBody(stmts)
+    }
+    return k
+}
+
 // ---- data classes -------------------------------------------------------------------------------------------------------
 
 fun Ast2Ir.addDataMembers(c: IrClass, sym: ClassSym) {
