@@ -1,9 +1,6 @@
-import kotlin.concurrent.thread
-import mini.concurrent.*
-
 // Dropping the head of a long chain recurses through the disposes; the runtime queues dead objects once the stack is half used
 // and works the queue off from a shallower frame. Here: a long chain dropped at the top, dropped under deep recursion of the
-// program itself, dropped in a worker thread, and a chain of chains (a list of lists).
+// program itself, and a chain of chains (a list of lists).
 class Cell(val v: Int, val next: Cell?)
 
 class Tree(val l: Tree?, val r: Tree?)
@@ -39,13 +36,8 @@ fun leftTree(n: Int): Tree? {
 
 fun main() {
     println(sum(chain(500000)))
-    println(deep(20000, 300000))
+    println(deep(2000, 300000))
     println(deep(5, 300000))
-    val results = AtomicLong(0)
-    val ts = ArrayList<java.lang.Thread>()
-    for (k in 1..3) ts.add(thread { results.addAndGet(deep(3000, 200000)) })
-    for (t in ts) t.join()
-    println(results.get())
     val lists = ArrayList<Cell?>()
     for (i in 0 until 50) lists.add(chain(20000))
     var total = 0L

@@ -1252,7 +1252,10 @@ ones that can form long chains; strings and plain data skip the test) whose rele
 thread-locally instead of disposed. A release back above the floor works the queue off, at the latest at the end of `main` or of the
 thread (`mk_release_drain`). Dispose only releases, so the different order is not observable. The common path is one compare of the
 stack pointer with a thread-local word (read-only): the previous 200-level counter was written and read back at every level, a
-store-to-load dependency of the whole recursion (it was half of the overhead on binarytrees).
+store-to-load dependency of the whole recursion (it was half of the overhead on binarytrees). On WebAssembly the engine's call stack is not
+the linear-memory stack a frame address would measure (and its size is unknown), so wasm32 (and a build with `-DMK_RELEASE_COUNTER`) counts the
+nesting of armed releases instead and queues beyond 200 levels; there is only one thread there. `release_deep` runs on every backend
+including wasm32; `release_deep_threads` (the same in worker threads) is `.nowasm`.
 
 ### Measured overhead
 

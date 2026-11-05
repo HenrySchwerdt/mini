@@ -3,6 +3,11 @@
 #define _GNU_SOURCE
 #endif
 #include "alloc_small.h"
+
+/* The nesting of releases is bounded by a counter instead of the stack pointer on WebAssembly (and with -DMK_RELEASE_COUNTER). */
+#if defined(__wasm__) && !defined(MK_RELEASE_COUNTER)
+#define MK_RELEASE_COUNTER 1
+#endif
 #include "internal.h"
 #include "lock.h"
 
@@ -53,12 +58,20 @@ void mk_retain(MkObject *object) {
  * queue off (the objects are disposed in a different order, which nobody can observe: dispose only releases). The test is a
  * compare of the stack pointer with a thread-local word: no counter is written on the common path. */
 #define MK_PENDING_INLINE 64
-static MK_TLS uintptr_t release_floor = UINTPTR_MAX; /* UINTPTR_MAX: not computed yet (every release takes the slow path once) */
 static MK_TLS bool draining;
 static MK_TLS MkObject *pending_inline[MK_PENDING_INLINE];
 static MK_TLS MkObject **pending_heap;
 static MK_TLS size_t pending_n, pending_cap;
 
+#if defined(MK_RELEASE_COUNTER)
+/* WebAssembly: the call stack of the engine is not the linear-memory stack (a frame address says nothing about it) and its size is
+ * unknown; single threaded. The nesting of releases of armed objects is counted instead (a plain counter: no threads). */
+#define MK_RELEASE_DEPTH 200
+static unsigned release_depth;
+#define MK_DEEP() (release_depth >= MK_RELEASE_DEPTH)
+#else
+static MK_TLS uintptr_t release_floor = UINTPTR_MAX; /* UINTPTR_MAX: not computed yet (every release takes the slow path once) */
+#define MK_DEEP() (MK_SP() < release_floor)
 #if defined(_MSC_VER) && !defined(__clang__)
 #define MK_SP() ((uintptr_t)_AddressOfReturnAddress())
 #elif defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__)) /* (a frame address would force a frame pointer into mk_release) */
@@ -100,6 +113,8 @@ MK_NOINLINE static uintptr_t release_floor_init(void) {
     return sp > ((uintptr_t)256 << 10) ? sp - ((uintptr_t)256 << 10) : 0;
 }
 
+#endif
+
 MK_NOINLINE static void pending_push(MkObject *o) {
     if (pending_n < MK_PENDING_INLINE) { pending_inline[pending_n++] = o; return; }
     if (pending_n - MK_PENDING_INLINE == pending_cap) {
@@ -129,6 +144,7 @@ MK_INLINE void free_dead(MkObject *object, bool buffered, bool watch) {
     mk_free_object_memory(object);
 }
 
+#if !defined(MK_RELEASE_COUNTER)
 /* Slow path of the stack test (the stack pointer is below the floor, or the floor is not known yet): true when `object` was queued. */
 MK_NOINLINE static bool release_defer(MkObject *object) {
     if (release_floor == UINTPTR_MAX) {
@@ -138,10 +154,11 @@ MK_NOINLINE static bool release_defer(MkObject *object) {
     pending_push(object);
     return true;
 }
+#endif
 
 /* Works the queue off from a frame above the floor (nested releases of a running drain leave it to the loop). */
 MK_NOINLINE static void pending_drain(bool force) {
-    if (draining || (!force && MK_SP() < release_floor)) return;
+    if (draining || (!force && MK_DEEP())) return;
     draining = true;
     while (pending_n > 0) {
         size_t i = --pending_n;
@@ -161,8 +178,15 @@ void mk_release_drain(void) {
  * from now on, so that a collection that runs before its dispose is done leaves it alone. */
 MK_NOINLINE static void release_buffered(MkObject *object) {
     mk_cycles_state(object, MK_CYCLES_DYING);
-    if (MK_SP() < release_floor && release_defer(object)) return;
+#if defined(MK_RELEASE_COUNTER)
+    if (MK_DEEP()) { pending_push(object); return; }
+    release_depth++;
+    free_dead(object, true, false);
+    if (--release_depth == 0 && pending_n != 0) pending_drain(true);
+#else
+    if (MK_DEEP() && release_defer(object)) return;
     free_dead(object, true, true);
+#endif
 }
 
 void mk_release(MkObject *object) {
@@ -198,8 +222,16 @@ void mk_release(MkObject *object) {
             release_buffered(object);
             return;
         }
-        if (MK_SP() < release_floor && release_defer(object)) return; /* a long chain (linked list, deep tree): not on the C stack */
+#if defined(MK_RELEASE_COUNTER)
+        if (MK_DEEP()) { pending_push(object); return; }
+        release_depth++;
+        free_dead(object, false, false);
+        if (--release_depth == 0 && pending_n != 0) pending_drain(true);
+        return;
+#else
+        if (MK_DEEP() && release_defer(object)) return; /* a long chain (linked list, deep tree): not on the C stack */
         watch = true;
+#endif
     }
     free_dead(object, false, watch);
 }
