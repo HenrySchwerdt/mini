@@ -45,6 +45,8 @@ see ordinary IR).
 
 * A suspension point in a lambda that is passed to an `inline` function (`list.forEach { delay(1) }`, `repeat`) is an error
   (the lambda is expanded by `Ir2Mir`, after the state machine is built). `for` loops and `while` loops work.
+* `for (x in array)` with a suspension point in the body is rejected (`call to array member 'iterator'`): the loop is flattened,
+  so `Ir2Mir` does not see its `FOR_LOOP` shape any more; iterate a list or the indices. Ranges and collections work.
 * No builder inference: `sequence { yield(1) }` needs `sequence<Int> { ... }` unless the expected type is known (a declared
   return type, a typed `val`).
 * No `suspend` properties, `coroutineContext` is `currentCoroutineContext()`; `Unit` in generic positions is `null`.

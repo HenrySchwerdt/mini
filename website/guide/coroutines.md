@@ -79,6 +79,6 @@ planned; v1 is timers and wake-ups.
 ## Limits
 
 - A suspension point inside a lambda that is passed to an `inline` function (`forEach { delay(1) }`, `repeat`) is rejected; use a
-  `for` loop.
+  `for` loop. A `for` over an array with a suspension point in its body is rejected too (iterate a list or the indices).
 - No builder inference, no `suspend` properties; `currentCoroutineContext()` replaces the `coroutineContext` property.
 - No `select`, `actor`, `StateFlow`/`SharedFlow`, `Dispatchers.Main`, `Semaphore`.

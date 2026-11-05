@@ -17,7 +17,7 @@ fun main() {
     val words = sequence<String> {
         yield("sequence")
         yieldAll(listOf("builders", "are"))
-        for (w in arrayOf("lazy", "and", "run", "on", "state", "machines")) {
+        for (w in listOf("lazy", "and", "run", "on", "state", "machines")) {
             if (w.length > 2) yield(w)
         }
     }
