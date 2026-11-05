@@ -28,9 +28,9 @@ class MirOptions {
 object MirOpt {
     fun run(module: MirModule, options: MirOptions, report: (String) -> Unit): MirModule {
         var m = module
-        if (options.on("inline")) {
+        if (options.on("inline") || options.on("sroa") || options.on("exact-devirt")) {
             val st = Inliner.Stats()
-            m = Inliner.run(m, st)
+            m = Inliner.run(m, st, options)
             if (options.stats) report("inline: " + st.sites + " call sites in " + st.functions + " functions, " + st.exactDevirt + " exact-type devirtualizations, " + st.scalarReplaced + " objects scalar-replaced")
         }
         return m

@@ -26,8 +26,11 @@ object Inliner {
     const val SIZE_LIMIT = 70
     const val GROWTH_LIMIT = 700
 
-    fun run(module: MirModule, stats: Stats): MirModule {
+    fun run(module: MirModule, stats: Stats, options: MirOptions): MirModule {
         val st = InlineState(module, stats)
+        st.doInline = options.on("inline")
+        st.doSroa = options.on("sroa")
+        st.doExact = options.on("exact-devirt")
         for (f in module.functions) st.visit(f.cName)
         val fs = ArrayList<MirFunction>(module.functions.size)
         for (f in module.functions) fs.add(st.done[f.cName] ?: f)
@@ -43,6 +46,9 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
     val done = HashMap<String, MirFunction>()
     val infos = HashMap<String, InlineInfo>()
     val visiting = HashSet<String>()
+    var doInline = true
+    var doSroa = true
+    var doExact = true
 
     init {
         for (f in module.functions) byName[f.cName] = f
@@ -58,7 +64,7 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
         calls.walk(f.body)
         for (c in calls.names) visit(c)
         var cur = f
-        if (!f.strict) {
+        if (!f.strict && (doInline || doSroa || doExact)) {
             var round = 0
             var any = false
             while (round < 4) {
@@ -67,14 +73,14 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
                 val us = UseScan(cur)
                 us.walk(cur.body)
                 val ed = ExactDevirt(classes, byName, us)
-                var body = ed.stmts(cur.body)
+                var body = if (doExact) ed.stmts(cur.body) else cur.body
                 if (ed.count > 0) { progress = true; stats.exactDevirt += ed.count }
                 val ex = Expander(this, cur.withBody(body))
-                body = ex.stmts(body)
+                if (doInline) body = ex.stmts(body)
                 if (ex.expanded > 0) { progress = true; stats.sites += ex.expanded }
                 if (progress) body = Cleanup.run(body, cur)
                 val sr = Sroa(this, cur.withBody(body))
-                val body2 = sr.run(body)
+                val body2 = if (doSroa) sr.run(body) else body
                 if (sr.count > 0) {
                     progress = true
                     stats.scalarReplaced += sr.count
