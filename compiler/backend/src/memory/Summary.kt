@@ -26,48 +26,114 @@ class FnSummary(
 }
 
 object Summaries {
-    /** Functions whose optimistic assumption was used while computing something else (their dependants are not final yet). */
-    private var used = HashSet<MFun>()
+    // Tarjan's strongly connected components over the call graph (calls and virtual targets). The members of one component are solved
+    // together by a fixpoint (optimistic for recursion); everything a component calls is final before it is solved, so every function is
+    // analysed a small, bounded number of times and its summary is cached for good.
+    private var counter = 0
+    private val index = HashMap<MFun, Int>()
+    private val low = HashMap<MFun, Int>()
+    private val onStack = HashSet<MFun>()
+    private val stack = ArrayList<MFun>()
 
     /** The summary of [fn], or null when nothing is known (no body, no stored summary, no annotation). */
     fun of(fn: MFun): FnSummary? {
         fn.summary?.let { return it }
-        if (fn.summaryBusy) { used.add(fn); return fn.summaryAssumed }
-        val body = fn.body ?: fn.bodyProvider?.invoke()
-        val targets = fn.virtualTargets?.invoke() ?: emptyList()
+        if (fn.summaryBusy) return fn.summaryAssumed
+        if (!hasBody(fn)) return leaf(fn)
+        connect(fn)
+        return fn.summary
+    }
+
+    private fun bodyOf(fn: MFun): List<MStmt>? = fn.body ?: fn.bodyProvider?.invoke()
+
+    private fun targetsOf(fn: MFun): List<MFun> {
+        val p = fn.virtualTargets ?: return emptyList()
+        return p()
+    }
+
+    private fun hasBody(fn: MFun): Boolean {
+        if (bodyOf(fn) != null) return true
+        return targetsOf(fn).isNotEmpty()
+    }
+
+    /** A function without a body and without overriders: only a stored or declared summary. */
+    private fun leaf(fn: MFun): FnSummary? {
         val declared = declared(fn)
-        if (body == null && targets.isEmpty()) {
-            val st = fn.storedSummary
-            if (st == null) return declared
-            return if (declared == null) st else combine(listOf(st, declared))
-        }
-        fn.summaryBusy = true
-        val saved = used
-        used = HashSet()
-        var cur = FnSummary.NONE
-        var rounds = 0
-        try {
-            while (true) {
-                fn.summaryAssumed = cur
-                val parts = ArrayList<FnSummary>()
-                if (body != null) parts.add(analyze(fn, body)) else fn.storedSummary?.let { parts.add(it) }
-                if (declared != null) parts.add(declared)
-                for (t in targets) if (t !== fn) of(t)?.let { parts.add(it) }
-                val next = combine(parts)
-                val same = next.escapes.keys == cur.escapes.keys
-                cur = next
-                if (same || rounds++ > 8) break
+        val st = fn.storedSummary ?: return declared
+        return if (declared == null) st else combine(listOf(st, declared))
+    }
+
+    private fun successors(fn: MFun): List<MFun> {
+        val out = LinkedHashSet<MFun>()
+        val body = bodyOf(fn)
+        if (body != null) MemoryChecker.walk(body, enterLambdas = false, onStmt = {}, onExpr = { e -> if (e is MExpr.Call) out.add(e.fn) })
+        for (t in targetsOf(fn)) out.add(t)
+        return out.toList()
+    }
+
+    private fun connect(v: MFun) {
+        val i = counter
+        counter = counter + 1
+        index[v] = i
+        low[v] = i
+        stack.add(v)
+        onStack.add(v)
+        var selfEdge = false
+        for (w in successors(v)) {
+            if (w === v) { selfEdge = true; continue }
+            if (w.summary != null || w.summaryBusy || !hasBody(w)) continue
+            val wi = index[w]
+            if (wi == null) {
+                connect(w)
+                val lw = low[w] ?: i
+                val lv = low[v] ?: i
+                low[v] = if (lw < lv) lw else lv
+            } else if (onStack.contains(w)) {
+                val lv = low[v] ?: i
+                low[v] = if (wi < lv) wi else lv
             }
-        } finally {
-            fn.summaryBusy = false
-            fn.summaryAssumed = null
         }
-        used.remove(fn)
-        // a result that rests on the assumption of a function still being computed is not final: not cached
-        if (used.isEmpty()) fn.summary = cur
-        saved.addAll(used)
-        used = saved
-        return cur
+        if ((low[v] ?: i) != i) return
+        val members = ArrayList<MFun>()
+        while (true) {
+            val m = stack.removeAt(stack.size - 1)
+            onStack.remove(m)
+            members.add(m)
+            if (m === v) break
+        }
+        solve(members, selfEdge || members.size > 1)
+        for (m in members) { index.remove(m); low.remove(m) }
+    }
+
+    /** Fixpoint over one component; callees outside it are final already. */
+    private fun solve(members: List<MFun>, recursive: Boolean) {
+        for (m in members) { m.summaryBusy = true; m.summaryAssumed = FnSummary.NONE }
+        try {
+            var rounds = 0
+            while (true) {
+                var changed = false
+                for (m in members) {
+                    val next = compute(m)
+                    val cur = m.summaryAssumed ?: FnSummary.NONE
+                    if (next.escapes.keys != cur.escapes.keys) changed = true
+                    m.summaryAssumed = next
+                }
+                if (!recursive || !changed || rounds++ > 8) break
+            }
+            for (m in members) m.summary = m.summaryAssumed
+        } finally {
+            for (m in members) { m.summaryBusy = false; m.summaryAssumed = null }
+        }
+    }
+
+    private fun compute(fn: MFun): FnSummary {
+        val body = bodyOf(fn)
+        val declared = declared(fn)
+        val parts = ArrayList<FnSummary>()
+        if (body != null) parts.add(analyze(fn, body)) else fn.storedSummary?.let { parts.add(it) }
+        if (declared != null) parts.add(declared)
+        for (t in targetsOf(fn)) if (t !== fn) of(t)?.let { parts.add(it) }
+        return combine(parts)
     }
 
     /** Escapes the declaration states itself: `@TakesOwnership` parameters of the standard library (stores into arrays and nodes). */
