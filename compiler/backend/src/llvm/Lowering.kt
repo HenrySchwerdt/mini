@@ -126,7 +126,8 @@ private class Lowering<V : Any, B : Any>(
     lateinit var typeCheckPlan: TypeCheckPlan
     var customIsInstanceSymbol = false
 
-    val inlineRc: Boolean = rcPlan != null && !stats
+    // a program that can start threads calls the runtime for every count (it is atomic once a thread runs, see CEmitter)
+    val inlineRc: Boolean = rcPlan != null && !stats && module.functions.none { it.qualifiedName == "java.lang.Thread.start" }
     val szT: IrType = if (target.ptrBytes == 8) IrType.I64 else IrType.I32
     val pb: Int = target.ptrBytes
 

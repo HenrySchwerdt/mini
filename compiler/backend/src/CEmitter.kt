@@ -136,6 +136,8 @@ object CEmitter {
             // so select the supported compiler-specific spelling to keep generated C aligned with LLVM.
             out.append("\n#if defined(__clang__)\n#pragma clang fp contract(off)\n#elif defined(__GNUC__)\n#pragma GCC optimize (\"fp-contract=off\")\n#endif\n")
             out.append("\n")
+            // a program that can start threads: every reference count operation goes through the runtime (atomic once a thread runs)
+            if (module.functions.any { it.qualifiedName == "java.lang.Thread.start" }) out.append("#define MK_ATOMIC_RC 1\n")
             out.append(PRELUDE)
             if (usesMemory) out.append(MEMORY_PRELUDE)
             if (literals.isNotEmpty()) {
@@ -1147,7 +1149,7 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
 /* Reference counting with inline fast paths (RcOpt code generation). Anything unusual goes to the runtime:
  * NULL, static/stack/shared objects (atomic), a count that would overflow or reach zero, resurrection. With
  * MK_STATS every operation calls the runtime so that the counters see all of them. */
-#ifdef MK_STATS
+#if defined(MK_STATS) || defined(MK_ATOMIC_RC)
 #define MKH_RETAIN(x) mk_retain((MkObject *)(x))
 #define MKH_REL(x) mk_release((MkObject *)(x))
 #else

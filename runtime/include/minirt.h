@@ -408,6 +408,47 @@ _Noreturn void mk_throw_number_format(const MkString *message);
 _Noreturn void mk_throw_unsupported_operation(const MkString *message);
 _Noreturn void mk_throw_not_implemented(const MkString *message);
 
+/* ---- Concurrency layer (src/sys.c, docs/coroutines.md) ---------------------------------------------------------------- */
+
+/* Clock, sleep, number of CPUs. */
+int64_t mk_sys_monotonic_ns(void);
+int64_t mk_sys_wall_ms(void);
+void mk_sys_sleep_ns(int64_t ns);
+int64_t mk_sys_cpu_count(void);
+
+/* Locks and condition variables use the elements of a LongArray of at least MK_SYS_LOCK_WORDS elements as storage. */
+#define MK_SYS_LOCK_WORDS 16
+void mk_sys_lock_init(MkObject *storage);
+void mk_sys_lock(MkObject *storage);
+bool mk_sys_try_lock(MkObject *storage);
+void mk_sys_unlock(MkObject *storage);
+void mk_sys_cond_init(MkObject *storage);
+void mk_sys_cond_wait(MkObject *cond, MkObject *lock);
+bool mk_sys_cond_wait_ns(MkObject *cond, MkObject *lock, int64_t ns); /* true when it timed out */
+void mk_sys_cond_signal(MkObject *cond);
+void mk_sys_cond_broadcast(MkObject *cond);
+
+/* Starts a thread running the Kotlin function `() -> Unit`; the handle (0 on failure) is joined with mk_sys_thread_join.
+ * The first thread switches every reference count operation of the process to atomic. */
+int64_t mk_sys_thread_start(MkObject *fn);
+void mk_sys_thread_join(int64_t handle);
+
+/* Atomics on element 0 of an IntArray / LongArray / object array (reference cell). */
+int32_t mk_atomic_int_get(MkObject *a);
+void mk_atomic_int_set(MkObject *a, int32_t v);
+int32_t mk_atomic_int_add(MkObject *a, int32_t d);
+int32_t mk_atomic_int_exchange(MkObject *a, int32_t v);
+bool mk_atomic_int_cas(MkObject *a, int32_t expected, int32_t v);
+int64_t mk_atomic_long_get(MkObject *a);
+void mk_atomic_long_set(MkObject *a, int64_t v);
+int64_t mk_atomic_long_add(MkObject *a, int64_t d);
+int64_t mk_atomic_long_exchange(MkObject *a, int64_t v);
+bool mk_atomic_long_cas(MkObject *a, int64_t expected, int64_t v);
+MkObject *mk_atomic_ref_get(MkObject *a);
+void mk_atomic_ref_set(MkObject *a, MkObject *v);
+MkObject *mk_atomic_ref_exchange(MkObject *a, MkObject *v);
+bool mk_atomic_ref_cas(MkObject *a, MkObject *expected, MkObject *v);
+
 /* ---- end v1-S ------------------------------------------------------------------- */
 
 /* ---- v1-L ---------------------------------------------------------------------- */

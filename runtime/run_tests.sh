@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Builds libminirt with clang + sanitizers and runs all tests.
 #   ASan/UBSan pass over every test, then a TSan pass over the threading test.
-#   The threading test uses libuv: set LIBUV_ROOT to a prefix with include/uv.h and
-#   lib/libuv.a (or libuv.so) if libuv is not on the default compiler paths.
+#   The threading tests use the platform's own threads (pthreads / Win32); there is no libuv dependency.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -63,12 +62,13 @@ echo "== test_alloc_small (MK_PLAIN_MALLOC)"
 build_run test_alloc_small "$san" -DMK_PLAIN_MALLOC
 "$out/test_alloc_small.$san" || { echo "FAIL: test_alloc_small (plain malloc)" >&2; fail=1; }
 
-uv_flags=()
-if [ -n "${LIBUV_ROOT:-}" ]; then uv_flags=(-I"$LIBUV_ROOT/include" -L"$LIBUV_ROOT/lib"); fi
 for s in "$san" undefined thread; do
     echo "== test_threads ($s)"
-    build_run test_threads "$s" "${uv_flags[@]}" -luv
+    build_run test_threads "$s" -lpthread
     "$out/test_threads.$s" || { echo "FAIL: test_threads ($s)" >&2; fail=1; }
+    echo "== test_sys ($s)"
+    build_run test_sys "$s" -lpthread
+    "$out/test_sys.$s" || { echo "FAIL: test_sys ($s)" >&2; fail=1; }
 done
 
 echo "== check_panic"

@@ -14,7 +14,7 @@ void mk_retain(MkObject *object) {
         MK_STAT_RETAIN(0);
         return;
     }
-    if (object->flags & MK_FLAG_SHARED) {
+    if ((object->flags & MK_FLAG_SHARED) || __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
         MK_STAT_RETAIN(2);
         uint32_t old = mk_atomic_fetch_add(&object->refcount, 1u);
         if (old == 0u || old == UINT32_MAX) mk_panic("reference count overflow or resurrection");
@@ -32,7 +32,7 @@ void mk_release(MkObject *object) {
         return;
     }
     uint32_t old;
-    if (object->flags & MK_FLAG_SHARED) {
+    if ((object->flags & MK_FLAG_SHARED) || __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
         MK_STAT_RELEASE(2);
         old = mk_atomic_fetch_add(&object->refcount, UINT32_MAX); /* -1 */
     } else {

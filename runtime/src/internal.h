@@ -34,6 +34,9 @@ typedef union MkMaxAlign {
 #define MK_MAX_ALIGN (sizeof(MkMaxAlign) > (size_t)16 ? sizeof(MkMaxAlign) : (size_t)16)
 #endif
 
+/* Set when the first thread is started (sys.c): from then on all reference counts are atomic. */
+extern volatile int mk_threads_active;
+
 /* ---- Atomics on plain uint32_t (the MkObject layout is fixed) ------------- */
 #if defined(_MSC_VER) && !defined(__clang__)
 static inline uint32_t mk_atomic_fetch_add(uint32_t *p, uint32_t d) {
