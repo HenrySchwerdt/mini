@@ -163,6 +163,7 @@ class Ir2Mir {
         if (wasmExports.isNotEmpty()) wasmInitFunction()?.let { functions += it }
         val classes = ArrayList<MirClass>()
         classes += builtinMirClasses()
+        val builtinCount = classes.size
         val (facadeClasses, facadeFunctions) = buildFacades()
         functions += facadeFunctions
         classes += facadeClasses
@@ -183,8 +184,11 @@ class Ir2Mir {
                 )
             }
         }
+        // function interfaces come first: classes that implement a function type refer to them
         for (c in classInfos.keys.toList()) visit(c)
-        classes += extraClasses
+        val funIfaces = extraClasses.filter { it.isInterface && it.qualifiedName.startsWith("kotlin.Function") }
+        classes.addAll(minOf(classes.size, builtinCount), funIfaces)
+        classes += extraClasses.filter { it !in funIfaces }
         functions += extraFunctions
         return MirModule(sourceName, functions, classes, cExterns, interopFileAnnotations(module, "kotlinx.cinterop.CInclude"), interopFileAnnotations(module, "kotlinx.cinterop.CLink"), wasmExports)
     }

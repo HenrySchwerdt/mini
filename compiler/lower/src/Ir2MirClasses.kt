@@ -55,6 +55,7 @@ internal fun Ir2Mir.superclassOf(c: IrClass): IrClass? {
         return null
     }
     for (t in c.superTypes) {
+        if (t is FunType) continue   // `class F : (Int) -> Int`: see functionSupertypes
         val s = t.classOrNull ?: unsupported(c, "supertype '${t.classFqName}' of '${c.name}'")
         if (isAny(s) || s.kotlinFqName == "kotlin.Enum") continue
         if (s.kind == IrClassKind.INTERFACE) {
@@ -65,6 +66,59 @@ internal fun Ir2Mir.superclassOf(c: IrClass): IrClass? {
         return s
     }
     return null
+}
+
+/** The arities of the function types (`(Int) -> Int` is 1) that [c] inherits from, through its supertypes and their supertypes. */
+internal fun Ir2Mir.functionSupertypes(c: IrClass, acc: MutableSet<Int> = LinkedHashSet()): Set<Int> {
+    for (t in c.superTypes) {
+        if (t is FunType) acc += t.params.size + (if (t.receiver != null) 1 else 0)
+        else {
+            val s = t.classOrNull ?: continue
+            if (s in classInfos && s !== c) functionSupertypes(s, acc)
+        }
+    }
+    return acc
+}
+
+/** The `invoke` with [arity] value parameters that [c] declares or inherits from a class. */
+internal fun Ir2Mir.invokeImpl(c: IrClass, arity: Int): IrSimpleFunction? {
+    val g = classFunctions(c).firstOrNull { it.name == "invoke" && !it.isFakeOverride && it.parameters.count { p -> p.kind != IrParameterKind.DispatchReceiver } == arity && hasBody(it) }
+    if (g != null) return g
+    val sup = superclassOf(c) ?: return null
+    return invokeImpl(sup, arity)
+}
+
+/** [impl] with the erased signature of `FunctionN.invoke` (everything `Any?`), as the itable of a function interface wants it. */
+internal fun Ir2Mir.erasedInvoke(impl: IrSimpleFunction, arity: Int): String? {
+    val name = implName(impl) ?: return null
+    val rp = listOf<MirType>(typeOf(impl.parent as IrClass)) + List(arity) { anyNullable }
+    val ip = impl.parameters.map { mirType(it.type, it) }
+    val ir = mirType(impl.returnType, impl)
+    if (rp.indices.all { it == 0 || cKind(rp[it]) == cKind(ip[it]) } && cKind(anyNullable) == cKind(ir)) return name
+    val bname = name + "_brF" + arity
+    if (!bridgeCache.add(bname)) return bname
+    val fn = inFreshFunction {
+        val ps = rp.mapIndexed { i, t -> MirLocal(localCounter++, if (i == 0) "this" else "p$i", t) }
+        val out = ArrayList<MirStmt>()
+        val args = ps.mapIndexed { i, p ->
+            if (i == 0) MirExpr.Cast(MirExpr.Local(p), ip[0], MirExpr.CastMode.Unchecked)
+            else coerceFlexible(MirExpr.Local(p), ip[i], impl, out)
+        }
+        val call = MirExpr.Call(name, args, ir)
+        if (ir == TNothing) {
+            out += MirStmt.Eval(call)
+            out += MirStmt.Return(MirExpr.NullConst(anyNullable))
+        } else if (ir == TUnit) {
+            out += MirStmt.Eval(call)
+            out += MirStmt.Return(MirExpr.NullConst(anyNullable))
+        } else {
+            val v = if (call.isOwned()) tmpOf(call, out) else call
+            out += MirStmt.Return(coerceFlexible(v, anyNullable, impl, out))
+        }
+        MirFunction(impl.name + "\$bridge", bname, ps, anyNullable, out)
+    }
+    extraFunctions += fn
+    return bname
 }
 
 internal fun Ir2Mir.directInterfaces(c: IrClass): List<IrClass> = c.superTypes.mapNotNull { t ->
@@ -336,6 +390,7 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
     }
     var vtable = emptyList<String?>()
     var itables = emptyList<MirItable>()
+    val funIfaces = ArrayList<String>()
     if (!isInterface) {
         val slots = slotsOf(c)
         vtable = (0..2).map { implAny(c, it) } + slots.map { implClass(c, it) }
@@ -345,6 +400,11 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
         itables = ifaces.map { i ->
             MirItable(info(i).cName, interfaceMethods(i).map { m -> bridged(findImpl(c, m), m) })
         }
+        for (n in functionSupertypes(c)) {
+            val impl = invokeImpl(c, n) ?: unsupported(c, "class '${c.name}' implements a function type without an invoke function")
+            funIfaces += functionInterface(n).cName
+            itables = itables + MirItable(functionInterface(n).cName, listOf(erasedInvoke(impl, n)))
+        }
     }
     val objectCtor = if (c.kind == IrClassKind.OBJECT) {
         val k = c.declarations.filterIsInstance<IrConstructor>().firstOrNull() ?: unsupported(c, "object without constructor")
@@ -352,7 +412,7 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
     } else null
     return MirClass(
         info.qualified, info.cName, isInterface, superclassOf(c)?.let { info(it).cName }, fields,
-        ifaces.map { info(it).cName }, vtable, itables, objectCtor, strict = isStrictClass(c),
+        ifaces.map { info(it).cName } + funIfaces, vtable, itables, objectCtor, strict = isStrictClass(c),
     )
 }
 
