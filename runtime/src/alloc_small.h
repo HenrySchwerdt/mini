@@ -78,6 +78,9 @@ static inline void *mk_small_alloc(size_t cls) {
     return mk_small_refill(cls);
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
 static inline void mk_small_free(void *b, size_t cls) {
     MkSmallCache *t = &mk_small_cache;
     *(void **)b = t->free[cls];
@@ -96,6 +99,9 @@ static inline void mk_small_free(void *b, size_t cls) {
 #define SMALL_CLASS_MASK 0xffu
 
 /* The object is dead (disposed): mark it freed and give its block back. Only for objects without MK_FLAG_PREFIXED. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
 static inline void mk_small_free_object(MkObject *object) {
     uint32_t flags = object->flags;
     size_t cls = (flags >> SMALL_CLASS_SHIFT) & SMALL_CLASS_MASK;

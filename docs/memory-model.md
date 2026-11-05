@@ -1162,8 +1162,136 @@ source libraries; a version-1 library is rejected with the usual "rebuild the li
 * Local functions (`fun helper()` inside a function) that capture owners are lifted and called directly: a call reads the captures
   (a call after the owner's `free()` is M0101), but a local function used as a value (`::helper`) is not tracked as a closure.
 * Overriders that live in code outside the compilation are invisible to the union rule of virtual calls.
-* The strict-leak suites skip four programs (`*.noleakcheck`: generic containers, exceptions, map keys) that leak under LeakSanitizer
-  with both backends (an existing gap, not part of the closure work).
+* No test opts out of the leak suites any more (`*.noleakcheck` is gone): the four Strict programs that leaked were a caught exception of a
+  Strict class never released, and a Strict object passed into a generic container (`Cell(Item(5))`) whose owner count was never taken
+  over (a compiler temporary of tracked type now holds a counted reference that the callee takes or the scope releases); the
+  Managed ones were reference cycles (the collector, section "Cycles").
+
+## Cycles: the cycle collector of Managed mode
+
+Reference counting alone cannot free a reference cycle (a doubly linked list, a tree whose children point to their parent, an
+observer that registers itself with its subject, a closure that captures the object that holds it). Kotlin programs create such
+structures all the time and a Managed program must stay leak free, so Managed mode has a **synchronous trial-deletion cycle
+collector** (Bacon & Rajan, *Concurrent Cycle Collection in Reference Counted Systems*, 2001, the synchronous variant). It lives in
+`runtime/src/cycles.c`; the compiler only contributes a `trace` function per class.
+
+### Decision
+
+| Alternative | Why not |
+|---|---|
+| Weak references / "back pointer" annotations | Kotlin has no weak-by-default semantics for `parent`, `prev`, `observer`; programs would have to be rewritten and the stdlib's `LinkedHashMap` (`before`/`after`) needs a cycle by design. |
+| Tracing GC for all objects | Changes the whole model (no deterministic release, needs stack maps), loses Strict/arena interplay. |
+| Conservative backup tracing over all objects | Needs a registry of every object (header words, alloc/free cost). |
+| **Trial deletion from buffered candidates** | Pay only for objects of classes that *can* be in a cycle and only when one of their references is dropped without freeing them; no stack maps, no registry, exact (precise) counts. |
+
+### What is a candidate
+
+* A Managed object whose class has a `trace` function (`MkTypeInfo.trace != NULL`) is born with the header flag
+  `MK_FLAG_ARMED`. The compiler decides **per class at compile time** whether the class can be part of a cycle
+  (`CycleAnalysis` in `compiler/backend/src/Tracking.kt`, shared by the C and the LLVM backend): a class is *acyclic* when every
+  field it declares or inherits is a string, a boxed primitive, a primitive array, or a reference to a *final* acyclic class of
+  the program (a class without subclasses; a subclass could add a field that closes a cycle). `Any`, interfaces, object arrays,
+  classes defined by the runtime and classes on a cycle of field types (`class Node(val left: Node?, ...)`) can be part of a
+  cycle. Only those get a `trace` function (a subclass inherits the trace of its superclass); the stdlib's `StringBuilder`, whose
+  native buffer is typed `Any`, is listed as acyclic by name. The runtime has a trace for object arrays and the `RefArray`
+  behind `ArrayList`/`HashMap`. Strings, boxes, primitive arrays and acyclic data classes are never armed.
+* The compiler also picks the **allocation entry**: `mk_alloc_armed` for classes with a trace, `mk_alloc_plain` for the others
+  (`mk_alloc` decides at run time from `type->trace` and stays for classes defined by the runtime; strings and primitive arrays
+  use `mk_alloc_sized_plain`). The arming test therefore costs nothing at run time, and the specialised entries are shorter
+  than the generic one.
+* **Strict, Heap, Pool and arena objects are never armed** (`mk_alloc_sized_site` arms only objects of the default
+  reference-counting allocator). They do not know the collector exists: no flag, no extra branch, no buffer entry.
+* The inline fast path of a release (`MKH_REL`, `mkh_rel` in the LLVM backend) was `not SHARED and rc > 1: rc--`. It is now `not
+  (SHARED or ARMED) and rc > 1: rc--`. The first release of an armed object that does not free it goes through `mk_release`,
+  which turns `ARMED` into `BUFFERED` (+ colour purple) and appends the object to the candidate buffer. While buffered, releases
+  take the inline path again. The cost is therefore one slow-path call per object per collection cycle, not per release.
+* If the count of a buffered object reaches zero it is *dying* during its dispose and a *zombie* afterwards: the buffer
+  keeps pointing at the block, so the collector frees it. (A collection triggered from inside that dispose leaves dying objects
+  alone.)
+
+### Collection
+
+`mk_cycles_collect` runs from the slow path that records a candidate, when (a) the buffer holds `threshold` candidates (32768 at the
+start, afterwards a quarter of the objects that survived the last collection, at most 2^21) or (b) the candidate-capable objects
+allocated since the last collection add up to `alloc_limit` bytes (32 MiB at the start, afterwards three times the bytes that
+survived the last collection, so the amortised cost per allocated byte is bounded however big the live heap is). A collection that
+frees less than an eighth of what it visited multiplies both limits by 4 (up to 64), so a big live graph that is only retained and
+released is not traced over and over; the next collection that frees something resets the factor. The 32 MiB floor (it was 16)
+is what a garbage cycle can add to the heap before the first collection; it is flat, not growing with the run time
+(`stress-rss` checks that). Rule (b)
+matters because a single candidate can hide a 100 MB cycle: counting candidates alone let `stress_cycles` grow 4x with the rounds.
+It also runs, until nothing is freed any more, when `main` returns (so LeakSanitizer does not see garbage cycles).
+`MINI_GC_TRACE=1` prints one line per collection to stderr.
+It never runs recursively and has no recursion in its own traversal (explicit stacks): a 300 000 element list is no problem.
+
+1. **MarkRoots**: for every purple root, colour it and everything reachable gray and subtract one for every reference
+   between the visited objects (`trace` enumerates the fields; non-candidate children such as strings are skipped).
+2. **Scan**: a gray object whose count is still positive is referenced from outside the visited subgraph: restore it and
+   everything reachable from it (black, counts added back). The others are white.
+3. **CollectWhite**: white objects are garbage. They are pinned with a huge count, the trial deletion of their references to
+   *live* objects is undone (the dispose releases those for real, once), their `dispose` chain runs (it releases strings,
+   buffers, live neighbours) and the blocks are freed. Releases that produce new candidates during this phase go to a fresh buffer.
+
+### Threads
+
+The collector needs exact counts and no concurrent mutation, so it runs only when **no Kotlin thread is running**
+(`mk_threads_running == 0`: incremented by `mk_sys_thread_start`, decremented as the last action of the thread). The
+atomic-RC mode that the first thread switches on (`mk_threads_active`) stays on; in that mode candidates are appended under a
+spin lock with atomic flag updates, the buffer is bounded (2^20 entries, further candidates stay armed and are simply
+not recorded) and the cycles that were created while threads ran are collected by the first collection after the last thread
+ended (or at the end of `main`). The documented limitation: a program that keeps a worker thread running for its whole life never
+frees cycles during that time.
+
+### Release depth
+
+Dropping the head of a long singly linked list released the next node from the dispose of the previous one: recursion as deep as
+the list, a stack overflow for lists of some 10^5 nodes. The nesting of `mk_release` is bounded by the **stack**, not by a
+counter: each thread finds the middle of its stack once (`pthread_getattr_np`, `pthread_get_stackaddr_np`,
+`GetCurrentThreadStackLimits`; a fixed distance below the first frame elsewhere) and a dying object of an armed class (the only
+ones that can form long chains; strings and plain data skip the test) whose release runs below that address is queued
+thread-locally instead of disposed. A release back above the floor works the queue off, at the latest at the end of `main` or of the
+thread (`mk_release_drain`). Dispose only releases, so the different order is not observable. The common path is one compare of the
+stack pointer with a thread-local word (read-only): the previous 200-level counter was written and read back at every level, a
+store-to-load dependency of the whole recursion (it was half of the overhead on binarytrees). On WebAssembly the engine's call stack is not
+the linear-memory stack a frame address would measure (and its size is unknown), so wasm32 (and a build with `-DMK_RELEASE_COUNTER`) counts the
+nesting of armed releases instead and queues beyond 200 levels; there is only one thread there. `release_deep` runs on every backend
+including wasm32; `release_deep_threads` (the same in worker threads) is `.nowasm`.
+
+### Measured overhead
+
+Reference: the same benchmark compiled by `origin/main` (no collector), runtime built the same way (-O1, like `libminirt.a`). The
+host is shared and noisy, so the main metric is the instruction count (`valgrind --tool=cachegrind --cache-sim=no`, deterministic);
+CPU time (user+sys, `taskset`, median of 7-9 interleaved runs) is the check. Two reference points, because main became much faster
+in between (no allocation prefix, inline free of small objects, direct size classes):
+
+| Benchmark | first collector, CPU | before the hill-climb merge: instructions vs main | after the merge, vs the new main: CPU | instructions |
+|---|---:|---:|---:|---:|
+| binarytrees | +12.4 % | -10 % (13.83 G vs 15.40 G) | +5.1 % | +9.4 % (12.66 G vs 11.57 G) |
+| json | +14.5 % | -2 % | +3.0 % | +3.7 % (4.51 G vs 4.35 G) |
+| wordcount | +0.2 % | -0.1 % | +2.1 % | +1.5 % (23.86 G vs 23.50 G, before the last inlining) |
+| strbuild | +7.7 % | -5 % | -3.5 % (noisy: +-5 %) | -2.4 % (11.12 G vs 11.34 G) |
+
+The "-10 %" of the middle column is not the collector being free: the compiler-picked allocation entries are shorter than the old generic
+path and would also have sped up a runtime without the collector. Against the faster main (last two columns) the collector costs what it
+adds per allocated and per dying armed object: the arming flag and the byte counter in `mk_alloc_armed` (about 4 instructions), and in the
+dying path of an armed object the stack-floor compare, the queue test after the dispose chain and the BUFFERED test (about 8). Objects
+of acyclic classes (strings, boxes, StringBuilder, plain data) pay one flag test. What each step bought before the merge (binarytrees,
+json instructions): the release-depth counter was half of the overhead (a store-to-load chain through the whole recursion) and became
+one read-only compare; the collector itself was most of the rest on json (three fruitless collections visiting 1.5 M objects: the limits
+above, one visitor function per phase instead of a switch per child); `StringBuilder` stopped being armed; the allocation entries. The
+compiler compiling itself (stage1 without, stage3 with the collector): 633 MiB peak RSS both, 27 s both. Programs with garbage cycles
+get the opposite trade: `stress_cycles` peak RSS 35 MiB -> 134 MiB at 4x the rounds without the collector, a flat peak with it (bounded by
+the 32 MiB floor plus the live heap; `stress-rss` checks 4x vs 1x rounds).
+
+The cycle bits of the header: `MK_FLAG_ARMED` (bit 6), `MK_FLAG_BUFFERED` (bit 7) and the colour (bits 16..18); bits 4/5/8..15 belong to the
+allocator (prefix, Heap, small-object size class). Where a buffered object sits in the candidate buffer no longer fits in the flag word: a
+small open-addressing table (`slots` in `cycles.c`, touched only when an object is recorded or when a buffered object dies) finds the slot.
+
+### Tests
+
+`compiler/testdata/cycles_{dll,tree,graph,closure,observer}.kt` run on the C and LLVM backend under LeakSanitizer (the leak
+suites). `scripts/test-e2e.sh --suite stress` runs allocation-heavy programs (`compiler/testdata/stress/`): LeakSanitizer clean and the
+peak RSS at 4x the rounds must stay within 25 percent of the peak at 1x.
 
 ## Experience from D2 (Strict code generation)
 

@@ -171,7 +171,11 @@ internal fun Ir2Mir.closureClass(
     val ctorName = Mangling.constructor(cName, capTypes)
     // invoke
     val invokeName = Mangling.method(cName, sam?.method?.name ?: "invoke", argTypes)
+    // the body of a lambda of Strict code is Strict code: its captured Strict objects are borrowed (no counts, see borrowedCapture),
+    // the checker proved who frees them (a `free()` in a thread lambda moves the owner into it)
+    val strictHere = currentStrict
     val fn = inFreshFunction {
+        currentStrict = strictHere
         val self = MirLocal(localCounter++, "this", type)
         val args = List(arity) { MirLocal(localCounter++, "p$it", argTypes[it]) }
         val out = ArrayList<MirStmt>()
@@ -181,7 +185,7 @@ internal fun Ir2Mir.closureClass(
             l
         }
         makeBody(self, args, caps, out)
-        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, out)
+        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, out, strict = strictHere)
     }
     // the constructor, invoke and class are registered together and only after the body lowered: when building a library an unsupported
     // construct in the body is recorded and the enclosing function becomes a stub, which must not leave a constructor without its class
