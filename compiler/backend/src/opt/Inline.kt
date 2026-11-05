@@ -50,7 +50,10 @@ object Inliner {
     }
 }
 
-internal class InlineInfo(val fn: MirFunction, val paramAssigned: BooleanArray, val size: Int)
+internal class InlineInfo(val fn: MirFunction, val paramAssigned: BooleanArray, val size: Int) {
+    /** Takes or returns a reference: only then does inlining help beyond what the C compiler / LLVM do with a call of a pure arithmetic function. */
+    val refs: Boolean = fn.returnType.isRef || fn.params.any { it.type.isRef }
+}
 
 internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
     val byName = HashMap<String, MirFunction>()
@@ -397,6 +400,7 @@ internal class Expander(val st: InlineState, val caller: MirFunction) : MirTrans
         val info = st.infos[e.cName] ?: return null
         if (info.fn.params.size != e.args.size) return null
         if (info.fn.cName == caller.cName) return null
+        if (!info.refs && !allowAll) return null
         if (info.size > Inliner.SMALL_LIMIT && !allowAll && !hasFreshObjectArg(e)) return null
         if (loopDepth == 0 && !allowAll && !hasFreshObjectArg(e)) return null   // outside loops only what scalar replacement needs
         return info
