@@ -17,6 +17,8 @@ internal const val F = 4
 internal const val M = 8
 internal const val B = 16
 internal const val X = 32
+/** With B: the slot holds a closure (lambda, anonymous object, local class instance) that borrows its captured owners ([Slot.refs]). */
+internal const val K = 64
 
 /** Kind of an allocation site; [obligation]: the value must be released or handed on. */
 internal enum class SK(val obligation: Boolean, val label: String) {
@@ -100,6 +102,8 @@ internal class AVal(
     val strLit: Boolean = false,
     /** Field states of a freshly constructed object. */
     val initFields: Map<String, Int>? = null,
+    /** The value is a closure (or an instance of a local class) that borrows the owners in [refs] through its captures. */
+    val caps: Boolean = false,
 ) {
     val tracked: Boolean get() = type.tracked
 

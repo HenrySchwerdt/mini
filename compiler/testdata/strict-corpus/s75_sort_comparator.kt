@@ -1,4 +1,4 @@
-// REJECT M0112: the comparator closure created by sortBy captures an owned object
+// ACCEPT: the comparator closure built by sortBy borrows the owned object it captures
 @file:MemoryMode(Mode.Strict)
 
 import mini.memory.*

@@ -1,4 +1,4 @@
-// REJECT M0112: a lambda value (closure object) captures an owned object
+// ACCEPT: a lambda value called before the owner it captures is freed borrows the owner
 @file:MemoryMode(Mode.Strict)
 
 import mini.memory.*

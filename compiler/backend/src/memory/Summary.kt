@@ -17,6 +17,8 @@ package mini.backend.memory
 class FnSummary(
     /** Parameter index (into [MFun.params]) -> why the parameter escapes. */
     val escapes: Map<Int, String>,
+    /** Parameters that a closure created in the body captures and the function returns: the result borrows them (it does not keep them alive). */
+    val carries: Set<Int> = emptySet(),
 ) {
     fun escapes(i: Int): Boolean = escapes.containsKey(i)
 
@@ -115,7 +117,7 @@ object Summaries {
                 for (m in members) {
                     val next = compute(m)
                     val cur = m.summaryAssumed ?: FnSummary.NONE
-                    if (next.escapes.keys != cur.escapes.keys) changed = true
+                    if (next.escapes.keys != cur.escapes.keys || next.carries != cur.carries) changed = true
                     m.summaryAssumed = next
                 }
                 if (!recursive || !changed || rounds++ > 8) break
@@ -149,8 +151,9 @@ object Summaries {
     private fun combine(parts: List<FnSummary>): FnSummary {
         if (parts.isEmpty()) return FnSummary.NONE
         val esc = LinkedHashMap<Int, String>()
-        for (p in parts) for ((i, why) in p.escapes) esc.putIfAbsent(i, why)
-        return FnSummary(esc)
+        val car = LinkedHashSet<Int>()
+        for (p in parts) { for ((i, why) in p.escapes) esc.putIfAbsent(i, why); car += p.carries }
+        return FnSummary(esc, car - esc.keys)
     }
 
     /** The reason parameter [i] of [fn] escapes, or null when it is only borrowed (or nothing is known). */
@@ -163,6 +166,30 @@ object Summaries {
         /** Flow-insensitive alias sets: local id -> parameter indices whose value it may hold. */
         val alias = HashMap<Int, MutableSet<Int>>()
         val esc = LinkedHashMap<Int, String>()
+        /** Local id -> parameter indices captured by the closure(s) the local may hold. */
+        val carried = HashMap<Int, MutableSet<Int>>()
+        val carry = LinkedHashSet<Int>()
+
+        /** Parameters captured by the closure [e] evaluates to (a lambda, an instance of a local class, a call that returns a closure over its arguments). */
+        fun carriedOf(e: MExpr?): Set<Int> = when (e) {
+            is MExpr.Local -> carried[e.local.id] ?: emptySet()
+            is MExpr.Move -> carriedOf(e.target)
+            is MExpr.Lambda -> capturedParams(e.captures)
+            is MExpr.New -> capturedParams(e.captures)
+            is MExpr.Call -> {
+                val sum = of(e.fn)
+                val out = HashSet<Int>()
+                if (sum != null) for (i in sum.carries) { val a = e.args.getOrNull(i); out += paramsOf(a); out += carriedOf(a) }
+                out
+            }
+            else -> emptySet()
+        }
+
+        fun capturedParams(caps: List<MLocal>): Set<Int> {
+            val out = HashSet<Int>()
+            for (c in caps) { alias[c.id]?.let { out += it }; carried[c.id]?.let { out += it } }
+            return out
+        }
 
         fun paramsOf(e: MExpr?): Set<Int> = when (e) {
             is MExpr.Local -> alias[e.local.id] ?: emptySet()
@@ -170,8 +197,14 @@ object Summaries {
             else -> emptySet()
         }
 
+        /** Escape of the parameters [e] IS (not those a closure [e] only captures). */
+        fun escape0(e: MExpr?, why: String) {
+            for (i in paramsOf(e)) esc.putIfAbsent(i, why)
+        }
+
         fun escape(e: MExpr?, why: String) {
             for (i in paramsOf(e)) esc.putIfAbsent(i, why)
+            for (i in carriedOf(e)) esc.putIfAbsent(i, why)
         }
 
         fun short(f: MFun) = f.qname.substringAfterLast('.')
@@ -183,15 +216,20 @@ object Summaries {
             if (co != null) for ((i, p) in fn.params.withIndex()) if (p.owned) esc[i] = "is stored into a field of `${co.name.substringAfterLast('.')}`"
             MemoryChecker.walk(body, enterLambdas = false, onStmt = { s -> aliases(s) }, onExpr = {})
             MemoryChecker.walk(body, enterLambdas = false, onStmt = { s -> stmt(s) }, onExpr = { e -> expr(e) })
-            return FnSummary(esc)
+            return FnSummary(esc, carry - esc.keys)
         }
 
         fun aliases(s: MStmt) {
             when (s) {
-                is MStmt.Decl -> { val ps = paramsOf(s.init); if (ps.isNotEmpty()) alias.getOrPut(s.local.id) { HashSet() }.addAll(ps) }
-                is MStmt.Assign -> { val ps = paramsOf(s.value); if (ps.isNotEmpty()) alias.getOrPut(s.local.id) { HashSet() }.addAll(ps) }
+                is MStmt.Decl -> { val ps = paramsOf(s.init); if (ps.isNotEmpty()) alias.getOrPut(s.local.id) { HashSet() }.addAll(ps); carry(s.local, s.init) }
+                is MStmt.Assign -> { val ps = paramsOf(s.value); if (ps.isNotEmpty()) alias.getOrPut(s.local.id) { HashSet() }.addAll(ps); carry(s.local, s.value) }
                 else -> {}
             }
+        }
+
+        fun carry(l: MLocal, v: MExpr?) {
+            val cs = carriedOf(v)
+            if (cs.isNotEmpty()) carried.getOrPut(l.id) { HashSet() }.addAll(cs)
         }
 
         fun stmt(s: MStmt) {
@@ -199,9 +237,14 @@ object Summaries {
                 is MStmt.SetField -> escape(s.value, "stored into field `${s.field.name}` of `${s.field.owner.name.substringAfterLast('.')}`")
                 is MStmt.SetGlobal -> escape(s.value, "stored into a global")
                 // a generic or `@Borrowed` result is a loan of the arguments, not a transfer
-                is MStmt.Return -> if (fn.ret.annot.borrowed == null) escape(s.value, "returned")
+                is MStmt.Return -> if (fn.ret.annot.borrowed == null) {
+                    escape0(s.value, "returned")
+                    // a returned closure over parameters lends them to the result; an instance of a local class cannot (the result is an owner)
+                    val cs = carriedOf(s.value)
+                    if (s.value !is MExpr.New && !fn.ret.type.tracked) carry += cs else for (i in cs) esc.putIfAbsent(i, "is captured by an object that is returned")
+                }
                 is MStmt.Throw -> escape(s.value, "thrown")
-                is MStmt.Scope -> if (s.kind == ScopeKind.Thread) for (c in s.captures) alias[c.id]?.forEach { esc.putIfAbsent(it, "captured by a thread") }
+                is MStmt.Scope -> if (s.kind == ScopeKind.Thread) for (c in s.captures) { alias[c.id]?.forEach { esc.putIfAbsent(it, "captured by a thread") }; carried[c.id]?.forEach { esc.putIfAbsent(it, "captured by a thread") } }
                 else -> {}
             }
         }
@@ -230,7 +273,6 @@ object Summaries {
                 }
                 is MExpr.Free -> escape(e.target, "is released")
                 is MExpr.Move -> escape(e.target, "is moved")
-                is MExpr.Lambda -> for (c in e.captures) alias[c.id]?.forEach { esc.putIfAbsent(it, "is captured by a closure that may outlive the call") }
                 else -> {}
             }
         }
@@ -241,10 +283,11 @@ object Summaries {
 object SummaryText {
     /** `key TAB i:reason TAB i:reason ...`; null when nothing escapes. */
     fun line(key: String, s: FnSummary): String? {
-        if (s.escapes.isEmpty()) return null
+        if (s.escapes.isEmpty() && s.carries.isEmpty()) return null
         val sb = StringBuilder()
         sb.append(key)
         for ((i, why) in s.escapes) sb.append('\t').append(i).append(':').append(why.replace('\t', ' ').replace('\n', ' '))
+        for (i in s.carries) sb.append('\t').append('~').append(i)
         return sb.toString()
     }
 
@@ -254,13 +297,15 @@ object SummaryText {
             if (ln.isEmpty()) continue
             val parts = ln.split('\t')
             val m = LinkedHashMap<Int, String>()
+            val car = LinkedHashSet<Int>()
             for (k in 1 until parts.size) {
+                if (parts[k].startsWith("~")) { parts[k].substring(1).toIntOrNull()?.let { car += it }; continue }
                 val c = parts[k].indexOf(':')
                 if (c <= 0) continue
                 val i = parts[k].substring(0, c).toIntOrNull() ?: continue
                 m[i] = parts[k].substring(c + 1)
             }
-            out[parts[0]] = FnSummary(m)
+            out[parts[0]] = FnSummary(m, car)
         }
         return out
     }

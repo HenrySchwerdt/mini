@@ -481,11 +481,23 @@ fun swapOut(s: Slot): @Owned Box? {
 
 ### 5.4 Collections of owned values
 
-**Not supported in P1.** Tracked values must not be put into Kotlin collections
+**Not supported yet.** Tracked values must not be put into Kotlin collections
 (`List`, `MutableList`, `Map`, ...): M0110 (Strict → Managed). Type arguments
-like `List<@Owned T>` and arrays of owned elements are part of P3 (section 9). In P1
+like `List<@Owned T>` and arrays of owned elements are part of P3 (section 9). For now
 you build your own container classes from owning fields (see `ok_linked_list`).
 Managed classes may still be put in collections.
+
+*Why a borrowing collection is not offered (design note).* The obvious cheap rule is a temporary
+`listOf(a, b)` that lives inside one expression and borrows its elements. It is sound only if the
+collection is dropped before the owners are freed. The generated code releases the reference-counted
+temporaries (the vararg array, the list) at the end of the *function*, after `a.free()`, so the release
+of the elements reads freed memory (this was tried: `listOf(a, b).size` followed by `a.free()` aborts with
+a reference count underflow). A borrowing collection therefore needs statement-scoped release of
+temporaries in Strict functions first. The sound alternatives, in the order they are planned:
+(1) statement-scoped temporaries, which makes a temporary collection of loans possible
+(the closure rules of 5.5 already track such a value: a use after the owner's `free()` is M0101, an escape is M0112/M0110);
+(2) an owning `OwnedList<T>` in `mini.memory` whose `free()` frees its elements, the collection analogue of an owning field.
+Until then: container classes with owning fields, or Managed classes in collections.
 
 ### 5.5 Lambdas and captures
 
@@ -496,8 +508,19 @@ Managed classes may still be put in collections.
 * **Thread lambdas** (parameter with `@ThreadBoundary`, see 5.9): captures are a moving
   value, the lambda runs exactly once and owns afterwards.
 * **All other lambdas** are **escaping**. For them:
-  * Capture of an **owning** value: **M0112** (not supported in P1).
-  * Capture of a **borrowed** value: M0109 (the loan outlives its lender).
+  * Capture of an **owning** value: the closure **borrows** it (*borrowing capture*): the capture field of the
+    closure object is not counted (no retain when the closure is created, no release when it dies), so
+    the closure must not outlive the owner. The checker proves that where the closure goes:
+    - it may be called, held in a `val`/`var` local, copied, passed to a function whose parameter does not keep it
+      (the inferred summary of the callee, also for library stubs), captured by another closure and passed
+      on likewise; the comparator `compareBy`/`sortBy` builds is such a closure;
+    - **a use after the owner was freed or moved is M0101/M0104** (the closure is a loan of its owners);
+    - it may be returned from a function only when it borrows parameters (the summary says the result *carries*
+      them, so the caller treats the result as a loan of the arguments); it may never be returned over a local owner;
+    - it must not be stored into a field or a global, returned over a local owner, kept by a callee (summary says the
+      parameter escapes), captured by a thread or constructor-stored: **M0112**, naming the owner and where the closure goes;
+    - an owned **`var`** captured by a closure: M0112 (the `var` lives in a counted cell shared with the closure).
+  * Capture of a **borrowed** value: the closure borrows what the value borrows; if it escapes, M0109 (the loan outlives its lender).
   * Capture of an **arena object** if the lambda leaves the arena scope: M0105
     (position: the lambda).
   * Capture of an untracked value (primitive, Managed): always allowed.
@@ -812,12 +835,14 @@ Fixed: remove the annotation. Corpus: `annotation_misuse`.
 
 ### 7.12 M0112 Owning value in escaping lambda
 
-**Rule:** 5.5 (P1 does not support move capture in escaping lambdas).
+**Rule:** 5.5. A closure (lambda, anonymous object, local class instance) borrows the owners it captures; M0112 is reported
+where the closure leaves the owner's lifetime.
 
 ```kotlin
-return { b.v }         // error[M0112]: owned `b` is captured by a lambda that escapes
+return { b.v }         // error[M0112]: owned `b` is captured by a closure that escapes
 ```
-Fixed: pass the value through as a parameter, or read `b.v` before the lambda.
+Fixed: pass the value through as a parameter, or read `b.v` before the lambda. A closure that is only called, or passed to a
+function that does not keep it, is fine (`apply2 { it + b.v }`, `xs.sortBy { it - b.v }`); using it after `b.free()` is M0101.
 Corpus: `capture_escaping_lambda`.
 
 ### 7.13 M0113 Owned field stays moved
@@ -1054,13 +1079,12 @@ green: every true leak, use after free and double free is still an error.
 | 5 | Diagnostic noise: a follow-up M0110 next to the real M0102 for the same `println(p)` | 1 | wrong code | disappears with 1 |
 | 6 | Vararg arrays: `listOf(a, b)` stored Strict objects into a Kotlin array without any diagnostic, and the program crashed at run time (reference count underflow) | 1 | accepted (false negative) | the elements of a vararg are stored: M0110 |
 
-Not a false positive after all (kept as `REJECT` programs, with a better help line): a closure object that captures an owned Strict
-object (`s24`, `s64`, `s75`: a lambda passed to a non-inline function, a lambda value, the comparator `sortBy` builds). The checker
-rejects it with M0112, and that is right: the closure object retains the object it captures, `free()` deallocates it at once, and
-the closure's release afterwards reads freed memory (the C output of `s24` shows it). Accepting such lambdas needs a closure
-that holds its captures unretained (a `MirField.borrowed` capture field); until then the rule of 5.5 stands and the diagnostic says
-how to restructure (make the callee `inline`, pass the value as a parameter, read what you need first). The `s24b`, `s64b` and `s75b`
-programs show the accepted forms.
+Closure objects that capture an owned Strict object (`s24`, `s64`, `s75`: a lambda passed to a non-inline function, a lambda value,
+the comparator `sortBy` builds) were first rejected with M0112, because the closure object retained the object it captured, `free()`
+deallocated it at once, and the closure's release afterwards read freed memory. They are accepted now (round 2): the capture field
+of a closure created in Strict code is a non-retaining `MirField.borrowed` field (C and LLVM backend), and the checker proves the
+closure does not outlive the owner (5.5). The same rule covers anonymous objects and local classes (`s100`-`s103`, `s106`), which
+used to double-free at run time without any diagnostic.
 
 Programs that were already correct and are guard rails for the rules below: `s13`, `s14`, `s51` (storing, returning or freeing a
 borrowed parameter), `s45`, `s79`, `s96`, `s97`, `s99` (Strict values entering Managed code that keeps them).
@@ -1102,8 +1126,11 @@ visible in the signature.
 **Data classes.** The synthesized `toString`, `equals`, `hashCode`, `copy` and `componentN` read `this`; `copy` returns a fresh
 object the caller owns (`s48`).
 
-**Lambdas.** Inline lambdas are code at the call (5.5). A lambda that is a closure object keeps what it captures, so an owned
-Strict capture is M0112 (see above).
+**Lambdas.** Inline lambdas are code at the call (5.5). A lambda that is a closure object borrows what it captures (borrowing
+captures, 5.5); where it goes is checked with the inferred summaries: a parameter that a function stores, returns or captures
+into an escaping closure *escapes*; a parameter only captured by a closure that the function returns is *carried* (the result
+is a loan of the argument); everything else is only used. Summaries are computed per strongly connected component of the call
+graph (a fixpoint inside a component, cached once outside), so large mutually recursive packages stay linear.
 
 ### Diagnostics
 
@@ -1130,13 +1157,13 @@ source libraries; a version-1 library is rejected with the usual "rebuild the li
 
 ### What remains
 
-* Closure objects capturing owned Strict objects (M0112) until closure capture fields can be unretained.
-* Strict values in Kotlin collections (`List<Box>`): still M0110 by 5.4. A borrowing view collection (a list of loans that cannot outlive
-  its elements' owners) is the natural next step.
-* A Strict function with a stored (library) summary does not use it for its own parameters: those stay annotation-based (4.2).
+* Strict values in Kotlin collections (`List<Box>`): still M0110 by 5.4; the design note there says what is needed (statement-scoped
+  release of temporaries, then a temporary collection of loans; or an owning `OwnedList<T>`).
+* Local functions (`fun helper()` inside a function) that capture owners are lifted and called directly: a call reads the captures
+  (a call after the owner's `free()` is M0101), but a local function used as a value (`::helper`) is not tracked as a closure.
 * Overriders that live in code outside the compilation are invisible to the union rule of virtual calls.
-* Anonymous objects (`object : I { ... }`) that capture an owned object are not rejected by the checker yet (they behave like
-  closure objects at run time).
+* The strict-leak suites skip four programs (`*.noleakcheck`: generic containers, exceptions, map keys) that leak under LeakSanitizer
+  with both backends (an existing gap, not part of the closure work).
 
 ## Experience from D2 (Strict code generation)
 

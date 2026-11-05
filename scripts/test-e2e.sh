@@ -7,6 +7,7 @@
 #   c          build every compiler/testdata/*.kt through the C backend (cc -std=c17 -Wall -Werror), run it, compare
 #                <name>.out (stdout), <name>.err (substrings of stderr; the program must then exit non-zero),
 #                <name>.cerr (the build must fail with exit 1 and the output must contain each line)
+#   strict-leak, strict-llvm-leak   the runnable programs of the strict corpus under AddressSanitizer + LeakSanitizer (C and LLVM backend)
 #   leak       the same programs (and the Strict programs of testdata/memory with a .out) built with AddressSanitizer +
 #                LeakSanitizer + UBSan: same output, exit 0, no report. Skipped without a C compiler that links the sanitizers.
 #                `<name>.noleakcheck` opts a program out.
@@ -53,7 +54,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict multifile mlib)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -353,6 +354,18 @@ t_mlib_summaries() {
     "$MINIC" --check "$d/ok.kt" --lib "$S" --lib "$d/geo.mlib" --compiler-id "$V" > "$d/log" 2>&1 || { echo "a borrowing library call was rejected:"; head "$d/log"; return 1; }
     "$MINIC" --check --brief "$d/bad.kt" --lib "$S" --lib "$d/geo.mlib" --compiler-id "$V" > "$d/log" 2>&1 && { echo "a library call that keeps its argument was accepted"; return 1; }
     grep -q "M0110" "$d/log" || { echo "wrong diagnostic:"; head "$d/log"; return 1; }
+    # a Strict library function seen through its stub: the stored summary says which function-value parameters it keeps
+    printf '@file:MemoryMode(Mode.Strict)\npackage sgeo\n\nimport mini.memory.*\n\nclass Holder { var f: (() -> Int)? = null }\nfun keep(h: Holder, f: () -> Int) { h.f = f }\nfun twice(f: () -> Int): Int = f() + f()\nfun scaled(k: Int, f: (Int) -> Int): () -> Int = { f(k) }\n' > "$d/slib.kt"
+    local spre='@file:MemoryMode(Mode.Strict)\n\nimport mini.memory.*\nimport sgeo.*\n\n@AllocatedBy(Heap::class)\nclass Box(val v: Int)\n\n'
+    printf "${spre}fun main() {\n    val b = Box(2)\n    println(twice { b.v })\n    val c = scaled(3) { it + b.v }\n    println(c())\n    b.free()\n}\n" > "$d/sok.kt"
+    printf "${spre}fun main() {\n    val b = Box(2)\n    val h = Holder()\n    keep(h) { b.v }\n    b.free()\n}\n" > "$d/sbad.kt"
+    printf "${spre}fun main() {\n    val b = Box(2)\n    val c = scaled(3) { it + b.v }\n    b.free()\n    println(c())\n}\n" > "$d/sbad2.kt"
+    "$MINIC" --emit-mlib "$d/sgeo.mlib" --name sgeo --compiler-id "$V" --lib "$S" "$d/slib.kt" > "$d/log" 2>&1 || { echo "sgeo.mlib failed:"; head "$d/log"; return 1; }
+    "$MINIC" --check "$d/sok.kt" --lib "$S" --lib "$d/sgeo.mlib" --compiler-id "$V" > "$d/log" 2>&1 || { echo "a closure passed to a Strict library function that does not keep it was rejected:"; head "$d/log"; return 1; }
+    "$MINIC" --check --brief "$d/sbad.kt" --lib "$S" --lib "$d/sgeo.mlib" --compiler-id "$V" > "$d/log" 2>&1 && { echo "a closure kept by a Strict library function was accepted"; return 1; }
+    grep -q "M0112" "$d/log" || { echo "wrong diagnostic (sbad):"; head "$d/log"; return 1; }
+    "$MINIC" --check --brief "$d/sbad2.kt" --lib "$S" --lib "$d/sgeo.mlib" --compiler-id "$V" > "$d/log" 2>&1 && { echo "a closure returned over an owner that was freed was accepted"; return 1; }
+    grep -q "M0101" "$d/log" || { echo "wrong diagnostic (sbad2):"; head "$d/log"; return 1; }
     return 0
 }
 
@@ -410,6 +423,10 @@ want_suite llvm-api && for f in $(progs); do add llvm-api "$(basename "$f" .kt)"
 want_suite memcheck && for f in $(find "$TESTDATA/memory" "$TESTDATA/memory-extra" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do add memcheck "${f#"$TESTDATA"/}" "t_memcheck $f"; done
 want_suite memrun && for f in $(find "$TESTDATA/memory" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do [ -f "${f%.kt}.out" ] && add memrun "$(basename "$f" .kt)" "t_memrun $f"; done
 want_suite strict && for f in $(find "$TESTDATA/strict-corpus" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do add strict "$(basename "$f" .kt)" "t_strict $f"; done
+# the accepted corpus programs that run (closures that borrow their captures, object expressions...) under ASan + LSan, both backends
+strict_runnable() { local f; for f in $(find "$TESTDATA/strict-corpus" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do [ -f "${f%.kt}.out" ] && [ ! -f "${f%.kt}.noleakcheck" ] && echo "$f"; done; }
+want_suite strict-leak && for f in $(strict_runnable); do add strict-leak "$(basename "$f" .kt)" "t_c $f asan"; done
+want_suite strict-llvm-leak && for f in $(strict_runnable); do add strict-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib summaries t_mlib_summaries; }
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; }
 
@@ -418,7 +435,7 @@ total="$(wc -l < "$LISTFILE" | tr -d ' ')"
 if [ "$LIST" = 1 ]; then awk -F'|' '{ print $1 "::" $2 }' "$LISTFILE"; echo "$total tests" >&2; exit 0; fi
 
 # runtime objects for the sanitizer / stats flavours, once
-if grep -qE '^(leak|llvm-leak)\|' "$LISTFILE"; then
+if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak)\|' "$LISTFILE"; then
     if [ -n "$SANCC" ]; then build_rt "$W/rt-asan" "$SANCC" $SAN_FLAGS; else echo "test-e2e: no C compiler can link the sanitizer runtimes: the leak suites are skipped" >&2; fi
 fi
 if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK_STATS; fi
@@ -426,7 +443,7 @@ if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK
 run_one() { # "<suite>|<id>|<cmd>"
     local suite id cmd out rc
     suite="${1%%|*}"; local rest="${1#*|}"; id="${rest%%|*}"; cmd="${rest#*|}"
-    case "$suite" in leak|llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
+    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
     # shellcheck disable=SC2086
     out="$(eval "$cmd" 2>&1)"; rc=$?
     local f="$W/res/$(echo "$suite-$id" | tr '/ ' '__')"

@@ -1,4 +1,4 @@
-// REJECT M0112: a closure object that captures an owned object (the callee is not inline)
+// ACCEPT: a closure passed to a non-inline function that does not keep it borrows the owned object it captures
 @file:MemoryMode(Mode.Strict)
 
 import mini.memory.*
