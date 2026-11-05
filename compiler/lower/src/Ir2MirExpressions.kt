@@ -115,7 +115,7 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrVararg -> varargValue(e, out)
     is IrFunctionReference -> functionReference(e, out)
     is IrPropertyReference ->
-        if (e.origin == "PROPERTY_REFERENCE_FOR_DELEGATE") MirExpr.NullConst(anyNullable)
+        if (e.origin == "PROPERTY_REFERENCE_FOR_DELEGATE") delegateProperty(e, out)
         else propertyReference(e, out)
     is IrThrow -> { throwStmt(e, out); MirExpr.Unreachable(TNothing) }
     is IrWhen -> whenValue(e, out)

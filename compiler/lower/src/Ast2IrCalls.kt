@@ -395,7 +395,17 @@ fun Ast2Ir.callOperator(info: CallInfo, recv: IrExpression, args: List<IrExpress
     var regular = 0
     for (p in callee.parameters) {
         when (p.kind) {
-            IrParameterKind.DispatchReceiver -> call.arguments.add(if (fn.receiver == null) adaptReceiver(recv, p) else null)
+            IrParameterKind.DispatchReceiver -> call.arguments.add(
+                if (fn.receiver == null) adaptReceiver(recv, p)
+                else {
+                    // a member extension used as an operator (`operator fun C.component1()` of class M): `this` of M
+                    val du = info.dispatch
+                    val owner = fn.owner
+                    if (du != null && (du.expr != null || du.ref != null)) adaptReceiver(recvValue(du, null), p)
+                    else if (owner != null) adaptReceiver(implicitReceiver(RecvRef(owner, null, false), null), p)
+                    else null
+                },
+            )
             IrParameterKind.ExtensionReceiver -> call.arguments.add(adaptReceiver(recv, p))
             IrParameterKind.Regular -> {
                 call.arguments.add(if (regular < args.size) args[regular] else null)

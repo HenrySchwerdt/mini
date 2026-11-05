@@ -5,6 +5,7 @@
 package kotlin.sequences
 
 import kotlin.coroutines.*
+import kotlin.coroutines.intrinsics.*
 import kotlin.coroutines.intrinsics.SuspendMarker
 
 public interface Sequence<out T> {

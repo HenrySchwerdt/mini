@@ -114,7 +114,7 @@ fun Ast2Ir.buildFunctionBody(fn: IrSimpleFunction, sym: FunSym): IrBody? {
     val bc: BodyCtx
     if (owner is IrClass && sym.kind != FunKind.LOCAL && sym.kind != FunKind.ANONYMOUS) bc = memberCtx(fn, owner, localClassCtx(owner))
     else {
-        bc = BodyCtx(parentCtx, fn, sym.name, false)
+        bc = BodyCtx(parentCtx, fn, anonFunLabels[sym] ?: sym.name, false)
         for (p in fn.parameters) if (p.kind == IrParameterKind.ExtensionReceiver) bc.recvs.add(RecvEntry(null, sym, null, null, p))
     }
     // the context parameters of the function are the implicit context arguments of the calls in its body, and are
@@ -540,9 +540,10 @@ fun Ast2Ir.delegatedAccessor(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c
     var recvValue: IrExpression? = null
     if (recv != null) recvValue = getValue(recv)
     val delegateValue = IrGetField(fld, recvValue, fld.type)
-    val thisRef: IrExpression = if (recv != null) getValue(recv) else nullConst()
+    val extRecv = f.parameters.firstOrNull { it.kind == IrParameterKind.ExtensionReceiver }
+    val thisRef: IrExpression = if (extRecv != null) getValue(extRecv) else if (recv != null) getValue(recv) else nullConst()
     val t = irType(sema.typeOfProp(sym))
-    val propRef = delegateReference(sym.name, t, if (recv != null) 1 else 0)
+    val propRef = delegateReference(sym.name, t, if (recv != null || extRecv != null) 1 else 0)
     if (isGetter) {
         val gi = di.getValue ?: fail(d, "getValue is not resolved")
         val call = callOperator(gi, delegateValue, listOf(thisRef, propRef), t, null)

@@ -365,17 +365,24 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         if (g != null || s != null) unsupported(d.start, "local property accessors")
     }
 
+    /** the argument types of `getValue(thisRef, property)` / `setValue(thisRef, property, value)`: the owner (null: no receiver) and `KProperty<*>` */
+    fun delegateArgs(thisRef: Type?): List<Type> {
+        val kp = sema.classNamed("kotlin.reflect.KProperty")
+        val pt: Type = if (kp != null) ClassType(kp, listOf(TArg(null, Variance.INV)), false) else sema.nullableAny
+        return listOf(thisRef ?: sema.nullableNothing, pt)
+    }
+
     /** resolves `getValue` / `setValue` of the delegate type of a property of type [propType] */
-    fun delegateInfo(delegateType: Type, isVar: Boolean, propType: Type, pos: Int): DelegateInfo {
-        val g = resolveOperator("getValue", delegateType, listOf(sema.nullableAny, sema.nullableAny), pos, null)
+    fun delegateInfo(delegateType: Type, isVar: Boolean, propType: Type, pos: Int, thisRef: Type? = null): DelegateInfo {
+        val g = resolveOperator("getValue", delegateType, delegateArgs(thisRef), pos, null)
         var s: OpResult? = null
-        if (isVar) s = resolveOperator("setValue", delegateType, listOf(sema.nullableAny, sema.nullableAny, propType), pos, null)
+        if (isVar) s = resolveOperator("setValue", delegateType, delegateArgs(thisRef) + listOf(propType), pos, null)
         return DelegateInfo(delegateType, g?.info, s?.info)
     }
 
-    fun delegatedType(delegateType: Type, pos: Int): Type {
+    fun delegatedType(delegateType: Type, pos: Int, thisRef: Type? = null): Type {
         // operator getValue on the delegate
-        val r = resolveOperator("getValue", delegateType, listOf(sema.nullableAny, sema.nullableAny), pos, null)
+        val r = resolveOperator("getValue", delegateType, delegateArgs(thisRef), pos, null)
         return r?.ret ?: ErrType("delegate getValue")
     }
 

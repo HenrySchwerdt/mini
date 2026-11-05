@@ -159,7 +159,7 @@ def run_test(a, tc):
         for i, (name, text) in enumerate(files):
             if not name.endswith('.kt'):
                 continue
-            text = DIAG_MARKUP.sub('', text)
+            text = DIAG_MARKUP.sub('', text).replace('OPTIONAL_JVM_INLINE_ANNOTATION', '@kotlin.jvm.JvmInline')
             fp = os.path.join(work, '%d_%s' % (i, os.path.basename(name)))
             open(fp, 'w').write(text)
             srcs.append(fp)
@@ -241,8 +241,10 @@ def main():
     if not a.minic or not a.tests:
         sys.exit('need --minic and --tests (see run.sh)')
     tests = collect(a.tests, a.filter)
+    prev = None
     if a.retest:
         prev = json.load(open(a.retest))['results']
+        prev_by = {r['test']: r for r in prev}
         redo = {r['test'] for r in prev if r['status'] not in ('pass', 'skipped')}
         tests = [t for t in tests if t[1] in redo]
     if a.limit:
@@ -262,6 +264,9 @@ def main():
 
     with ThreadPoolExecutor(a.jobs) as ex:
         results = list(ex.map(job, tests))
+    if a.retest:  # merge: everything that was not re-run keeps its earlier result
+        new = {r['test']: r for r in results}
+        results = [new.get(r['test'], r) for r in prev]
     report(a, results, time.time() - t0)
 
 

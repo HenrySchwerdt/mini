@@ -46,6 +46,8 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
     val localClassCtxs = HashMap<IrClass, BodyCtx?>()
     var pendingLocalCtx: BodyCtx? = null
     val lambdaLabels = HashMap<LambdaExpr, String?>()
+    /** `l@ fun(): T { return@l x }`: the label of an anonymous function */
+    val anonFunLabels = HashMap<FunSym, String>()
     val delegatedLocals = HashMap<VarSym, IrLocalDelegatedProperty>()
 
     var ctx: BodyCtx? = null

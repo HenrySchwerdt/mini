@@ -580,3 +580,13 @@ public fun String.random(random: kotlin.random.Random): Char {
 }
 public fun String.toFloatOrNull(): Float? = toDoubleOrNull()?.toFloat()
 public fun String.toFloat(): Float = toDouble().toFloat()
+
+// ---- deprecated case conversions, kept for source compatibility ----------------------------------------------------
+
+public fun String.toUpperCase(): String = uppercase()
+
+public fun String.toLowerCase(): String = lowercase()
+
+public fun Char.toUpperCase(): Char = uppercaseChar()
+
+public fun Char.toLowerCase(): Char = lowercaseChar()

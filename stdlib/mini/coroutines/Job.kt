@@ -5,6 +5,7 @@
 package mini.coroutines
 
 import kotlin.coroutines.*
+import kotlin.coroutines.intrinsics.*
 import mini.concurrent.Lock
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 

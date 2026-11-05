@@ -122,7 +122,7 @@ fun Sema.checkProp(p: PropSym) {
         if (needsInference) p.type = bc.fin(t) else bc.expectCompatible(init, t, declared)
     } else if (deleg != null) {
         val dt = bc.expr(deleg, null)
-        if (needsInference) p.type = bc.delegatedType(bc.fin(dt), d.start)
+        if (needsInference) p.type = bc.delegatedType(bc.fin(dt), d.start, delegateThisType(p))
     }
     // accessors
     val g = d.getter
@@ -178,8 +178,16 @@ fun Sema.checkProp(p: PropSym) {
     val pr = bc.record(d, p.type ?: ErrType("?"), p)
     if (deleg != null) {
         val dtp = records.get(deleg)?.type
-        if (dtp != null) pr.extra = bc.delegateInfo(bc.fin(dtp), p.isVar, p.type ?: nullableAny, d.start)
+        if (dtp != null) pr.extra = bc.delegateInfo(bc.fin(dtp), p.isVar, p.type ?: nullableAny, d.start, delegateThisType(p))
     }
+}
+
+/** the `thisRef` of the delegate operators of [p]: its extension receiver, the class it is a member of, or null (top-level) */
+fun delegateThisType(p: PropSym): Type? {
+    val r = p.receiver
+    if (r != null) return r
+    val o = p.owner
+    return o?.thisType()
 }
 
 fun Sema.checkClass(c: ClassSym) {
@@ -223,6 +231,11 @@ fun Sema.checkClass(c: ClassSym) {
             val sc = BodyChecker(this, file)
             sc.scope = initializerScope(c, true)
             sc.superConstructorCall(c, s)
+        } else if (s is SuperDelegate) {
+            // `class C(a: I) : I by a`: the delegate expression sees the primary constructor parameters
+            val dc = BodyChecker(this, file)
+            dc.scope = initializerScope(c, true)
+            dc.expr(s.delegate, resolveType(s.type, hs))
         }
     }
     for (en in d.enumEntries) {

@@ -66,7 +66,7 @@ internal fun Ir2Mir.progressionOrNull(e: IrExpression): Progression? {
         }
         if (parent is IrClass && name == "rangeTo") {
             val fq = parent.kotlinFqName
-            if (fq == "kotlin.Int" || fq == "kotlin.Long" || fq == "kotlin.Char") {
+            if (fq == "kotlin.Int" || fq == "kotlin.Long" || fq == "kotlin.Char" || fq == "kotlin.Byte" || fq == "kotlin.Short") {
                 return Progression(args[0]!!, args[1]!!, null, ascending = true, inclusive = true)
             }
         }

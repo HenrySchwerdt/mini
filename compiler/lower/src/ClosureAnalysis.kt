@@ -59,6 +59,8 @@ internal class ClosureInfo {
         for (i in stack.indices.reversed()) {
             val d = stack[i]
             if (d !is IrFunction) continue
+            // a lambda or local function written in an initializer has the class as its parent but is not a member
+            if (d.origin == "LOCAL_FUNCTION" || d.origin == "LOCAL_FUNCTION_FOR_LAMBDA") continue
             var k = d.parent as? IrClass
             while (k != null) {
                 if (k === cls) return d
@@ -96,6 +98,7 @@ internal class ClosureInfo {
                     visitChildren(e)
                 }
                 is IrCall -> visitCall(e)
+                is IrField, is IrAnonymousInitializer -> visitInitializer(e as IrDeclaration)
                 is IrConstructorCall -> {
                     constructorEdge(e.callee)
                     visitChildren(e)
@@ -126,6 +129,26 @@ internal class ClosureInfo {
             fnOwner = savedOwner
         }
 
+        /**
+         * Field initializers and `init` blocks run inside the primary constructor (Ir2Mir expands them there): the
+         * variables they declare and the constructor parameters they use belong to that constructor.
+         */
+        fun visitInitializer(declaration: IrDeclaration) {
+            val cls = declaration.parent as? IrClass
+            var pk: IrConstructor? = null
+            if (cls != null) for (d in cls.declarations) if (d is IrConstructor && d.isPrimary) pk = d
+            if (pk == null) {
+                visitChildren(declaration)
+                return
+            }
+            val savedOwner = fnOwner
+            stack += pk
+            fnOwner = pk
+            visitChildren(declaration)
+            stack.removeAt(stack.size - 1)
+            fnOwner = savedOwner
+        }
+
         fun visitFunction(declaration: IrFunction) {
             val transparent = declaration in inlinedLambdas
             val savedOwner = fnOwner
@@ -144,7 +167,7 @@ internal class ClosureInfo {
             if (callee.isInline) {
                 for ((i, a) in expression.arguments.withIndex()) {
                     val p = callee.parameters.getOrNull(i) ?: continue
-                    if (a is IrFunctionExpression && !p.isNoinline && !p.isCrossinline) inlinedLambdas += a.function
+                    if (a is IrFunctionExpression && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlinedLambdas += a.function
                 }
             }
             if (callee.origin == "LOCAL_FUNCTION" || callee.origin == "LOCAL_FUNCTION_FOR_LAMBDA" ||

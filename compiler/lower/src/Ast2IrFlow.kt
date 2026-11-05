@@ -459,6 +459,7 @@ fun Ast2Ir.labeledExpr(e: LabeledExpr): IrExpression {
     if (inner is DoWhileExpr) return doWhileExpr(inner, e.label)
     if (inner is ForExpr) return forExpr(inner, e.label)
     if (inner is LambdaExpr) return lambdaExpr(inner, e.label)
+    if (inner is AnonFunExpr) return anonFunExpr(inner, e.label)
     return convert(inner)
 }
 

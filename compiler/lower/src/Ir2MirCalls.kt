@@ -98,6 +98,16 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     Reachability.cSymbol(owner)?.let { return cSymbolCall(c, it, out) }
     // C interop: external functions of C, the kotlinx.cinterop intrinsics, @CStruct fields
     interopCall(c, owner, out)?.let { return it }
+    // enumValues<E>() / enumValueOf<E>(name) / enumEntries<E>(): the generated values / valueOf / entries of E
+    if (parent is IrFile && parent.packageFqName == "kotlin" && owner.isInline && c.typeArguments.size == 1 &&
+        (name == "enumValues" || name == "enumValueOf" || name == "enumEntries")
+    ) {
+        val ec = substituted(c.typeArguments[0] ?: unsupported(c, "$name without a type argument")).classOrNull
+        if (ec != null && ec.kind == IrClassKind.ENUM_CLASS && ec in classInfos) {
+            return enumSpecialCall(c, ec, when (name) { "enumValues" -> "values"; "enumValueOf" -> "valueOf"; else -> "<get-entries>" }, out)
+        }
+        unsupported(c, "$name of a type that is not an enum class")
+    }
     memoryApiCall(c, owner, out)?.let { return it }
 
     if (isFunctionInvoke(owner)) return invokeFunctionValue(c, out)
@@ -132,7 +142,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
             return MirExpr.RuntimeCall("mk_checked_number_to_" + kind.displayName.lowercase(), listOf(asAny(recv)), kind)
         }
     }
-    if (parent is IrClass && isEnumSpecial(parent, owner)) return enumSpecialCall(c, parent, owner, out)
+    if (parent is IrClass && isEnumSpecial(parent, owner)) return enumSpecialCall(c, parent, owner.name, out)
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Unit") unitMember(c, name, out)?.let { return it }
     if (parent is IrClass && (parent in classInfos || isAny(parent) || builtinOf(parent) != null)) return memberCall(c, owner, out)
     // fake overrides of Any members declared in user classes have the user class as parent
@@ -280,7 +290,7 @@ internal fun Ir2Mir.memberDispatch(f: IrSimpleFunction, superQualified: Boolean,
 /** `a..b` used as a value (not a `for` / `in` operand): `IntRange(a, b)` of the stdlib. */
 internal fun Ir2Mir.rangeObject(c: IrCall, parent: IrClass, out: MutableList<MirStmt>): MirExpr? {
     val fq = parent.kotlinFqName
-    if (fq != "kotlin.Int" && fq != "kotlin.Long" && fq != "kotlin.Char") return null
+    if (fq != "kotlin.Int" && fq != "kotlin.Long" && fq != "kotlin.Char" && fq != "kotlin.Byte" && fq != "kotlin.Short") return null
     val cls = c.type.classOrNull ?: return null
     if (cls.kotlinFqName !in RANGES) return null
     val ctor = cls.constructors.firstOrNull() ?: return null
@@ -550,10 +560,10 @@ internal fun Ir2Mir.comparableCompareTo(c: IrCall, out: MutableList<MirStmt>): M
 }
 
 /** `values()`, `valueOf(String)` and `entries` of an enum class (generated functions, see Ir2MirClasses). */
-internal fun Ir2Mir.enumSpecialCall(c: IrCall, enumClass: IrClass, f: IrSimpleFunction, out: MutableList<MirStmt>): MirExpr {
+internal fun Ir2Mir.enumSpecialCall(c: IrCall, enumClass: IrClass, fname: String, out: MutableList<MirStmt>): MirExpr {
     val inf = info(enumClass)
     val arrType = arrayType(arrayKindOfFq("kotlin.Array")!!)
-    return when (f.name) {
+    return when (fname) {
         "values" -> MirExpr.Call(inf.cName + "_values", emptyList(), arrType)
         "<get-entries>" -> {
             val impl = entriesImpl ?: unsupported(c, "`entries` (the stdlib class EnumEntriesImpl is not available)")
