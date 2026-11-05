@@ -205,14 +205,14 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val d = f.decl ?: return
         sema.ensureSig(f)
         checkMatmulOperator(f, d)
-        val body = d.body ?: return
+        val bodyOrNull = d.body
         sema.ensureSig(f)
         scope = functionScope(f)
         flow = Flow(HashMap(), false)
         val names = HashSet<String>()
-        AstWalk.capturedAssigned(body, names)
+        if (bodyOrNull != null) AstWalk.capturedAssigned(bodyOrNull, names)
         capturedNames = names
-        // default values of parameters
+        // default values of parameters (also of abstract and interface functions, which have no body)
         for (p in d.params) {
             val dv = p.default
             if (dv != null) {
@@ -221,6 +221,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
                 expectCompatible(dv, t, pt)
             }
         }
+        val body = bodyOrNull ?: return
         if (file.declOnly && !StubRules.keepsBody(d)) return
         val declared = if (d.returnType != null || !d.expressionBody) f.returnType else null
         val target = ReturnTarget(null, declared, f, false)
