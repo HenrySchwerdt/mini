@@ -59,6 +59,9 @@ internal fun Ir2Mir.arrayMember(c: IrCall, name: String, kind: ArrayKind, out: M
         "get" -> adaptResult(arrayGet(kind, v[0], v[1]), expected, c, out)
         "set" -> arraySet(kind, v[0], v[1], coerceFlexible(v[2], kind.elem ?: anyN, c, out))
         "<get-size>" -> arrayLength(v[0])
+        "hashCode" -> MirExpr.RuntimeCall("mk_hash_code", listOf(asAny(v[0])), TInt)
+        "equals" -> MirExpr.RuntimeCall("mk_equals", listOf(asAny(v[0]), asAny(v[1])), TBoolean)
+        "toString" -> MirExpr.RuntimeCall("mk_to_string", listOf(asAny(v[0])), TString)
         else -> unsupported(c, "call to array member '$name'")
     }
 }

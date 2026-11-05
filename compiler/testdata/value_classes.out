@@ -1,0 +1,34 @@
+Meters(v=3)
+Meters(v=7)
+Meters(v=6)
+true
+false
+true
+3
+1
+9
+9
+Meters(v=3)
+null
+true
+[Meters(v=1), Meters(v=2), Meters(v=3)]
+3
+Meters(v=4)
+Meters(v=3)
+true
+true
+true
+value Meters(v=3)
+Name:x
+true
+true
+Wrapper(inner=5)
+s
+Wrapper(inner=Meters(v=2))
+true
+Id(raw=7)
+m=Meters(v=3)
+one
+2
+caught negative
+Meters(v=10)

@@ -46,7 +46,7 @@ fun Ast2Ir.addDataMembers(c: IrClass, sym: ClassSym) {
         c.declarations.add(componentFunction(c, sym, fs, p, i))
         i++
     }
-    val copy = findSynth(sym, "copy", pc.params.size)
+    val copy = if (sym.isValue) null else findSynth(sym, "copy", pc.params.size)
     if (copy != null) c.declarations.add(copyFunction(c, sym, copy, pc))
     val ts = findSynth(sym, "toString", 0)
     if (ts != null) c.declarations.add(toStringFunction(c, sym, ts, props))

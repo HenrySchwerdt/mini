@@ -15,7 +15,6 @@ internal fun Ir2Mir.collectClass(c: IrClass, pkg: String, path: List<String>, fi
         IrClassKind.ENUM_CLASS -> {}
         else -> unsupported(c, "${classKind(c)} declaration '${c.name}'")
     }
-    if (c.isValue) unsupported(c, "value class '${c.name}'")
     val cName = Mangling.className(pkg, path)
     val qn = (if (pkg.isEmpty()) "" else "$pkg.") + path.joinToString(".")
     classInfos[c] = ClassInfo(c, cName, qn, file)
