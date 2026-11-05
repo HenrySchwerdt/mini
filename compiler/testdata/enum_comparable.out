@@ -1,0 +1,14 @@
+true
+1
+[RED, GREEN, BLUE]
+[BLUE, GREEN, RED]
+BLUE
+GREEN
+GREEN
+[BLUE, GREEN, RED]
+[P(x=1), P(x=3)]
+P(x=3)
+[V(x=1), V(x=3)]
+V(x=3)
+P(x=3)
+{RED=2, BLUE=1}

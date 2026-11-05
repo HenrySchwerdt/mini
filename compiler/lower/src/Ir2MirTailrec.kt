@@ -115,8 +115,8 @@ internal fun Ir2Mir.returnWithTail(e: IrExpression, tl: TailLoop, out: MutableLi
         else -> {
             if (currentReturn == TUnit) {
                 stmt(e, out)
-                runFinalizers(0, out)
-                out += MirStmt.Return(if (unitAsNull) MirExpr.NullConst(anyNullable) else null)
+                val un = unitAsNull
+                leaveThrough(0, out) { it += MirStmt.Return(if (un) MirExpr.NullConst(anyNullable) else null) }
             } else returnValue(e, out)
         }
     }

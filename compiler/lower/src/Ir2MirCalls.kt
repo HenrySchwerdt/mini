@@ -364,6 +364,8 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
         val v = operands(args, out)
         if (v.size != 1) unsupported(c, "compiler intrinsic '$name'")
         val t = v[0].type
+        // `null!!` has type Nothing: always throws
+        if (t === TNull) { out += MirStmt.Eval(MirExpr.NotNull(v[0])); return MirExpr.Unreachable(TNothing) }
         return if (t is TBoxed && t.prim is TInline) unboxVc(v[0], t.prim, MirExpr.CastMode.Unchecked) else if (t is TBoxed) MirExpr.Unbox(v[0], t.prim) else if (t.isRef || t is TPtr) MirExpr.NotNull(v[0]) else v[0]
     }
     val op = when (name) {

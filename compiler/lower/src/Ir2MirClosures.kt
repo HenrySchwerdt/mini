@@ -112,7 +112,7 @@ internal class FnState(
     val currentFunction: IrFunction?,
     val currentReturn: MirType,
     val unitAsNull: Boolean,
-    val finallyStack: ArrayList<IrExpression>,
+    val finallyStack: ArrayList<FinCtx>,
     val strict: Boolean = false,
     val allocLevels: ArrayList<List<AllocRef>> = ArrayList(),
 )

@@ -19,15 +19,30 @@ internal fun Ir2Mir.collectClass(c: IrClass, pkg: String, path: List<String>, fi
     val qn = (if (pkg.isEmpty()) "" else "$pkg.") + path.joinToString(".")
     classInfos[c] = ClassInfo(c, cName, qn, file)
     // the Comparable interface is compiled like a user interface (compareTo on generic values goes through mk_compare_to)
-    for (t in c.superTypes) {
-        val s = t.classOrNull ?: continue
-        if (s.kotlinFqName == "kotlin.Comparable" && s !in classInfos) {
+    for (s in comparableSupers(c)) {
+        if (s !in classInfos) {
             classInfos[s] = ClassInfo(s, Mangling.className("kotlin", listOf("Comparable")), "kotlin.Comparable", file)
         }
     }
     for (d in c.declarations) {
         if (d is IrClass && !isPtrClass(d) && d.kind != IrClassKind.ANNOTATION_CLASS) collectClass(d, pkg, path + d.name, file)
     }
+}
+
+/** The kotlin.Comparable interface among the supertypes of [c]; an enum class gets it through kotlin.Enum. */
+internal fun Ir2Mir.comparableSupers(c: IrClass): List<IrClass> {
+    val out = ArrayList<IrClass>()
+    for (t in c.superTypes) {
+        val s = t.classOrNull ?: continue
+        if (s.kotlinFqName == "kotlin.Comparable") out += s
+        else if (c.kind == IrClassKind.ENUM_CLASS && s.kotlinFqName == "kotlin.Enum") {
+            for (t2 in s.superTypes) {
+                val s2 = t2.classOrNull ?: continue
+                if (s2.kotlinFqName == "kotlin.Comparable") out += s2
+            }
+        }
+    }
+    return out
 }
 
 internal fun Ir2Mir.classKind(c: IrClass): String = when (c.kind) {
@@ -123,7 +138,7 @@ internal fun Ir2Mir.erasedInvoke(impl: IrSimpleFunction, arity: Int): String? {
 internal fun Ir2Mir.directInterfaces(c: IrClass): List<IrClass> = c.superTypes.mapNotNull { t ->
     val s = t.classOrNull
     if (s != null && s.kind == IrClassKind.INTERFACE && s in classInfos) s else null
-}
+} + (if (c.kind == IrClassKind.ENUM_CLASS) comparableSupers(c).filter { it in classInfos } else emptyList())
 
 /** All interfaces of [c], transitively and including those of superclasses, super-interfaces first. */
 internal fun Ir2Mir.allInterfaces(c: IrClass): List<IrClass> {
@@ -208,6 +223,7 @@ internal fun Ir2Mir.convertMembers(info: ClassInfo): List<MirFunction> {
     if (c.kind == IrClassKind.ENUM_CLASS) {
         out += convertEnumHolder(info)
         out += enumToString(info)
+        out += enumCompareTo(info)
         out += enumValues(info)
         out += enumValueOf(info)
     }
@@ -261,6 +277,18 @@ internal fun Ir2Mir.enumToString(info: ClassInfo): MirFunction {
         MirStmt.Return(MirExpr.FieldGet(MirExpr.Local(self), info.cName, "\$name", TString)),
     )
     return MirFunction(info.qualified + ".toString", info.cName + "_enumToString", listOf(self), TString, body)
+}
+
+/** `Comparable.compareTo` of an enum: the difference of the ordinals (the slot of the Comparable itable, see buildClass). */
+internal fun Ir2Mir.enumCompareTo(info: ClassInfo): MirFunction {
+    val self = MirLocal(0, "this", typeOf(info.ir))
+    val other = MirLocal(1, "other", anyNullable)
+    val o = MirExpr.Cast(MirExpr.Local(other), typeOf(info.ir), MirExpr.CastMode.Checked)
+    val body = listOf<MirStmt>(
+        MirStmt.Return(MirExpr.Binary(BinaryOp.Sub, MirExpr.FieldGet(MirExpr.Local(self), info.cName, "\$ordinal", TInt),
+            MirExpr.FieldGet(o, info.cName, "\$ordinal", TInt))),
+    )
+    return MirFunction(info.qualified + ".compareTo", info.cName + "_enumCompareTo", listOf(self, other), TInt, body)
 }
 
 // ---- dispatch tables ---------------------------------------------------------------------
@@ -400,7 +428,11 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
         if (c.kind == IrClassKind.ENUM_CLASS && vtable[0] == null) vtable = listOf<String?>(info.cName + "_enumToString") + vtable.drop(1)
         if (isEnumBody(c) && vtable[0] == null) superclassOf(c)?.let { vtable = listOf<String?>(info(it).cName + "_enumToString") + vtable.drop(1) }
         itables = ifaces.map { i ->
-            MirItable(info(i).cName, interfaceMethods(i).map { m -> bridged(findImpl(c, m), m) })
+            if ((c.kind == IrClassKind.ENUM_CLASS || isEnumBody(c)) && i.kotlinFqName == "kotlin.Comparable") {
+                val enumInfo = if (isEnumBody(c)) info(superclassOf(c)!!) else info
+                MirItable(info(i).cName, listOf(enumInfo.cName + "_enumCompareTo"))
+            }
+            else MirItable(info(i).cName, interfaceMethods(i).map { m -> bridged(findImpl(c, m), m) })
         }
         for (n in functionSupertypes(c)) {
             val impl = invokeImpl(c, n) ?: unsupported(c, "class '${c.name}' implements a function type without an invoke function")
