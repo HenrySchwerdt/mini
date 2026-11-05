@@ -10,7 +10,7 @@ int main(void) {
 #else
 typedef struct { MkObject h; MkObject *child; } Pair;
 static void pair_dispose(MkObject *s) { mk_release(((Pair *)s)->child); }
-static const MkTypeInfo T_Pair = {"Pair", sizeof(Pair), &mk_type_Any, pair_dispose, 0, 0, 0, 0};
+static const MkTypeInfo T_Pair = {"Pair", sizeof(Pair), &mk_type_Any, pair_dispose, 0, 0, 0, 0, NULL};
 
 static MkStats snap(void) {
     MkStats s;

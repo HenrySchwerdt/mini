@@ -13,7 +13,7 @@ objs=()
 for f in runtime/src/*.c; do
     b="$(basename "$f" .c)"
     # entry.c is the C `main`; the generated program links it separately (libminirt stays main-less like natively).
-    $Y --mount runtime clang --target=wasm32-wasip1 -std=c17 -O2 -Wall -Wextra -Wno-missing-field-initializers -Werror \
+    $Y --mount runtime clang --target=wasm32-wasip1 -std=c17 -O2 -Wall -Wextra -Werror \
         -Iruntime/include -Iruntime/src -c "$f" -o "$out/rt/$b.o"
     [ "$b" = entry ] || objs+=("$out/rt/$b.o")
 done

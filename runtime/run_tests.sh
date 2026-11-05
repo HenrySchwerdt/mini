@@ -17,8 +17,7 @@ if [ -z "${CC_FORCED:-}" ] && { ! probe address,undefined || ! probe thread; }; 
     CC=gcc
 fi
 
-# (MkTypeInfo literals may stop before the trailing `trace` field: NULL, not a candidate for cycle collection)
-cflags=(-std=c17 -g -O1 -Wall -Wextra -Wno-missing-field-initializers -Werror -I"$here/include" -I"$here/src")
+cflags=(-std=c17 -g -O1 -Wall -Wextra -Werror -I"$here/include" -I"$here/src")
 lib_srcs=()
 for f in "$here"/src/*.c; do
     [ "$(basename "$f")" = entry.c ] || lib_srcs+=("$f")
