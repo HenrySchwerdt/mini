@@ -443,6 +443,10 @@ internal fun Ir2Mir.primitiveMember(
         val t = widest(recv.type, v[1].type, c)
         val a = convertTo(widenChar(recv), t, c)
         val b = convertTo(widenChar(v[1]), t, c)
+        // Byte.compareTo(Byte) and Short.compareTo(Short) are `this - other` (like Kotlin/JVM)
+        if ((recv.type == TByte && v[1].type == TByte) || (recv.type == TShort && v[1].type == TShort)) {
+            return MirExpr.Binary(BinaryOp.Sub, a, b)
+        }
         // (a > b) - (a < b) with Int result
         return MirExpr.Binary(
             BinaryOp.Sub,

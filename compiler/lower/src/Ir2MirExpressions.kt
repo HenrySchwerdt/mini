@@ -206,7 +206,7 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (from is TPtr && to is TPtr) return e // the same address: nullability is a Kotlin-level fact
     if (from === TNull && (to.isRef || to is TPtr)) return MirExpr.NullConst(to)
     if ((from.isInteropScalar || to.isInteropScalar) && (from.isRef || to.isRef)) {
-        unsupported(at, "boxing of a value of type ${from.displayName} as ${to.displayName} (Byte, Short and C pointers cannot be stored in Any, collections or generic code)")
+        unsupported(at, "boxing of a value of type ${from.displayName} as ${to.displayName} (C pointers cannot be stored in Any, collections or generic code)")
     }
     if (from.isPrimitive && to.isRef) {
         if (to == TBoxed(from) || (to is TObject && to.cName == ANY_CNAME)) return MirExpr.Box(e, to)
@@ -268,6 +268,8 @@ internal fun typeQualifiedName(t: MirType): String? = when (t) {
     TBoolean -> "kotlin.Boolean"
     TDouble -> "kotlin.Double"
     TFloat -> "kotlin.Float"
+    TByte -> "kotlin.Byte"
+    TShort -> "kotlin.Short"
     TChar -> "kotlin.Char"
     TString, TNString -> "kotlin.String"
     is TBoxed -> typeQualifiedName(t.prim)

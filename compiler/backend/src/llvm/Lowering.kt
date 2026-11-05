@@ -328,6 +328,8 @@ private class Lowering<V : Any, B : Any>(
         TBoolean -> "mk_type_Boolean"
         TDouble -> "mk_type_Double"
         TFloat -> "mk_type_Float"
+        TByte -> "mk_type_Byte"
+        TShort -> "mk_type_Short"
         TChar -> "mk_type_Char"
         else -> throw EmitError("no box for $p")
     }
@@ -338,6 +340,8 @@ private class Lowering<V : Any, B : Any>(
         TBoolean -> "boolean"
         TDouble -> "double"
         TFloat -> "float"
+        TByte -> "byte"
+        TShort -> "short"
         TChar -> "char"
         else -> throw EmitError("no box for $p")
     }
@@ -1735,7 +1739,7 @@ private class Lowering<V : Any, B : Any>(
     fun arrayAccessKind(cName: String): String? {
         if (cName == "mk_array_length") return "length"
         val k = if (cName.startsWith("mk_array_get_")) cName.substring(13) else if (cName.startsWith("mk_array_set_")) cName.substring(13) else return null
-        return if (k == "int" || k == "long" || k == "double" || k == "float" || k == "boolean" || k == "char" || k == "obj") k else null
+        return if (k == "int" || k == "long" || k == "double" || k == "float" || k == "byte" || k == "short" || k == "boolean" || k == "char" || k == "obj") k else null
     }
 
     private fun isStringLengthCall(e: MirExpr.RuntimeCall): Boolean =
@@ -1814,7 +1818,7 @@ private class Lowering<V : Any, B : Any>(
         val isGet = e.cName.startsWith("mk_array_get_")
         val idx = expr(e.args[1])
         val value = if (isGet) null else expr(e.args[2])
-        val elemSize = when (kind) { "int" -> 4; "long" -> 8; "double" -> 8; "float" -> 4; "boolean" -> 1; "char" -> 2; else -> pb }
+        val elemSize = when (kind) { "int" -> 4; "long" -> 8; "double" -> 8; "float" -> 4; "byte" -> 1; "short" -> 2; "boolean" -> 1; "char" -> 2; else -> pb }
         val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
         val len = loadTag(TInt, gep(arr, layouts.headerSize), "array length")
         val bad = icmp(IrCmp.UGE, idx, len)
@@ -1837,6 +1841,8 @@ private class Lowering<V : Any, B : Any>(
                 "long" -> b.loadTagged(IrType.I64, p, tag, "")
                 "double" -> b.loadTagged(IrType.DOUBLE, p, tag, "")
                 "float" -> b.loadTagged(IrType.FLOAT, p, tag, "")
+                "byte" -> b.loadTagged(IrType.I8, p, tag, "")
+                "short" -> b.loadTagged(IrType.I16, p, tag, "")
                 "char" -> b.loadTagged(IrType.I16, p, tag, "")
                 else -> b.loadTagged(IrType.PTR, p, tag, "")
             }

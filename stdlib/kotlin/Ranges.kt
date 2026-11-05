@@ -297,3 +297,12 @@ public infix fun CharProgression.step(step: Int): CharProgression {
 internal fun checkStepIsPositive(isPositive: Boolean, step: Any) {
     if (!isPositive) throw IllegalArgumentException("Step must be positive, was: $step.")
 }
+
+// ---- contains across the integral types (as in kotlin-stdlib _Ranges.kt) -----------------------------
+
+public operator fun IntRange.contains(value: Byte): Boolean = contains(value.toInt())
+public operator fun IntRange.contains(value: Short): Boolean = contains(value.toInt())
+public operator fun IntRange.contains(value: Long): Boolean = value >= first.toLong() && value <= last.toLong()
+public operator fun LongRange.contains(value: Byte): Boolean = contains(value.toLong())
+public operator fun LongRange.contains(value: Short): Boolean = contains(value.toLong())
+public operator fun LongRange.contains(value: Int): Boolean = contains(value.toLong())

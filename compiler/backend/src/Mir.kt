@@ -204,11 +204,11 @@ val MirType.isRef: Boolean
     get() = this === TString || this === TNString || this is TObject || this is TBoxed || this === TNull
 
 val MirType.isPrimitive: Boolean
-    get() = this === TInt || this === TLong || this === TBoolean || this === TDouble || this === TChar || this === TFloat
+    get() = this === TInt || this === TLong || this === TBoolean || this === TDouble || this === TChar || this === TFloat || this === TByte || this === TShort
 
 /** Byte, Short and pointers: the value types that exist for C interop but cannot be boxed. */
 val MirType.isInteropScalar: Boolean
-    get() = this === TByte || this === TShort || this is TPtr
+    get() = this is TPtr
 
 fun MirType.nonNull(): MirType = when (this) {
     TNString -> TString
@@ -222,7 +222,7 @@ fun MirType.asNullable(): MirType = when (this) {
     TString -> TNString
     is TPtr -> TPtr(true)
     is TObject -> if (nullable) this else copy(nullable = true)
-    TInt, TLong, TBoolean, TDouble, TChar, TFloat -> TBoxed(this)
+    TInt, TLong, TBoolean, TDouble, TChar, TFloat, TByte, TShort -> TBoxed(this)
     else -> this
 }
 

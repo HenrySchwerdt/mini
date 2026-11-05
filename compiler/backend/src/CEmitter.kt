@@ -243,6 +243,8 @@ object CEmitter {
             TBoolean -> "mk_type_Boolean"
             TDouble -> "mk_type_Double"
         TFloat -> "mk_type_Float"
+        TByte -> "mk_type_Byte"
+        TShort -> "mk_type_Short"
             TChar -> "mk_type_Char"
             else -> throw EmitError("no box for $p")
         }
@@ -253,6 +255,8 @@ object CEmitter {
             TBoolean -> "boolean"
             TDouble -> "double"
         TFloat -> "float"
+        TByte -> "byte"
+        TShort -> "short"
             TChar -> "char"
             else -> throw EmitError("no box for $p")
         }
