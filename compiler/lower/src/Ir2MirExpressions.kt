@@ -143,6 +143,10 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             var v = value(e.argument, out)
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
             val target = mirType(e.typeOperand, e)
+            if (e.typeOperand.classFqName == "kotlin.Number") {
+                val isNum = MirExpr.RuntimeCall("mk_is_number", listOf(asAny(v)), TBoolean)
+                return if (e.operator == IrTypeOperator.INSTANCEOF) isNum else MirExpr.Unary(UnaryOp.Not, isNum)
+            }
             val test: MirExpr = MirExpr.IsInstance(v, if (target.isPrimitive) TBoxed(target) else target.nonNull())
             return if (e.operator == IrTypeOperator.INSTANCEOF) test else MirExpr.Unary(UnaryOp.Not, test)
         }

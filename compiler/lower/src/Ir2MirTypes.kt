@@ -62,7 +62,7 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         "kotlin.Unit" -> if (nullable) unsupported(at, "nullable type 'Unit?'") else TUnit
         "kotlin.Nothing" -> if (nullable) TNull else TNothing
         // Comparable values are boxed primitives, strings or user objects: represented as Any (compareTo: mk_compare_to)
-        "kotlin.Any", "kotlin.Comparable" -> if (nullable) anyNullable else anyType
+        "kotlin.Any", "kotlin.Comparable", "kotlin.Number" -> if (nullable) anyNullable else anyType
         else -> {
             val c = t.classOrNull
             if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")

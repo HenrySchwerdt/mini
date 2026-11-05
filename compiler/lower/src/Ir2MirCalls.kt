@@ -103,6 +103,17 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     ) return rangeContains(c, c.arguments.map { it!! }, out)
     if (parent is IrClass && name == "rangeTo" && c.arguments.size == 2) rangeObject(c, parent, out)?.let { return it }
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Comparable" && name == "compareTo") return comparableCompareTo(c, out)
+    if (parent is IrClass && parent.kotlinFqName == "kotlin.Number" && c.arguments.size == 1) {
+        val kind = when (name) {
+            "toInt" -> TInt; "toLong" -> TLong; "toDouble" -> TDouble; "toFloat" -> TFloat
+            "toByte" -> TByte; "toShort" -> TShort; "toChar" -> TChar
+            else -> null
+        }
+        if (kind != null) {
+            val recv = operands(listOf(c.arguments[0]!!), out)[0]
+            return MirExpr.RuntimeCall("mk_checked_number_to_" + kind.displayName.lowercase(), listOf(asAny(recv)), kind)
+        }
+    }
     if (parent is IrClass && isEnumSpecial(parent, owner)) return enumSpecialCall(c, parent, owner, out)
     if (parent is IrClass && (parent in classInfos || isAny(parent) || builtinOf(parent) != null)) return memberCall(c, owner, out)
     // fake overrides of Any members declared in user classes have the user class as parent
@@ -418,6 +429,10 @@ internal fun Ir2Mir.primitiveMember(
     if (cls == "kotlin.Boolean") {
         return when (name) {
             "not" -> MirExpr.Unary(UnaryOp.Not, recv)
+            "compareTo" -> MirExpr.Conditional(
+                MirExpr.Binary(BinaryOp.Eq, recv, v[1]), MirExpr.IntConst(0),
+                MirExpr.Conditional(recv, MirExpr.IntConst(1), MirExpr.IntConst(-1)),
+            )
             "and" -> MirExpr.Binary(BinaryOp.And, recv, v[1])
             "or" -> MirExpr.Binary(BinaryOp.Or, recv, v[1])
             "xor" -> MirExpr.Binary(BinaryOp.Xor, recv, v[1])
@@ -446,6 +461,10 @@ internal fun Ir2Mir.primitiveMember(
         // Byte.compareTo(Byte) and Short.compareTo(Short) are `this - other` (like Kotlin/JVM)
         if ((recv.type == TByte && v[1].type == TByte) || (recv.type == TShort && v[1].type == TShort)) {
             return MirExpr.Binary(BinaryOp.Sub, a, b)
+        }
+        // Double/Float.compareTo is the total order of Double.compare: -0.0 < 0.0, NaN is the greatest and equal to itself
+        if (t == TDouble || t == TFloat) {
+            return MirExpr.RuntimeCall("mk_double_compare", listOf(convertTo(a, TDouble, c), convertTo(b, TDouble, c)), TInt)
         }
         // (a > b) - (a < b) with Int result
         return MirExpr.Binary(

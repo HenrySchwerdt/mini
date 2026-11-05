@@ -510,6 +510,16 @@ MkLong mk_checked_unbox_long(const MkObject *box);
 MkBoolean mk_checked_unbox_boolean(const MkObject *box);
 MkDouble mk_checked_unbox_double(const MkObject *box);
 MkFloat mk_checked_unbox_float(const MkObject *box);
+/* kotlin.Number members on a boxed Int, Long, Double, Float, Byte or Short (NPE on null, ClassCastException otherwise). */
+bool mk_is_number(const MkObject *o);
+MkInt mk_double_compare(MkDouble a, MkDouble b); /* Double.compareTo: total order */
+MkInt mk_checked_number_to_int(const MkObject *o);
+MkLong mk_checked_number_to_long(const MkObject *o);
+MkDouble mk_checked_number_to_double(const MkObject *o);
+MkFloat mk_checked_number_to_float(const MkObject *o);
+MkByte mk_checked_number_to_byte(const MkObject *o);
+MkShort mk_checked_number_to_short(const MkObject *o);
+MkChar mk_checked_number_to_char(const MkObject *o);
 MkByte mk_checked_unbox_byte(const MkObject *box);
 MkShort mk_checked_unbox_short(const MkObject *box);
 MkChar mk_checked_unbox_char(const MkObject *box);

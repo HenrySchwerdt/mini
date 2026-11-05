@@ -245,6 +245,66 @@ MkDouble mk_checked_unbox_double(const MkObject *b) {
 MkFloat mk_checked_unbox_float(const MkObject *b) {
     return unbox_ok(b, &mk_type_Float) ? ((const BoxFloat *)b)->v : 0.0f;
 }
+/* kotlin.Number members: integer kinds widen to int64, floating kinds to double */
+static int number_kind(const MkObject *o, int64_t *iv, double *dv) {
+    if (o == NULL) {
+        mk_raise_npe();
+        return -1;
+    }
+    const MkTypeInfo *t = o->type;
+    if (t == &mk_type_Int) { *iv = ((const BoxInt *)o)->v; return 0; }
+    if (t == &mk_type_Long) { *iv = ((const BoxLong *)o)->v; return 0; }
+    if (t == &mk_type_Byte) { *iv = ((const BoxByte *)o)->v; return 0; }
+    if (t == &mk_type_Short) { *iv = ((const BoxShort *)o)->v; return 0; }
+    if (t == &mk_type_Double) { *dv = ((const BoxDouble *)o)->v; return 1; }
+    if (t == &mk_type_Float) { *dv = (double)((const BoxFloat *)o)->v; return 1; }
+    mk_raise_class_cast(o, &mk_type_Int);
+    return -1;
+}
+static MkInt num_d2i(double d) {
+    if (d != d) return 0;
+    if (d >= 2147483647.0) return INT32_MAX;
+    if (d <= -2147483648.0) return INT32_MIN;
+    return (MkInt)d;
+}
+static MkLong num_d2l(double d) {
+    if (d != d) return 0;
+    if (d >= 9223372036854775807.0) return INT64_MAX;
+    if (d <= -9223372036854775808.0) return INT64_MIN;
+    return (MkLong)d;
+}
+MkInt mk_double_compare(MkDouble x, MkDouble y) {
+    if (x < y) return -1;
+    if (x > y) return 1;
+    if (x == y && x != 0.0) return 0;
+    int xn = x != x, yn = y != y;
+    if (xn || yn) return xn == yn ? 0 : (xn ? 1 : -1);
+    int xs = signbit(x) != 0, ys = signbit(y) != 0;
+    return xs == ys ? 0 : (xs ? -1 : 1);
+}
+bool mk_is_number(const MkObject *o) {
+    if (o == NULL) return false;
+    const MkTypeInfo *t = o->type;
+    return t == &mk_type_Int || t == &mk_type_Long || t == &mk_type_Double || t == &mk_type_Float || t == &mk_type_Byte ||
+           t == &mk_type_Short;
+}
+#define NUMBER_TO(name, ctype, fp_expr, int_expr)        \
+    ctype mk_checked_number_to_##name(const MkObject *o) { \
+        int64_t iv = 0;                                      \
+        double dv = 0;                                       \
+        int k = number_kind(o, &iv, &dv);                    \
+        if (k < 0) return 0;                                 \
+        return k ? (fp_expr) : (int_expr);                   \
+    }
+NUMBER_TO(int, MkInt, num_d2i(dv), (MkInt)(int32_t)iv)
+NUMBER_TO(long, MkLong, num_d2l(dv), (MkLong)iv)
+NUMBER_TO(double, MkDouble, dv, (MkDouble)iv)
+NUMBER_TO(float, MkFloat, (MkFloat)dv, (MkFloat)iv)
+NUMBER_TO(byte, MkByte, (MkByte)num_d2i(dv), (MkByte)iv)
+NUMBER_TO(short, MkShort, (MkShort)num_d2i(dv), (MkShort)iv)
+NUMBER_TO(char, MkChar, (MkChar)num_d2i(dv), (MkChar)iv)
+#undef NUMBER_TO
+
 MkByte mk_checked_unbox_byte(const MkObject *b) { return unbox_ok(b, &mk_type_Byte) ? ((const BoxByte *)b)->v : 0; }
 MkShort mk_checked_unbox_short(const MkObject *b) { return unbox_ok(b, &mk_type_Short) ? ((const BoxShort *)b)->v : 0; }
 MkChar mk_checked_unbox_char(const MkObject *b) { return unbox_ok(b, &mk_type_Char) ? ((const BoxChar *)b)->v : 0; }
