@@ -8,7 +8,7 @@
 
 #if defined(_WIN32)
 #include <windows.h>
-#else
+#elif !defined(__wasm__)
 #include <pthread.h>
 #endif
 
