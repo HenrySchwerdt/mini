@@ -5,12 +5,45 @@ package kotlin.collections
 
 // ---- Iterable ----------------------------------------------------------------------------------------
 
-public inline fun <T, C : Iterable<T>> C.onEach(action: (T) -> Unit): C {
+public inline fun <T> Iterable<T>.onEach(action: (T) -> Unit): Iterable<T> {
     for (e in this) action(e)
     return this
 }
 
-public inline fun <T, C : Iterable<T>> C.onEachIndexed(action: (index: Int, T) -> Unit): C {
+public inline fun <T> Iterable<T>.onEachIndexed(action: (index: Int, T) -> Unit): Iterable<T> {
+    var i = 0
+    for (e in this) action(i++, e)
+    return this
+}
+
+public inline fun <T> Collection<T>.onEach(action: (T) -> Unit): Collection<T> {
+    for (e in this) action(e)
+    return this
+}
+
+public inline fun <T> Collection<T>.onEachIndexed(action: (index: Int, T) -> Unit): Collection<T> {
+    var i = 0
+    for (e in this) action(i++, e)
+    return this
+}
+
+public inline fun <T> List<T>.onEach(action: (T) -> Unit): List<T> {
+    for (e in this) action(e)
+    return this
+}
+
+public inline fun <T> List<T>.onEachIndexed(action: (index: Int, T) -> Unit): List<T> {
+    var i = 0
+    for (e in this) action(i++, e)
+    return this
+}
+
+public inline fun <T> Set<T>.onEach(action: (T) -> Unit): Set<T> {
+    for (e in this) action(e)
+    return this
+}
+
+public inline fun <T> Set<T>.onEachIndexed(action: (index: Int, T) -> Unit): Set<T> {
     var i = 0
     for (e in this) action(i++, e)
     return this
@@ -217,6 +250,28 @@ public fun <T> Iterable<T>.minWithOrNull(comparator: Comparator<in T>): T? {
 public fun <T> Iterable<T>.maxWith(comparator: Comparator<in T>): T = maxWithOrNull(comparator) ?: throw NoSuchElementException()
 
 public fun <T> Iterable<T>.minWith(comparator: Comparator<in T>): T = minWithOrNull(comparator) ?: throw NoSuchElementException()
+
+public inline fun <T, R : Comparable<R>> Iterable<T>.maxOf(selector: (T) -> R): R {
+    val iterator = iterator()
+    if (!iterator.hasNext()) throw NoSuchElementException()
+    var max = selector(iterator.next())
+    while (iterator.hasNext()) {
+        val v = selector(iterator.next())
+        if (max < v) max = v
+    }
+    return max
+}
+
+public inline fun <T, R : Comparable<R>> Iterable<T>.minOf(selector: (T) -> R): R {
+    val iterator = iterator()
+    if (!iterator.hasNext()) throw NoSuchElementException()
+    var min = selector(iterator.next())
+    while (iterator.hasNext()) {
+        val v = selector(iterator.next())
+        if (min > v) min = v
+    }
+    return min
+}
 
 public inline fun <T, R : Comparable<R>> Iterable<T>.maxOfOrNull(selector: (T) -> R): R? {
     val iterator = iterator()
