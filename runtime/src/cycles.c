@@ -48,66 +48,69 @@ static bool in_collect;
 static volatile int roots_lock;
 
 /* Where every buffered object sits in `roots` (so that one that dies can clear its slot): open addressing, linear probing, backward
- * shift deletion; guarded by roots_lock when threads run. Empty while no candidates are buffered. */
-static struct { MkObject **key; uint32_t *val; size_t cap, n; } slots;
+ * shift deletion; guarded by roots_lock when threads run. Empty while no candidates are buffered. An entry is 8 bytes: the low 32 bits
+ * of the object's address (>> 4) and index + 1 into `roots`; two objects can share the tag, so a hit is confirmed against
+ * `roots[index]`. (The table is the big memory consumer of a collector that buffers a million candidates: 8 bytes per entry at a load
+ * of at most 3/4 instead of 12 bytes at 1/2.) */
+static struct { uint64_t *e; size_t cap, n; } slots;
 
-static inline size_t slot_home(const MkObject *o, size_t cap) {
-    return (size_t)((((uint64_t)(uintptr_t)o >> 4) * 0x9E3779B97F4A7C15ull) >> 24) & (cap - 1);
+static inline uint32_t slot_tag(const MkObject *o) { return (uint32_t)((uintptr_t)o >> 4); }
+static inline size_t slot_home_tag(uint32_t tag, size_t cap) {
+    return (size_t)(((uint64_t)tag * 0x9E3779B97F4A7C15ull) >> 24) & (cap - 1);
 }
 
 static void slots_put(MkObject *o, uint32_t idx) {
-    if (slots.n * 2 >= slots.cap) { /* grow (or create) */
+    if (slots.n * 4 >= slots.cap * 3) { /* grow (or create) */
         size_t ncap = slots.cap ? slots.cap * 2 : 4096;
-        MkObject **nk = (MkObject **)calloc(ncap, sizeof(MkObject *));
-        uint32_t *nv = (uint32_t *)malloc(ncap * sizeof(uint32_t));
-        if (nk == NULL || nv == NULL) mk_panic("out of memory");
+        uint64_t *ne = (uint64_t *)calloc(ncap, sizeof(uint64_t));
+        if (ne == NULL) mk_panic("out of memory");
         for (size_t i = 0; i < slots.cap; i++) {
-            if (slots.key[i] == NULL) continue;
-            size_t h = slot_home(slots.key[i], ncap);
-            while (nk[h] != NULL) h = (h + 1) & (ncap - 1);
-            nk[h] = slots.key[i];
-            nv[h] = slots.val[i];
+            if (slots.e[i] == 0) continue;
+            size_t h = slot_home_tag((uint32_t)(slots.e[i] >> 32), ncap);
+            while (ne[h] != 0) h = (h + 1) & (ncap - 1);
+            ne[h] = slots.e[i];
         }
-        free(slots.key);
-        free(slots.val);
-        slots.key = nk;
-        slots.val = nv;
+        free(slots.e);
+        slots.e = ne;
         slots.cap = ncap;
     }
-    size_t h = slot_home(o, slots.cap);
-    while (slots.key[h] != NULL) h = (h + 1) & (slots.cap - 1);
-    slots.key[h] = o;
-    slots.val[h] = idx;
+    uint32_t tag = slot_tag(o);
+    size_t h = slot_home_tag(tag, slots.cap);
+    while (slots.e[h] != 0) h = (h + 1) & (slots.cap - 1);
+    slots.e[h] = ((uint64_t)tag << 32) | (uint64_t)(idx + 1u);
     slots.n++;
 }
 
 static bool slots_take(const MkObject *o, uint32_t *idx) {
     if (slots.n == 0) return false;
-    size_t mask = slots.cap - 1, h = slot_home(o, slots.cap);
-    while (slots.key[h] != o) {
-        if (slots.key[h] == NULL) return false;
+    size_t mask = slots.cap - 1;
+    uint32_t tag = slot_tag(o);
+    size_t h = slot_home_tag(tag, slots.cap);
+    for (;;) {
+        uint64_t e = slots.e[h];
+        if (e == 0) return false;
+        if ((uint32_t)(e >> 32) == tag && roots[(uint32_t)e - 1u] == o) break;
         h = (h + 1) & mask;
     }
-    *idx = slots.val[h];
+    *idx = (uint32_t)slots.e[h] - 1u;
     /* backward shift: close the hole so that no probe sequence is cut */
     size_t hole = h, j = h;
     for (;;) {
         j = (j + 1) & mask;
-        if (slots.key[j] == NULL) break;
-        size_t home = slot_home(slots.key[j], slots.cap);
+        if (slots.e[j] == 0) break;
+        size_t home = slot_home_tag((uint32_t)(slots.e[j] >> 32), slots.cap);
         if (((j - home) & mask) >= ((j - hole) & mask)) {
-            slots.key[hole] = slots.key[j];
-            slots.val[hole] = slots.val[j];
+            slots.e[hole] = slots.e[j];
             hole = j;
         }
     }
-    slots.key[hole] = NULL;
+    slots.e[hole] = 0;
     slots.n--;
     return true;
 }
 
 static void slots_clear(void) {
-    if (slots.n != 0) memset(slots.key, 0, slots.cap * sizeof(MkObject *));
+    if (slots.n != 0) memset(slots.e, 0, slots.cap * sizeof(uint64_t));
     slots.n = 0;
 }
 
