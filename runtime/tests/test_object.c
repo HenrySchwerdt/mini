@@ -52,7 +52,7 @@ int main(void) {
     Obj *o = (Obj *)mk_alloc(&T_C);
     CHECK(o != NULL);
     CHECK_EQ_INT(o->h.refcount, 1);
-    CHECK_EQ_INT(o->h.flags, 0);
+    CHECK_EQ_INT(o->h.flags & (MK_FLAG_STATIC | MK_FLAG_STACK | MK_FLAG_SHARED | MK_FLAG_FREED), 0);
     CHECK(o->h.type == &T_C);
     CHECK(o->payload == 0);
     CHECK(((uintptr_t)o % MK_MAX_ALIGN) == 0);

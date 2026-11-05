@@ -227,11 +227,12 @@ MkString *mk_sb_to_string(MkObject *o) {
 
 /* ---- reference arrays ------------------------------------------------------------------ */
 
+/* The layout is that of MkArray (elements right behind the length, 8-byte aligned): generated code reads and writes the
+ * slots inline (the mkh_ra_* helpers of the C prelude, the same in the LLVM lowering). */
 typedef struct MkRefArray {
     MkObject header;
     MkInt length;
-    MkObject **items;
-    MkObject *inline_items[];
+    MkObject *items[];
 } MkRefArray;
 
 static void ref_array_dispose(MkObject *self) {
@@ -240,7 +241,6 @@ static void ref_array_dispose(MkObject *self) {
         MkObject *item = a->items[i];
         if (item != NULL) mk_release(item);
     }
-    a->items = NULL;
 }
 
 static const MkTypeInfo ref_array_type = {
@@ -262,7 +262,6 @@ MkObject *mk_ref_array_new(MkInt size) {
     MkRefArray *a = (MkRefArray *)mk_alloc_sized(NULL, &ref_array_type, bytes);
     if (a == NULL) mk_panic("out of memory");
     a->length = size;
-    a->items = count > 0 ? a->inline_items : NULL;
     return &a->header;
 }
 

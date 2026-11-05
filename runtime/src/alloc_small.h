@@ -9,8 +9,9 @@
  * no ownership lookup: a block simply joins the free list of the thread that frees it. Chunks are never returned to
  * the system.
  *
- * The free-list link lives at block + sizeof(void*) (like the Pool): the owner word at block+0 and the object header
- * stay intact, which keeps the MK_FLAG_FREED double-free check working until the block is reused.
+ * Blocks have no prefix: the object header is at block+0 and the size class is kept in its flags. The free-list link lives
+ * in the first word of the block (the type pointer of the dead object): refcount and flags stay intact, which keeps the
+ * MK_FLAG_FREED double-free check working until the block is reused.
  *
  * Not used (the plain malloc path stays) when MK_PLAIN_MALLOC is defined or under AddressSanitizer, so sanitizer
  * builds see every object. Blocks larger than MK_SMALL_MAX always use malloc/free. */
@@ -64,7 +65,7 @@ static inline void *mk_small_alloc(size_t cls) {
     MkSmallCache *t = &mk_small_cache;
     void *b = t->free[cls];
     if (b != NULL) {
-        t->free[cls] = *(void **)(void *)((unsigned char *)b + sizeof(void *));
+        t->free[cls] = *(void **)b;
         t->count[cls]--;
         return b;
     }
@@ -79,7 +80,7 @@ static inline void *mk_small_alloc(size_t cls) {
 
 static inline void mk_small_free(void *b, size_t cls) {
     MkSmallCache *t = &mk_small_cache;
-    *(void **)(void *)((unsigned char *)b + sizeof(void *)) = t->free[cls];
+    *(void **)b = t->free[cls];
     t->free[cls] = b;
     uint32_t n = ++t->count[cls];
     if (n == 1) {

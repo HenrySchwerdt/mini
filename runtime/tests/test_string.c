@@ -127,10 +127,10 @@ int main(void) {
     CHECK_STR(mk_string_from_long(INT64_MIN), "-9223372036854775808");
     CHECK_STR(mk_string_from_long(INT64_MAX), "9223372036854775807");
 
-    /* heap strings have refcount 1 and no flags */
+    /* heap strings have refcount 1 and no user-visible flags */
     s = mk_string_from_int(1);
     CHECK_EQ_INT(s->header.refcount, 1);
-    CHECK_EQ_INT(s->header.flags, 0);
+    CHECK_EQ_INT(s->header.flags & (MK_FLAG_STATIC | MK_FLAG_STACK | MK_FLAG_SHARED | MK_FLAG_FREED), 0);
     mk_release(&s->header);
 
     TEST_DONE();

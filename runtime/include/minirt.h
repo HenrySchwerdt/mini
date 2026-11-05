@@ -62,6 +62,11 @@ enum {
     MK_FLAG_FREED = 1u << 3,  /* set by the runtime when the memory is returned; lets
                                  mk_free / mk_release diagnose double frees. Never set
                                  it from generated code. */
+    MK_FLAG_PREFIXED = 1u << 4, /* runtime-private: the block starts MK_PREFIX_SIZE bytes before the object and holds the
+                                 owning allocator and the block size (every object of an allocator other than Rc/Heap, and
+                                 large Rc/Heap objects). Never set it from generated code. */
+    MK_FLAG_HEAP = 1u << 5,     /* runtime-private: an unprefixed block of the Heap allocator (else of the Rc allocator) */
+    /* bits 8..15 are runtime-private too: the small-object size class of an unprefixed block */
 };
 
 /* Initialiser for an MkObject header in static storage. */

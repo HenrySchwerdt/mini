@@ -26,7 +26,39 @@ const MkTypeInfo mk_type_Byte = {"kotlin.Byte", sizeof(MkBoxByte), &mk_type_Any,
 const MkTypeInfo mk_type_Short = {"kotlin.Short", sizeof(MkBoxShort), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo mk_type_Char = {"kotlin.Char", sizeof(MkBoxChar), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 
+/* Boxes of small values are shared and immortal (static): no allocation, no reference counting, like the box caches of the
+ * JVM and Kotlin/Native (the identity of a box is unspecified). The tables are made on first use and published with a CAS. */
+#define BOX_CACHE(NAME, CTYPE, TYPE, LO, COUNT)                                                           \
+    static CTYPE *volatile NAME##_cache;                                                                   \
+    static CTYPE *NAME##_cache_make(void) {                                                                \
+        CTYPE *t = malloc(sizeof(CTYPE) * (COUNT));                                                        \
+        if (t == NULL) return NULL;                                                                        \
+        for (int i = 0; i < (COUNT); i++) {                                                                \
+            t[i].header.type = &TYPE;                                                                      \
+            t[i].header.refcount = 0;                                                                      \
+            t[i].header.flags = MK_FLAG_STATIC;                                                            \
+            t[i].value = (__typeof__(t[i].value))((LO) + i);                                               \
+        }                                                                                                  \
+        CTYPE *expected = NULL;                                                                            \
+        if (!__atomic_compare_exchange_n(&NAME##_cache, &expected, t, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {   \
+            free(t);                                                                                       \
+            return expected;                                                                               \
+        }                                                                                                  \
+        return t;                                                                                          \
+    }                                                                                                      \
+    static inline MkObject *NAME##_cached(int64_t v) {                                                     \
+        CTYPE *t = __atomic_load_n(&NAME##_cache, __ATOMIC_ACQUIRE);                                       \
+        if (t == NULL) t = NAME##_cache_make();                                                            \
+        return t != NULL ? &t[v - (LO)].header : NULL;                                                     \
+    }
+BOX_CACHE(int, MkBoxInt, mk_type_Int, -128, 1152)
+BOX_CACHE(char, MkBoxChar, mk_type_Char, 0, 256)
+
 MkObject *mk_box_int(MkInt value) {
+    if ((uint32_t)value + 128u < 1152u) {
+        MkObject *c = int_cached(value);
+        if (c != NULL) return c;
+    }
     MkBoxInt *b = (MkBoxInt *)mk_alloc(&mk_type_Int);
     b->value = value;
     return &b->header;
@@ -36,11 +68,9 @@ MkObject *mk_box_long(MkLong value) {
     b->value = value;
     return &b->header;
 }
-MkObject *mk_box_boolean(MkBoolean value) {
-    MkBoxBoolean *b = (MkBoxBoolean *)mk_alloc(&mk_type_Boolean);
-    b->value = value;
-    return &b->header;
-}
+static const MkBoxBoolean box_false = {{&mk_type_Boolean, 0u, MK_FLAG_STATIC}, 0};
+static const MkBoxBoolean box_true = {{&mk_type_Boolean, 0u, MK_FLAG_STATIC}, 1};
+MkObject *mk_box_boolean(MkBoolean value) { return (MkObject *)(void *)(value ? &box_true : &box_false); }
 MkObject *mk_box_double(MkDouble value) {
     MkBoxDouble *b = (MkBoxDouble *)mk_alloc(&mk_type_Double);
     b->value = value;
@@ -62,6 +92,10 @@ MkObject *mk_box_short(MkShort value) {
     return &b->header;
 }
 MkObject *mk_box_char(MkChar value) {
+    if (value < 256) {
+        MkObject *c = char_cached(value);
+        if (c != NULL) return c;
+    }
     MkBoxChar *b = (MkBoxChar *)mk_alloc(&mk_type_Char);
     b->value = value;
     return &b->header;

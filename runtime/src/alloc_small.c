@@ -32,7 +32,7 @@ static Batch *central_stack[MK_SMALL_CLASSES];
 static size_t central_cap[MK_SMALL_CLASSES];
 static size_t central_n[MK_SMALL_CLASSES];
 
-static void **link_of(void *b) { return (void **)(void *)((unsigned char *)b + sizeof(void *)); }
+static void **link_of(void *b) { return (void **)b; }
 
 static void central_push(size_t cls, void *head, void *tail, uint32_t count) {
     mk_lock(&central_lock);

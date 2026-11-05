@@ -859,7 +859,7 @@ object CEmitter {
                 is MirExpr.Unbox -> "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
                 is MirExpr.Cast -> cast(e)
                 is MirExpr.IsInstance -> "mk_is_instance((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
-                is MirExpr.NotNull -> "((${cType(e.type)})mk_checked_not_null((MkObject *)${expr(e.operand)}))"
+                is MirExpr.NotNull -> "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
                     val fp = fnPtrType(e.type, e.paramTypes)
@@ -967,7 +967,7 @@ object CEmitter {
                 MirExpr.CastMode.Checked -> {
                     // everything is an Any: only the null check is left (the erased `as E` of every generic getter)
                     if (to is TObject && to.cName == ANY_CNAME) return if (to.nullable) "((MkObject *)${obj(e.operand)})" else "((MkObject *)mkh_nn(${obj(e.operand)}))"
-                    val fn = if (to.isNullableRef()) "mk_checked_cast" else "mkh_cast_nn"
+                    val fn = if (to.isNullableRef()) "mkh_cc" else "mkh_cast_nn"
                     "((${cType(to)})$fn(${obj(e.operand)}, &${typeInfoOf(to)}))"
                 }
                 MirExpr.CastMode.Safe -> "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
@@ -1185,14 +1185,50 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
         else mk_release(mkr_); } } while (0)
 #endif
 
+/* The reference arrays of the stdlib collections (v1s.c): the slots are read and written inline. The layout is MkArray's (the
+ * elements right behind the length); a failing index or a NULL array takes the runtime's panic. The parentheses keep the macros
+ * of this block from expanding the names of the real functions. */
+#define MKH_RA_ITEMS(a) ((MkObject **)(((MkArray *)(a)) + 1))
+MKH_FN MkObject *mkh_ra_get_b(MkObject *a, MkInt i) {
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) return (mk_ref_array_get_b)(a, i);
+    return MKH_RA_ITEMS(a)[i];
+}
+MKH_FN MkObject *mkh_ra_get(MkObject *a, MkInt i) {
+    MkObject *v = mkh_ra_get_b(a, i);
+    MKH_RETAIN(v);
+    return v;
+}
+MKH_FN void mkh_ra_set_o(MkObject *a, MkInt i, MkObject *v) {
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) { (mk_ref_array_set_o)(a, i, v); return; }
+    MkObject **p = &MKH_RA_ITEMS(a)[i];
+    MkObject *old = *p;
+    *p = v;
+    MKH_REL(old);
+}
+MKH_FN void mkh_ra_set(MkObject *a, MkInt i, MkObject *v) {
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) { (mk_ref_array_set)(a, i, v); return; }
+    MKH_RETAIN(v);
+    mkh_ra_set_o(a, i, v);
+}
+MKH_FN MkInt mkh_ra_length(MkObject *a) {
+    if (__builtin_expect(a == NULL, 0)) return (mk_ref_array_length)(a);
+    return ((MkArray *)a)->length;
+}
+#define mk_ref_array_get_b(a, i) mkh_ra_get_b((a), (i))
+#define mk_ref_array_get(a, i) mkh_ra_get((a), (i))
+#define mk_ref_array_set_o(a, i, v) mkh_ra_set_o((a), (i), (v))
+#define mk_ref_array_set(a, i, v) mkh_ra_set((a), (i), (v))
+#define mk_ref_array_length(a) mkh_ra_length((a))
+
 MKH_FN void mkh_abstract(void) { mk_panic("AbstractMethodError"); }
 MKH_FN MkObject *mkh_cast_nn(MkObject *o, const MkTypeInfo *t) {
     if (o == NULL) {
         mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
         return NULL;
     }
-    return mk_checked_cast(o, t);
+    return o->type == t ? o : mk_checked_cast(o, t);
 }
+MKH_FN MkObject *mkh_cc(MkObject *o, const MkTypeInfo *t) { return (o == NULL || o->type == t) ? o : mk_checked_cast(o, t); }
 MKH_FN MkObject *mkh_nn(MkObject *o) {
     if (o == NULL) mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
     return o;
