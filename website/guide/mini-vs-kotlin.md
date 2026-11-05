@@ -65,6 +65,6 @@ These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus wh
 - The generated C uses GNU statement expressions, so it needs clang or gcc (not MSVC).
 - Reference cycles leak under reference counting, for example a closure stored in a field of the object it captures.
 
-::: warning Strict mode and native code
-Programs in Strict mode are checked, but programs that use the allocator types (`Heap`, `Arena`, `Pool`) do not yet build natively: `minic build` stops with `unsupported construct: value class 'NativePtr'` while compiling `mini.memory`. Strict files that never touch an allocator (such as the [`@NoAlloc` sample](/memory/noalloc)) do build. Details in the [roadmap](/roadmap).
+::: tip Strict mode and native code
+Programs in Strict mode are checked and build natively, including programs that use the allocator types (`Heap`, `Arena`, `Pool`) and `context(...) { }`. Only `spawn` (threads) is not available yet.
 :::
