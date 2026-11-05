@@ -605,6 +605,14 @@ fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt 
 
 // ---- resolving a call against candidate groups --------------------------------------------------------------------------------------
 
+/** false when an extension candidate's receiver class cannot be the call's receiver (decided on the classes only, so overloads such as `Array<T>.f` / `MutableList<T>.f` do not hide each other's expected types) */
+fun BodyChecker.receiverClassFits(c: Candidate): Boolean {
+    val fr = c.fn.receiver
+    val er = c.extRecv
+    if (fr is ClassType && er is ClassType) return ops.asSuper(er, fr.cls) != null
+    return true
+}
+
 fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, typeArgs: List<Type>?) {
     // with exactly one binding candidate, its parameter types are the expected types of the arguments
     var single: Candidate? = null
@@ -613,7 +621,7 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
         var found = 0
         for (c in g) {
             val params = paramsOf(c)
-            if (bindArgs(params, args) != null) {
+            if (bindArgs(params, args) != null && receiverClassFits(c)) {
                 found++
                 if (single == null) single = c
             }
