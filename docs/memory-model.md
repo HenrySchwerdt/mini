@@ -325,9 +325,10 @@ references have an **owner**: a local variable, a parameter, a field.
 | `this` and extension receiver | **borrowed** | – |
 | Parameters of Managed functions | **externally managed** (6.2) | `@Borrowed` |
 
-In P1 there is **no inference across function boundaries**: a function that stores,
+Between Strict functions there is **no inference of ownership transfer**: a function that stores,
 frees or returns its parameter as owned needs `@Owned`, otherwise M0107/M0109. The
-diagnostic's help names the annotation.
+diagnostic's help names the annotation. Towards Managed and library code the checker *does* infer, from the
+function's body, whether a borrowed argument is kept (see "Strict mode in practice").
 
 As an annotation, the main form is in type position (`b: @Owned Buffer`, `: @Owned Buffer?`;
 `List<@Owned T>` is P3, see 5.4). Declaration position (`@Owned fun f()`, `@Owned val x`)
@@ -611,15 +612,15 @@ enum entry must be qualified or imported; we write `Mode.Strict`.
 | Direction | Rule |
 |---|---|
 | Strict calls Managed, argument **not tracked** (Int, String, Managed object) | allowed. |
-| Strict calls Managed, argument **tracked** | only if the parameter of the Managed function is `@Borrowed` (promise of the author, unchecked in P1). Otherwise **M0110**. Standard library functions (`println`, `toString`, ...) are known as `@Borrowed`. |
+| Strict calls Managed, argument **tracked** | allowed when the callee only borrows the argument: the parameter is `@Borrowed`, or the *inferred summary* of the callee (computed from its body, transitively, stored in the `.mlib` for libraries) says the parameter does not escape. A callee that keeps the value (stores it into a field or array, returns it, hands it to a keeping callee) is **M0110**, and the message names why. Callees without a known body (function values, `external` functions) borrow, and their result is Managed. Standard library functions (`println`, `toString`, ...) are covered by their summaries. |
 | Strict stores a tracked value in a field or global of a Managed class | **M0110**. |
 | Strict puts a tracked value into a Kotlin collection | **M0110** (5.4). |
 | Strict uses Managed objects | they are **borrowed with external lifetime**: no `free` (M0107). |
 | Managed calls a Strict function with borrowed parameters/without owning return | allowed. |
 | Managed calls a Strict function with an `@Owned` parameter or owning return | **M0110**: Managed code cannot fulfill the obligation. Solution: Strict wrapper that frees internally. |
 
-The check at the parameter is a deliberate uncertainty: the assumption "`@Borrowed` on a
-Managed function is correct" will be checked in P3 through summaries of the Managed function.
+The assumption "`@Borrowed` on a Managed function is correct" is not checked; for an unannotated
+parameter the summary replaces it (section "Strict mode in practice": inferred summaries).
 
 ---
 
@@ -793,7 +794,8 @@ Corpus: `borrow_alias_stored`, `borrow_stored_field`, `borrow_returned_owned`.
 
 ```kotlin
 val list = ArrayList<Box>()
-list.add(b)            // error[M0110]: Strict value handed to Managed code
+list.add(b)            // error[M0110]: Strict value handed to Managed code that keeps it
+println(b)             // fine: println only borrows its argument (inferred)
 ```
 Fixed: your own container class with owning fields; for the Managed call a
 Strict wrapper. Corpus: `boundary_store_managed`, `boundary_collection`,
@@ -1013,6 +1015,128 @@ test runs with `minic check`, compares the emitted `line:col: code` lines with `
 and builds/runs the accepted programs (`.out`).
 
 A program with `.diag` and `.out` (`arena_loop_warn`) is accepted, but has a warning.
+
+## Strict mode in practice
+
+This section records an audit of Strict mode on everyday Kotlin, the root causes of the false positives it found and the rules that
+fix them. The sections above stay the specification; where this one refines them it says so (4.2, 6.2).
+
+### Corpus and measurement
+
+`compiler/testdata/strict-corpus/` holds 99 small programs a Kotlin developer would write (data classes in `println`, templates and
+`toString`/`equals`/`hashCode`, scope functions, extension functions, interfaces and abstract classes, generics, nullable handling,
+builders, exceptions with objects in flight, arenas and heaps, collections, lambdas, Managed library functions). The first line of
+each file is the verdict: `// ACCEPT: ...` (must compile and, with a `.out` file, run with that output) or `// REJECT Mxxxx: ...`
+(the checker must report exactly that code and nothing else: the program really leaks, double-frees or breaks the boundary).
+
+```sh
+scripts/strict-corpus.sh            # check every program; counters: ok, false positives, false negatives, wrong code
+scripts/strict-corpus.sh --run      # also build and run the accepted programs and compare with the .out files
+scripts/strict-corpus.sh s01 s13    # full diagnostics of the programs whose name starts with these prefixes
+```
+
+| | programs | as expected | false positives | false negatives | wrong code |
+|---|---:|---:|---:|---:|---:|
+| before (the 0.9.0 checker) | 99 | 84 | 13 | 1 | 1 |
+| after | 99 | 99 | 0 | 0 | 0 |
+
+The existing negative corpus (`compiler/testdata/memory`, 123 programs checked by `memcheck`, 34 run by `memrun`) is unchanged and
+green: every true leak, use after free and double free is still an error.
+
+### Audit: root causes of the false positives
+
+| # | Root cause | Programs | Was | Fix |
+|---|---|---:|---|---|
+| 1 | Library functions are not known to borrow: `println(p)`, `print`, `toString`, `equals`, `hashCode` are declared in the standard library (a Managed file), so the name list `BORROWS_ALL` (which only applied to bodiless foreign functions) never matched; every `println(strictValue)` was M0110 | 6 | M0110 | inferred summary: `println` has no escaping parameter (7.10) |
+| 2 | Unannotated Managed code that only reads: `StringBuilder.append(p)`, `requireNotNull(x)`, user Managed library classes | 3 | M0110 | inferred summaries from the bodies, transitively; `requireNotNull` returns a loan of its argument |
+| 3 | Function values and receivers: `init: Box.() -> Unit` called as `b.init()`, `f(b)` | 4 | M0110 | a call of a function value has no known target: the arguments are lent, the result is Managed (6.2) |
+| 4 | Generics: `fun <T> peek(h: Holder<T>): T` returns an existing element, not a fresh allocation | 1 | M0102 | a result whose declared type is a type parameter is a loan of the arguments |
+| 5 | Diagnostic noise: a follow-up M0110 next to the real M0102 for the same `println(p)` | 1 | wrong code | disappears with 1 |
+| 6 | Vararg arrays: `listOf(a, b)` stored Strict objects into a Kotlin array without any diagnostic, and the program crashed at run time (reference count underflow) | 1 | accepted (false negative) | the elements of a vararg are stored: M0110 |
+
+Not a false positive after all (kept as `REJECT` programs, with a better help line): a closure object that captures an owned Strict
+object (`s24`, `s64`, `s75`: a lambda passed to a non-inline function, a lambda value, the comparator `sortBy` builds). The checker
+rejects it with M0112, and that is right: the closure object retains the object it captures, `free()` deallocates it at once, and
+the closure's release afterwards reads freed memory (the C output of `s24` shows it). Accepting such lambdas needs a closure
+that holds its captures unretained (a `MirField.borrowed` capture field); until then the rule of 5.5 stands and the diagnostic says
+how to restructure (make the callee `inline`, pass the value as a parameter, read what you need first). The `s24b`, `s64b` and `s75b`
+programs show the accepted forms.
+
+Programs that were already correct and are guard rails for the rules below: `s13`, `s14`, `s51` (storing, returning or freeing a
+borrowed parameter), `s45`, `s79`, `s96`, `s97`, `s99` (Strict values entering Managed code that keeps them).
+
+### Borrowed by default, decided by inferred summaries
+
+An unannotated parameter is borrowed (4.2). What changes is how the checker decides whether a function that is *not* Strict code
+(Managed code of the program, the standard library, a precompiled library) keeps its argument. It no longer asks for an annotation
+nobody wrote; it reads the function.
+
+**Summary.** For every function with a body the checker computes which parameters *escape*: the body
+
+* stores the parameter into a field (`this.item = p`), an array (`refArraySet`, `@TakesOwnership`), or a global,
+* returns it, throws it, moves it (`p.move()`) or releases it (`p.free()`),
+* hands it to a callee parameter that escapes (this makes the analysis transitive), to a constructor that owns its property
+  parameter, or to an `@Owned` parameter,
+* captures it in a closure object that may outlive the call, or in a thread.
+
+Everything else only borrows. Aliases (`val q = p`) are followed. Recursion and mutual recursion are solved by a fixpoint that starts
+optimistic (nothing escapes) and iterates to stability. Summaries are computed on demand and cached per function
+(`Summaries.of`, `compiler/backend/src/memory/Summary.kt`); a body is lowered only when a Strict call actually needs its summary.
+
+**Calls that cannot be resolved.**
+
+| Callee | Summary | Consequence |
+|---|---|---|
+| function with a body (Strict or Managed, source or library source) | inferred | M0110 only for an escaping parameter; the message names the reason |
+| virtual call (open/abstract/interface method) | union over all known overriders | `MutableList.add(x)` escapes because `ArrayList.add` stores it |
+| `external` function (C runtime: `println(Any?)`) and function values (`f(x)`, `x.block()`) | none | borrowed-in, Managed result: nothing is known that could store the value |
+| library stub (`.mlib`) | stored in the library (see below) | the same answer as from source |
+| generic result `T` | n/a | the result is a loan of the arguments (7.9 applies if it is stored) |
+
+This is a deliberate rule, not a proof: the Managed boundary stays "borrowed in, Managed out". Code reached through a function
+value or an overrider that is not part of the compilation can still keep a lent Strict object; that gap is the same as the unchecked
+`@Borrowed` promise of 6.2 and is documented rather than hidden. A Strict parameter of a *Strict* function keeps the rule of
+4.2 (an unannotated parameter that is stored is M0109, with help to add `@Owned`): ownership transfer between Strict functions stays
+visible in the signature.
+
+**Data classes.** The synthesized `toString`, `equals`, `hashCode`, `copy` and `componentN` read `this`; `copy` returns a fresh
+object the caller owns (`s48`).
+
+**Lambdas.** Inline lambdas are code at the call (5.5). A lambda that is a closure object keeps what it captures, so an owned
+Strict capture is M0112 (see above).
+
+### Diagnostics
+
+Every remaining M0110 says why. The same call shows:
+
+```text
+error[M0110]: Strict value handed to Managed code that keeps it
+  --> app.kt:12:12   parameter `value` of `set` takes ownership of it (`@TakesOwnership`)
+   12 |     m[1] = b
+      |            ^
+  help: keep the value in Strict code and pass only what is needed (`x.field`), or mark the parameter `@Borrowed` if `set` really only lends it
+```
+
+and for a program's own Managed helper "parameter `b` of `keep` stored into field `kept` of `Keeper`". M0112 now names the closure
+object and lists the three ways out.
+
+### Libraries: summaries in the `.mlib`
+
+A `.mlib` carries the stubs of its sources, and stubs have no bodies, so a program checked against a library cannot infer
+anything about it. `--emit-mlib` therefore computes the summary of every library function and stores one line per function with an
+escaping parameter in a new `summary` section (format version 2, docs/mlib.md). Keys are the qualified name plus the parameter
+types, so a stub and its source agree. Precompiled libraries (the standard library included) keep Strict checking as precise as
+source libraries; a version-1 library is rejected with the usual "rebuild the library" message.
+
+### What remains
+
+* Closure objects capturing owned Strict objects (M0112) until closure capture fields can be unretained.
+* Strict values in Kotlin collections (`List<Box>`): still M0110 by 5.4. A borrowing view collection (a list of loans that cannot outlive
+  its elements' owners) is the natural next step.
+* A Strict function with a stored (library) summary does not use it for its own parameters: those stay annotation-based (4.2).
+* Overriders that live in code outside the compilation are invisible to the union rule of virtual calls.
+* Anonymous objects (`object : I { ... }`) that capture an owned object are not rejected by the checker yet (they behave like
+  closure objects at run time).
 
 ## Experience from D2 (Strict code generation)
 
