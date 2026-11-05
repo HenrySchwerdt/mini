@@ -18,6 +18,8 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     pendingLabel = null
     val probe = probeLambda
     probeLambda = false
+    val inlinable = inlineLambdaNext
+    inlineLambdaNext = false
     var base: Scope = scope
     val recvT = ef?.receiver
     if (recvT != null) {
@@ -67,6 +69,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     val retExpected: Type? = if (probe) null else if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
     val target = ReturnTarget(label, retExpected, null, true)
     target.isSuspend = ef != null && ef.suspend
+    target.inlinable = inlinable && !target.isSuspend
     targets.add(target)
     lambdaDepth++
     // statements of the body, value of the last expression
@@ -140,6 +143,12 @@ fun BodyChecker.anonFunWith(e: AnonFunExpr, ef: FunType?): Type {
     sub.scope = scope
     sub.flow = flow.copy()
     sub.capturedNames = capturedNames
+    if (inlineLambdaNext && ef != null && !ef.suspend) {
+        // an anonymous function for an inlinable parameter: suspension points in it belong to the enclosing function
+        sub.targets.addAll(targets)
+        sub.inlineFunNext = true
+    }
+    inlineLambdaNext = false
     var i = 0
     for (p in f.params) {
         if (p.decl?.type == null && ef != null && i < ef.params.size) p.type = ef.params[i]
@@ -330,13 +339,57 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         m = mm
         break
     }
+    var adapted: AdaptedRef? = null
+    if ((chosen == null || cs == null || m == null) && ef != null) {
+        for (c in cands) {
+            val fn = c.sym as? FunSym ?: continue
+            if (c.isProp) continue
+            val off = c.params.size - fn.params.size
+            if (off < 0 || off > 1) continue
+            val eps = ops.allParams(ef)
+            val map = adaptMapping(fn.params, off, eps.size) ?: continue
+            val sys = ConstraintSystem(sema)
+            val mm = HashMap<TypeParamSym, Type>()
+            sys.addVariables(c.tps, mm)
+            var ok = true
+            var i = 0
+            while (i < off && ok) {
+                if (!sys.addSub(eps[i], ops.substitute(c.params[i], mm))) ok = false
+                i++
+            }
+            var j = 0
+            while (j < fn.params.size && ok) {
+                val p = fn.params[j]
+                val pt: Type = if (p.isVararg) ops.substitute(ops.substitute(p.varargElement ?: ErrType("vararg"), c.subst), mm) else ops.substitute(c.params[off + j], mm)
+                var k = 0
+                while (k < map.counts[j] && ok) {
+                    if (!sys.addSub(eps[map.starts[j] + k], pt)) ok = false
+                    k++
+                }
+                j++
+            }
+            if (ok && !ops.isUnit(sys.resolveFixed(ef.ret))) {
+                if (!sys.addSub(ops.substitute(c.ret, mm), ef.ret)) ok = false
+            }
+            if (!ok) continue
+            chosen = c
+            cs = sys
+            m = mm
+            adapted = AdaptedRef(map, off)
+            break
+        }
+    }
     if (chosen == null || cs == null || m == null) {
         err(e.start, "no matching callable for reference '" + name + "'")
         return ErrType("callable reference")
     }
     cs.fixAll()
     val ps = ArrayList<Type>()
-    for (p in chosen.params) ps.add(cs.resolveFixed(ops.substitute(p, m)))
+    if (adapted != null && ef != null) {
+        for (p in ops.allParams(ef)) ps.add(cs.resolveFixed(p))
+    } else {
+        for (p in chosen.params) ps.add(cs.resolveFixed(ops.substitute(p, m)))
+    }
     val ret = cs.resolveFixed(ops.substitute(chosen.ret, m))
     val t: Type
     if (chosen.isProp) {
@@ -353,8 +406,57 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         args.add(TArg(ret, Variance.INV))
         t = ClassType(cls, args, false)
     }
-    record(e, t, chosen.sym)
+    val rr = record(e, t, chosen.sym)
+    if (adapted != null) {
+        val targs = ArrayList<Type>()
+        for (tp in chosen.tps) targs.add(cs.resolveFixed(m[tp] ?: ErrType("type argument")))
+        adapted.typeArgs = targs
+        rr.extra = adapted
+    }
     return t
+}
+
+/** How the expected parameters of a function type map onto the parameters of the function a callable reference was adapted to. */
+class AdaptMap(val starts: IntArray, val counts: IntArray)
+
+/** A callable reference that needs an adapter: default arguments, `vararg` and a different number of parameters than the target. */
+class AdaptedRef(val map: AdaptMap, val receiverCount: Int) {
+    var typeArgs: List<Type> = emptyList()
+}
+
+/**
+ * Assigns [n] expected parameters (the first [off] are receivers) to the parameters of a function: in order; a `vararg` takes the
+ * ones that are left over (after the required parameters behind it); the parameters beyond the expected ones need a default or are
+ * `vararg`. Null when that does not work, or when the reference is not adapted at all.
+ */
+fun adaptMapping(params: List<VarSym>, off: Int, n: Int): AdaptMap? {
+    if (n < off) return null
+    val starts = IntArray(params.size)
+    val counts = IntArray(params.size)
+    var i = off
+    var j = 0
+    while (j < params.size) {
+        val p = params[j]
+        starts[j] = i
+        if (p.isVararg) {
+            var req = 0
+            var k = j + 1
+            while (k < params.size) {
+                if (!params[k].hasDefault && !params[k].isVararg) req++
+                k++
+            }
+            var take = n - i - req
+            if (take < 0) take = 0
+            counts[j] = take
+            i += take
+        } else if (i < n) {
+            counts[j] = 1
+            i++
+        } else if (!p.hasDefault) return null
+        j++
+    }
+    if (i != n) return null
+    return AdaptMap(starts, counts)
 }
 
 fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {

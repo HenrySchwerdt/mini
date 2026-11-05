@@ -7,6 +7,8 @@ class ReturnTarget(val label: String?, val expected: Type?, val fn: FunSym?, val
     val returned = ArrayList<Type>()
     /** a lambda whose expected type is a suspend function type */
     var isSuspend = false
+    /** a lambda passed for a non-noinline, non-crossinline function parameter of an `inline` function: it is expanded where it is called, so suspension points in it belong to the enclosing function */
+    var inlinable = false
 }
 
 /**
@@ -28,6 +30,9 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     var pendingLabel: String? = null
     /** the next lambda is analysed only to learn its result type (overloads by lambda result, see byLambdaResult) */
     var probeLambda = false
+    /** the next lambda analysed is the argument of an inlinable parameter of an `inline` function (see [ReturnTarget.inlinable]) */
+    var inlineLambdaNext = false
+    var inlineFunNext = false
     /** > 0 while checking the branches / operands of an if, when, try, elvis or `!!` */
     var synthDepth = 0
     /** the argument expression being checked: its expected type is a hint only (K2 resolves arguments independently) */
@@ -54,14 +59,22 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     /** a call of a suspend function is only legal in a suspend function or a suspend lambda */
     fun checkSuspendContext(pos: Int, callee: FunSym) {
         var i = targets.size - 1
-        if (i >= 0) {
+        while (i >= 0) {
             val t = targets[i]
-            if (t.isLambda && t.isSuspend) return
-            val f = t.fn
-            if (!t.isLambda && f != null && f.mods()?.has("suspend") == true) return
+            if (t.inlinable) {
+                i--
+                continue
+            }
+            if (t.isLambda) {
+                if (t.isSuspend) return
+            } else {
+                val f = t.fn
+                if (f != null && f.mods()?.has("suspend") == true) return
+            }
+            break
         }
         val what = if (callee.invokeSuspend) "Suspend function type" else "Suspend function '" + callee.name + "'"
-        err(pos, what + " should be called only from a coroutine or another suspend function (a lambda passed to an inline function does not count: suspension points there are not supported yet)")
+        err(pos, what + " should be called only from a coroutine or another suspend function")
     }
 
     fun err(pos: Int, msg: String) {
@@ -460,6 +473,8 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         }
         val declared = if (d.returnType != null || !d.expressionBody) f.returnType else null
         val target = ReturnTarget(f.name, declared, f, false)
+        target.inlinable = inlineFunNext
+        inlineFunNext = false
         targets.add(target)
         lambdaDepth++
         if (d.expressionBody) {

@@ -58,6 +58,7 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
     for (p in f.parameters) {
         val l = MirLocal(localCounter++, if (p.kind == IrParameterKind.DispatchReceiver) "this" else p.name, mirType(p.type, p))
         locals[p] = l
+        if (p.type.classFqName == "kotlin.Unit" && !p.type.isMarkedNullable()) unitVars += p
         params += l
     }
     val ret = if (f is IrConstructor) TUnit else mirType(f.returnType, f)
@@ -181,7 +182,8 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 val rc = refClassFor(t)
                 val l = MirLocal(localCounter++, s.name, rc.type)
                 locals[s] = l
-                out += MirStmt.Declare(l, MirExpr.New(rc.ctor, listOf(init ?: zeroOf(t)), rc.type))
+                val cell = if (init != null && init.isOwned()) tmpOf(init, out) else init
+                out += MirStmt.Declare(l, MirExpr.New(rc.ctor, listOf(cell ?: zeroOf(t)), rc.type))
             } else {
                 val l = MirLocal(localCounter++, s.name, t)
                 locals[s] = l

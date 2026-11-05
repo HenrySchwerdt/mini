@@ -254,6 +254,7 @@ internal fun Ir2Mir.boxIfPrim(e: MirExpr, at: IrElement, out: MutableList<MirStm
 internal fun Ir2Mir.toStringExpr(e: MirExpr, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     val call = when (e.type) {
         TString -> return e
+        TUnit -> return MirExpr.StringConst("kotlin.Unit")
         TInt -> MirExpr.RuntimeCall("mk_string_from_int", listOf(e), TString)
         TLong -> MirExpr.RuntimeCall("mk_string_from_long", listOf(e), TString)
         TDouble -> MirExpr.RuntimeCall("mk_string_from_double", listOf(e), TString)

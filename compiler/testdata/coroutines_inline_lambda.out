@@ -1,0 +1,17 @@
+forEach -> a1 b2 c3
+repeat -> 63
+scope -> 6 x2 300
+lock -> 101 held=0
+nonlocal -> found 20 at 2/none
+nested -> 1x1 1y2 2x3 2y4
+try -> ok1 f0; caught boom2 f1;ok3 f2;
+label -> [11, -1, 32]
+search -> found 4
+reified -> a1b2
+with -> w12
+args -> 1&12
+loop -> 2,12,5,24,|
+nonlocal2 -> hit 2/miss 1
+suspend inline -> 12-3-4
+anon -> 24
+lambda -> 12

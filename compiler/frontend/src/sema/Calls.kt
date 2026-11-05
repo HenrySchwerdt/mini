@@ -489,7 +489,11 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
         for (g in unqualifiedGroups(u.name)) for (c in g) funRefCand(c, false, cands)
         if (cands.isEmpty()) return true
         val want = pt.params.size + (if (pt.receiver != null) 1 else 0)
-        for (c in cands) if (c.params.size == want) return true
+        for (c in cands) {
+            if (c.params.size == want) return true
+            val fn = c.sym as? FunSym ?: continue
+            if (c.params.size == fn.params.size && adaptMapping(fn.params, 0, want) != null) return true
+        }
         return false
     }
     return true
@@ -800,6 +804,7 @@ fun BodyChecker.byLambdaResult(ok: List<Attempt>, args: List<Arg>): List<Attempt
     cs.fixVarsOf(FunType(ft.receiver, ft.params, sema.unitType, false, false))
     val ef = cs.resolveFixed(FunType(ft.receiver, ft.params, sema.nullableAny, false, false)) as? FunType ?: return ok
     probeLambda = true
+    inlineLambdaNext = isInlinableParam(first.cand.fn, first.params[first.binding.paramOfArg[li]])
     val lt = analyzeLambda(lam, ef, cs) as? FunType ?: return ok
     val res = lt.ret
     if (containsError(res)) return ok
@@ -810,6 +815,9 @@ fun BodyChecker.byLambdaResult(ok: List<Attempt>, args: List<Arg>): List<Attempt
     }
     return if (keep.isEmpty()) ok else keep
 }
+
+/** is a lambda argument of [p] expanded at the call site: [fn] is a non-suspend `inline` function and [p] neither noinline nor crossinline */
+fun isInlinableParam(fn: FunSym, p: VarSym): Boolean = fn.isInline && !p.isNoinline && !p.isCrossinline
 
 /** analyses postponed arguments of a call that could not be resolved, so that their bodies are still checked */
 fun BodyChecker.leftoverArgs(args: List<Arg>) {
@@ -861,6 +869,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     cs.unfixedVars(cs.resolveFixed(expectedFun.ret), rv)
                     for (v in rv) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) cs.fix(v)
                     val ef = cs.resolveFixed(expectedFun) as FunType
+                    inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
                     val lt = analyzeLambda(u, ef, cs)
                     cs.addSub(lt, pt)
                     // the lambda is recorded with the final types later
@@ -869,6 +878,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     cs.addSub(lt, pt)
                 }
             } else if (u is AnonFunExpr) {
+                inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
                 val lt = anonFunWith(u, if (expectedFun != null) cs.resolveFixed(expectedFun) as FunType else null)
                 cs.addSub(lt, pt)
             } else if (u is CallableRefExpr) {
