@@ -188,7 +188,7 @@ class EndToEndTest {
         val mlib = p.file("build/package/geometry-0.1.0.mlib")
         if (!mlib.exists()) return   // a toolchain without a precompiled standard library builds no packages
         val text = mlib.readText()
-        assertTrue(text.startsWith("mini-mlib 1\n") && text.contains("\nname geometry\n") && text.contains("\nversion 0.1.0\n"), text.take(200))
+        assertTrue(text.startsWith("mini-mlib 2\n") && text.contains("\nname geometry\n") && text.contains("\nversion 0.1.0\n"), text.take(200))
         assertTrue(text.contains("\nstub ") && text.contains("fun add"), "the API stubs are in the library")
         // unchanged: the content-addressed library is reused
         p.reset()
