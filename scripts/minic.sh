@@ -557,7 +557,8 @@ if [ -n "$emit" ]; then cfile="$emit"; else cfile="$tmp/$base.c"; fi
 
 frontend build "$cfile"
 
-cflags="-std=c17 $opt -w $size_cflags"
+# -fno-math-errno: Kotlin has no errno, and the math builtins (sqrt) then compile to the instruction alone
+cflags="-std=c17 $opt -w -fno-math-errno $size_cflags"
 if [ "$debug" = 1 ]; then cflags="$cflags -g -fno-omit-frame-pointer"; fi
 
 # libraries asked for by @file:CLink("name") travel in the generated C as `mini:link name`

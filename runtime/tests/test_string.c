@@ -115,6 +115,28 @@ int main(void) {
     mk_release(&s->header);
     mk_release(&a->header); mk_release(&b->header);
 
+    /* fused concatenation: one allocation, NULL operands are "null" */
+    {
+        const MkString *x = (const MkString *)&lit_hello;
+        const MkString *e0 = (const MkString *)&lit_empty;
+        CHECK_STR(mk_string_concat3(x, e0, x), "hellohello");
+        CHECK_STR(mk_string_concat4(x, NULL, e0, x), "hellonullhello");
+        CHECK_STR(mk_string_concat5(e0, x, e0, x, e0), "hellohello");
+        CHECK_STR(mk_string_concat6(x, x, x, x, x, NULL), "hellohellohellohellohellonull");
+    }
+    /* decimal formatting in place: digit counts and signs around the powers of ten */
+    {
+        static const long long vals[] = {0, 9, 10, 99, 100, 101, 999, 1000, 9999, 10000, 99999, 100000, -1, -9, -10, -99, -100, 1234567890LL,
+                                         -1234567890LL, 2147483647LL, -2147483648LL, 4294967296LL, 9223372036854775807LL};
+        for (size_t i = 0; i < sizeof vals / sizeof vals[0]; i++) {
+            char expect[32];
+            snprintf(expect, sizeof expect, "%lld", vals[i]);
+            MkString *t = mk_string_from_long((MkLong)vals[i]);
+            CHECK_STR(t, expect);
+        }
+        CHECK_STR(mk_string_from_long(INT64_MIN), "-9223372036854775808");
+    }
+
     /* simple conversions */
     CHECK_STR(mk_string_from_boolean(true), "true");
     CHECK_STR(mk_string_from_boolean(false), "false");

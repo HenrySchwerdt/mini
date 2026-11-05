@@ -809,8 +809,50 @@ object CEmitter {
 
         fun expr(e: MirExpr, top: Boolean = false): String {
             if (!top && ownedE(e)) throw EmitError("owned temporary in operand position: ${e.type}")
+            inlineChecked.remove(e)
             val s = exprInner(e)
-            return if (needsCheck(e)) checked(s, e.type) else s
+            return if (needsCheck(e) && !inlineChecked.contains(e)) checked(s, e.type) else s
+        }
+
+        /** Array accesses whose failing index leaves the function inline (see [arrayAccess]): they need no test of the pending exception. */
+        val inlineChecked = HashSet<MirExpr>()
+
+        /**
+         * `mk_array_get_*` / `mk_array_set_*` as one statement expression: the bounds test is the only branch of the fast path and the
+         * failing index raises and leaves the function right there (like the LLVM lowering), instead of testing the pending
+         * exception after every access. Only when the exit path is short (few locals to release): else the call plus check is
+         * smaller.
+         */
+        fun arrayAccess(e: MirExpr.RuntimeCall): String? {
+            val n = e.cName
+            val isGet = n.startsWith("mk_array_get_")
+            if (!isGet && !n.startsWith("mk_array_set_")) return null
+            val kind = n.substring(13)
+            val ct = when (kind) {
+                "int" -> "MkInt"; "long" -> "MkLong"; "double" -> "MkDouble"; "float" -> "MkFloat"; "byte" -> "MkByte"
+                "short" -> "MkShort"; "boolean" -> "MkBoolean"; "char" -> "MkChar"; "obj" -> "MkObject *"
+                else -> return null
+            }
+            if (e.args.size != (if (isGet) 2 else 3) || e.args[1].type !== TInt) return null
+            val exit = exitStmt(0).replace("\n", " ").trim()
+            if (exit.length > 260) return null
+            val id = tmpCounter++
+            val a = "mka$id"; val i = "mki$id"; val v = "mkv$id"
+            val borrowed = fplan?.borrowedReads?.contains(e) == true
+            val sb = StringBuilder("({ MkObject *$a = (MkObject *)${expr(e.args[0])}; MkInt $i = ${expr(e.args[1])}; ")
+            if (!isGet) sb.append("$ct $v = ${coerceTo(e.args[2], if (kind == "obj") e.args[2].type else e.args[2].type)}; ")
+            sb.append("if (__builtin_expect((uint32_t)$i >= (uint32_t)((MkArray *)$a)->length, 0)) { mk_raise_index($i, ((MkArray *)$a)->length); $exit } ")
+            if (isGet) {
+                sb.append("$ct $v = MK_ARRAY_ELEMS($ct, $a)[$i]; ")
+                if (kind == "obj" && !borrowed) sb.append("${ret(v, "array read")}; ")
+                sb.append("$v; })")
+            } else if (kind == "obj") {
+                sb.append("$ct *mkp$id = &MK_ARRAY_ELEMS($ct, $a)[$i]; ${ret(v, "array store")}; MkObject *mko$id = *mkp$id; *mkp$id = $v; ${rel("mko$id", "array store")}; (void)0; })")
+            } else {
+                sb.append("MK_ARRAY_ELEMS($ct, $a)[$i] = $v; (void)0; })")
+            }
+            inlineChecked.add(e)
+            return sb.toString()
         }
 
         fun exprInner(e: MirExpr): String {
@@ -842,7 +884,7 @@ object CEmitter {
                     val owns = NativeConventions.ownedArgs(e.cName)
                     if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)"
                     else if (owns != null) ownedCall(e.cName, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0)
-                    else "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                    else arrayAccess(e) ?: "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${e.args.joinToString(", ") { expr(it) }})"
                 }
                 is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
                 is MirExpr.Load -> { usesMemory = true; "MKH_LOAD(${cType(e.type)}, ${expr(e.ptr)})" }

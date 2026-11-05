@@ -60,3 +60,66 @@ Observations driving the first attempts:
 ## Attempts
 
 (appended below, newest last)
+
+Noise note: the box runs 4 vCPUs shared with other agents (load average 6-10), so CPU-time medians of 3-5 runs move by 10-20%
+between sessions (the Rust reference moves too: graph 0.75-1.25 s). Decisions on micro-optimizations therefore use
+`bench/hillclimb/icount.sh` (callgrind instruction counts of scaled-down benchmarks: deterministic) plus A/B runs interleaved in one
+session; the full score table is reported with the usual caveat. RSS and size are deterministic and exact.
+
+### 1. C backend: libm calls as builtins (KEPT)
+Hypothesis: `extern double mkx_sqrt(double) __asm__("sqrt")` hides the builtin from clang, so no `sqrtsd` is emitted. Change: `CEmitter`
+declares `sqrt floor ceil trunc rint sin cos exp log fabs pow remainder nextafter` through `__builtin_<name>`.
+nbody (C): 3.12x -> 1.23x Rust (3 runs, same session). Other benchmarks unchanged.
+
+### 2. Whole-program devirtualization with rapid type analysis (KEPT) - `compiler/backend/src/Devirt.kt`
+Every collection call was a vtable/itable call (ArrayList is `open`; iterators go through `mk_itable`, a linear search). After the
+MIR of the program and its libraries is linked and pruned, a reachability-driven RTA (instantiated classes = `New`, `ObjectGet`, boxes
+of inline classes, runtime classes; vtable slots 0..3 and `Function0`/`Comparable` entries are called by the runtime and kept
+reachable) turns a VCall/ICall with one possible target into a direct Call; strict code, `Any` slots and signature mismatches are left
+alone. Not applied to mlib builds (open world), wasm libraries or the REPL. Callgrind graph (100k nodes): 434M -> 303M instructions;
+graph 9.7x -> 5.1x (C, 3 runs). A/B on wordcount (alternating, same session): 6.0 s vs 6.9 s with `--no-devirt`. c suite 105/105.
+
+### 3. Rejected: LTO of the runtime into the program; -O3 / larger inline threshold; `static` linkage for generated C
+Measured on generated C of wordcount and graph with clang: `-flto` of runtime + program 6.0 -> 5.5 s and 6.1 -> 5.0 s (10-15%), needs
+lld/gold and a matching clang on the user's machine; `-O3` and `-mllvm -inline-threshold=1000` no change; making all generated
+functions `static` no change (clang already inlines within the TU). Not adopted: too small / too fragile for the cost.
+
+### 4. Small Rc/Heap objects without the 16-byte allocator prefix (KEPT) - runtime/src/alloc.c, alloc_small.h, minirt.h
+The block of every object carried `[owner | size]` in front of the header. Now small (<= 256 B) blocks of the Rc and Heap allocators
+have no prefix: the object is the block; flags carry the owner (MK_FLAG_HEAP) and the size class (bits 8..15); the free-list link
+lives in the dead object's type word (refcount/flags stay intact for the double-free diagnosis). Other allocators and large objects
+keep the prefix (MK_FLAG_PREFIXED). RSS: binarytrees 98 -> 67 MB, graph 193 -> 147 MB, json 124 -> 93 MB; binarytrees 1.01x -> 0.84x
+Rust. Runtime tests updated (flags no longer 0; byte accounting by size class); runtime/run_tests.sh (ASan+UBSan, TSan) passes.
+
+### 5. Inline reference-array accessors (KEPT) - CEmitter prelude `mkh_ra_*`, `Lowering.refArrayAccess`
+`ArrayList`/`HashMap` storage accessors were runtime calls. The layout of `MkRefArray` is now `MkArray`'s, and get/get_b/set/set_o/length
+are inline in both backends (bad index and NULL still take the runtime's panic). Callgrind graph 300M -> 274M.
+
+### 6. Box cache, direct `mk_alloc`, cast and `is` fast paths, string helpers (KEPT)
+* `mk_box_int` (-128..1023), `mk_box_char` (0..255) and `mk_box_boolean` return shared immortal boxes: wordcount 3.70x -> 2.87x.
+* `mk_alloc`/`mk_alloc_sized` take the small-block path directly (two calls less).
+* `mkh_cast_nn`/`mkh_cc` (C prelude and LLVM prelude) test `o->type == target` inline; `mk_is_instance` walks only the superclass
+  chain for a class target (interfaces have `instance_size == 0`) and the C backend inlines that chain; `mk_checked_not_null` -> `mkh_nn`;
+  `mk_string_char_at`/`mk_string_length` inline in the C prelude. json callgrind: 166M -> 131M instructions.
+* `mk_string_from_int/long` and `StringBuilder.append(Int)` write the digits in place (two digits per division); string templates
+  `a + b + c ...` call `mk_string_concat3..6` (one allocation instead of one per `+`). strbuild callgrind 430M -> 347M.
+
+### 7. Early release of last-use locals (KEPT) - RcOpt `RcFunctionPlan.early`, both emitters
+Temporaries were released at the end of their scope (`check(bottomUp(stretch))` kept a 33 MB tree alive until the end of `main`). The
+RcOpt liveness pass now records, for a simple statement that is the last use of an owned, never-reassigned local declared in the same
+statement list (not a parameter, not borrowed, not moved/taken by that statement, not the last statement of the list), an early
+release after it. Disabled in Strict functions and in functions with tracked locals (a first version broke strict_auto: a tracked alias
+of an owned local is not a use of it). binarytrees RSS 67 -> 34 MB (Rust: 34 MB).
+
+### 8. ArrayList: iterator over the storage, growth by move (KEPT) - stdlib/kotlin/collections/ArrayList.kt, `mk_ref_array_move`
+`for (x in list)` used the generic list iterator (index checks, interface calls). `ArrayList.iterator()` is now `ArrayListIterator`
+(reads the storage directly); `ensureCapacity` moves the slots (no retain/release per element). graph callgrind 251M -> 216M.
+
+### 9. Linux size: function sections, --gc-sections, no unwind tables, RTA pruning of unreachable methods (KEPT)
+`scripts/minic.sh` (optimized builds, Linux): `-ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables`
+for the generated C, `-Wl,--gc-sections` for both backends (the macOS `-dead_strip` of the earlier campaign had no Linux counterpart);
+the runtime archive is built the same way (build-mini.sh, package-release.sh; `MINIC_UNWIND_TABLES=1` keeps unwind tables for stack
+walkers). `Devirt.prune` drops every function the program cannot reach and abstracts their vtable/itable entries (MirLink's pruning keeps
+all methods of a live class). Stripped sizes (C): hello 63.8K -> 22.8K, binarytrees 67.9K -> 35.1K, wordcount 166K -> 68K, json 117K -> 60K,
+graph 105K -> 43K (Rust: 336-349K). Not adopted: `-z noseparate-code` (-4K) and `-z norelro` (-1K) weaken the default hardening.
+

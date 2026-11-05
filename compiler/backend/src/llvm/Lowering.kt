@@ -517,8 +517,33 @@ private class Lowering<V : Any, B : Any>(
     }
 
     /** Call of a C function of the program ([MirExpr.CCall]): declared once per symbol, the call carries its own signature. */
+    /** The LLVM intrinsic of a libm function of the `Double -> Double` / `(Double, Double) -> Double` shape: no errno, so it can fold, hoist and vectorize. */
+    private fun libmIntrinsic(x: MirExtern): String? {
+        if (x.isVariadic || x.returnType !== TDouble || x.params.isEmpty() || x.params.size > 2) return null
+        for (p in x.params) if (p !== TDouble) return null
+        return when {
+            x.params.size == 1 && x.symbol == "sqrt" -> "llvm.sqrt.f64"
+            x.params.size == 1 && x.symbol == "floor" -> "llvm.floor.f64"
+            x.params.size == 1 && x.symbol == "ceil" -> "llvm.ceil.f64"
+            x.params.size == 1 && x.symbol == "trunc" -> "llvm.trunc.f64"
+            x.params.size == 1 && x.symbol == "rint" -> "llvm.rint.f64"
+            x.params.size == 1 && x.symbol == "fabs" -> "llvm.fabs.f64"
+            x.params.size == 1 && x.symbol == "sin" -> "llvm.sin.f64"
+            x.params.size == 1 && x.symbol == "cos" -> "llvm.cos.f64"
+            x.params.size == 1 && x.symbol == "exp" -> "llvm.exp.f64"
+            x.params.size == 1 && x.symbol == "log" -> "llvm.log.f64"
+            x.params.size == 2 && x.symbol == "pow" -> "llvm.pow.f64"
+            else -> null
+        }
+    }
+
     fun cCall(x: MirExtern, args: List<MirExpr>): V {
         val vs = args.map { expr(it) }
+        val intrinsic = libmIntrinsic(x)
+        if (intrinsic != null) {
+            val f = b.declareExternal(intrinsic, ity(x.returnType), rext(x.returnType), x.prototypeParams.map { ity(it) }, exts(x.prototypeParams), IrAttrs.PURE, false)
+            return call(x.returnType, f, x.params, vs)
+        }
         val callee = b.declareExternal(
             x.symbol, ity(x.returnType), rext(x.returnType), x.prototypeParams.map { ity(it) }, exts(x.prototypeParams), IrAttrs.NONE, x.isVariadic,
         )
