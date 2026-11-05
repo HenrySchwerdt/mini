@@ -48,6 +48,35 @@ What the harness adds around a test:
 * tests that use `kotlin.test` get the subset that `mini test` ships (`compiler/mini-tool/src/TestCommand.kt`), tests that use
   `helpers.*` or `WITH_COROUTINES` get `tools/conformance/helpers.kt` (a port of the suite's coroutine helpers).
 
+## Second round (branch claude/conformance-2)
+
+| | after round 1 | round 2 |
+|---|---:|---:|
+| **pass** | **4837 (81.01%)** | **5058 (84.71%)** |
+| compile-error | 640 | 460 |
+| ice | 203 | 133 |
+| runtime-fail | 227 | 245 |
+| crash | 61 | 71 |
+| timeout | 3 | 4 |
+
+(Some tests moved from compile-error to a later failure stage: they now reach run time, where the next problem shows.)
+Fixed in round 2:
+
+* suspension points inside lambdas of `inline` functions: `SuspendInline.kt` expands such calls on the IR (deep copy of the inline
+  function body, lambda bodies substituted for their invocations, `return` through a `do { } while (false)` block) before the state
+  machine is built; also `suspend inline` functions, suspend lambdas for inline parameters, anonymous functions, non-local returns from
+  inline lambdas inside suspend functions, `suspend { }`;
+* adapted callable references (defaults, vararg, coercion to Unit), references bound to objects / companions, `E::valueOf`;
+* Unit-typed parameters (overrides of generic functions with `T = Unit`), Nothing-typed variables, `var` of a class type captured by a
+  lambda (owned temporary in a heap cell), `init` lambdas in classes with only secondary constructors;
+* default arguments declared on interface functions, fun interfaces that inherit their method, `values()` in enum companions,
+  `array.indices` / `array.iterator()` as values, `assert`, `AssertionError(Any?)`, `Char.toByte()`;
+* the harness helper `StateMachineChecker.check` now matches the original (an extra `proceed()` and the early-finish check).
+
+Still open (largest): suspend conversion of callable references, `coroutineContext`, enums as `Comparable` at run time (`sorted()` on
+enum entries fails: the Enum builtin has no itable entry), `CharSequence` as a real interface, generic value classes, builder inference,
+non-local `break`/`continue`, `field` inside lambdas of accessors, `finally` that throws after `return`.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

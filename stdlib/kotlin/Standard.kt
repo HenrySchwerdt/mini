@@ -7,6 +7,9 @@ package kotlin
 
 public inline fun <R> run(block: () -> R): R = block()
 
+/** `suspend { ... }`: a suspend lambda as a value */
+public fun <R> suspend(block: suspend () -> R): suspend () -> R = block
+
 public inline fun <T, R> T.run(block: T.() -> R): R = block()
 
 public inline fun <T, R> with(receiver: T, block: T.() -> R): R = receiver.block()
