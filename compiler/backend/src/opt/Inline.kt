@@ -35,6 +35,9 @@ object Inliner {
     const val SIZE_LIMIT = 70
     const val GROWTH_LIMIT = 700
 
+    /** Whole-program budget (nodes expanded): small programs are optimized completely, a huge program (the compiler itself) only partly, so compile time stays in check. */
+    const val PROGRAM_BUDGET = 60000
+
     fun run(module: MirModule, stats: Stats, options: MirOptions): MirModule {
         val st = InlineState(module, stats)
         st.doInline = options.on("inline")
@@ -55,6 +58,7 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
     val done = HashMap<String, MirFunction>()
     val infos = HashMap<String, InlineInfo>()
     val visiting = HashSet<String>()
+    var budget = Inliner.PROGRAM_BUDGET
     var doInline = true
     var doSroa = true
     var doExact = true
@@ -73,30 +77,34 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
         calls.walk(f.body)
         for (c in calls.names) visit(c)
         var cur = f
-        if (!f.strict && (doInline || doSroa || doExact)) {
+        val worth = budget > 0 && !f.strict && (doInline || doSroa || doExact) && worthIt(f)
+        if (worth) {
             var round = 0
             var any = false
             while (round < 4) {
                 round++
                 var progress = false
                 val t0 = nanoTime()
+                val hs = HotScan()
+                hs.walk(cur.body)
+                val withNew = hs.hasNew
                 val us = UseScan(cur)
-                us.walk(cur.body)
+                if (withNew) us.walk(cur.body)
                 val ed = ExactDevirt(classes, byName, us)
-                var body = if (doExact) ed.stmts(cur.body) else cur.body
+                var body = if (doExact && withNew) ed.stmts(cur.body) else cur.body
                 val t1 = nanoTime()
                 stats.tExact += t1 - t0
                 if (ed.count > 0) { progress = true; stats.exactDevirt += ed.count }
                 val ex = Expander(this, cur.withBody(body))
                 if (doInline) body = ex.stmts(body)
-                if (ex.expanded > 0) { progress = true; stats.sites += ex.expanded }
+                if (ex.expanded > 0) { progress = true; stats.sites += ex.expanded; budget -= Inliner.GROWTH_LIMIT - ex.budget }
                 val t2 = nanoTime()
                 stats.tExpand += t2 - t1
                 if (progress) body = Cleanup.run(body, cur)
                 val t3 = nanoTime()
                 stats.tClean += t3 - t2
                 val sr = Sroa(this, cur.withBody(body))
-                val body2 = if (doSroa) sr.run(body) else body
+                val body2 = if (doSroa && withNew) sr.run(body) else body
                 stats.tSroa += nanoTime() - t3
                 if (sr.count > 0) {
                     progress = true
@@ -114,6 +122,16 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
         val info = analyze(cur)
         if (info != null) infos[name] = info
     }
+
+    /** Only functions with a loop or an allocation can profit (calls outside loops are only inlined for scalar replacement). */
+    fun worthIt(f: MirFunction): Boolean {
+        val h = HotScan()
+        h.walk(f.body)
+        hasNew = h.hasNew
+        return h.hasNew || h.hasLoop
+    }
+
+    var hasNew = false
 
     /** Is [f] inlinable? Returns what the expander needs to know. */
     fun analyze(f: MirFunction): InlineInfo? {
@@ -146,6 +164,18 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
             is MirStmt.Block -> tailReturns(s.body)
             else -> 0
         }
+    }
+}
+
+internal class HotScan : MirVisitor() {
+    var hasNew = false
+    var hasLoop = false
+    override fun visit(e: MirExpr) {
+        if (e is MirExpr.New) hasNew = true
+    }
+    override fun stmt(s: MirStmt): MirStmt {
+        if (s is MirStmt.While || s is MirStmt.Loop || s is MirStmt.DoWhile || s is MirStmt.ForRange) hasLoop = true
+        return super.stmt(s)
     }
 }
 
