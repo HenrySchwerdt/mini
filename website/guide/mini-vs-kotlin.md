@@ -55,7 +55,7 @@ These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus wh
 
 - No coroutines or `suspend` functions (planned, on top of libuv).
 - No property references (`::prop`), except `::lateinitProp.isInitialized`.
-- `Byte` and `Short` are supported as unboxed scalars for C interop; nullable or boxed uses are restricted. `Float` is a real 32-bit type (`FloatArray`, `List<Float>`, `Float?`, IEEE float32 arithmetic). General `value class` support and unsigned types are not available.
+- Numeric types: `Byte`, `Short`, `Int`, `Long`, `Float`, `Double`, `Char` and the unsigned types `UByte`, `UShort`, `UInt`, `ULong` (literals `1u`, `1uL`, arrays `UIntArray`, ranges) follow Kotlin, including boxing in `Any`, nullable and generic positions. `value class` (also `@JvmInline`) over a primitive is unboxed; over a reference (String, objects, generics) it is an ordinary class with value `equals`/`hashCode`/`toString`. A value class with a secondary constructor is boxed too. `Number` members (`toInt()`, ...) work on boxed numbers. Not available: `UIntArray`/`ULongArray` vararg interop with C, `Iterable<UInt>.sum()`, unsigned `MIN_VALUE`/`MAX_VALUE` as compile-time `const`.
 - Annotations with arguments are not supported by the backend (the `mini.memory` annotations are handled by the checker).
 - Not supported: enum entries with bodies, local `object` declarations, nested classes inside local classes, `Unit?`; type aliases are ignored (no code is generated for them).
 - A lambda parameter of an `inline` function may only be invoked or passed on to another inline function; use `noinline` to store it.

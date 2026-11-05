@@ -300,8 +300,7 @@ backends: `external fun` + `@CName` (direct C call; primitives, `Byte`/`Short`/`
 variables with `.value`, `.pointed`, `.ptr`, pointer arithmetic and `p[i]`, `nativeHeap`, `memScoped` (a `Scoped` allocator: M0105 on escape),
 `String.cstr` / `toKString()`, `@CStruct external class` with layout computed by the C rules (`@CArray` in-place arrays, embedded structs), callbacks
 with `staticCFunction` (capture is a compile error) and calls through `CPointer<CFunction<...>>`, variadic C functions (`@CVariadic`),
-`@file:CInclude` / `@file:CLink` (and `minic --c-src`), `@Owned(free = "fn")` checked like any other allocation. Not yet: unsigned types,
-structs by value (`CValue`, `useContents`), exporting `@CName fun` to C, `mini-bindgen`, pointers in generic containers. Details:
+`@file:CInclude` / `@file:CLink` (and `minic --c-src`), `@Owned(free = "fn")` checked like any other allocation. Not yet: structs by value (`CValue`, `useContents`), exporting `@CName fun` to C, `mini-bindgen`, pointers in generic containers. Details:
 `compiler/README.md` "C interop", user guide `website/guide/c-interop.md`.
 
 ## 8. Using Kotlin libs: levels
