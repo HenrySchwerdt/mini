@@ -138,7 +138,8 @@ internal class InlineState(val module: MirModule, val stats: InlineStats) {
 
     /** Is [f] inlinable? Returns what the expander needs to know. */
     fun analyze(f: MirFunction): InlineInfo? {
-        if (f.strict || f.returnType === TNothing || f.cName == Mangling.MAIN) return null
+        // (noHeapEffects is a promise about the call as a whole: expanding the body would show RcOpt the stores it promised away)
+        if (f.strict || f.noHeapEffects || f.returnType === TNothing || f.cName == Mangling.MAIN) return null
         val self = CallCollector()
         self.walk(f.body)
         if (self.names.contains(f.cName)) return null   // directly recursive
