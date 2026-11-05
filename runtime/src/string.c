@@ -156,6 +156,27 @@ void mk_i64_write(int64_t value, MkChar *out, size_t n) {
     if (value < 0) *--p = (MkChar)'-';
 }
 
+/* The same digits as bytes (a narrow StringBuilder buffer). */
+void mk_i64_write8(int64_t value, uint8_t *out, size_t n) {
+    uint64_t u = value < 0 ? 0u - (uint64_t)value : (uint64_t)value;
+    uint8_t *p = out + n;
+    while (u >= 100u) {
+        unsigned r = (unsigned)(u % 100u);
+        u /= 100u;
+        p -= 2;
+        p[0] = (uint8_t)digits2[2 * r];
+        p[1] = (uint8_t)digits2[2 * r + 1];
+    }
+    if (u >= 10u) {
+        p -= 2;
+        p[0] = (uint8_t)digits2[2 * u];
+        p[1] = (uint8_t)digits2[2 * u + 1];
+    } else {
+        *--p = (uint8_t)('0' + (unsigned)u);
+    }
+    if (value < 0) *--p = (uint8_t)'-';
+}
+
 MkString *mk_string_from_long(MkLong value) {
     size_t n = mk_i64_length(value);
     MkString *s = string_alloc(n);

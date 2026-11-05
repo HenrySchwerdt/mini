@@ -153,6 +153,7 @@ size_t mk_format_double(MkDouble value, char *buf, size_t capacity);
 /* The same digits as UTF-16, written in place (string.c): the length first, then exactly that many characters. */
 size_t mk_i64_length(int64_t value);
 void mk_i64_write(int64_t value, MkChar *out, size_t n);
+void mk_i64_write8(int64_t value, uint8_t *out, size_t n);
 size_t mk_itoa(int64_t value, char *buf);
 size_t mk_format_float(MkFloat value, char *buf, size_t capacity);
 

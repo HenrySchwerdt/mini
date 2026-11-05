@@ -123,3 +123,23 @@ walkers). `Devirt.prune` drops every function the program cannot reach and abstr
 all methods of a live class). Stripped sizes (C): hello 63.8K -> 22.8K, binarytrees 67.9K -> 35.1K, wordcount 166K -> 68K, json 117K -> 60K,
 graph 105K -> 43K (Rust: 336-349K). Not adopted: `-z noseparate-code` (-4K) and `-z norelro` (-1K) weaken the default hardening.
 
+
+### 10. C emitter: array accesses leave the function inline; libm intrinsics in the LLVM lowering; StringBuilder narrow buffer (KEPT)
+* `mk_array_get/set_*` in C are one statement expression with the bounds test and the exit path (when the exit path is short): no
+  pending-exception load after each access. fannkuch (C) 1.50x -> 1.34x. `-fno-math-errno` for generated C; `sqrt floor ceil trunc
+  rint fabs sin cos exp log pow` become `llvm.*.f64` intrinsics in the LLVM lowering.
+* `StringBuilder` buffer is one byte per character until a character >= 256 is appended (runtime v1s.c; toString still makes UTF-16):
+  strbuild RSS 1.98x -> 0.99x, wordcount 3.82x -> 2.87x, strbuild 1.43x -> 1.21x.
+* Rejected: `MINI_OPT=-O3` for both backends (no change within noise).
+
+## Final (5 runs, cpu 3; `bench/hillclimb/final.json`)
+S = 1.395 (baseline 1.997), R = 1.225 (1.630), Z = 0.1025 (0.232), **score 0.703 (baseline 1.1085, -37%)**. Per backend: C S=1.40,
+API S=1.39. Table in the task report. Self-compile guard 14.2 s is for a -O0-built dev compiler (baseline 7.8 s was a -O1 build): re-measure with
+`scripts/build-mini.sh` before concluding anything about compile time.
+Validated at this state: runtime/run_tests.sh, test-e2e (default suites + llvm + llvm-leak), llvm-api suite, strict-corpus --run,
+`mini test`, compiler/bootstrap.sh C and --backend=llvm-api (stage2 == stage3). Not run: the wasm toolchain test.
+
+## Next
+Compact (Latin-1) strings (wordcount/json RSS), HashMap node layout (before/after links only in LinkedHashMap), a cache for `mk_itable`,
+runtime bitcode inlining for the LLVM backend (`mk_alloc`, `mk_sb_append_char`), per-function sections in LLVM objects.
+Devirt.kt and RcOpt `early` overlap with the `claude/mir-opt` agent's scope (CHA devirtualization, RC elision): merge carefully.
