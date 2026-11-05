@@ -67,8 +67,8 @@
     "title": "Violation of the Strict/Managed boundary",
     "severity": "error",
     "example": "boundary_collection",
-    "meaning": "A tracked (Strict) value crosses into Managed code in a way the checker cannot follow: it goes into a Kotlin collection, into a field of a Managed class, into a Managed function parameter that is not `@Borrowed`, or Managed code calls a Strict function that takes or returns ownership.",
-    "fix": "Build your own container class from owning fields, wrap the Managed call in a Strict function that frees internally, or mark the Managed parameter `@Borrowed` if it really only borrows."
+    "meaning": "A tracked (Strict) value crosses into Managed code in a way the checker cannot follow: it goes into a Kotlin collection, into a field of a Managed class, into a Managed or library function parameter that the function keeps (the compiler infers this from the function's body: it stores, returns or hands on the value; functions that only read it, such as `println`, are fine), or Managed code calls a Strict function that takes or returns ownership.",
+    "fix": "Build your own container class from owning fields, wrap the Managed call in a Strict function that frees internally, or mark the Managed parameter `@Borrowed` if it really only borrows. The message names why the function is considered to keep the value."
   },
   "M0111": {
     "title": "Invalid ownership annotation",
@@ -81,8 +81,8 @@
     "title": "Owning value in an escaping lambda",
     "severity": "error",
     "example": "capture_escaping_lambda",
-    "meaning": "A lambda that is not inlined and is not a thread boundary captures an owning value. Closures as owners (move capture) are not supported yet.",
-    "fix": "Pass the value to the code that needs it as an explicit parameter, or read the data you need (`b.v`) before creating the lambda and capture that instead."
+    "meaning": "A lambda that is not inlined and is not a thread boundary (a closure object) captures an owning value. The closure object retains what it captures and may outlive it. Closures as owners (move capture) are not supported yet.",
+    "fix": "Make the called function `inline` (inline lambdas are read like code at the call), pass the value to the code that needs it as an explicit parameter, or read the data you need (`b.v`) before creating the lambda and capture that instead."
   },
   "M0113": {
     "title": "Owned field stays moved",

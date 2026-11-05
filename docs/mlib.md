@@ -29,7 +29,7 @@ minic-native --check app.kt --lib stdlib.mlib                              # stu
   the fingerprint covers the sources, the libraries it needs and the toolchain, so a library is rebuilt only when one of them changes.
   `mini package` writes the distributable `build/package/<name>-<version>.mlib`.
 
-## Format (version 1)
+## Format (version 2)
 
 One text file; the sections are length-prefixed (lengths in characters), so no escaping is needed.
 
@@ -44,6 +44,7 @@ hash <16 hex>                    FNV-1a over name, version, compiler, format, de
 dep <name> <hash>                zero or more: libraries this one was built against
 fail <cName> <message>           zero or more: functions the backend cannot lower (see below)
 stub <length> <path>             one per source file: the stub text follows, then a newline
+summary <length>                 inferred memory summaries (Strict-mode checker), the text follows, then a newline
 mir <length>                     the MIR text follows, then a newline
 end
 ```
@@ -53,6 +54,12 @@ end
 kept: `inline` function bodies (the consumer expands them at every call site), expression bodies without a declared return type
 (the type is inferred from them), `const` and untyped initializers. A blanked region keeps its newlines and the text after it keeps
 its column. The analysis does not check what a stub does not keep, and the IR builder does not build it.
+
+**Summaries** (since format version 2). One line per library function that has a parameter that escapes (is stored, returned, moved or
+released, or handed to a callee that does so): `qualified.name/ParamType,ParamType,` followed by tab-separated `index:reason` entries.
+The stubs have no bodies, so without this section a program that passes a Strict value to a library function could not be checked
+precisely. They are computed by `--emit-mlib` from the bodies (docs/memory-model.md, "Strict mode in practice") and covered by the content
+hash. A library of format version 1 is rejected: rebuild it.
 
 **MIR.** The module of `MirWriter` (`compiler/backend/src/MirSerial.kt`): all classes, all functions, C externs, `CInclude` and `CLink`.
 

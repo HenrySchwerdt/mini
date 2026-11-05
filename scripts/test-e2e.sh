@@ -3,7 +3,7 @@
 #
 #   scripts/test-e2e.sh [-j N] [--suite NAME]... [--list] [filter]
 #
-# Suites (default: c leak memcheck memrun multifile mlib):
+# Suites (default: c leak memcheck memrun strict multifile mlib):
 #   c          build every compiler/testdata/*.kt through the C backend (cc -std=c17 -Wall -Werror), run it, compare
 #                <name>.out (stdout), <name>.err (substrings of stderr; the program must then exit non-zero),
 #                <name>.cerr (the build must fail with exit 1 and the output must contain each line)
@@ -18,6 +18,8 @@
 #   memcheck   `minic-native --check --brief` over testdata/memory and memory-extra equals the .diag files
 #   memrun     the accepted programs of testdata/memory (.out) built and run (programs using constructs the C backend cannot
 #                lower yet, or threads, are skipped and counted)
+#   strict     compiler/testdata/strict-corpus: everyday Strict programs; `// ACCEPT` ones must pass the checker (and, with a .out,
+#                build and run to it), `// REJECT Mxxxx` ones must be rejected with exactly that code (scripts/strict-corpus.sh)
 #   multifile  several input files, reachability pruning, all user files are memory-checked
 #   mlib       precompiled libraries (docs/mlib.md): a chain of two libraries, error messages for damaged and mismatching ones
 #
@@ -51,7 +53,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun multifile mlib)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict multifile mlib)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -248,6 +250,25 @@ t_memcheck() { # <src>
     cmp -s "$want" "$W/$name.got" || { echo "diagnostics differ (expected < > got):"; diff "$want" "$W/$name.got" | head -10; head -3 "$W/$name.err"; return 1; }
 }
 
+t_strict() { # <src>: the verdict is the first line of the program
+    local src="$1" name; name="st_$(basename "$src" .kt)"
+    local h; h="$(head -1 "$src")"
+    local got; got="$("$MINIC" --check --brief "$src" $(cat "$W/stdlib.txt") 2>&1 | grep -o 'M0[0-9]*' | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
+    case "$h" in
+        "// REJECT"*)
+            local want; want="$(echo "$h" | grep -o 'M0[0-9]*' | head -1)"
+            [ "$got" = "$want" ] || { echo "expected only $want, got: ${got:-no diagnostic}"; return 1; }
+            return 0 ;;
+        *) [ -z "$got" ] || { echo "a correct program was rejected: $got"; "$MINIC" --check "$src" $(cat "$W/stdlib.txt") 2>&1 | head -12; return 1; } ;;
+    esac
+    [ -f "${src%.kt}.out" ] || return 0
+    "$MINIC" -o "$W/$name.c" "$src" $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1 || { echo "build failed:"; head -10 "$W/$name.log"; return 1; }
+    local links; links="$(links_of "$W/$name.c")"
+    # shellcheck disable=SC2086
+    "$CC" -std=c17 -O1 -w -I "$INCLUDE" "$W/$name.c" "$RTLIB" -o "$W/$name.exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "C compiler failed:"; head "$W/$name.cc"; return 1; }
+    run_and_compare "$name" "$src" "$W/$name.exe" "strict" none
+}
+
 t_memrun() { # <src>
     local src="$1" name; name="mr_$(basename "$src" .kt)"
     "$MINIC" -o "$W/$name.c" "$src" $(cat "$W/stdlib.txt") > "$W/$name.log" 2>&1; local rc=$?
@@ -318,6 +339,23 @@ t_mlib_chain() {
     return 0
 }
 
+# the inferred summaries travel in the library (docs/mlib.md): a Strict program is checked precisely against an unannotated library
+t_mlib_summaries() {
+    [ "$STDMODE" = mlib ] || return 77
+    local d="$W/mlib-summaries"; mkdir -p "$d"
+    local S="$NATIVE/lib/stdlib.mlib" V; V="$(cat "$NATIVE/VERSION" 2>/dev/null || echo unknown)"
+    printf 'package geo\n\nclass Keeper { var kept: Any? = null }\n\nobject Util {\n    fun describe(o: Any): String = "obj:" + o.toString()\n    fun keep(k: Keeper, o: Any) { k.kept = o }\n}\n' > "$d/lib.kt"
+    local pre='@file:MemoryMode(Mode.Strict)\n\nimport mini.memory.*\nimport geo.*\n\n@AllocatedBy(Heap::class)\nclass Box(val v: Int)\n\n'
+    printf "${pre}fun main() {\n    val b = Box(1)\n    println(Util.describe(b).length > 0)\n    b.free()\n}\n" > "$d/ok.kt"
+    printf "${pre}fun main() {\n    val k = Keeper()\n    val b = Box(1)\n    Util.keep(k, b)\n    b.free()\n}\n" > "$d/bad.kt"
+    "$MINIC" --emit-mlib "$d/geo.mlib" --name geo --compiler-id "$V" --lib "$S" "$d/lib.kt" > "$d/log" 2>&1 || { echo "geo.mlib failed:"; head "$d/log"; return 1; }
+    grep -aq '^geo.Util.keep/' "$d/geo.mlib" || { echo "no summary for Util.keep in the library"; return 1; }
+    "$MINIC" --check "$d/ok.kt" --lib "$S" --lib "$d/geo.mlib" --compiler-id "$V" > "$d/log" 2>&1 || { echo "a borrowing library call was rejected:"; head "$d/log"; return 1; }
+    "$MINIC" --check --brief "$d/bad.kt" --lib "$S" --lib "$d/geo.mlib" --compiler-id "$V" > "$d/log" 2>&1 && { echo "a library call that keeps its argument was accepted"; return 1; }
+    grep -q "M0110" "$d/log" || { echo "wrong diagnostic:"; head "$d/log"; return 1; }
+    return 0
+}
+
 # clear errors for a library that is not one, is damaged, has another format version or comes from another compiler
 t_mlib_errors() {
     [ "$STDMODE" = mlib ] || return 77
@@ -346,7 +384,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_multifile t_allfiles t_mlib_chain t_mlib_errors run_with_timeout
+export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_allfiles t_mlib_chain t_mlib_errors t_mlib_summaries run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -371,7 +409,8 @@ want_suite llvm-variants && for v in --stats --no-rc-opt --no-strict --no-conv; 
 want_suite llvm-api && for f in $(progs); do add llvm-api "$(basename "$f" .kt)" "t_llvm_api $f"; done
 want_suite memcheck && for f in $(find "$TESTDATA/memory" "$TESTDATA/memory-extra" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do add memcheck "${f#"$TESTDATA"/}" "t_memcheck $f"; done
 want_suite memrun && for f in $(find "$TESTDATA/memory" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do [ -f "${f%.kt}.out" ] && add memrun "$(basename "$f" .kt)" "t_memrun $f"; done
-want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; }
+want_suite strict && for f in $(find "$TESTDATA/strict-corpus" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do add strict "$(basename "$f" .kt)" "t_strict $f"; done
+want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib summaries t_mlib_summaries; }
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; }
 
 if [ -n "$FILTER" ]; then grep -F -- "$FILTER" "$LISTFILE" > "$LISTFILE.f" || true; mv "$LISTFILE.f" "$LISTFILE"; fi

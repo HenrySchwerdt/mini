@@ -6,7 +6,7 @@ import mini.backend.memory.MemoryReport
 import mini.frontend.sema.*
 
 /** A source file handed to the lowering: user files first, then the standard library files. */
-class LowerInput(val path: String, val text: String, val isStdlib: Boolean, val isLib: Boolean = false)
+class LowerInput(val path: String, val text: String, val isStdlib: Boolean, val isLib: Boolean = false, val summaries: String = "")
 
 /** A problem found while analysing the sources (syntax or type error), as `file:line:col: error: message`. */
 class LowerDiagnostics(val messages: List<String>, val diags: List<FrontDiag> = emptyList()) : Exception(messages.joinToString("\n"))
@@ -42,7 +42,11 @@ fun buildIr(inputs: List<LowerInput>): IrModule {
     }
     if (errors.isNotEmpty()) throw LowerDiagnostics(errors, structured)
     val builder = Ast2Ir(sema, user, lib)
-    return builder.build()
+    val module = builder.build()
+    val stored = HashMap<String, mini.backend.memory.FnSummary>()
+    for (i in inputs) if (i.summaries.isNotEmpty()) stored.putAll(mini.backend.memory.SummaryText.parse(i.summaries))
+    module.summaries = stored
+    return module
 }
 
 /**
@@ -64,8 +68,9 @@ fun checkMemory(inputs: List<LowerInput>): MemoryReport = checkMemory(buildIr(in
  * the stdlib, and lowering to MIR. The result equals what the K2 path produces. [memoryGate] (when given) receives the
  * result of the memory checker before the code generation and may throw to stop the build.
  */
-fun lowerToMir(inputs: List<LowerInput>, sourceName: String, lineDirectives: Boolean = false, memoryGate: ((MemoryReport) -> Unit)? = null, nameTag: String = "", keepAll: Boolean = false, failures: MutableMap<String, String>? = null): MirModule {
+fun lowerToMir(inputs: List<LowerInput>, sourceName: String, lineDirectives: Boolean = false, memoryGate: ((MemoryReport) -> Unit)? = null, nameTag: String = "", keepAll: Boolean = false, failures: MutableMap<String, String>? = null, summaryOut: StringBuilder? = null): MirModule {
     val module = buildIr(inputs)
+    if (summaryOut != null) summaryOut.append(MemoryFacts { f -> !f.isStdlib }.summaryText(module))
     if (memoryGate != null) memoryGate(checkMemory(module))
     if (!keepAll) Reachability.prune(module) else Reachability.pruneBuiltins(module)
     val lowering = Ir2Mir()
