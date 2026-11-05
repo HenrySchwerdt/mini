@@ -276,12 +276,28 @@ internal fun Ir2Mir.concat(a: MirExpr, b: MirExpr, out: MutableList<MirStmt>): M
 
 internal fun Ir2Mir.stringConcat(e: IrStringConcatenation, out: MutableList<MirStmt>): MirExpr {
     val vals = operands(e.arguments, out)
-    var acc: MirExpr? = null
+    // the pieces as strings; neighbouring constants are joined here
+    val parts = ArrayList<MirExpr>()
     for (v in vals) {
         val s = toStringExpr(v, e, out)
-        acc = if (acc == null) s else concat(acc, s, out)
+        val last = if (parts.isEmpty()) null else parts[parts.size - 1]
+        if (last is MirExpr.StringConst && s is MirExpr.StringConst) parts[parts.size - 1] = MirExpr.StringConst(last.value + s.value)
+        else parts.add(s)
     }
-    return acc ?: MirExpr.StringConst("")
+    if (parts.isEmpty()) return MirExpr.StringConst("")
+    // up to six pieces per call: one allocation instead of one per `+`
+    var acc = parts[0]
+    var next = 1
+    while (next < parts.size) {
+        val take = minOf(5, parts.size - next)
+        val args = ArrayList<MirExpr>()
+        args.add(acc)
+        for (k in 0 until take) args.add(parts[next + k])
+        next += take
+        acc = if (args.size == 2) concat(args[0], args[1], out)
+        else tmpOf(MirExpr.RuntimeCall("mk_string_concat" + args.size, args, TString), out)
+    }
+    return acc
 }
 
 /** The Kotlin qualified name of a MIR type, as `MkTypeInfo.name` spells it. */

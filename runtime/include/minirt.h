@@ -37,6 +37,10 @@ typedef struct MkTypeInfo MkTypeInfo;
 /* Releases references held by the fields of `self`. It must not free `self`. */
 typedef void (*MkDisposeFn)(MkObject *self);
 
+/* Cycle collection (docs/memory-model.md, "Cycles"): calls `visit(child, ctx)` for every reference field of `self` that can
+ * lead to a reference cycle (it may omit others, e.g. strings; NULL children are passed and must be ignored). */
+typedef void (*MkTraceFn)(MkObject *self, void (*visit)(MkObject *child, void *ctx), void *ctx);
+
 struct MkTypeInfo {
     const char *name;          /* fully qualified Kotlin name, e.g. "kotlin.String" */
     size_t instance_size;      /* bytes, including the MkObject header */
@@ -46,6 +50,7 @@ struct MkTypeInfo {
     size_t vtable_length;
     const MkTypeInfo *const *interfaces; /* implemented interfaces, may be NULL */
     size_t interface_count;
+    MkTraceFn trace;           /* NULL: instances cannot be part of a reference cycle (not cycle collection candidates) */
 };
 
 /* Every heap or stack object starts with this header. */
@@ -62,6 +67,16 @@ enum {
     MK_FLAG_FREED = 1u << 3,  /* set by the runtime when the memory is returned; lets
                                  mk_free / mk_release diagnose double frees. Never set
                                  it from generated code. */
+    MK_FLAG_PREFIXED = 1u << 4, /* runtime-private: the block starts MK_PREFIX_SIZE bytes before the object and holds the
+                                 owning allocator and the block size (every object of an allocator other than Rc/Heap, and
+                                 large Rc/Heap objects). Never set it from generated code. */
+    MK_FLAG_HEAP = 1u << 5,     /* runtime-private: an unprefixed block of the Heap allocator (else of the Rc allocator) */
+    MK_FLAG_ARMED = 1u << 6,    /* cycle collection: a Managed object of a class with a trace function that is not in the
+                                 candidate buffer. A release that leaves it alive must go through mk_release (the inline
+                                 fast path of generated code tests this bit together with MK_FLAG_SHARED). */
+    MK_FLAG_BUFFERED = 1u << 7, /* cycle collection: in the candidate buffer (runtime only) */
+    /* bits 8..15 are runtime-private too: the small-object size class of an unprefixed block */
+    MK_COLOR_SHIFT = 16,        /* cycle collection: colour of the object during a collection (bits 16..18, runtime only) */
 };
 
 /* Initialiser for an MkObject header in static storage. */
@@ -70,6 +85,10 @@ enum {
 /* Allocates a zeroed instance with refcount 1 from the default (Managed) allocator
  * (see mk_default_allocator). Aborts through mk_panic on out-of-memory. */
 MkObject *mk_alloc(const MkTypeInfo *type);
+/* Same, with the cycle collection decision made by the compiler (it knows whether the class has a trace function): the object is
+ * armed (MK_FLAG_ARMED) / never armed. `mk_alloc` decides at run time from `type->trace`. */
+MkObject *mk_alloc_armed(const MkTypeInfo *type);
+MkObject *mk_alloc_plain(const MkTypeInfo *type);
 
 /* Slow path of the generated `<object>_get` accessors of Kotlin `object`s and file classes holding top-level properties:
  * creates the instance and runs its initialiser once, also when threads race on the first access. `*slot` is published
@@ -81,6 +100,13 @@ MkObject *mk_object_init(MkObject **slot, const MkTypeInfo *type, void (*ctor)(M
  * `dispose` along its type chain, most derived first) when the count reaches 0. */
 void mk_retain(MkObject *object);
 void mk_release(MkObject *object);
+
+/* Runs the cycle collector now: frees the unreachable reference cycles among the buffered candidates (no-op while
+ * threads run). The runtime also runs it when enough candidates piled up and at the end of main. Returns the number of
+ * objects freed. */
+size_t mk_cycles_collect(void);
+/* Generated code: a release that left an object with MK_FLAG_ARMED alive (inline fast path of MKH_REL) records it as a candidate. */
+void mk_cycles_candidate(MkObject *object);
 
 /* Marks an object (but not its fields) as shared between threads. */
 void mk_share(MkObject *object);
@@ -253,6 +279,11 @@ MkString *mk_string_from_utf8(const char *utf8, size_t length); /* refcount 1 */
 MkString *mk_string_alloc(MkInt length);
 MkInt mk_string_length(const MkString *string); /* 0 for NULL */
 MkString *mk_string_concat(const MkString *left, const MkString *right);
+/* a + b + c ... in one allocation (a NULL operand is "null", like mk_string_concat) */
+MkString *mk_string_concat3(const MkString *a, const MkString *b, const MkString *c);
+MkString *mk_string_concat4(const MkString *a, const MkString *b, const MkString *c, const MkString *d);
+MkString *mk_string_concat5(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e);
+MkString *mk_string_concat6(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e, const MkString *f);
 MkString *mk_string_from_int(MkInt value);
 MkString *mk_string_from_long(MkLong value);
 MkString *mk_string_from_float(MkFloat value); /* Kotlin/JVM Float.toString */
@@ -410,6 +441,9 @@ void mk_ref_array_set(MkObject *array, MkInt index, MkObject *value); /* retains
 MkInt mk_ref_array_length(MkObject *array);
 MkObject *mk_ref_array_get_b(MkObject *array, MkInt index); /* D2: borrowed, no retain (valid while the array keeps the slot) */
 void mk_ref_array_set_o(MkObject *array, MkInt index, MkObject *value); /* D2: takes over the caller's reference to value */
+/* Moves the first `count` slots of `src` into the same slots of `dst` (whose slots there must be NULL): no reference count changes,
+ * the slots of `src` are NULL afterwards. Growing a collection's storage. */
+void mk_ref_array_move(MkObject *dst, MkObject *src, MkInt count);
 
 /* Failures of the stdlib (until exceptions exist): print "fatal: <Kind>: <message>" to stderr and abort. */
 _Noreturn void mk_throw_illegal_argument(const MkString *message);

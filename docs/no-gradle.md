@@ -19,7 +19,7 @@ compiler/
   native-driver/       .mir -> .c/.ll driver (B1)                            (app)   src/ tests/
   mini-tool/           the `mini` tool: pure core + NativePlatform           (app)   src/ tests/ host/mini_host.c
   llvm-c/              LLVM C API binding, built by bootstrap.sh --backend=llvm-api
-  testdata/            file-driven end-to-end programs (.kt .out .err .cerr .diag .nok2 .noleakcheck)
+  testdata/            file-driven end-to-end programs (.kt .out .err .cerr .diag .nok2)
   bootstrap.sh         stage0 (native) -> stage1 -> stage2 -> stage3, stage2 == stage3 (C, LLVM, LLVM API)
 scripts/               build-mini.sh, test-e2e.sh, check-purity.sh, fetch-stage0.sh, ci-*.sh, wasm/
 tools/k2-oracle/       the only Gradle build: K2 cross-checks on the JVM

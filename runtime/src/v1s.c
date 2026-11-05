@@ -105,26 +105,32 @@ MkDouble mk_string_parse_double(const MkString *s) {
     return strtod(buf, NULL);
 }
 
-/* ---- StringBuilder storage ------------------------------------------------------------ */
+/* ---- StringBuilder storage ------------------------------------------------------------
+ * The buffer is "narrow" (one byte per character) while every character appended so far is below 256, and becomes "wide" (UTF-16)
+ * with the first one that is not: texts of ASCII/Latin-1 characters take half the memory and half the bandwidth while they are built.
+ * `mk_sb_to_string` always makes an ordinary UTF-16 MkString. */
 
 typedef struct MkSb {
     MkObject header;
-    MkChar *chars;
+    void *data;      /* uint8_t[capacity] when narrow, MkChar[capacity] when wide */
     MkInt length;
-    MkInt capacity;
+    MkInt capacity;  /* in characters */
+    MkInt wide;
     MkChar inline_chars[];
 } MkSb;
 
-#define MK_SB_INLINE_CAPACITY 16
+#define MK_SB_INLINE_BYTES 32 /* the inline storage: 32 narrow or 16 wide characters */
+
+static inline int sb_is_inline(const MkSb *sb) { return sb->data == (const void *)sb->inline_chars; }
 
 static void sb_dispose(MkObject *self) {
     MkSb *sb = (MkSb *)self;
-    if (sb->chars != sb->inline_chars) free(sb->chars);
-    ((MkSb *)self)->chars = NULL;
+    if (!sb_is_inline(sb)) free(sb->data);
+    sb->data = NULL;
 }
 
 static const MkTypeInfo sb_type = {
-    "mini.internal.StringBuilderBuffer", sizeof(MkSb), &mk_type_Any, sb_dispose, NULL, 0, NULL, 0,
+    "mini.internal.StringBuilderBuffer", sizeof(MkSb), &mk_type_Any, sb_dispose, NULL, 0, NULL, 0, NULL,
 };
 
 static MkSb *sb_of(MkObject *o) {
@@ -132,23 +138,45 @@ static MkSb *sb_of(MkObject *o) {
     return (MkSb *)o;
 }
 
+/* narrow -> wide, content kept */
+static void sb_widen(MkSb *sb) {
+    if (sb->wide) return;
+    MkInt len = sb->length;
+    const uint8_t *src = (const uint8_t *)sb->data;
+    if (sb_is_inline(sb) && len <= MK_SB_INLINE_BYTES / 2) {
+        MkChar *dst = sb->inline_chars; /* the same bytes: widen backwards, in place */
+        for (MkInt i = len - 1; i >= 0; i--) dst[i] = src[i];
+        sb->capacity = MK_SB_INLINE_BYTES / 2;
+        sb->wide = 1;
+        return;
+    }
+    MkInt cap = sb->capacity > len ? sb->capacity : len;
+    if (cap < MK_SB_INLINE_BYTES / 2) cap = MK_SB_INLINE_BYTES / 2;
+    MkChar *n = malloc((size_t)cap * sizeof(MkChar));
+    if (n == NULL) mk_panic("out of memory");
+    for (MkInt i = 0; i < len; i++) n[i] = src[i];
+    if (!sb_is_inline(sb)) free(sb->data);
+    sb->data = n;
+    sb->capacity = cap;
+    sb->wide = 1;
+}
+
 static void sb_grow(MkSb *sb, MkInt need) {
-    MkInt cap = sb->capacity < MK_SB_INLINE_CAPACITY ? MK_SB_INLINE_CAPACITY : sb->capacity;
+    MkInt cap = sb->capacity < MK_SB_INLINE_BYTES / 2 ? MK_SB_INLINE_BYTES / 2 : sb->capacity;
     while (cap < need) {
         if (cap > INT32_MAX / 2) { cap = need; break; }
         cap *= 2;
     }
-    MkChar *n;
-    if (sb->chars == sb->inline_chars) {
-        n = malloc((size_t)cap * sizeof(MkChar));
-        if (n != NULL && sb->length > 0) {
-            memcpy(n, sb->chars, (size_t)sb->length * sizeof(MkChar));
-        }
+    size_t esz = sb->wide ? sizeof(MkChar) : 1;
+    void *n;
+    if (sb_is_inline(sb)) {
+        n = malloc((size_t)cap * esz);
+        if (n != NULL && sb->length > 0) memcpy(n, sb->data, (size_t)sb->length * esz);
     } else {
-        n = realloc(sb->chars, (size_t)cap * sizeof(MkChar));
+        n = realloc(sb->data, (size_t)cap * esz);
     }
     if (n == NULL) mk_panic("out of memory");
-    sb->chars = n;
+    sb->data = n;
     sb->capacity = cap;
 }
 
@@ -159,36 +187,68 @@ static inline void sb_reserve(MkSb *sb, MkInt extra) {
 }
 
 MkObject *mk_sb_new(void) {
-    size_t bytes = sizeof(MkSb) + MK_SB_INLINE_CAPACITY * sizeof(MkChar);
+    size_t bytes = sizeof(MkSb) + MK_SB_INLINE_BYTES;
     MkSb *sb = (MkSb *)mk_alloc_sized(NULL, &sb_type, bytes);
     if (sb == NULL) mk_panic("out of memory");
-    sb->chars = sb->inline_chars;
-    sb->capacity = MK_SB_INLINE_CAPACITY;
+    sb->data = sb->inline_chars;
+    sb->capacity = MK_SB_INLINE_BYTES;
+    sb->wide = 0;
     return &sb->header;
 }
 
 void mk_sb_append_string(MkObject *o, const MkString *s) {
     MkSb *sb = sb_of(o);
     if (s == NULL) mk_panic("NullPointerException");
-    sb_reserve(sb, s->length);
-    if (s->length > 0) memcpy(sb->chars + sb->length, s->chars, (size_t)s->length * sizeof(MkChar));
-    sb->length += s->length;
+    MkInt n = s->length;
+    if (n == 0) return;
+    sb_reserve(sb, n);
+    if (!sb->wide) {
+        uint8_t *d = (uint8_t *)sb->data + sb->length;
+        MkChar all = 0;
+        for (MkInt i = 0; i < n; i++) {
+            MkChar c = s->chars[i];
+            all |= c;
+            d[i] = (uint8_t)c;
+        }
+        if (all < 256) {
+            sb->length += n;
+            return;
+        }
+        sb_widen(sb); /* a wide character: the narrow bytes written above are beyond `length` and ignored */
+        sb_reserve(sb, n);
+    }
+    memcpy((MkChar *)sb->data + sb->length, s->chars, (size_t)n * sizeof(MkChar));
+    sb->length += n;
 }
 
 void mk_sb_append_char(MkObject *o, MkChar c) {
     MkSb *sb = sb_of(o);
+    MkInt len = sb->length;
+    if (len < sb->capacity) {
+        if (sb->wide) {
+            ((MkChar *)sb->data)[len] = c;
+            sb->length = len + 1;
+            return;
+        }
+        if (c < 256) {
+            ((uint8_t *)sb->data)[len] = (uint8_t)c;
+            sb->length = len + 1;
+            return;
+        }
+    }
+    if (!sb->wide && c >= 256) sb_widen(sb);
     sb_reserve(sb, 1);
-    sb->chars[sb->length++] = c;
+    if (sb->wide) ((MkChar *)sb->data)[sb->length++] = c;
+    else ((uint8_t *)sb->data)[sb->length++] = (uint8_t)c;
 }
 
 /* The digits go straight into the buffer: no temporary string. */
 void mk_sb_append_long(MkObject *o, MkLong value) {
     MkSb *sb = sb_of(o);
-    sb_reserve(sb, MK_ITOA_MAX);
-    char buf[MK_ITOA_MAX];
-    size_t n = mk_itoa(value, buf);
-    MkChar *out = sb->chars + sb->length;
-    for (size_t i = 0; i < n; i++) out[i] = (MkChar)(unsigned char)buf[i];
+    size_t n = mk_i64_length(value);
+    sb_reserve(sb, (MkInt)n);
+    if (sb->wide) mk_i64_write(value, (MkChar *)sb->data + sb->length, n);
+    else mk_i64_write8(value, (uint8_t *)sb->data + sb->length, n);
     sb->length += (MkInt)n;
 }
 
@@ -199,13 +259,15 @@ MkInt mk_sb_length(MkObject *o) { return sb_of(o)->length; }
 MkChar mk_sb_char_at(MkObject *o, MkInt index) {
     MkSb *sb = sb_of(o);
     if (index < 0 || index >= sb->length) mk_panic("IndexOutOfBoundsException");
-    return sb->chars[index];
+    return sb->wide ? ((MkChar *)sb->data)[index] : (MkChar)((uint8_t *)sb->data)[index];
 }
 
 void mk_sb_set_char_at(MkObject *o, MkInt index, MkChar c) {
     MkSb *sb = sb_of(o);
     if (index < 0 || index >= sb->length) mk_panic("IndexOutOfBoundsException");
-    sb->chars[index] = c;
+    if (!sb->wide && c >= 256) sb_widen(sb);
+    if (sb->wide) ((MkChar *)sb->data)[index] = c;
+    else ((uint8_t *)sb->data)[index] = (uint8_t)c;
 }
 
 void mk_sb_set_length(MkObject *o, MkInt length) {
@@ -213,7 +275,8 @@ void mk_sb_set_length(MkObject *o, MkInt length) {
     if (length < 0) mk_panic("IndexOutOfBoundsException");
     if (length > sb->length) {
         sb_reserve(sb, length - sb->length);
-        memset(sb->chars + sb->length, 0, (size_t)(length - sb->length) * sizeof(MkChar));
+        size_t esz = sb->wide ? sizeof(MkChar) : 1;
+        memset((unsigned char *)sb->data + (size_t)sb->length * esz, 0, (size_t)(length - sb->length) * esz);
     }
     sb->length = length;
 }
@@ -221,17 +284,26 @@ void mk_sb_set_length(MkObject *o, MkInt length) {
 MkString *mk_sb_to_string(MkObject *o) {
     MkSb *sb = sb_of(o);
     MkString *r = mk_string_alloc(sb->length);
-    if (sb->length > 0) memcpy(r->chars, sb->chars, (size_t)sb->length * sizeof(MkChar));
+    MkInt n = sb->length;
+    if (n > 0) {
+        if (sb->wide) {
+            memcpy(r->chars, sb->data, (size_t)n * sizeof(MkChar));
+        } else {
+            const uint8_t *src = (const uint8_t *)sb->data;
+            for (MkInt i = 0; i < n; i++) r->chars[i] = src[i];
+        }
+    }
     return r;
 }
 
 /* ---- reference arrays ------------------------------------------------------------------ */
 
+/* The layout is that of MkArray (elements right behind the length, 8-byte aligned): generated code reads and writes the
+ * slots inline (the mkh_ra_* helpers of the C prelude, the same in the LLVM lowering). */
 typedef struct MkRefArray {
     MkObject header;
     MkInt length;
-    MkObject **items;
-    MkObject *inline_items[];
+    MkObject *items[];
 } MkRefArray;
 
 static void ref_array_dispose(MkObject *self) {
@@ -240,11 +312,15 @@ static void ref_array_dispose(MkObject *self) {
         MkObject *item = a->items[i];
         if (item != NULL) mk_release(item);
     }
-    a->items = NULL;
+}
+
+static void ref_array_trace(MkObject *self, void (*visit)(MkObject *, void *), void *ctx) {
+    MkRefArray *a = (MkRefArray *)self;
+    for (MkInt i = 0; i < a->length; i++) visit(a->items[i], ctx);
 }
 
 static const MkTypeInfo ref_array_type = {
-    "mini.internal.RefArray", sizeof(MkRefArray), &mk_type_Any, ref_array_dispose, NULL, 0, NULL, 0,
+    "mini.internal.RefArray", sizeof(MkRefArray), &mk_type_Any, ref_array_dispose, NULL, 0, NULL, 0, ref_array_trace,
 };
 
 static MkRefArray *ra_of(MkObject *o, MkInt index) {
@@ -262,7 +338,6 @@ MkObject *mk_ref_array_new(MkInt size) {
     MkRefArray *a = (MkRefArray *)mk_alloc_sized(NULL, &ref_array_type, bytes);
     if (a == NULL) mk_panic("out of memory");
     a->length = size;
-    a->items = count > 0 ? a->inline_items : NULL;
     return &a->header;
 }
 
@@ -288,6 +363,18 @@ void mk_ref_array_set(MkObject *o, MkInt index, MkObject *value) {
     mk_retain(value);
     a->items[index] = value;
     mk_release(old);
+}
+
+void mk_ref_array_move(MkObject *dst, MkObject *src, MkInt count) {
+    if (dst == NULL || src == NULL) mk_panic("NullPointerException");
+    MkRefArray *d = (MkRefArray *)dst, *s = (MkRefArray *)src;
+    if (count < 0 || count > d->length || count > s->length) mk_panic("ArrayIndexOutOfBoundsException");
+    for (MkInt i = 0; i < count; i++) {
+        MkObject *old = d->items[i]; /* NULL by contract; released anyway so that a misuse cannot leak */
+        d->items[i] = s->items[i];
+        s->items[i] = NULL;
+        if (old != NULL) mk_release(old);
+    }
 }
 
 MkInt mk_ref_array_length(MkObject *o) {

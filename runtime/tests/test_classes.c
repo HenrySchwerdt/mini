@@ -19,20 +19,20 @@ static MkString *point_to_string(MkObject *self) {
 static bool point_equals(MkObject *a, MkObject *b) { return ((Base *)a)->x == ((Base *)b)->x; }
 static MkInt point_hash(MkObject *a) { return ((Base *)a)->x; }
 
-static const MkTypeInfo I_iface = {"I", 0, NULL, NULL, NULL, 0, NULL, 0};
-static const MkTypeInfo J_iface = {"J", 0, NULL, NULL, NULL, 0, NULL, 0};
+static const MkTypeInfo I_iface = {"I", 0, NULL, NULL, NULL, 0, NULL, 0, NULL};
+static const MkTypeInfo J_iface = {"J", 0, NULL, NULL, NULL, 0, NULL, 0, NULL};
 
 static void *const base_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code, (void *)base_f};
-static const MkTypeInfo T_Base = {"Base", sizeof(Base), &mk_type_Any, base_dispose, base_vt, 4, NULL, 0};
+static const MkTypeInfo T_Base = {"Base", sizeof(Base), &mk_type_Any, base_dispose, base_vt, 4, NULL, 0, NULL};
 
 static void *const i_table[] = {(void *)derived_g};
 static void *const derived_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code,
                                    (void *)derived_f, (void *)i_table};
 static const MkTypeInfo *const derived_ifaces[] = {&I_iface};
-static const MkTypeInfo T_Derived = {"Derived", sizeof(Base), &T_Base, NULL, derived_vt, 5, derived_ifaces, 1};
+static const MkTypeInfo T_Derived = {"Derived", sizeof(Base), &T_Base, NULL, derived_vt, 5, derived_ifaces, 1, NULL};
 
 static void *const point_vt[] = {(void *)point_to_string, (void *)point_equals, (void *)point_hash};
-static const MkTypeInfo T_Point = {"pkg.Point", sizeof(Base), &mk_type_Any, NULL, point_vt, 3, NULL, 0};
+static const MkTypeInfo T_Point = {"pkg.Point", sizeof(Base), &mk_type_Any, NULL, point_vt, 3, NULL, 0, NULL};
 
 typedef MkInt (*IntFn)(MkObject *);
 
@@ -89,6 +89,24 @@ int main(void) {
     mk_release(&s1->header);
     mk_release(&s2->header);
 
+    /* small values share immortal boxes, big ones are fresh heap boxes */
+    {
+        MkObject *s1 = mk_box_int(-128), *s2 = mk_box_int(-128), *s3 = mk_box_int(1023), *b1 = mk_box_int(1024), *b2 = mk_box_int(1024);
+        CHECK(s1 == s2);
+        CHECK(s1->flags & MK_FLAG_STATIC);
+        CHECK(s3->flags & MK_FLAG_STATIC);
+        CHECK(b1 != b2);
+        CHECK(!(b1->flags & MK_FLAG_STATIC));
+        CHECK_EQ_INT(mk_unbox_int(s1), -128);
+        CHECK_EQ_INT(mk_unbox_int(s3), 1023);
+        CHECK(mk_box_boolean(true) == mk_box_boolean(true) && mk_box_boolean(true) != mk_box_boolean(false));
+        CHECK(mk_box_char('a') == mk_box_char('a'));
+        MkObject *c300 = mk_box_char(300);
+        CHECK(!(c300->flags & MK_FLAG_STATIC));
+        mk_release(b1);
+        mk_release(b2);
+        mk_release(c300);
+    }
     MkObject *i1 = mk_box_int(7), *i2 = mk_box_int(7), *l1 = mk_box_long(7);
     CHECK(mk_equals(i1, i2));
     CHECK(!mk_equals(i1, l1));

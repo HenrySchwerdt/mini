@@ -69,6 +69,7 @@ object CEmitter {
         val literals = LinkedHashMap<String, String>() // kotlin value -> C name
         val sig = HashMap<String, MirFunction>()
         val classes = HashMap<String, MirClass>()
+        val cycles = CycleAnalysis(classes) // which classes can be part of a reference cycle
         var usedLabels = HashSet<String>()
         val scopes = ArrayList<Scope>()
         var currentReturn: MirType = TUnit
@@ -108,6 +109,11 @@ object CEmitter {
                 val base = "mkx_" + cIdent(x.symbol)
                 val n = symbolCount[base] ?: 0
                 symbolCount[base] = n + 1
+                if (isLibmBuiltin(x)) {
+                    // clang does not recognise a libm function behind an `__asm__` label: call the builtin (sqrtsd, roundsd, ...)
+                    externNames[key] = "__builtin_" + x.symbol
+                    continue
+                }
                 externNames[key] = if (n == 0) base else base + "_" + n
                 externProtos[key] = x
             }
@@ -215,6 +221,17 @@ object CEmitter {
             return sb.toString()
         }
 
+        /** A libm function of the `Double -> Double` or `(Double, Double) -> Double` shape that the compiler knows as a builtin. */
+        fun isLibmBuiltin(x: MirExtern): Boolean {
+            if (x.isVariadic || x.returnType !== TDouble || x.params.isEmpty() || x.params.size > 2) return false
+            for (p in x.params) if (p !== TDouble) return false
+            return when (x.symbol) {
+                "sqrt", "floor", "ceil", "trunc", "rint", "sin", "cos", "exp", "log", "fabs" -> x.params.size == 1
+                "pow", "remainder", "nextafter" -> x.params.size == 2
+                else -> false
+            }
+        }
+
         fun asmLabel(s: String): String {
             for (c in s) if (c < '!' || c > '~' || c == '"' || c == '\\') throw EmitError("bad C symbol name '$s'")
             return s
@@ -267,6 +284,17 @@ object CEmitter {
 
         fun fnRef(name: String?, abstractDefault: String): String = "(void *)" + (name ?: abstractDefault)
 
+        /** Classes (C names) whose instances are cycle collection candidates: they have a trace function. */
+        val cyclicClasses = HashSet<String>()
+
+        /** The allocation entry of a class: the cycle collector decision (armed or not) is made here, at compile time (the runtime
+         *  entry `mk_alloc` decides at run time from the type info; classes defined by the runtime use it). */
+        fun allocFn(cName: String): String = when {
+            classes[cName]?.external != false -> "mk_alloc"
+            cyclicClasses.contains(cName) -> "mk_alloc_armed"
+            else -> "mk_alloc_plain"
+        }
+
         fun emitClasses(out: StringBuilder) {
             for (c in module.classes) {
                 if (c.external) continue
@@ -290,6 +318,18 @@ object CEmitter {
                 // owned fields of tracked type (Strict classes): freeing the object frees them (docs/memory-model.md 5.3)
                 val ownedFields = c.fields.filter { tr.ownedTrackedField(c, it) }
                 var dispose = "NULL"
+                // cycle collection (docs/memory-model.md, "Cycles"): the fields that can lead to a cycle; strings and boxes cannot
+                val traceFields = refFields.filter { cycles.fieldCapable(c, it) }
+                val superTraced = sup != null && cyclicClasses.contains(sup.cName)
+                var trace = "NULL"
+                if (traceFields.isNotEmpty() || superTraced) {
+                    cyclicClasses.add(c.cName)
+                    trace = "${c.cName}_trace"
+                    out.append("static void ${c.cName}_trace(MkObject *self, void (*fn)(MkObject *, void *), void *ctx) {\n    struct ${c.cName} *o = (struct ${c.cName} *)self;\n")
+                    if (superTraced) out.append("    ${sup!!.cName}_trace(self, fn, ctx);\n")
+                    for (f in traceFields) out.append("    fn((MkObject *)o->${Mangling.field(f.name)}, ctx);\n")
+                    out.append("}\n")
+                }
                 if (refFields.isNotEmpty() || ownedFields.isNotEmpty()) {
                     dispose = "${c.cName}_dispose"
                     out.append("static void ${c.cName}_dispose(MkObject *self) {\n    struct ${c.cName} *o = (struct ${c.cName} *)self;\n")
@@ -315,7 +355,7 @@ object CEmitter {
                 val superTi = if (sup == null) "&mk_type_Any" else "&${sup.cName}_ti"
                 out.append(
                     "static const MkTypeInfo ${c.cName}_ti = {${cStringLiteral(c.qualifiedName)}, sizeof(struct ${c.cName}), $superTi, $dispose, " +
-                        "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}};\n",
+                        "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}, $trace};\n",
                 )
                 if (c.objectCtor != null) {
                     out.append("static MkObject *${c.cName}_obj;\n")
@@ -332,7 +372,7 @@ object CEmitter {
                 val decl = if (ps.isEmpty()) "void" else ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }
                 val call = (listOf("o") + ps.indices.map { "a$it" }).joinToString(", ")
                 val check = if (f.cName in throwing.mayThrow) "    if (mk_pending_exception != NULL) {\n        mk_release(o);\n        return NULL;\n    }\n" else ""
-                out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = mk_alloc(&${cls}_ti);\n    ${f.cName}($call);\n$check    return o;\n}\n")
+                out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = ${allocFn(cls)}(&${cls}_ti);\n    ${f.cName}($call);\n$check    return o;\n}\n")
                 if (f.cName in newaUsed) {
                     // allocation through a chosen allocator (Strict code): the same, from `al` (0 = the default allocator)
                     val decla = if (ps.isEmpty()) "MkLong al" else "MkLong al, " + ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }
@@ -441,6 +481,13 @@ object CEmitter {
             if (s is MirStmt.Declare) pending -= s.local.id
             val gone = fplan?.dead?.get(s)
             if (gone != null) for (l in gone) dead += l.id
+            // the last use of an owned local: release it here, not at the end of its scope (RcOpt: RcFunctionPlan.early)
+            val early = fplan?.early?.get(s)
+            if (early != null) for (l in early) {
+                if (l.id in dead || l.id in pending) continue
+                out.append(ind(d)).append(rel(lname(l), "last use")).append(";\n")
+                out.append(ind(d)).append(lname(l)).append(" = NULL;\n")
+            }
         }
 
         fun closedFor(s: MirStmt?, l: MirLocal): Boolean = s != null && fplan?.dead?.get(s)?.any { it === l } == true
@@ -786,8 +833,50 @@ object CEmitter {
 
         fun expr(e: MirExpr, top: Boolean = false): String {
             if (!top && ownedE(e)) throw EmitError("owned temporary in operand position: ${e.type}")
+            inlineChecked.remove(e)
             val s = exprInner(e)
-            return if (needsCheck(e)) checked(s, e.type) else s
+            return if (needsCheck(e) && !inlineChecked.contains(e)) checked(s, e.type) else s
+        }
+
+        /** Array accesses whose failing index leaves the function inline (see [arrayAccess]): they need no test of the pending exception. */
+        val inlineChecked = HashSet<MirExpr>()
+
+        /**
+         * `mk_array_get_*` / `mk_array_set_*` as one statement expression: the bounds test is the only branch of the fast path and the
+         * failing index raises and leaves the function right there (like the LLVM lowering), instead of testing the pending
+         * exception after every access. Only when the exit path is short (few locals to release): else the call plus check is
+         * smaller.
+         */
+        fun arrayAccess(e: MirExpr.RuntimeCall): String? {
+            val n = e.cName
+            val isGet = n.startsWith("mk_array_get_")
+            if (!isGet && !n.startsWith("mk_array_set_")) return null
+            val kind = n.substring(13)
+            val ct = when (kind) {
+                "int" -> "MkInt"; "long" -> "MkLong"; "double" -> "MkDouble"; "float" -> "MkFloat"; "byte" -> "MkByte"
+                "short" -> "MkShort"; "boolean" -> "MkBoolean"; "char" -> "MkChar"; "obj" -> "MkObject *"
+                else -> return null
+            }
+            if (e.args.size != (if (isGet) 2 else 3) || e.args[1].type !== TInt) return null
+            val exit = exitStmt(0).replace("\n", " ").trim()
+            if (exit.length > 260) return null
+            val id = tmpCounter++
+            val a = "mka$id"; val i = "mki$id"; val v = "mkv$id"
+            val borrowed = fplan?.borrowedReads?.contains(e) == true
+            val sb = StringBuilder("({ MkObject *$a = (MkObject *)${expr(e.args[0])}; MkInt $i = ${expr(e.args[1])}; ")
+            if (!isGet) sb.append("$ct $v = ${coerceTo(e.args[2], if (kind == "obj") e.args[2].type else e.args[2].type)}; ")
+            sb.append("if (__builtin_expect((uint32_t)$i >= (uint32_t)((MkArray *)$a)->length, 0)) { mk_raise_index($i, ((MkArray *)$a)->length); $exit } ")
+            if (isGet) {
+                sb.append("$ct $v = MK_ARRAY_ELEMS($ct, $a)[$i]; ")
+                if (kind == "obj" && !borrowed) sb.append("${ret(v, "array read")}; ")
+                sb.append("$v; })")
+            } else if (kind == "obj") {
+                sb.append("$ct *mkp$id = &MK_ARRAY_ELEMS($ct, $a)[$i]; ${ret(v, "array store")}; MkObject *mko$id = *mkp$id; *mkp$id = $v; ${rel("mko$id", "array store")}; (void)0; })")
+            } else {
+                sb.append("MK_ARRAY_ELEMS($ct, $a)[$i] = $v; (void)0; })")
+            }
+            inlineChecked.add(e)
+            return sb.toString()
         }
 
         fun exprInner(e: MirExpr): String {
@@ -819,7 +908,7 @@ object CEmitter {
                     val owns = NativeConventions.ownedArgs(e.cName)
                     if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)"
                     else if (owns != null) ownedCall(e.cName, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0)
-                    else "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                    else arrayAccess(e) ?: "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${e.args.joinToString(", ") { expr(it) }})"
                 }
                 is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
                 is MirExpr.Load -> { usesMemory = true; "MKH_LOAD(${cType(e.type)}, ${expr(e.ptr)})" }
@@ -842,8 +931,8 @@ object CEmitter {
                 is MirExpr.Box -> "mk_box_${boxName(e.operand.type)}(${expr(e.operand)})"
                 is MirExpr.Unbox -> "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
                 is MirExpr.Cast -> cast(e)
-                is MirExpr.IsInstance -> "mk_is_instance((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
-                is MirExpr.NotNull -> "((${cType(e.type)})mk_checked_not_null((MkObject *)${expr(e.operand)}))"
+                is MirExpr.IsInstance -> "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
+                is MirExpr.NotNull -> "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
                     val fp = fnPtrType(e.type, e.paramTypes)
@@ -902,7 +991,10 @@ object CEmitter {
             for (k in args.indices) {
                 if (k + shift >= mask.size || !mask[k + shift] || !ptypes[k].isRef || isStaticValue(args[k])) continue
                 val x = fplan?.takes?.get(args[k])
-                if (x == null) sb.append("${ret(temps[k], "reference handed to an owned parameter (the caller still needs its own)")}; ")
+                if (x == null) {
+                    // a compiler temporary that holds a fresh Strict object: its count is the one the callee takes
+                    if (!tr.movedTemp(curFn, args[k])) sb.append("${ret(temps[k], "reference handed to an owned parameter (the caller still needs its own)")}; ")
+                }
                 else if (closedFor(curStmt, x)) dead += x.id
                 else sb.append("${lname(x)} = NULL; ")
             }
@@ -951,12 +1043,15 @@ object CEmitter {
                 MirExpr.CastMode.Checked -> {
                     // everything is an Any: only the null check is left (the erased `as E` of every generic getter)
                     if (to is TObject && to.cName == ANY_CNAME) return if (to.nullable) "((MkObject *)${obj(e.operand)})" else "((MkObject *)mkh_nn(${obj(e.operand)}))"
-                    val fn = if (to.isNullableRef()) "mk_checked_cast" else "mkh_cast_nn"
+                    val fn = if (to.isNullableRef()) "mkh_cc" else "mkh_cast_nn"
                     "((${cType(to)})$fn(${obj(e.operand)}, &${typeInfoOf(to)}))"
                 }
                 MirExpr.CastMode.Safe -> "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
             }
         }
+
+        /** A class (not an interface) as the target of an `is` test: only the superclass chain of the object's type can contain it. */
+        fun isClassTarget(t: MirType): Boolean = t === TString || t === TNString || t is TBoxed || (t is TObject && classes[t.cName]?.isInterface == false)
 
         fun MirType.isNullableRef(): Boolean = this === TNString || (this is TObject && nullable) || this is TBoxed
 
@@ -1165,9 +1260,53 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
         else mk_retain(mkr_); } } while (0)
 #define MKH_REL(x) do { MkObject *mkr_ = (MkObject *)(x); \
     if (mkr_ != NULL && (mkr_->flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) == 0) { \
-        if ((mkr_->flags & MK_FLAG_SHARED) == 0 && mkr_->refcount > 1u) mkr_->refcount--; \
+        if ((mkr_->flags & MK_FLAG_SHARED) == 0 && mkr_->refcount > 1u) { mkr_->refcount--; if (mkr_->flags & MK_FLAG_ARMED) mk_cycles_candidate(mkr_); } \
         else mk_release(mkr_); } } while (0)
 #endif
+
+/* The reference arrays of the stdlib collections (v1s.c): the slots are read and written inline. The layout is MkArray's (the
+ * elements right behind the length); a failing index or a NULL array takes the runtime's panic. The parentheses keep the macros
+ * of this block from expanding the names of the real functions. */
+#define MKH_RA_ITEMS(a) ((MkObject **)(((MkArray *)(a)) + 1))
+MKH_FN MkObject *mkh_ra_get_b(MkObject *a, MkInt i) {
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) return (mk_ref_array_get_b)(a, i);
+    return MKH_RA_ITEMS(a)[i];
+}
+MKH_FN MkObject *mkh_ra_get(MkObject *a, MkInt i) {
+    MkObject *v = mkh_ra_get_b(a, i);
+    MKH_RETAIN(v);
+    return v;
+}
+MKH_FN void mkh_ra_set_o(MkObject *a, MkInt i, MkObject *v) {
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) { (mk_ref_array_set_o)(a, i, v); return; }
+    MkObject **p = &MKH_RA_ITEMS(a)[i];
+    MkObject *old = *p;
+    *p = v;
+    MKH_REL(old);
+}
+MKH_FN void mkh_ra_set(MkObject *a, MkInt i, MkObject *v) {
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) { (mk_ref_array_set)(a, i, v); return; }
+    MKH_RETAIN(v);
+    mkh_ra_set_o(a, i, v);
+}
+MKH_FN MkInt mkh_ra_length(MkObject *a) {
+    if (__builtin_expect(a == NULL, 0)) return (mk_ref_array_length)(a);
+    return ((MkArray *)a)->length;
+}
+#define mk_ref_array_get_b(a, i) mkh_ra_get_b((a), (i))
+#define mk_ref_array_get(a, i) mkh_ra_get((a), (i))
+#define mk_ref_array_set_o(a, i, v) mkh_ra_set_o((a), (i), (v))
+#define mk_ref_array_set(a, i, v) mkh_ra_set((a), (i), (v))
+#define mk_ref_array_length(a) mkh_ra_length((a))
+
+/* Strings (minirt.h MkString): the length and the indexing of the common case are inline; NULL and a bad index take the runtime. */
+MKH_FN MkInt mkh_str_length(const MkString *s) { return s != NULL ? s->length : 0; }
+MKH_FN MkChar mkh_str_char_at(const MkString *s, MkInt i) {
+    if (__builtin_expect(s == NULL || (uint32_t)i >= (uint32_t)s->length, 0)) return (mk_string_char_at)(s, i);
+    return s->chars[i];
+}
+#define mk_string_length(s) mkh_str_length((s))
+#define mk_string_char_at(s, i) mkh_str_char_at((s), (i))
 
 MKH_FN void mkh_abstract(void) { mk_panic("AbstractMethodError"); }
 MKH_FN MkObject *mkh_cast_nn(MkObject *o, const MkTypeInfo *t) {
@@ -1175,13 +1314,20 @@ MKH_FN MkObject *mkh_cast_nn(MkObject *o, const MkTypeInfo *t) {
         mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
         return NULL;
     }
-    return mk_checked_cast(o, t);
+    return o->type == t ? o : mk_checked_cast(o, t);
 }
+MKH_FN MkObject *mkh_cc(MkObject *o, const MkTypeInfo *t) { return (o == NULL || o->type == t) ? o : mk_checked_cast(o, t); }
 MKH_FN MkObject *mkh_nn(MkObject *o) {
     if (o == NULL) mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
     return o;
 }
 MKH_FN MkObject *mkh_safe_cast(MkObject *o, const MkTypeInfo *t) { return mk_is_instance(o, t) ? o : NULL; }
+/* `is` with a class: the superclass chain of the object's type (an interface needs the runtime's search of the interface tables) */
+MKH_FN bool mkh_is_class(const MkObject *o, const MkTypeInfo *t) {
+    if (o == NULL) return false;
+    for (const MkTypeInfo *k = o->type; k != NULL; k = k->super) if (k == t) return true;
+    return false;
+}
 
 /* Kotlin-exact integer helpers. */
 MKH_FN MkInt mkh_div_int(MkInt a, MkInt b) {

@@ -6,13 +6,13 @@
 #include <string.h>
 
 const MkTypeInfo mk_type_String = {
-    "kotlin.String", sizeof(MkString), &mk_type_Any, NULL, NULL, 0, NULL, 0,
+    "kotlin.String", sizeof(MkString), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL,
 };
 
 static MkString *string_alloc(size_t length) {
     if (length > (size_t)INT32_MAX) mk_panic("string too long");
     size_t size = sizeof(MkString) + length * sizeof(MkChar);
-    MkObject *o = mk_alloc_sized(NULL, &mk_type_String, size);
+    MkObject *o = mk_alloc_sized_plain(&mk_type_String, size);
     if (o == NULL) mk_panic("out of memory");
     MkString *s = (MkString *)o;
     s->length = (MkInt)length;
@@ -65,6 +65,38 @@ MkString *mk_string_concat(const MkString *left, const MkString *right) {
     return s;
 }
 
+static MkString *concat_n(size_t n, const MkString *const *parts) {
+    size_t total = 0;
+    for (size_t i = 0; i < n; i++) total += parts[i] ? (size_t)parts[i]->length : 4;
+    MkString *s = string_alloc(total);
+    MkChar *out = s->chars;
+    for (size_t i = 0; i < n; i++) {
+        const MkChar *c = parts[i] ? parts[i]->chars : null_chars;
+        size_t len = parts[i] ? (size_t)parts[i]->length : 4;
+        memcpy(out, c, len * sizeof(MkChar));
+        out += len;
+    }
+    return s;
+}
+
+MkString *mk_string_concat3(const MkString *a, const MkString *b, const MkString *c) {
+    const MkString *const p[3] = {a, b, c};
+    return concat_n(3, p);
+}
+MkString *mk_string_concat4(const MkString *a, const MkString *b, const MkString *c, const MkString *d) {
+    const MkString *const p[4] = {a, b, c, d};
+    return concat_n(4, p);
+}
+MkString *mk_string_concat5(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e) {
+    const MkString *const p[5] = {a, b, c, d, e};
+    return concat_n(5, p);
+}
+MkString *mk_string_concat6(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e,
+                            const MkString *f) {
+    const MkString *const p[6] = {a, b, c, d, e, f};
+    return concat_n(6, p);
+}
+
 static MkString *from_ascii(const char *text, size_t n) {
     MkString *s = string_alloc(n);
     for (size_t i = 0; i < n; i++) s->chars[i] = (MkChar)(unsigned char)text[i];
@@ -86,21 +118,73 @@ size_t mk_itoa(int64_t value, char *buf) {
     return n + digits;
 }
 
-MkString *mk_string_from_int(MkInt value) {
-    char buf[MK_ITOA_MAX];
-    size_t n = mk_itoa(value, buf);
-    MkString *s = string_alloc(n);
-    for (size_t i = 0; i < n; i++) s->chars[i] = (MkChar)(unsigned char)buf[i];
-    return s;
+/* Decimal digits of an Int/Long straight into UTF-16 (two digits per division through a table): no temporary buffer.
+ * mk_i64_length gives the characters of the text of `value` (sign included), mk_i64_write writes exactly that many. */
+static const char digits2[201] =
+    "00010203040506070809101112131415161718192021222324252627282930313233343536373839"
+    "40414243444546474849505152535455565758596061626364656667686970717273747576777879"
+    "8081828384858687888990919293949596979899";
+
+size_t mk_i64_length(int64_t value) {
+    uint64_t u = value < 0 ? 0u - (uint64_t)value : (uint64_t)value;
+    size_t n = 1;
+    while (u >= 100u) {
+        u /= 100u;
+        n += 2;
+    }
+    if (u >= 10u) n++;
+    return n + (value < 0 ? 1u : 0u);
+}
+
+void mk_i64_write(int64_t value, MkChar *out, size_t n) {
+    uint64_t u = value < 0 ? 0u - (uint64_t)value : (uint64_t)value;
+    MkChar *p = out + n;
+    while (u >= 100u) {
+        unsigned r = (unsigned)(u % 100u);
+        u /= 100u;
+        p -= 2;
+        p[0] = (MkChar)(unsigned char)digits2[2 * r];
+        p[1] = (MkChar)(unsigned char)digits2[2 * r + 1];
+    }
+    if (u >= 10u) {
+        p -= 2;
+        p[0] = (MkChar)(unsigned char)digits2[2 * u];
+        p[1] = (MkChar)(unsigned char)digits2[2 * u + 1];
+    } else {
+        *--p = (MkChar)('0' + (unsigned)u);
+    }
+    if (value < 0) *--p = (MkChar)'-';
+}
+
+/* The same digits as bytes (a narrow StringBuilder buffer). */
+void mk_i64_write8(int64_t value, uint8_t *out, size_t n) {
+    uint64_t u = value < 0 ? 0u - (uint64_t)value : (uint64_t)value;
+    uint8_t *p = out + n;
+    while (u >= 100u) {
+        unsigned r = (unsigned)(u % 100u);
+        u /= 100u;
+        p -= 2;
+        p[0] = (uint8_t)digits2[2 * r];
+        p[1] = (uint8_t)digits2[2 * r + 1];
+    }
+    if (u >= 10u) {
+        p -= 2;
+        p[0] = (uint8_t)digits2[2 * u];
+        p[1] = (uint8_t)digits2[2 * u + 1];
+    } else {
+        *--p = (uint8_t)('0' + (unsigned)u);
+    }
+    if (value < 0) *--p = (uint8_t)'-';
 }
 
 MkString *mk_string_from_long(MkLong value) {
-    char buf[MK_ITOA_MAX];
-    size_t n = mk_itoa(value, buf);
+    size_t n = mk_i64_length(value);
     MkString *s = string_alloc(n);
-    for (size_t i = 0; i < n; i++) s->chars[i] = (MkChar)(unsigned char)buf[i];
+    mk_i64_write(value, s->chars, n);
     return s;
 }
+
+MkString *mk_string_from_int(MkInt value) { return mk_string_from_long(value); }
 
 MkString *mk_string_from_float(MkFloat value) {
     char buf[64];

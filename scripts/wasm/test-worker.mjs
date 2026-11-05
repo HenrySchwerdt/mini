@@ -105,11 +105,13 @@ const full = await call('load', { level: 'full', manifestUrl })
 assert.equal(full.loaded, 'full'); assert.equal(full.capabilities.compile, true)
 console.log(`load full: ${Date.now() - t} ms, last progress`, JSON.stringify(events[events.length - 1]))
 
+// the size of the IR is not a reliable marker (the program is pruned to what it reaches): count the function definitions
+const definesOf = ir => (ir.match(/^define /gm) || []).length
 const tensorSource = 'import mini.tensor.*\nfun main() { val a = tensor(1.0, 2.0, 3.0); println((a * a).sum().item()) }\n'
 if (staleObjectHashMode) {
     const result = await call('compile', { files: [{ name: 'main.kt', text: tensorSource }], opts: { emitLlvmIr: true } })
     assert.deepEqual(result.diagnostics, [])
-    assert.ok(result.llvmIr.length > 250_000, 'stale object metadata uses monolithic library LLVM IR')
+    assert.ok(definesOf(result.llvmIr) > 50, 'stale object metadata uses monolithic library LLVM IR')
     assert.ok(!events.some(e => e.stage === 'library-object'), 'stale object hash prevents downloading that object')
     const ran = await run(result.wasm)
     assert.equal(ran.code, 0)
@@ -156,7 +158,7 @@ assert.equal(cinteropMonoRan.out, cinteropSplitRan.out, 'C heap and memScoped al
 const objectFetchesBeforeO0 = events.filter(e => e.stage === 'library-object').length
 const tensorO0First = await call('compile', { files: [{ name: 'main.kt', text: tensorSource }], opts: { optLevel: '0', emitLlvmIr: true } })
 assert.deepEqual(tensorO0First.diagnostics, [])
-assert.ok(tensorO0First.llvmIr.length > 250_000, 'fresh O0 compile uses monolithic library IR')
+assert.ok(definesOf(tensorO0First.llvmIr) > 50, 'fresh O0 compile uses monolithic library IR')
 assert.equal(events.filter(e => e.stage === 'library-object').length, objectFetchesBeforeO0,
     'fresh O0 compile does not download unused O1 library objects')
 

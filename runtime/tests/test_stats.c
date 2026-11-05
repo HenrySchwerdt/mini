@@ -1,6 +1,7 @@
 /* D1: runtime statistics. Built with -DMK_STATS by run_tests.sh; without the macro this is a no-op
  * (the runtime then has no counters at all). */
 #include "harness.h"
+#include "alloc_small.h"
 
 #ifndef MK_STATS
 int main(void) {
@@ -9,8 +10,10 @@ int main(void) {
 }
 #else
 typedef struct { MkObject h; MkObject *child; } Pair;
+/* the bytes one Pair takes: a size class of the small-object allocator (no prefix), else the malloc block with its prefix */
+#define PAIR_BLOCK ((size_t)(MK_SMALL_ALLOC ? (sizeof(Pair) + 15) / 16 * 16 : sizeof(Pair) + MK_PREFIX_SIZE))
 static void pair_dispose(MkObject *s) { mk_release(((Pair *)s)->child); }
-static const MkTypeInfo T_Pair = {"Pair", sizeof(Pair), &mk_type_Any, pair_dispose, 0, 0, 0, 0};
+static const MkTypeInfo T_Pair = {"Pair", sizeof(Pair), &mk_type_Any, pair_dispose, 0, 0, 0, 0, NULL};
 
 static MkStats snap(void) {
     MkStats s;
@@ -30,7 +33,7 @@ int main(void) {
     CHECK_EQ_INT(s.allocs, 2);
     CHECK_EQ_INT(s.live, 2);
     CHECK_EQ_INT(s.peak_live, 2);
-    CHECK_EQ_INT(s.bytes_total, 2 * (sizeof(Pair) + MK_PREFIX_SIZE));
+    CHECK_EQ_INT(s.bytes_total, 2 * PAIR_BLOCK);
     CHECK_EQ_INT(s.bytes_live, s.bytes_total);
 
     /* plain retain/release, no-ops on NULL */
@@ -74,8 +77,8 @@ int main(void) {
     CHECK_EQ_INT(s.frees, 2);
     CHECK_EQ_INT(s.live, 1);
     CHECK_EQ_INT(s.peak_live, 3);
-    CHECK_EQ_INT(s.bytes_live, sizeof(Pair) + MK_PREFIX_SIZE);
-    CHECK_EQ_INT(s.bytes_peak, 3 * (sizeof(Pair) + MK_PREFIX_SIZE));
+    CHECK_EQ_INT(s.bytes_live, PAIR_BLOCK);
+    CHECK_EQ_INT(s.bytes_peak, 3 * PAIR_BLOCK);
     mk_release(b);
     s = snap();
     CHECK_EQ_INT(s.live, 0);
