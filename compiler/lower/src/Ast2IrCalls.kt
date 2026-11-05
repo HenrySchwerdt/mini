@@ -80,6 +80,8 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
         else -> {
             val tg = r.target
             if (tg is ClassType && tg.cls.isObject) return IrGetObjectValue(irClass(tg.cls), irType(tg))
+            val rt = r.type
+            if (rt is ClassType && rt.cls.isCompanion) return IrGetObjectValue(irClass(rt.cls), irType(rt))
             fail(e, "selector " + (sel as? NameExpr)?.name)
         }
     }

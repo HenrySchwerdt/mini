@@ -832,6 +832,11 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
             var expectedFun: FunType? = null
             if (pt is FunType) expectedFun = pt
             else if (pt is ClassType && pt.cls.isFunInterface) expectedFun = samFunType(pt)
+            else if (pt is VarType && pt.v.fixed == null && u is LambdaExpr) {
+                // `val l: List<(Int) -> Boolean> = listOf({ it > 0 })`: the expected type bounds the element type
+                val bound = pt.v.equal.firstOrNull { it is FunType } ?: pt.v.upper.firstOrNull { it is FunType }
+                if (bound is FunType) expectedFun = bound
+            }
             if (u is LambdaExpr) {
                 if (expectedFun != null) {
                     cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
