@@ -1,5 +1,6 @@
 /* Reference counting, type tests and the built-in Any type. */
 #include "internal.h"
+#include "lock.h"
 
 const MkTypeInfo mk_type_Any = {
     "kotlin.Any", sizeof(MkObject), NULL, NULL, NULL, 0, NULL, 0,
@@ -66,4 +67,39 @@ static bool type_is(const MkTypeInfo *t, const MkTypeInfo *target) {
 bool mk_is_instance(const MkObject *object, const MkTypeInfo *type) {
     if (object == NULL || type == NULL) return false;
     return type_is(object->type, type);
+}
+
+/* ---- thread-safe lazy initialisation of objects and top-level properties ---- */
+
+typedef struct MkInitFrame {
+    MkObject **slot;
+    MkObject *obj;
+    struct MkInitFrame *prev;
+} MkInitFrame;
+
+static MkLock mk_init_lock = MK_LOCK_INIT; /* one lock for all initialisers: they may nest (the owner is tracked below) */
+static MkInitFrame *mk_init_top;           /* the initialisers running, innermost first; guarded by mk_init_lock */
+static _Thread_local int mk_init_depth;    /* > 0: this thread owns mk_init_lock (a lock is not recursive on every platform) */
+
+MkObject *mk_object_init(MkObject **slot, const MkTypeInfo *type, void (*ctor)(MkObject *)) {
+    bool owner = mk_init_depth > 0;
+    if (!owner) mk_lock(&mk_init_lock);
+    MkObject *o = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
+    if (o == NULL) {
+        for (MkInitFrame *f = mk_init_top; f != NULL; f = f->prev) {
+            if (f->slot == slot) { o = f->obj; break; } /* cyclic initialisation on this thread: the partial object */
+        }
+    }
+    if (o == NULL) {
+        o = mk_alloc(type);
+        MkInitFrame frame = {slot, o, mk_init_top};
+        mk_init_top = &frame;
+        mk_init_depth++;
+        ctor(o);
+        mk_init_depth--;
+        mk_init_top = frame.prev;
+        __atomic_store_n(slot, o, __ATOMIC_RELEASE);
+    }
+    if (!owner) mk_unlock(&mk_init_lock);
+    return o;
 }

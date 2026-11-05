@@ -16,6 +16,8 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     val savedFlow = flow
     val label = pendingLabel ?: lambdaLabel
     pendingLabel = null
+    val probe = probeLambda
+    probeLambda = false
     var base: Scope = scope
     val recvT = ef?.receiver
     if (recvT != null) {
@@ -62,7 +64,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
             i++
         }
     }
-    val retExpected: Type? = if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
+    val retExpected: Type? = if (probe) null else if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
     val target = ReturnTarget(label, retExpected, null, true)
     target.isSuspend = ef != null && ef.suspend
     targets.add(target)
@@ -250,6 +252,15 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 rc.propReceiver = true
                 cands.add(rc)
             }
+            val xp = extensionProp(name, ct)
+            val xs = xp?.sym
+            if (xs is PropSym) {
+                val rc = RefCand(xs, listOf(ct), xp.type, emptyList(), HashMap())
+                rc.isProp = true
+                rc.mutable = xs.isVar
+                rc.propReceiver = true
+                cands.add(rc)
+            }
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, ct, ext)
             for (g in ext) for (c in g) if (extFits(c.fn, ct)) funRefCand(c, false, cands)
@@ -265,6 +276,16 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 rc.isProp = true
                 rc.mutable = mp.prop.isVar
                 cands.add(rc)
+            }
+            if (cands.isEmpty()) {
+                val xp = extensionProp(name, vt)
+                val xs = xp?.sym
+                if (xs is PropSym) {
+                    val rc = RefCand(xs, emptyList(), xp.type, emptyList(), HashMap())
+                    rc.isProp = true
+                    rc.mutable = xs.isVar
+                    cands.add(rc)
+                }
             }
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, vt, ext)

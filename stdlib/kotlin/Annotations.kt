@@ -13,7 +13,22 @@ import kotlin.annotation.AnnotationTarget.*
 public annotation class Suppress(vararg val names: String)
 
 @Target(CLASS, FUNCTION, PROPERTY, ANNOTATION_CLASS, CONSTRUCTOR, PROPERTY_SETTER, PROPERTY_GETTER, TYPEALIAS)
-public annotation class Deprecated(val message: String)
+public annotation class Deprecated(val message: String, val replaceWith: ReplaceWith = ReplaceWith(""), val level: DeprecationLevel = DeprecationLevel.WARNING)
+
+@Target()
+public annotation class ReplaceWith(val expression: String, vararg val imports: String)
+
+@Target(CLASS, FUNCTION, CONSTRUCTOR, PROPERTY_GETTER, PROPERTY_SETTER)
+public annotation class Throws(vararg val exceptionClasses: kotlin.reflect.KClass<out Throwable>)
+
+@Target(CLASS, PROPERTY, LOCAL_VARIABLE, VALUE_PARAMETER, CONSTRUCTOR, FUNCTION, PROPERTY_GETTER, PROPERTY_SETTER, EXPRESSION, FILE, TYPEALIAS)
+public annotation class OptIn(vararg val markerClass: kotlin.reflect.KClass<out Annotation>)
+
+@Target(ANNOTATION_CLASS)
+public annotation class RequiresOptIn(val message: String = "")
+
+@Target(CLASS, PROPERTY, CONSTRUCTOR, FUNCTION, PROPERTY_GETTER, PROPERTY_SETTER, TYPEALIAS)
+public annotation class SinceKotlin(val version: String)
 
 @Target(CLASS, PROPERTY, LOCAL_VARIABLE, VALUE_PARAMETER, CONSTRUCTOR, FUNCTION, PROPERTY_GETTER, PROPERTY_SETTER, FIELD, TYPE)
 public annotation class UnsafeVariance

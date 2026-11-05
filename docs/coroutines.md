@@ -81,7 +81,9 @@ wasm (single-threaded; `Thread.start` fails there). Locks, condition variables a
 that can start a thread (`java.lang.Thread.start` is reachable) is compiled without the inline reference-count fast paths (C:
 `MK_ATOMIC_RC`, LLVM: `inlineRc` off). Before the first thread nothing changes. What this does *not* make safe is the data
 itself: fields that several threads write need a `Lock` or an atomic, as in Kotlin. Kotlin `object` initialisers and top-level
-property initialisers run lazily without a lock: touch them from the main thread before starting threads.
+property initialisers run lazily and exactly once, also when threads race on the first access (`mk_object_init`: one global
+initialisation lock, the instance is published with a release store after its initialiser ran; a thread that re-enters during its
+own initialisation sees the partial object, as on the JVM).
 
 Tests: `runtime/tests/test_sys.c` and `test_threads.c` (ASan/UBSan and TSan via `runtime/run_tests.sh`; they use the platform
 threads directly), `compiler/testdata/coroutines_threads.kt` (TSan-clean when built with `-fsanitize=thread`).

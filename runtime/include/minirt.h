@@ -71,6 +71,12 @@ enum {
  * (see mk_default_allocator). Aborts through mk_panic on out-of-memory. */
 MkObject *mk_alloc(const MkTypeInfo *type);
 
+/* Slow path of the generated `<object>_get` accessors of Kotlin `object`s and file classes holding top-level properties:
+ * creates the instance and runs its initialiser once, also when threads race on the first access. `*slot` is published
+ * (release store) only after the initialiser returned, so readers that see a non-NULL slot see an initialised object;
+ * other threads block until it is. A thread that re-enters during its own initialisation gets the partial object. */
+MkObject *mk_object_init(MkObject **slot, const MkTypeInfo *type, void (*ctor)(MkObject *));
+
 /* Reference counting. Both accept NULL. Release frees the object (after calling
  * `dispose` along its type chain, most derived first) when the count reaches 0. */
 void mk_retain(MkObject *object);

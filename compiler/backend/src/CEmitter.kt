@@ -314,9 +314,8 @@ object CEmitter {
                 if (c.objectCtor != null) {
                     out.append("static MkObject *${c.cName}_obj;\n")
                     out.append(
-                        "MKH_FN MkObject *${c.cName}_get(void) {\n    if (${c.cName}_obj == NULL) {\n" +
-                            "        MkObject *o = mk_alloc(&${c.cName}_ti);\n        ${c.cName}_obj = o;\n" +
-                            "        ${c.objectCtor}(o);\n    }\n    return ${c.cName}_obj;\n}\n",
+                        "MKH_FN MkObject *${c.cName}_get(void) {\n    MkObject *o = __atomic_load_n(&${c.cName}_obj, __ATOMIC_ACQUIRE);\n" +
+                            "    return o != NULL ? o : mk_object_init(&${c.cName}_obj, &${c.cName}_ti, ${c.objectCtor});\n}\n",
                     )
                 }
                 out.append("\n")

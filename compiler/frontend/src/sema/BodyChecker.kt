@@ -26,6 +26,8 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     var capturedNames: HashSet<String> = HashSet()
     var lambdaDepth = 0
     var pendingLabel: String? = null
+    /** the next lambda is analysed only to learn its result type (overloads by lambda result, see byLambdaResult) */
+    var probeLambda = false
     /** > 0 while checking the branches / operands of an if, when, try, elvis or `!!` */
     var synthDepth = 0
     /** the argument expression being checked: its expected type is a hint only (K2 resolves arguments independently) */

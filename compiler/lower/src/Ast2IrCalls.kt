@@ -80,6 +80,8 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
         else -> {
             val tg = r.target
             if (tg is ClassType && tg.cls.isObject) return IrGetObjectValue(irClass(tg.cls), irType(tg))
+            val rt = r.type
+            if (rt is ClassType && rt.cls.isCompanion) return IrGetObjectValue(irClass(rt.cls), irType(rt))
             fail(e, "selector " + (sel as? NameExpr)?.name)
         }
     }
@@ -297,7 +299,15 @@ private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpres
     val inl = inlineArgument
     inlineArgument = false
     if (u is LambdaExpr) lambdaInline = inl
-    val v = if (u is LambdaExpr) lambdaExpr(u, label) else convert(ex)
+    var own: String? = null
+    var w: Expr = ex
+    while (true) {
+        if (w is ParenExpr) w = w.inner
+        else if (w is AnnotatedExpr) w = w.expr
+        else if (w is LabeledExpr) { own = w.label; w = w.expr }
+        else break
+    }
+    val v = if (u is LambdaExpr) lambdaExpr(u, own ?: label) else convert(ex)
     if (expected is ClassType && expected.cls.isFunInterface && rec(u)?.type is FunType) return samConversion(v, irType(expected))
     return v
 }

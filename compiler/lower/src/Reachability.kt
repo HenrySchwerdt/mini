@@ -65,7 +65,12 @@ object Reachability {
                     break
                 }
             }
-            if (marker.kclassImpl != null) break
+        }
+        for (f in module.files) {
+            for (d in f.declarations) {
+                if (d is IrClass && d.kotlinFqName == "kotlin.enums.EnumEntriesImpl") marker.entriesImpl = d
+                if (d is IrClass && d.kotlinFqName.startsWith(REFLECT_PKG + ".K") && d.kotlinFqName.contains("Property") && d.kotlinFqName.endsWith("Impl")) marker.propRefImpls[d.kotlinFqName] = d
+            }
         }
         val keepFiles = ArrayList<IrFile>()
         for (f in module.files) if (!isBuiltinFile(f)) keepFiles.add(f)
@@ -102,6 +107,10 @@ object Reachability {
         val kept = HashSet<IrDeclaration>()
         /** `Foo::class` / `x::class` create a KClassImpl (Ir2MirExpressions.classReference). */
         var kclassImpl: IrClass? = null
+        /** `Color.entries` creates an EnumEntriesImpl (Ir2MirCalls.enumSpecialCall). */
+        var entriesImpl: IrClass? = null
+        /** `::prop` creates a KPropertyNImpl (Ir2MirClosures.propertyReference). */
+        val propRefImpls = HashMap<String, IrClass>()
         private val classes = HashSet<IrClass>()
 
         private fun isStdlibClass(c: IrClass): Boolean {
@@ -133,10 +142,12 @@ object Reachability {
             if (e is IrFunction) markType(e.returnType)
             when (e) {
                 is IrFunctionAccessExpression -> {
+                    if (e is IrPropertyReference) for (k in propRefImpls.values) markClass(k)
                     // members of builtin-typed receivers (for-loop `hasNext`/`next`, ...) are known to the backend
                     val callee = calleeOf(e)
                     val dispatch = dispatchReceiverTypeOf(e, callee)
                     if (!(dispatch != null && isBuiltinClassType(dispatch))) markSymbolOwner(callee)
+                    if (callee?.name == "<get-entries>") entriesImpl?.let { markClass(it) }
                     if (e is IrFunctionReference) markSymbolOwner(e.target)
                 }
                 is IrGetObjectValue -> markClass(e.classOwner)

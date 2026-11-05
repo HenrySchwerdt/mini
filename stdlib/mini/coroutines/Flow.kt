@@ -24,7 +24,7 @@ private class SafeFlow<T>(private val block: suspend FlowCollector<T>.() -> Unit
 public fun <T> flow(block: suspend FlowCollector<T>.() -> Unit): Flow<T> = SafeFlow<T>(block)
 
 public fun <T> flowOf(vararg elements: T): Flow<T> = flow<T> {
-    for (e in elements) emit(e)
+    for (i in 0 until elements.size) emit(elements[i])
 }
 
 public fun <T> Iterable<T>.asFlow(): Flow<T> = flow<T> {

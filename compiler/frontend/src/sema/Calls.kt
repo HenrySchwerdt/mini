@@ -434,7 +434,31 @@ fun BodyChecker.paramsOf(c: Candidate): List<VarSym> {
         return l
     }
     sema.ensureSig(c.fn)
+    inheritDefaults(c.fn)
     return c.fn.params
+}
+
+/** An overriding function has the default values of the function it overrides (`override fun f(a: Int)` of `open fun f(a: Int = 1)`). */
+fun BodyChecker.inheritDefaults(fn: FunSym) {
+    if (fn.defaultsInherited) return
+    fn.defaultsInherited = true
+    val o = fn.owner ?: return
+    if (!fn.has("override") || fn.params.isEmpty()) return
+    for (site in ops.closure(o.thisType())) {
+        if (site.cls === o) continue
+        sema.members.ensureSynth(site.cls)
+        val l = site.cls.funs[fn.name] ?: continue
+        for (g in l) {
+            sema.ensureSig(g)
+            if (g.params.size != fn.params.size) continue
+            inheritDefaults(g)
+            var j = 0
+            while (j < g.params.size) {
+                if (g.params[j].hasDefault) fn.params[j].hasDefault = true
+                j++
+            }
+        }
+    }
 }
 
 fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
@@ -721,12 +745,54 @@ fun BodyChecker.resolveCallGroups(
             if (a != null) ok.add(a)
         }
         if (ok.isNotEmpty()) {
-            val best = chooseMostSpecific(ok, args)
+            val pick = if (ok.size > 1) byLambdaResult(ok, args) else ok
+            val best = chooseMostSpecific(pick, args)
             return completeCall(best, args, expected)
         }
     }
     leftoverArgs(args)
     return null
+}
+
+/**
+ * Overloads that differ only in the result type of a lambda parameter (`sumOf { ... }` for Int, Long and Double): the lambda is
+ * analysed once without an expected result type, and the overloads that accept its result remain.
+ */
+fun BodyChecker.byLambdaResult(ok: List<Attempt>, args: List<Arg>): List<Attempt> {
+    var li = -1
+    var i = 0
+    while (i < args.size) {
+        if (args[i].postponed) {
+            if (li >= 0) return ok
+            li = i
+        }
+        i++
+    }
+    if (li < 0) return ok
+    val lam = unwrapPostponed(args[li].expr ?: return ok) as? LambdaExpr ?: return ok
+    val first = ok[0]
+    for (a in ok) {
+        if (a.cand.fn.name != first.cand.fn.name || a.cand.fn.owner !== first.cand.fn.owner) return ok
+        if (a.argParam[li] !is FunType) return ok
+    }
+    val cs = first.cs
+    val ft = cs.resolveFixed(first.argParam[li] ?: return ok) as? FunType ?: return ok
+    for (a in ok) {
+        val f = a.cs.resolveFixed(a.argParam[li]!!) as FunType
+        if (f.params.size != ft.params.size) return ok
+    }
+    cs.fixVarsOf(FunType(ft.receiver, ft.params, sema.unitType, false, false))
+    val ef = cs.resolveFixed(FunType(ft.receiver, ft.params, sema.nullableAny, false, false)) as? FunType ?: return ok
+    probeLambda = true
+    val lt = analyzeLambda(lam, ef, cs) as? FunType ?: return ok
+    val res = lt.ret
+    if (containsError(res)) return ok
+    val keep = ArrayList<Attempt>()
+    for (a in ok) {
+        val f = a.cs.resolveFixed(a.argParam[li]!!) as FunType
+        if (ops.isSubtype(res, f.ret)) keep.add(a)
+    }
+    return if (keep.isEmpty()) ok else keep
 }
 
 /** analyses postponed arguments of a call that could not be resolved, so that their bodies are still checked */
@@ -766,6 +832,11 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
             var expectedFun: FunType? = null
             if (pt is FunType) expectedFun = pt
             else if (pt is ClassType && pt.cls.isFunInterface) expectedFun = samFunType(pt)
+            else if (pt is VarType && pt.v.fixed == null && u is LambdaExpr) {
+                // `val l: List<(Int) -> Boolean> = listOf({ it > 0 })`: the expected type bounds the element type
+                val bound = pt.v.equal.firstOrNull { it is FunType } ?: pt.v.upper.firstOrNull { it is FunType }
+                if (bound is FunType) expectedFun = bound
+            }
             if (u is LambdaExpr) {
                 if (expectedFun != null) {
                     cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
