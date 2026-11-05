@@ -167,6 +167,8 @@ class FunSym(name: String, val decl: FunDecl?, val owner: ClassSym?, val file: F
     var invokeArity = 0
     var bodyChecked = false
     var invokeSuspend = false
+    /** the default values of the overridden functions were copied to [params] (see BodyChecker.inheritDefaults) */
+    var defaultsInherited = false
 
     fun mods(): Modifiers? {
         if (isPrimary) return primaryMods

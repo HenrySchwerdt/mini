@@ -61,6 +61,24 @@ public fun <T> Array<out T>.contentToString(): String {
     return sb.toString()
 }
 
+public fun IntArray.sum(): Int {
+    var s = 0
+    for (x in this) s += x
+    return s
+}
+
+public fun LongArray.sum(): Long {
+    var s = 0L
+    for (x in this) s += x
+    return s
+}
+
+public fun DoubleArray.sum(): Double {
+    var s = 0.0
+    for (x in this) s += x
+    return s
+}
+
 public fun IntArray.contentToString(): String {
     val sb = StringBuilder()
     sb.append('[')

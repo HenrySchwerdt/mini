@@ -437,7 +437,8 @@ fun Ast2Ir.buildEnumEntryInit(es: EnumEntrySym, c: IrClass): IrExpressionBody? {
     return withCtx(bc) {
         val r = rec(es.decl)
         val info = r?.call ?: fail(es.decl, "enum entry without constructor call")
-        val k = funMap[info.fn] as? IrConstructor ?: irConstructor(info.fn, c)
+        val body = es.let { x -> sema.enumEntryBodies[x.decl] }?.let { classMap[it] }
+        val k = body?.declarations?.filterIsInstance<IrConstructor>()?.firstOrNull() ?: funMap[info.fn] as? IrConstructor ?: irConstructor(info.fn, c)
         val call = IrEnumConstructorCall(k, irType(cs.thisType()))
         val argExprs = ArrayList<Expr?>()
         val a = es.decl.args

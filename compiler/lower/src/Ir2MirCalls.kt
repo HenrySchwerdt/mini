@@ -35,7 +35,7 @@ internal fun Ir2Mir.callArgs(
             val pt = mirType(sigParam.type, sigParam)
             v = coerceOperand(given1, pt, c, out)
         } else {
-            val d = p.defaultValue?.expression
+            val d = defaultValueOf(callee, i, p)
             v = if (d == null && p.varargElementType != null) emptyVararg(p, c, out)
             else coerceOperand(value(d ?: unsupported(c, "call with omitted argument '${p.name}' of '${callee.name}'"), out), mirType(sigParam.type, sigParam), c, out)
         }
@@ -47,10 +47,28 @@ internal fun Ir2Mir.callArgs(
         val lv: MirExpr = if (v is MirExpr.Local) v else tmpOfPlain(v, out)
         saved += p to locals[p]
         locals[p] = (lv as MirExpr.Local).local
+        // the default of an overridden function reads the parameters of that function
+        if (callee is IrSimpleFunction) for (o in allOverridden(callee)) {
+            val op = o.parameters.getOrNull(i) ?: continue
+            if (op === p) continue
+            saved += op to locals[op]
+            locals[op] = lv.local
+        }
         result += lv
     }
     for ((p, old) in saved) if (old == null) locals.remove(p) else locals[p] = old
     return result
+}
+
+/** The default value expression of parameter [i] of [callee]: its own, or that of a function it overrides. */
+internal fun Ir2Mir.defaultValueOf(callee: IrFunction, i: Int, p: IrValueParameter): IrExpression? {
+    p.defaultValue?.expression?.let { return it }
+    if (callee !is IrSimpleFunction) return null
+    for (o in allOverridden(callee)) {
+        if (o === callee) continue
+        o.parameters.getOrNull(i)?.defaultValue?.expression?.let { return it }
+    }
+    return null
 }
 
 /** Like [tmpOf] but only when needed for primitives (constants stay inline in the argument list). */
@@ -104,6 +122,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     if (parent is IrClass && name == "rangeTo" && c.arguments.size == 2) rangeObject(c, parent, out)?.let { return it }
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Comparable" && name == "compareTo") return comparableCompareTo(c, out)
     if (parent is IrClass && isEnumSpecial(parent, owner)) return enumSpecialCall(c, parent, owner, out)
+    if (parent is IrClass && parent.kotlinFqName == "kotlin.Unit") unitMember(c, name, out)?.let { return it }
     if (parent is IrClass && (parent in classInfos || isAny(parent) || builtinOf(parent) != null)) return memberCall(c, owner, out)
     // fake overrides of Any members declared in user classes have the user class as parent
     val ownerName = when (parent) {
@@ -111,7 +130,6 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         is IrFile -> parent.packageFqName
         else -> unsupported(c, "call of '$name'")
     }
-    if (parent is IrClass && isEnumEntriesList(c, parent)) return arrayMember(c, name, arrayKindOfFq("kotlin.Array")!!, out)
     if (parent is IrClass) arrayKindOfFq(ownerName)?.let { return arrayMember(c, name, it, out) }
     arrayFunction(c, name, ownerName, out)?.let { return it }
     val args = c.arguments.map { it ?: unsupported(c, "call with omitted argument to '$ownerName.$name'") }
@@ -495,22 +513,34 @@ internal fun Ir2Mir.comparableCompareTo(c: IrCall, out: MutableList<MirStmt>): M
     return MirExpr.RuntimeCall("mk_compare_to", listOf(a, b, MirExpr.TypeInfoOf(cmp?.let { typeOf(it) })), TInt)
 }
 
-/** `get` / `size` of `Enum.entries` (a list in Kotlin; here the same array as `values()`). */
-internal fun Ir2Mir.isEnumEntriesList(c: IrCall, parent: IrClass): Boolean {
-    val n = c.callee.name
-    if (n != "get" && n != "<get-size>") return false
-    return c.arguments.getOrNull(0)?.type?.classFqName == "kotlin.enums.EnumEntries"
-}
-
 /** `values()`, `valueOf(String)` and `entries` of an enum class (generated functions, see Ir2MirClasses). */
 internal fun Ir2Mir.enumSpecialCall(c: IrCall, enumClass: IrClass, f: IrSimpleFunction, out: MutableList<MirStmt>): MirExpr {
     val inf = info(enumClass)
     val arrType = arrayType(arrayKindOfFq("kotlin.Array")!!)
     return when (f.name) {
-        "values", "<get-entries>" -> MirExpr.Call(inf.cName + "_values", emptyList(), arrType)
+        "values" -> MirExpr.Call(inf.cName + "_values", emptyList(), arrType)
+        "<get-entries>" -> {
+            val impl = entriesImpl ?: unsupported(c, "`entries` (the stdlib class EnumEntriesImpl is not available)")
+            val ctor = impl.declarations.filterIsInstance<IrConstructor>().firstOrNull()
+            val cName = ctor?.let { functionNames[it] } ?: unsupported(c, "`entries` (EnumEntriesImpl was pruned)")
+            val arr = tmpOf(MirExpr.Call(inf.cName + "_values", emptyList(), arrType), out)
+            val made = tmpOf(MirExpr.New(cName, listOf(arr), typeOf(impl)), out)
+            MirExpr.Cast(made, mirType(c.type, c), MirExpr.CastMode.Unchecked)
+        }
         else -> {
             val a = operands(c.arguments.map { it ?: unsupported(c, "omitted argument") }, out)
             MirExpr.Call(inf.cName + "_valueOf", a, typeOf(enumClass))
         }
     }
+}
+
+/** `Unit.toString()`, `Unit.equals(x)`, `Unit.hashCode()` (the Unit object is a generated singleton, see unitInstance). */
+internal fun Ir2Mir.unitMember(c: IrCall, name: String, out: MutableList<MirStmt>): MirExpr? = when (name) {
+    "toString" -> MirExpr.StringConst("kotlin.Unit")
+    "hashCode" -> MirExpr.IntConst(0)
+    "equals" -> {
+        val other = c.arguments.getOrNull(1)?.let { operands(listOf(it), out)[0] }
+        if (other == null) null else MirExpr.Binary(BinaryOp.IdEq, unitInstance(), asAny(boxIfPrim(other, c, out)))
+    }
+    else -> null
 }

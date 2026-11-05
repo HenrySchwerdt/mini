@@ -311,6 +311,17 @@ fun BodyChecker.resolveReceiverChain(d: DotExpr): RecvInfo? {
             return ValueRecv(t, d, false)
         }
         is ValueRecv -> {
+            val bt = base.type
+            if (bt is ClassType && bt.cls.isObject) {
+                // `obj.Nested`: a class nested in an object
+                val nc = sema.nestedClassifier(bt.cls, sel.name, 0)
+                if (nc is ClassSym) {
+                    val ct = classQualifierType(nc)
+                    val rr = record(d, ct, null)
+                    if (nc.isObject) rr.target = ct
+                    return ClassRecv(nc)
+                }
+            }
             val t = selectProperty(d, base, sel, d.safe)
             if (t == null) return null
             return ValueRecv(t, d, false)
@@ -480,6 +491,10 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
                     if (safe) rt = ops.makeNotNull(rt)
                     val g = ArrayList<List<Candidate>>()
                     g.addAll(memberAndExtensionGroups(rt, callee.name, false))
+                    if (rt is ClassType && rt.cls.isObject) {
+                        val onc = sema.nestedClassifier(rt.cls, callee.name, 0)
+                        if (onc is ClassSym) g.add(ctorCandidates(onc))
+                    }
                     // property of function type: `recv.prop(args)`
                     val mp = memberPropRes(rt, callee.name)
                     if (mp != null) {
@@ -598,6 +613,8 @@ fun BodyChecker.classGroups(c: ClassSym, name: String): List<List<Candidate>> {
     if (c.isObject) {
         groups.clear()
         groups.addAll(memberAndExtensionGroups(c.thisType(), name, false))
+        val onc = sema.nestedClassifier(c, name, 0)
+        if (onc is ClassSym) groups.add(ctorCandidates(onc))
         return groups
     }
     if (st.isNotEmpty()) groups.add(st)

@@ -180,10 +180,16 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val ref = IrPropertyReference(p, t)
         val rv = e.receiver
         if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
-        else if (sym.owner != null) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
+        else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
         return ref
     }
     fail(e, "callable reference to " + (sym?.name ?: "?"))
+}
+
+/** `::prop` of a member property written without a receiver in a class body is bound to `this`; the sema type says whether it is bound (KProperty0) or not (KProperty1). */
+fun Ast2Ir.isClassRefTarget(e: CallableRefExpr): Boolean {
+    val t = rec(e)?.type as? ClassType ?: return false
+    return t.cls.name.endsWith("1")
 }
 
 fun Ast2Ir.isClassQualifier(e: Expr): Boolean {
