@@ -65,7 +65,9 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         "kotlin.Any", "kotlin.Comparable", "kotlin.Number" -> if (nullable) anyNullable else anyType
         else -> {
             val c = t.classOrNull
-            if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
+            val inl = if (c != null && c in classInfos) inlineTypeOf(c) else null
+            if (inl != null) (if (nullable) TBoxed(inl) else inl)
+            else if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
         }
     }
 }

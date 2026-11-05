@@ -194,11 +194,15 @@ internal fun Ir2Mir.memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<
         val t = resolveFake(f)
         if (parentClass(t)?.let { isAny(it) } == true) Dispatch.AnyMember(anyMember(topClass(f) ?: f) ?: unsupported(c, "super call of '${f.name}'"))
         else Dispatch.Direct(t)
-    } else dispatchOf(f)
+    } else dispatchOfValue(f)
 
     if (d is Dispatch.AnyMember) {
         val vals = operands(c.arguments.map { it ?: unsupported(c, "omitted argument") }, out)
-        val recv = asAny(vals[0])
+        if (vals[0].type is TInline && c.superQualifier == null) {
+            val rest = vals.drop(1).map { coerceOperand(it, anyNullable, c, out) }
+            valueClassAnyMember(vals[0], d.slot, rest, c)?.let { return it }
+        }
+        val recv = asAny(if (vals[0].type is TInline) coerceOperand(vals[0], anyNullable, c, out) else vals[0])
         val viaSuper = c.superQualifier != null
         return when (d.slot) {
             0 -> MirExpr.RuntimeCall(if (viaSuper) "mk_any_to_string" else "mk_to_string", listOf(recv), TString)
@@ -238,8 +242,11 @@ internal fun Ir2Mir.dispatchWithArgs(d: Dispatch, f: IrSimpleFunction, args: Lis
 
 /** Dispatch of a member call whose arguments are already lowered (function references). */
 internal fun Ir2Mir.memberDispatch(f: IrSimpleFunction, superQualified: Boolean, args: List<MirExpr>, at: IrElement, out: MutableList<MirStmt>): MirExpr {
-    val d: Dispatch = if (superQualified) Dispatch.Direct(resolveFake(f)) else dispatchOf(f)
+    val d: Dispatch = if (superQualified) Dispatch.Direct(resolveFake(f)) else dispatchOfValue(f)
     if (d is Dispatch.AnyMember) {
+        if (args[0].type is TInline) {
+            valueClassAnyMember(args[0], d.slot, args.drop(1).map { coerceOperand(it, anyNullable, at, out) }, at)?.let { return it }
+        }
         val recv = asAny(boxIfPrim(args[0], at, out))
         return when (d.slot) {
             0 -> MirExpr.RuntimeCall("mk_to_string", listOf(recv), TString)
@@ -319,7 +326,7 @@ internal fun Ir2Mir.consoleCall(c: IrCall, name: String, args: List<IrExpression
         TChar -> MirExpr.RuntimeCall("mk_println_char", listOf(v), TUnit)
         TFloat -> MirExpr.RuntimeCall("mk_println_float", listOf(v), TUnit)
         TByte, TShort -> MirExpr.RuntimeCall("mk_println_int", listOf(MirExpr.Convert(v, TInt)), TUnit)
-        else -> if (v.type.isRef) MirExpr.RuntimeCall("mk_println_string", listOf(toStringExpr(v, c, out)), TUnit)
+        else -> if (v.type.isRef || v.type is TInline) MirExpr.RuntimeCall("mk_println_string", listOf(toStringExpr(v, c, out)), TUnit)
         else unsupported(c, "println of a value of type ${v.type}")
     }
 }
@@ -329,7 +336,7 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
         val v = operands(args, out)
         if (v.size != 1) unsupported(c, "compiler intrinsic '$name'")
         val t = v[0].type
-        return if (t is TBoxed) MirExpr.Unbox(v[0], t.prim) else if (t.isRef || t is TPtr) MirExpr.NotNull(v[0]) else v[0]
+        return if (t is TBoxed && t.prim is TInline) unboxVc(v[0], t.prim, MirExpr.CastMode.Unchecked) else if (t is TBoxed) MirExpr.Unbox(v[0], t.prim) else if (t.isRef || t is TPtr) MirExpr.NotNull(v[0]) else v[0]
     }
     val op = when (name) {
         "less" -> BinaryOp.Lt
@@ -345,6 +352,12 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
     val ta = v[0].type
     val tb = v[1].type
     if (ta == TUnit || ta == TNothing) unsupported(c, "comparison of $ta")
+    if (op == BinaryOp.Eq && ta is TInline && ta == tb && ta.rep.repr != TDouble && ta.rep.repr != TFloat && hasSyntheticEquals(ta)) {
+        return MirExpr.Binary(BinaryOp.Eq, retag(v[0], ta.rep.repr), retag(v[1], ta.rep.repr))
+    }
+    if (op == BinaryOp.Eq && ta is TInline && ta == tb) {
+        valueClassAnyMember(v[0], 1, listOf(coerceOperand(v[1], anyNullable, c, out)), c)?.let { return it }
+    }
     if (op == BinaryOp.Eq || op == BinaryOp.IdEq) {
         if (ta.isRef || tb.isRef) return refEquality(op, v[0], v[1], c, out)
     }

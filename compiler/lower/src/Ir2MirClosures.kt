@@ -72,6 +72,7 @@ internal fun zeroOf(t: MirType): MirExpr = when (t) {
     TChar -> MirExpr.CharConst(0)
     TByte, TShort -> MirExpr.Convert(MirExpr.IntConst(0), t)
     TFloat -> MirExpr.Convert(MirExpr.DoubleConst(0.0), TFloat)
+    is TInline -> retag(zeroOf(t.rep), t)
     else -> MirExpr.NullConst(t)
 }
 
@@ -229,7 +230,7 @@ internal fun Ir2Mir.currentFunctionName(): String = currentFunction?.name ?: "<m
 /** Converts an erased value (`Any?`) to the type [t] of a typed local (unboxing / unchecked cast). */
 internal fun Ir2Mir.convertFromErased(v: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     if (v.type == t) return v
-    if (t.isPrimitive) return MirExpr.Unbox(MirExpr.Cast(v, TBoxed(t), MirExpr.CastMode.Unchecked), t)
+    if (t.isPrimitive) return unboxCast(v, t, MirExpr.CastMode.Unchecked)
     if (t.isRef && v.type.isRef) return MirExpr.Cast(v, t, MirExpr.CastMode.Unchecked)
     return convertTo(v, t, at)
 }
@@ -243,7 +244,7 @@ internal fun Ir2Mir.adaptResult(e: MirExpr, expected: MirType, at: IrElement, ou
     if (!e.type.isRef) return e
     var v = e
     if (v.isOwned() || (v is MirExpr.FieldGet && v.type.isRef)) v = tmpOf(v, out)
-    if (expected.isPrimitive) return MirExpr.Unbox(MirExpr.Cast(v, TBoxed(expected), MirExpr.CastMode.Unchecked), expected)
+    if (expected.isPrimitive) return unboxCast(v, expected, MirExpr.CastMode.Unchecked)
     if (expected.isRef) return MirExpr.Cast(v, expected, MirExpr.CastMode.Unchecked)
     return e
 }

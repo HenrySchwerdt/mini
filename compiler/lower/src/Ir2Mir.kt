@@ -50,6 +50,7 @@ class Ir2Mir {
     // closures, inlining, extra generated declarations
     internal val closure = ClosureInfo()
     internal val bridgeCache = HashSet<String>()
+    internal val inlineReps = HashMap<IrClass, MirType?>()
     internal val inlineLambdaParams = HashMap<IrValueParameter, InlineLambda>()
     internal val extraClasses = ArrayList<MirClass>()
     internal val extraFunctions = ArrayList<MirFunction>()

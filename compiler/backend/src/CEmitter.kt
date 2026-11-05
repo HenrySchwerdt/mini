@@ -238,6 +238,7 @@ object CEmitter {
         }
 
         fun boxTypeInfo(p: MirType): String = when (p) {
+            is TInline -> p.cName + "_ti"
             TInt -> "mk_type_Int"
             TLong -> "mk_type_Long"
             TBoolean -> "mk_type_Boolean"
@@ -250,6 +251,7 @@ object CEmitter {
         }
 
         fun boxName(p: MirType): String = when (p) {
+            is TInline -> throw EmitError("a value class is boxed by a call to its box function, not by MirExpr.Box ($p)")
             TInt -> "int"
             TLong -> "long"
             TBoolean -> "boolean"
@@ -560,7 +562,7 @@ object CEmitter {
 
         // ---- exceptions ---------------------------------------------------------------------
 
-        fun defaultReturn(): String = when (currentReturn) {
+        fun defaultReturn(): String = when (currentReturn.repr) {
             TUnit, TNothing -> "return;"
             TDouble -> "return 0.0;"
             TBoolean -> "return false;"
@@ -757,6 +759,7 @@ object CEmitter {
             TString, TNString -> "const MkString *"
             TUnit, TNothing -> "void"
             TNull, is TObject, is TBoxed -> "MkObject *"
+            is TInline -> cType(t.rep)
         }
 
         /** [e] as a C expression of C type `cType(to)` (adds a cast between reference types). */
@@ -828,7 +831,7 @@ object CEmitter {
                     "((${cType(e.type)} (*)(${if (e.paramTypes.isEmpty()) "void" else e.paramTypes.joinToString(", ") { cType(it) }}))${expr(e.callee)})(${e.args.joinToString(", ") { expr(it) }})"
                 is MirExpr.FuncAddr -> "((void *)${e.cName})"
                 is MirExpr.Conditional -> "(${expr(e.cond)} ? ${coerceTo(e.thenValue, e.type)} : ${coerceTo(e.elseValue, e.type)})"
-                is MirExpr.Unreachable -> when (e.type) {
+                is MirExpr.Unreachable -> when (e.type.repr) {
                     TDouble -> "0.0"
                     TFloat -> "0.0f"
                     TUnit, TNothing -> "((void)0)"
@@ -1061,8 +1064,8 @@ object CEmitter {
 
         fun convert(e: MirExpr.Convert): String {
             val a = expr(e.operand)
-            val from = e.operand.type
-            val to = e.to
+            val from = e.operand.type.repr
+            val to = e.to.repr
             if (from == to) return a
             val smallInt = from == TByte || from == TShort
             return when {

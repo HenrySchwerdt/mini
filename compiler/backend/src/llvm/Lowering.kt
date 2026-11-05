@@ -25,6 +25,8 @@ import mini.backend.TypeCheckPlan
 import mini.backend.TypeCheckUse
 import mini.backend.TypeChecks
 import mini.backend.TBoxed
+import mini.backend.TInline
+import mini.backend.repr
 import mini.backend.MirExtern
 import mini.backend.TByte
 import mini.backend.TChar
@@ -295,15 +297,18 @@ private class Lowering<V : Any, B : Any>(
         TString, TNString -> IrType.PTR
         TUnit, TNothing -> IrType.VOID
         TNull, is TObject, is TBoxed -> IrType.PTR
+        is TInline -> ity(t.rep)
     }
 
     /** The ABI attribute of an argument / result of type [t] (C `bool` and `uint16_t` are zero-extended). */
-    fun ext(t: MirType): IrExt = if (t === TBoolean || t === TChar) IrExt.ZERO else if (t === TByte || t === TShort) IrExt.SIGN else IrExt.NONE
+    fun ext(t0: MirType): IrExt = extOf(t0.repr)
+    private fun extOf(t: MirType): IrExt = if (t === TBoolean || t === TChar) IrExt.ZERO else if (t === TByte || t === TShort) IrExt.SIGN else IrExt.NONE
     fun rext(t: MirType): IrExt = ext(t)
 
     fun exts(ts: List<MirType>): List<IrExt> = ts.map { ext(it) }
 
-    fun zero(t: MirType): V = when (t) {
+    fun zero(t0: MirType): V = zeroOf(t0.repr)
+    private fun zeroOf(t: MirType): V = when (t) {
         TDouble -> b.constFloat(IrType.DOUBLE, 0.0)
         TFloat -> b.constFloat(IrType.FLOAT, 0.0)
         TBoolean -> b.constInt(IrType.I1, 0L)
@@ -318,11 +323,12 @@ private class Lowering<V : Any, B : Any>(
     fun typeInfoOf(t: MirType): V = when (t) {
         TString, TNString -> b.externTypeInfo("mk_type_String")
         is TObject -> if (t.cName == ANY_CNAME) b.externTypeInfo("mk_type_Any") else tiOfClass(t.cName)
-        is TBoxed -> b.externTypeInfo(boxTypeInfo(t.prim))
+        is TBoxed -> if (t.prim is TInline) tiOfClass(t.prim.cName) else b.externTypeInfo(boxTypeInfo(t.prim))
         else -> throw EmitError("no type info for $t")
     }
 
     fun boxTypeInfo(p: MirType): String = when (p) {
+        is TInline -> p.cName + "_ti"
         TInt -> "mk_type_Int"
         TLong -> "mk_type_Long"
         TBoolean -> "mk_type_Boolean"
@@ -335,6 +341,7 @@ private class Lowering<V : Any, B : Any>(
     }
 
     fun boxName(p: MirType): String = when (p) {
+        is TInline -> throw EmitError("a value class is boxed by a call to its box function ($p)")
         TInt -> "int"
         TLong -> "long"
         TBoolean -> "boolean"
@@ -2068,8 +2075,8 @@ private class Lowering<V : Any, B : Any>(
 
     fun convert(e: MirExpr.Convert): V {
         val a = expr(e.operand)
-        val from = e.operand.type
-        val to = e.to
+        val from = e.operand.type.repr
+        val to = e.to.repr
         if (from == to) return a
         val fb = intBits(from)
         val tb = intBits(to)
