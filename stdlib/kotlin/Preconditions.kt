@@ -5,6 +5,14 @@
  */
 package kotlin
 
+public inline fun assert(value: Boolean) {
+    if (!value) throw AssertionError("Assertion failed")
+}
+
+public inline fun assert(value: Boolean, lazyMessage: () -> Any) {
+    if (!value) throw AssertionError(lazyMessage())
+}
+
 public inline fun require(value: Boolean) {
     if (!value) {
         mini.internal.throwIllegalArgument("Failed requirement.")

@@ -169,8 +169,9 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
     when (s) {
         is IrVariable -> {
             val t = mirType(s.type, s)
-            if (t == TUnit && s !in closure.boxed) {
-                // a variable of type Unit has no storage: the initializer runs for its effect, reads are the Unit value
+            if ((t == TUnit || t == TNothing) && s !in closure.boxed) {
+                // a variable of type Unit (or Nothing: the initializer never completes) has no storage: the initializer runs
+                // for its effect, reads are the Unit value
                 s.initializer?.let { stmt(it, out) }
                 unitVars += s
                 return
