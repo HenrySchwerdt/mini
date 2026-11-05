@@ -116,6 +116,20 @@ fun parseIntLiteral(text0: String): Long? {
     return v
 }
 
+/** The unsigned class of the literal `1u` / `1uL` with the (64-bit pattern) value [v]: the expected unsigned type when the value fits. */
+fun unsignedLiteralClass(v: Long, isLong: Boolean, expected: Type?): String {
+    val n = if (expected is ClassType) expected.cls.fqName() else ""
+    val small = v >= 0L
+    if (!isLong && small) {
+        if (n == "kotlin.UByte" && v <= 255L) return n
+        if (n == "kotlin.UShort" && v <= 65535L) return n
+        if (n == "kotlin.UInt" && v <= 4294967295L) return n
+        if (n == "kotlin.ULong") return n
+        if (v <= 4294967295L) return "kotlin.UInt"
+    }
+    return "kotlin.ULong"
+}
+
 fun BodyChecker.literal(e: LiteralExpr, expected: Type?): Type {
     when (e.kind) {
         LitKind.TRUE, LitKind.FALSE -> return sema.booleanType
@@ -139,7 +153,10 @@ fun BodyChecker.literal(e: LiteralExpr, expected: Type?): Type {
                 text = text.substring(0, text.length - 1)
                 if (text.endsWith("L")) text = text.substring(0, text.length - 1)
             }
-            if (unsigned) return unsupported(e.start, "unsigned literal")
+            if (unsigned) {
+                val uv: Long = parseIntLiteral(text) ?: return sema.longType
+                return sema.classTypeOf(unsignedLiteralClass(uv, isLong, expected))
+            }
             val v: Long = parseIntLiteral(text) ?: return sema.longType
             if (isLong) return sema.longType
             val lit = IntLiteralType(v, v <= 2147483647L)

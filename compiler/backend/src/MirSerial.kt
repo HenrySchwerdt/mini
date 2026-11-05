@@ -206,6 +206,12 @@ private class MirWriterImpl {
                 str(t.cName); sb.append(' ')
                 sb.append(t.nullable).append(' ').append(t.isInterface).append(')')
             }
+            is TInline -> {
+                sb.append("(inline ")
+                str(t.qualifiedName); sb.append(' ')
+                str(t.cName); sb.append(' ')
+                type(t.rep); sb.append(')')
+            }
             is TBoxed -> {
                 sb.append("(boxed ")
                 type(t.prim)
@@ -738,6 +744,10 @@ private class MirReaderImpl {
         if (tag == "obj") {
             need(it, 5, "obj")
             return TObject(str(it[1]), str(it[2]), bool(it[3]), bool(it[4]))
+        }
+        if (tag == "inline") {
+            need(it, 4, "inline")
+            return TInline(str(it[1]), str(it[2]), type(it[3]))
         }
         if (tag == "boxed") {
             need(it, 2, "boxed")

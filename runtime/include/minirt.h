@@ -349,12 +349,16 @@ extern const MkTypeInfo mk_type_Long;
 extern const MkTypeInfo mk_type_Boolean;
 extern const MkTypeInfo mk_type_Double;
 extern const MkTypeInfo mk_type_Float;
+extern const MkTypeInfo mk_type_Byte;
+extern const MkTypeInfo mk_type_Short;
 extern const MkTypeInfo mk_type_Char;
 MkObject *mk_box_int(MkInt value); /* refcount 1 */
 MkObject *mk_box_long(MkLong value);
 MkObject *mk_box_boolean(MkBoolean value);
 MkObject *mk_box_double(MkDouble value);
 MkObject *mk_box_float(MkFloat value);
+MkObject *mk_box_byte(MkByte value);
+MkObject *mk_box_short(MkShort value);
 MkObject *mk_box_char(MkChar value);
 /* Unboxing aborts with NullPointerException on NULL. */
 MkInt mk_unbox_int(const MkObject *box);
@@ -362,6 +366,8 @@ MkLong mk_unbox_long(const MkObject *box);
 MkBoolean mk_unbox_boolean(const MkObject *box);
 MkDouble mk_unbox_double(const MkObject *box);
 MkFloat mk_unbox_float(const MkObject *box);
+MkByte mk_unbox_byte(const MkObject *box);
+MkShort mk_unbox_short(const MkObject *box);
 MkChar mk_unbox_char(const MkObject *box);
 
 /* ---- end P1-A ------------------------------------------------------------------- */
@@ -551,6 +557,18 @@ MkLong mk_checked_unbox_long(const MkObject *box);
 MkBoolean mk_checked_unbox_boolean(const MkObject *box);
 MkDouble mk_checked_unbox_double(const MkObject *box);
 MkFloat mk_checked_unbox_float(const MkObject *box);
+/* kotlin.Number members on a boxed Int, Long, Double, Float, Byte or Short (NPE on null, ClassCastException otherwise). */
+bool mk_is_number(const MkObject *o);
+MkInt mk_double_compare(MkDouble a, MkDouble b); /* Double.compareTo: total order */
+MkInt mk_checked_number_to_int(const MkObject *o);
+MkLong mk_checked_number_to_long(const MkObject *o);
+MkDouble mk_checked_number_to_double(const MkObject *o);
+MkFloat mk_checked_number_to_float(const MkObject *o);
+MkByte mk_checked_number_to_byte(const MkObject *o);
+MkShort mk_checked_number_to_short(const MkObject *o);
+MkChar mk_checked_number_to_char(const MkObject *o);
+MkByte mk_checked_unbox_byte(const MkObject *box);
+MkShort mk_checked_unbox_short(const MkObject *box);
 MkChar mk_checked_unbox_char(const MkObject *box);
 
 /* `kotlin.Any()`: a plain instance (refcount 1). */
@@ -568,13 +586,15 @@ typedef struct MkArray {
     MkInt length;
     /* elements follow, 8-byte aligned */
 } MkArray;
-extern const MkTypeInfo MkObjectArray_ti, MkIntArray_ti, MkLongArray_ti, MkDoubleArray_ti, MkFloatArray_ti, MkBooleanArray_ti,
+extern const MkTypeInfo MkObjectArray_ti, MkIntArray_ti, MkLongArray_ti, MkDoubleArray_ti, MkFloatArray_ti, MkByteArray_ti, MkShortArray_ti, MkBooleanArray_ti,
     MkCharArray_ti;
 MkObject *mk_array_new_obj(MkInt length);
 MkObject *mk_array_new_int(MkInt length);
 MkObject *mk_array_new_long(MkInt length);
 MkObject *mk_array_new_double(MkInt length);
 MkObject *mk_array_new_float(MkInt length);
+MkObject *mk_array_new_byte(MkInt length);
+MkObject *mk_array_new_short(MkInt length);
 MkObject *mk_array_new_boolean(MkInt length);
 MkObject *mk_array_new_char(MkInt length);
 /* Element access is inline (hot loops): an unsigned compare covers both bounds, the failing path is an out-of-line
@@ -600,6 +620,8 @@ MK_ARRAY_ACCESS(int, MkInt, 0)
 MK_ARRAY_ACCESS(long, MkLong, 0)
 MK_ARRAY_ACCESS(double, MkDouble, 0.0)
 MK_ARRAY_ACCESS(float, MkFloat, 0.0f)
+MK_ARRAY_ACCESS(byte, MkByte, 0)
+MK_ARRAY_ACCESS(short, MkShort, 0)
 MK_ARRAY_ACCESS(boolean, MkBoolean, false)
 MK_ARRAY_ACCESS(char, MkChar, 0)
 #undef MK_ARRAY_ACCESS

@@ -15,7 +15,6 @@ internal fun Ir2Mir.collectClass(c: IrClass, pkg: String, path: List<String>, fi
         IrClassKind.ENUM_CLASS -> {}
         else -> unsupported(c, "${classKind(c)} declaration '${c.name}'")
     }
-    if (c.isValue) unsupported(c, "value class '${c.name}'")
     val cName = Mangling.className(pkg, path)
     val qn = (if (pkg.isEmpty()) "" else "$pkg.") + path.joinToString(".")
     classInfos[c] = ClassInfo(c, cName, qn, file)
@@ -202,7 +201,8 @@ internal fun Ir2Mir.convertMembers(info: ClassInfo): List<MirFunction> {
         }
         out += convertFunction(f, functionNames[f]!!, info.qualified + "." + f.name, null)
     }
-    for (k in c.declarations.filterIsInstance<IrConstructor>()) {
+    if (inlineRepOf(c) != null) out += valueClassFunctions(info)
+    else for (k in c.declarations.filterIsInstance<IrConstructor>()) {
         out += convertFunction(k, functionNames[k]!!, info.qualified + ".<init>", info.cName)
     }
     if (c.kind == IrClassKind.ENUM_CLASS) {
@@ -330,7 +330,9 @@ internal fun Ir2Mir.implName(f: IrSimpleFunction?): String? {
     val p = parentClass(f)
     if (p != null && (isAny(p) || isRuntimeProvided(p))) return null
     if (!hasBody(f)) return null
-    return functionNames[f] ?: error("no C name for ${f.name}")
+    val n = functionNames[f] ?: error("no C name for ${f.name}")
+    if (p != null && p.isValue && f.parameters.isNotEmpty() && f.parameters[0].kind == IrParameterKind.DispatchReceiver && inlineRepOf(p) != null) return valueClassWrapper(f, n)
+    return n
 }
 
 
@@ -477,7 +479,7 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
         val ps = rp.mapIndexed { i, t -> MirLocal(localCounter++, if (i == 0) "this" else "p$i", t) }
         val out = ArrayList<MirStmt>()
         val args = ps.mapIndexed { i, p ->
-            if (i == 0) MirExpr.Cast(MirExpr.Local(p), ip[0], MirExpr.CastMode.Unchecked)
+            if (i == 0) MirExpr.Cast(MirExpr.Local(p), ip[0].let { if (it is TInline) inlineObjType(it, true) else it }, MirExpr.CastMode.Unchecked)
             else coerceFlexible(MirExpr.Local(p), ip[i], impl, out)
         }
         val call = MirExpr.Call(name, args, ir)

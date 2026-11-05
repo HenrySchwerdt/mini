@@ -219,6 +219,8 @@ typedef struct { MkObject h; MkLong v; } BoxLong;
 typedef struct { MkObject h; MkBoolean v; } BoxBoolean;
 typedef struct { MkObject h; MkDouble v; } BoxDouble;
 typedef struct { MkObject h; MkFloat v; } BoxFloat;
+typedef struct { MkObject h; MkByte v; } BoxByte;
+typedef struct { MkObject h; MkShort v; } BoxShort;
 typedef struct { MkObject h; MkChar v; } BoxChar;
 
 static bool unbox_ok(const MkObject *box, const MkTypeInfo *type) {
@@ -243,6 +245,68 @@ MkDouble mk_checked_unbox_double(const MkObject *b) {
 MkFloat mk_checked_unbox_float(const MkObject *b) {
     return unbox_ok(b, &mk_type_Float) ? ((const BoxFloat *)b)->v : 0.0f;
 }
+/* kotlin.Number members: integer kinds widen to int64, floating kinds to double */
+static int number_kind(const MkObject *o, int64_t *iv, double *dv) {
+    if (o == NULL) {
+        mk_raise_npe();
+        return -1;
+    }
+    const MkTypeInfo *t = o->type;
+    if (t == &mk_type_Int) { *iv = ((const BoxInt *)o)->v; return 0; }
+    if (t == &mk_type_Long) { *iv = ((const BoxLong *)o)->v; return 0; }
+    if (t == &mk_type_Byte) { *iv = ((const BoxByte *)o)->v; return 0; }
+    if (t == &mk_type_Short) { *iv = ((const BoxShort *)o)->v; return 0; }
+    if (t == &mk_type_Double) { *dv = ((const BoxDouble *)o)->v; return 1; }
+    if (t == &mk_type_Float) { *dv = (double)((const BoxFloat *)o)->v; return 1; }
+    mk_raise_class_cast(o, &mk_type_Int);
+    return -1;
+}
+static MkInt num_d2i(double d) {
+    if (d != d) return 0;
+    if (d >= 2147483647.0) return INT32_MAX;
+    if (d <= -2147483648.0) return INT32_MIN;
+    return (MkInt)d;
+}
+static MkLong num_d2l(double d) {
+    if (d != d) return 0;
+    if (d >= 9223372036854775807.0) return INT64_MAX;
+    if (d <= -9223372036854775808.0) return INT64_MIN;
+    return (MkLong)d;
+}
+MkInt mk_double_compare(MkDouble x, MkDouble y) {
+    if (x < y) return -1;
+    if (x > y) return 1;
+    if (x == y && x != 0.0) return 0;
+    int xn = x != x, yn = y != y;
+    if (xn || yn) return xn == yn ? 0 : (xn ? 1 : -1);
+    int xs = signbit(x) != 0, ys = signbit(y) != 0;
+    return xs == ys ? 0 : (xs ? -1 : 1);
+}
+bool mk_is_number(const MkObject *o) {
+    if (o == NULL) return false;
+    const MkTypeInfo *t = o->type;
+    return t == &mk_type_Int || t == &mk_type_Long || t == &mk_type_Double || t == &mk_type_Float || t == &mk_type_Byte ||
+           t == &mk_type_Short;
+}
+#define NUMBER_TO(name, ctype, fp_expr, int_expr)        \
+    ctype mk_checked_number_to_##name(const MkObject *o) { \
+        int64_t iv = 0;                                      \
+        double dv = 0;                                       \
+        int k = number_kind(o, &iv, &dv);                    \
+        if (k < 0) return 0;                                 \
+        return k ? (fp_expr) : (int_expr);                   \
+    }
+NUMBER_TO(int, MkInt, num_d2i(dv), (MkInt)(int32_t)iv)
+NUMBER_TO(long, MkLong, num_d2l(dv), (MkLong)iv)
+NUMBER_TO(double, MkDouble, dv, (MkDouble)iv)
+NUMBER_TO(float, MkFloat, (MkFloat)dv, (MkFloat)iv)
+NUMBER_TO(byte, MkByte, (MkByte)num_d2i(dv), (MkByte)iv)
+NUMBER_TO(short, MkShort, (MkShort)num_d2i(dv), (MkShort)iv)
+NUMBER_TO(char, MkChar, (MkChar)num_d2i(dv), (MkChar)iv)
+#undef NUMBER_TO
+
+MkByte mk_checked_unbox_byte(const MkObject *b) { return unbox_ok(b, &mk_type_Byte) ? ((const BoxByte *)b)->v : 0; }
+MkShort mk_checked_unbox_short(const MkObject *b) { return unbox_ok(b, &mk_type_Short) ? ((const BoxShort *)b)->v : 0; }
 MkChar mk_checked_unbox_char(const MkObject *b) { return unbox_ok(b, &mk_type_Char) ? ((const BoxChar *)b)->v : 0; }
 
 /* ---- Any, compareTo --------------------------------------------------------------------- */
@@ -260,13 +324,15 @@ MkInt mk_compare_to(MkObject *a, MkObject *b, const MkTypeInfo *comparable) {
     }
     const MkTypeInfo *t = a->type;
     if (t == &mk_type_Int || t == &mk_type_Long || t == &mk_type_Char || t == &mk_type_Boolean ||
-        t == &mk_type_Double || t == &mk_type_Float || t == &mk_type_String) {
+        t == &mk_type_Double || t == &mk_type_Float || t == &mk_type_Byte || t == &mk_type_Short || t == &mk_type_String) {
         if (b->type != t) {
             mk_raise_class_cast(b, t);
             return 0;
         }
         if (t == &mk_type_Int) return cmp_ll(((BoxInt *)a)->v, ((BoxInt *)b)->v);
         if (t == &mk_type_Long) return cmp_ll(((BoxLong *)a)->v, ((BoxLong *)b)->v);
+        if (t == &mk_type_Byte) return (MkInt)((BoxByte *)a)->v - (MkInt)((BoxByte *)b)->v;
+        if (t == &mk_type_Short) return (MkInt)((BoxShort *)a)->v - (MkInt)((BoxShort *)b)->v;
         if (t == &mk_type_Char) return cmp_ll(((BoxChar *)a)->v, ((BoxChar *)b)->v);
         if (t == &mk_type_Boolean) return cmp_ll(((BoxBoolean *)a)->v, ((BoxBoolean *)b)->v);
         if (t == &mk_type_Float) {
@@ -317,6 +383,8 @@ const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_A
 const MkTypeInfo MkIntArray_ti = {"kotlin.IntArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkLongArray_ti = {"kotlin.LongArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkDoubleArray_ti = {"kotlin.DoubleArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
+const MkTypeInfo MkByteArray_ti = {"kotlin.ByteArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
+const MkTypeInfo MkShortArray_ti = {"kotlin.ShortArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkFloatArray_ti = {"kotlin.FloatArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkBooleanArray_ti = {"kotlin.BooleanArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkCharArray_ti = {"kotlin.CharArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
@@ -337,6 +405,8 @@ MkObject *mk_array_new_obj(MkInt n) { return array_new(&MkObjectArray_ti, n, siz
 MkObject *mk_array_new_int(MkInt n) { return array_new(&MkIntArray_ti, n, sizeof(MkInt)); }
 MkObject *mk_array_new_long(MkInt n) { return array_new(&MkLongArray_ti, n, sizeof(MkLong)); }
 MkObject *mk_array_new_double(MkInt n) { return array_new(&MkDoubleArray_ti, n, sizeof(MkDouble)); }
+MkObject *mk_array_new_byte(MkInt n) { return array_new(&MkByteArray_ti, n, sizeof(MkByte)); }
+MkObject *mk_array_new_short(MkInt n) { return array_new(&MkShortArray_ti, n, sizeof(MkShort)); }
 MkObject *mk_array_new_float(MkInt n) { return array_new(&MkFloatArray_ti, n, sizeof(MkFloat)); }
 MkObject *mk_array_new_boolean(MkInt n) { return array_new(&MkBooleanArray_ti, n, sizeof(MkBoolean)); }
 MkObject *mk_array_new_char(MkInt n) { return array_new(&MkCharArray_ti, n, sizeof(MkChar)); }
@@ -365,6 +435,8 @@ void mk_array_copy_into(MkObject *dst, MkInt index, const MkObject *src) {
                : dst->type == &MkLongArray_ti ? sizeof(MkLong)
                : dst->type == &MkDoubleArray_ti ? sizeof(MkDouble)
                : dst->type == &MkFloatArray_ti ? sizeof(MkFloat)
+               : dst->type == &MkByteArray_ti ? sizeof(MkByte)
+               : dst->type == &MkShortArray_ti ? sizeof(MkShort)
                : dst->type == &MkBooleanArray_ti ? sizeof(MkBoolean) : sizeof(MkChar);
     memcpy((char *)(d + 1) + esz * (size_t)index, (const char *)(s + 1), esz * (size_t)s->length);
 }
@@ -398,6 +470,8 @@ const MkString *mk_array_content_to_string(const MkObject *array) {
         else if (array->type == &MkLongArray_ti) e = mk_string_from_long(ELEMS(MkLong, a)[i]);
         else if (array->type == &MkDoubleArray_ti) e = mk_string_from_double(ELEMS(MkDouble, a)[i]);
         else if (array->type == &MkFloatArray_ti) e = mk_string_from_float(ELEMS(MkFloat, a)[i]);
+        else if (array->type == &MkByteArray_ti) e = mk_string_from_byte(ELEMS(MkByte, a)[i]);
+        else if (array->type == &MkShortArray_ti) e = mk_string_from_short(ELEMS(MkShort, a)[i]);
         else if (array->type == &MkBooleanArray_ti) e = mk_string_from_boolean(ELEMS(MkBoolean, a)[i]);
         else e = mk_string_from_char(ELEMS(MkChar, a)[i]);
         buf_append(&b, e->chars, (size_t)e->length);

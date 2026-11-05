@@ -342,7 +342,7 @@ User guide: `website/guide/c-interop.md`. Design (docs/plan-kotlin.md section 7)
 * **K2 caveat.** `external class` is rejected by K2 on the JVM unless the file has `@file:Suppress("WRONG_MODIFIER_TARGET")` (the driver silences the suppression warning). The own frontend needs nothing.
 * **Memory checker** (both frontends, `MemoryFacts`): pointer classes are tracked values; `memScoped` is `Arena().use { }` (M0105 on escape), `nativeHeap` is a `Deallocating` allocator (M0102/M0103/M0101), `@Owned(free = "fn")` results are `SK.Extern` allocations released by calling `fn`; pointers from other C functions are externally managed. The `kotlinx.cinterop` API is checked as Strict code with borrowed results and is no Managed boundary.
 * **Own frontend additions that interop needed:** member extension functions and properties on lambda receivers (`"x".cstr.ptr` inside `memScoped`), top-level `operator fun T.invoke` for `f(a, b)` on a variable, generic member extension properties, and callable references as arguments of overloaded generic functions (`staticCFunction(::f)`).
-* **Not done:** unsigned types, structs/unions by value (`CValue`, `readValue`, `useContents`), bit fields, exporting Kotlin functions with `@CName`, `mini-bindgen`, `ByteArray` conversions, pointers inside `Any`/collections, 32-bit targets.
+* **Not done:** structs/unions by value (`CValue`, `readValue`, `useContents`), bit fields, exporting Kotlin functions with `@CName`, `mini-bindgen`, `ByteArray` conversions, pointers inside `Any`/collections, 32-bit targets.
 * **Tests:** `testdata/cinterop_*.kt` (libc plus `cinterop_lib.c`, run in both frontends and backends and under ASan/UBSan), `testdata/memory-extra/x_cinterop_*.kt` (checker).
 
 ## Memory-model checker (Strict mode)
@@ -567,7 +567,7 @@ constructors. `Comparable` and `CharSequence` are erased (`Any` / `String`); `co
   Gaps of the stdlib itself (ranges as iterables, `entries`-style APIs, JDK message wording) are not backend issues.
   The stdlib's hash maps keep before/after links (reference cycles) and therefore leak under RC
   (`stdlib_maps.noleakcheck` excludes that test from the leak check).
-* No `suspend`/coroutines, `Byte`/`Short`/`Float`, `value class`. SAM conversion works for `fun interface`s
+* No `suspend`/coroutines. SAM conversion works for `fun interface`s
   (lambda literals and function values), not for Java interfaces.
 * A lambda parameter of an `inline` function may only be invoked or forwarded to another inline function.
 * A `Unit` stored as `Any?` / `Unit?` / a generic value is the singleton `kotlin.Unit` object (`Ir2MirClosures.unitInstance`); `println(listOf(f()))` of a Unit lambda prints `[kotlin.Unit]`.
@@ -651,7 +651,7 @@ exactly like in the K2 run of `jvm-bridge`. Entry point: `analyzeSources(listOf(
 | `Exprs.kt`, `Lambdas.kt`, `DataFlow.kt` | expression and statement checking, string templates, `if` / `when` (exhaustiveness for sealed, enum, Boolean) / `try` / loops, elvis, `!!`, safe calls, lambdas with expected-type inference, callable references, anonymous objects; flow-sensitive smart casts (`is`, null checks, `&&` / `||` / `!`, early exit, assignments, loop kills, boolean aliases) |
 | `Declarations.kt` | class bodies (super constructor calls, init blocks, enum entries, secondary constructors), implicit return / property types with cycle detection, accessors and delegates |
 
-Unsupported constructs (unsigned literals, `dynamic`, local typealiases, ...) produce an `unsupported: ...` diagnostic and an error type, never a
+Unsupported constructs (`dynamic`, local typealiases, ...) produce an `unsupported: ...` diagnostic and an error type, never a
 guessed type. Resolution problems produce `unresolved reference` / `type mismatch` diagnostics.
 
 ### The oracle

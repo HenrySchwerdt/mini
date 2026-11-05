@@ -349,7 +349,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
                 }
             }
         }
-        if (sym.isData) addDataMembers(c, sym)
+        if (sym.isData || sym.isValue) addDataMembers(c, sym)
         if (sym.isEnum) addEnumMembers(c, sym)
     }
 
