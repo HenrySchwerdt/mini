@@ -3,7 +3,7 @@ package mini.tool
 /**
  * Everything the core of `mini` needs from the outside world. The core is pure Kotlin (no `java.*`, see
  * MiniToolPurityTest); today the only implementation is `mini.tool.jvm.JvmPlatform`. After B3 a native one
- * (libc / libuv) replaces it and `mini` itself is compiled by `minic`.
+ * (libc) replaces it and `mini` itself is compiled by `minic`.
  *
  * Paths are `/`-separated strings. Relative paths are relative to [cwd].
  */

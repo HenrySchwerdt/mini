@@ -52,6 +52,7 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
         i++
     }
     fn.returnType = irType(ft.ret)
+    if (ft.suspend) makeSuspend(fn, fn.returnType)
     val bc = BodyCtx(ctx, fn, label, true)
     bc.shareTmp = lambdaInline
     lambdaInline = false
@@ -71,7 +72,7 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
             k++
         }
         val body = lam.body
-        val unitRet = isUnit(fn.returnType)
+        val unitRet = isUnit(fn.origReturnType ?: fn.returnType)
         var j = 0
         for (s in body) {
             val last = j == body.size - 1
@@ -86,7 +87,8 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
             }
             j++
         }
-        fn.body = IrBlockBody(stmts)
+        val lb = IrBlockBody(stmts)
+        fn.body = if (fn.isSuspend) lowerSuspendBody(fn, lb) else lb
     }
     fn.startOffset = lam.start
     val fe = IrFunctionExpression(fn, irType(ft), "LAMBDA")

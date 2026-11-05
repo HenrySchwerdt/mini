@@ -211,6 +211,8 @@ private fun Ast2Ir.makeFakeFunction(
     f.isInline = first.isInline
     f.isExternal = first.isExternal
     f.isOperator = first.isOperator
+    f.isSuspend = first.isSuspend
+    f.origReturnType = first.origReturnType
     f.sym = first.sym
     f.cSymbolName = first.cSymbolName
     f.typeParameters = first.typeParameters

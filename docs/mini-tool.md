@@ -259,7 +259,7 @@ Prints the explanation of a diagnostic (`M0102`, `m102` and `102` all work) from
 ### `mini doctor`
 
 Checks the Mini root, `minic-native`, the C compiler (clang or gcc), git
-(only for git dependencies), libuv (only for the runtime tests) and the write access to `$MINI_HOME`, and prints a fix
+(only for git dependencies), the write access to `$MINI_HOME`, and prints a fix
 for everything missing. Exit code 1 if something required is missing.
 
 ### `mini completions <bash|zsh|fish>`, `mini help [command]`, `mini --version`

@@ -921,7 +921,7 @@ fun BodyChecker.samFunType(t: ClassType): FunType? {
                 val m = ops.substOf(t)
                 val ps = ArrayList<Type>()
                 for (p in f.params) ps.add(ops.substitute(p.type ?: ErrType("sam"), m))
-                return FunType(null, ps, ops.substitute(sema.returnTypeOf(f), m), false, false)
+                return FunType(null, ps, ops.substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
             }
         }
     }

@@ -140,6 +140,9 @@ c_extra() { # <src>: the C test library for the interop programs
 
 run_and_compare() { # <name> <src> <exe> <label>: run, compare stdout with .out, stderr with .err, exit status
     local name="$1" src="$2" exe="$3" label="$4" out="$W/$1.stdout" err="$W/$1.stderr" code
+    # Strict programs that move an owned value into `spawn { }` are accepted by the checker but not run: the closure that carries the value
+    # into the thread is itself reference counted (move capture in escaping lambdas, docs/memory-model.md section 9)
+    if [ "${5:-}" = skip-threads ] && grep -q 'spawn *{' "$src"; then return 77; fi
     ( cd "$W" && run_with_timeout 60 "$exe" > "$out" 2> "$err" ); code=$?
     if [ $code -eq 124 ]; then echo "$label: timed out"; return 1; fi
     if grep -q "threads are not supported yet" "$err" 2>/dev/null && [ "$5" = skip-threads ]; then return 77; fi

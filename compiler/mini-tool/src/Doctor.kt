@@ -42,11 +42,6 @@ class Doctor(val p: Platform, val c: Console) {
         val g = p.exec(Exec(listOf("git", "--version")))
         if (g.exitCode == 0) ok("git", g.stdout.trim()) else warn("git", "not found (only needed for git dependencies)", listOf(installHint("git", "git")))
 
-        val pc = p.exec(Exec(listOf("pkg-config", "--modversion", "libuv")))
-        val uvHeader = listOf("/usr/include/uv.h", "/usr/local/include/uv.h", "/opt/homebrew/include/uv.h").firstOrNull { p.isFile(it) }
-        if (pc.exitCode == 0) ok("libuv", "version ${pc.stdout.trim()} (only needed for the runtime tests)")
-        else if (uvHeader != null) ok("libuv", "$uvHeader (only needed for the runtime tests)")
-        else warn("libuv", "not found (only needed for the runtime tests, not for building programs)", listOf(installHint("libuv1-dev", "libuv")))
 
         val home = miniHome(p)
         val probe = Paths.join(home, ".doctor")

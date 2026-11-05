@@ -56,7 +56,7 @@ internal fun Ir2Mir.inlineLambdaCall(lam: InlineLambda, args: List<MirExpr>, at:
     val allocRefs = ArrayList<AllocRef>()
     try {
         for ((i, p) in fn.parameters.withIndex()) {
-            val t = mirType(p.type, p)
+            val t = mirType(p.type, p).let { if (it == TUnit) anyNullable else it } // a Unit argument of a generic parameter is null
             val v = coerceFlexible(args[i], t, at, out)
             val l = MirLocal(localCounter++, p.name.ifEmpty { "p$i" }, t)
             out += MirStmt.Declare(l, v)
@@ -116,13 +116,13 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
                 boundLambdas += p
                 continue
             }
-            val t = mirType(p.type, p)
+            val t = mirType(p.type, p).let { if (it == TUnit) anyNullable else it } // a Unit argument of a generic parameter is null
             val v: MirExpr = if (arg != null) {
                 coerceFlexible(value(arg, out), t, c, out)
             } else {
                 val d = p.defaultValue?.expression
                 if (d == null && p.varargElementType != null) emptyVararg(p, c, out)
-                else coerceFlexible(value(d ?: unsupported(c, "call with omitted argument '${p.name}' of '${callee.name}'"), out), t, c, out)
+                else coerceFlexible(value(d ?: unsupported(c, if (p.name == "\$completion") "suspension point ('${callee.name}') in a lambda that is not a suspend lambda, for example the lambda of an inline function: not supported yet" else "call with omitted argument '${p.name}' of '${callee.name}'"), out), t, c, out)
             }
             val l = MirLocal(localCounter++, p.name.ifEmpty { "p$i" }, t)
             out += MirStmt.Declare(l, v)

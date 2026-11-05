@@ -136,6 +136,8 @@ object CEmitter {
             // so select the supported compiler-specific spelling to keep generated C aligned with LLVM.
             out.append("\n#if defined(__clang__)\n#pragma clang fp contract(off)\n#elif defined(__GNUC__)\n#pragma GCC optimize (\"fp-contract=off\")\n#endif\n")
             out.append("\n")
+            // a program that can start threads: every reference count operation goes through the runtime (atomic once a thread runs)
+            if (module.functions.any { it.qualifiedName == "java.lang.Thread.start" }) out.append("#define MK_ATOMIC_RC 1\n")
             out.append(PRELUDE)
             if (usesMemory) out.append(MEMORY_PRELUDE)
             if (literals.isNotEmpty()) {
@@ -234,7 +236,7 @@ object CEmitter {
             TString, TNString -> "mk_type_String"
             is TObject -> t.typeInfo
             is TBoxed -> boxTypeInfo(t.prim)
-            else -> throw EmitError("no type info for $t")
+            else -> throw EmitError("no type info for $t" + (if (curFn != null) " (in " + curFn!!.qualifiedName + ")" else ""))
         }
 
         fun boxTypeInfo(p: MirType): String = when (p) {
@@ -318,9 +320,8 @@ object CEmitter {
                 if (c.objectCtor != null) {
                     out.append("static MkObject *${c.cName}_obj;\n")
                     out.append(
-                        "MKH_FN MkObject *${c.cName}_get(void) {\n    if (${c.cName}_obj == NULL) {\n" +
-                            "        MkObject *o = mk_alloc(&${c.cName}_ti);\n        ${c.cName}_obj = o;\n" +
-                            "        ${c.objectCtor}(o);\n    }\n    return ${c.cName}_obj;\n}\n",
+                        "MKH_FN MkObject *${c.cName}_get(void) {\n    MkObject *o = __atomic_load_n(&${c.cName}_obj, __ATOMIC_ACQUIRE);\n" +
+                            "    return o != NULL ? o : mk_object_init(&${c.cName}_obj, &${c.cName}_ti, ${c.objectCtor});\n}\n",
                     )
                 }
                 out.append("\n")
@@ -449,7 +450,7 @@ object CEmitter {
             when (s) {
                 is MirStmt.Declare -> {
                     val t = s.local.type
-                    if (t == TUnit || t == TNothing) throw EmitError("local of type $t")
+                    if (t == TUnit || t == TNothing) throw EmitError("local of type $t" + (if (curFn != null) " (in " + curFn!!.qualifiedName + ")" else ""))
                     if (rcL(s.local)) {
                         // declared (NULL) at the top of the scope
                         val init = s.init ?: return
@@ -1154,7 +1155,7 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
 /* Reference counting with inline fast paths (RcOpt code generation). Anything unusual goes to the runtime:
  * NULL, static/stack/shared objects (atomic), a count that would overflow or reach zero, resurrection. With
  * MK_STATS every operation calls the runtime so that the counters see all of them. */
-#ifdef MK_STATS
+#if defined(MK_STATS) || defined(MK_ATOMIC_RC)
 #define MKH_RETAIN(x) mk_retain((MkObject *)(x))
 #define MKH_REL(x) mk_release((MkObject *)(x))
 #else

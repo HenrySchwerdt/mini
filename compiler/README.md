@@ -99,6 +99,17 @@ Tests (no Gradle; `docs/no-gradle.md` has the full table):
 * `compiler/bootstrap.sh`: stage2 == stage3 for the C, LLVM and LLVM C API builds.
 * `tools/k2-oracle`: the same programs through K2, K2 against the own frontend, the real kotlin-stdlib against the Mini stdlib.
 
+## Coroutines
+
+`suspend` functions and lambdas are lowered in `compiler/lower/src/SuspendLowering.kt`, called from `Ast2Ir` right after a
+function body is built (so the IR that `Ir2Mir` and both backends see has no `suspend`): a hidden `$completion: Continuation<Any?>`
+parameter, the result type `Any?` (value or `COROUTINE_SUSPENDED`), and for a function with suspension points
+`CoroutineImpl($completion, step).start()` where `step` is a lambda that holds the state machine (hoisted locals, `label`, `handler`
+for try/catch, one shared `finally` block). `suspend` function types are the `FunctionN+1` interface; the sema check reports a suspend
+call outside a suspend context. `mini.coroutines`, `kotlin.coroutines`, `kotlin.sequences`, native threads (`runtime/src/sys.c`: the
+first started thread makes all reference counts atomic, and such programs get no inline reference-count fast paths): see
+`docs/coroutines.md`.
+
 ## The K2 path
 
 The sections below on `jvm-bridge` describe the original pipeline through the official K2 frontend. It now lives in

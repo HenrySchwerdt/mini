@@ -1,8 +1,11 @@
 /*
- * kotlin.sequences without coroutines: lazy Sequence<T> with the usual operators.
- * `sequence { yield(..) }` needs coroutines and is not available; use generateSequence / sequenceOf / asSequence.
+ * kotlin.sequences: lazy Sequence<T> with the usual operators, and the `sequence { }` / `iterator { }` builders, which run
+ * on the suspend-function state machines of the compiler (docs/coroutines.md).
  */
 package kotlin.sequences
+
+import kotlin.coroutines.*
+import kotlin.coroutines.intrinsics.SuspendMarker
 
 public interface Sequence<out T> {
     public operator fun iterator(): Iterator<T>
@@ -591,3 +594,116 @@ public fun <T> Sequence<T>.ifEmpty(defaultValue: () -> Sequence<T>): Sequence<T>
     LazyListSequence { val l = this.toList(); if (l.isEmpty()) defaultValue().toList() else l }
 
 public fun <K, V> Map<K, V>.asSequence(): Sequence<Map.Entry<K, V>> = entries.asSequence()
+
+// ---- builders ---------------------------------------------------------------------------------------------------
+
+public abstract class SequenceScope<in T> internal constructor() {
+    public abstract suspend fun yield(value: T)
+    public abstract suspend fun yieldAll(iterator: Iterator<T>)
+    public suspend fun yieldAll(elements: Iterable<T>) {
+        yieldAll(elements.iterator())
+    }
+    public suspend fun yieldAll(sequence: Sequence<T>) {
+        yieldAll(sequence.iterator())
+    }
+}
+
+public fun <T> sequence(block: suspend SequenceScope<T>.() -> Unit): Sequence<T> = Sequence { iterator(block) }
+
+public fun <T> Sequence(iterator: () -> Iterator<T>): Sequence<T> = object : Sequence<T> {
+    override fun iterator(): Iterator<T> = iterator()
+}
+
+public fun <T> iterator(block: suspend SequenceScope<T>.() -> Unit): Iterator<T> {
+    val sink = SequenceSink()
+    val it = SequenceBuilderIterator<T>(sink)
+    it.nextStep = block.createCoroutineUnintercepted(BuilderScope<T>(), sink)
+    return it
+}
+
+/**
+ * What a `yield` hands up to the iterator: the value (or an iterator of values) and the continuation to resume. It is
+ * returned by the suspend function `yield` and travels up the chain of state machines like COROUTINE_SUSPENDED; the
+ * coroutine never refers to the iterator, so an abandoned sequence frees its state (reference counting has no cycle collector).
+ */
+internal class YieldRequest(val value: Any?, val values: Iterator<Any?>?, val next: Continuation<Unit>) : SuspendMarker()
+
+/** The completion of the builder coroutine: remembers a failure for the iterator. */
+private class SequenceSink : Continuation<Unit> {
+    var failure: Throwable? = null
+    override val context: CoroutineContext get() = EmptyCoroutineContext
+    override fun resumeWith(result: Result<Unit>) {
+        failure = result.exceptionOrNull()
+    }
+}
+
+private class BuilderScope<T> : SequenceScope<T>() {
+    override suspend fun yield(value: T) {
+        suspendCoroutineUninterceptedOrReturn<Unit> { c -> YieldRequest(value, null, c) }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override suspend fun yieldAll(iterator: Iterator<T>) {
+        if (!iterator.hasNext()) return
+        suspendCoroutineUninterceptedOrReturn<Unit> { c -> YieldRequest(null, iterator as Iterator<Any?>, c) }
+    }
+}
+
+private class SequenceBuilderIterator<T>(private val sink: SequenceSink) : Iterator<T> {
+    // 0: not ready, 1: has a value in nextValue, 2: has an iterator in nextIterator, 3: done
+    private var state = 0
+    private var nextValue: Any? = null
+    private var nextIterator: Iterator<T>? = null
+    var nextStep: Continuation<Unit>? = null
+
+    @Suppress("UNCHECKED_CAST")
+    override fun hasNext(): Boolean {
+        while (true) {
+            when (state) {
+                0 -> {}
+                1 -> return true
+                2 -> {
+                    val itr = nextIterator!!
+                    if (itr.hasNext()) return true
+                    nextIterator = null
+                    state = 0
+                }
+                else -> return false
+            }
+            // run the builder to its next yield
+            val step = nextStep!!
+            nextStep = null
+            val out = (step as BaseContinuation).resumeRaw(Result.success(Unit))
+            if (out is YieldRequest) {
+                nextStep = out.next
+                val vs = out.values
+                if (vs != null) {
+                    nextIterator = vs as Iterator<T>
+                    state = 2
+                } else {
+                    nextValue = out.value
+                    state = 1
+                }
+            } else {
+                state = 3
+                val f = sink.failure
+                if (f != null) throw f
+            }
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun next(): T {
+        if (state == 0 || state == 2) {
+            if (!hasNext()) throw NoSuchElementException()
+        }
+        if (state == 1) {
+            state = 0
+            val v = nextValue as T
+            nextValue = null
+            return v
+        }
+        if (state == 2) return nextIterator!!.next()
+        throw NoSuchElementException()
+    }
+}

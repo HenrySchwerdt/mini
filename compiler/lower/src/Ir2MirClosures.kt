@@ -30,6 +30,7 @@ internal class InlineReturn(val result: MirLocal?, val label: MirLabel, val fina
 
 internal fun Ir2Mir.functionArity(t: Type): Int? {
     val n = t.classFqName ?: return null
+    if (n.startsWith("kotlin.coroutines.SuspendFunction")) return (n.removePrefix("kotlin.coroutines.SuspendFunction").toIntOrNull() ?: return null) + 1
     val rest = when {
         n.startsWith("kotlin.Function") -> n.removePrefix("kotlin.Function")
         n.startsWith(REFLECT_PKG + ".KFunction") -> n.removePrefix(REFLECT_PKG + ".KFunction")
@@ -167,14 +168,7 @@ internal fun Ir2Mir.closureClass(
     val cName = Mangling.className("", listOf("\$closure$nameTag$n"))
     val type = TObject(qualified, cName, false)
     val fields = capTypes.mapIndexed { i, t -> MirField("c$i", t, borrowedCaps.getOrElse(i) { false }) }
-    // constructor
     val ctorName = Mangling.constructor(cName, capTypes)
-    run {
-        val self = MirLocal(0, "this", type)
-        val ps = capTypes.mapIndexed { i, t -> MirLocal(i + 1, "c$i", t) }
-        val body = ps.mapIndexed { i, p -> MirStmt.SetField(MirExpr.Local(self), cName, "c$i", capTypes[i], MirExpr.Local(p)) }
-        extraFunctions += MirFunction("$qualified.<init>", ctorName, listOf(self) + ps, TUnit, body, cName)
-    }
     // invoke
     val invokeName = Mangling.method(cName, sam?.method?.name ?: "invoke", argTypes)
     val fn = inFreshFunction {
@@ -188,6 +182,14 @@ internal fun Ir2Mir.closureClass(
         }
         makeBody(self, args, caps, out)
         MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, out)
+    }
+    // the constructor, invoke and class are registered together and only after the body lowered: when building a library an unsupported
+    // construct in the body is recorded and the enclosing function becomes a stub, which must not leave a constructor without its class
+    run {
+        val self = MirLocal(0, "this", type)
+        val ps = capTypes.mapIndexed { i, t -> MirLocal(i + 1, "c$i", t) }
+        val body = ps.mapIndexed { i, p -> MirStmt.SetField(MirExpr.Local(self), cName, "c$i", capTypes[i], MirExpr.Local(p)) }
+        extraFunctions += MirFunction("$qualified.<init>", ctorName, listOf(self) + ps, TUnit, body, cName)
     }
     extraFunctions += fn
     if (iface != null) {

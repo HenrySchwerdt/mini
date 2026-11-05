@@ -66,6 +66,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     }
     val retExpected: Type? = if (probe) null else if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
     val target = ReturnTarget(label, retExpected, null, true)
+    target.isSuspend = ef != null && ef.suspend
     targets.add(target)
     lambdaDepth++
     // statements of the body, value of the last expression
@@ -108,7 +109,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
             if (allOk) ret = retExpected
         }
     }
-    val ft = FunType(recvT, paramTypes, ret, false, false, if (ef != null && ef.contexts <= paramTypes.size) ef.contexts else 0)
+    val ft = FunType(recvT, paramTypes, ret, false, ef != null && ef.suspend, if (ef != null && ef.contexts <= paramTypes.size) ef.contexts else 0)
     val lamRec = record(lam, ft, null)
     lamRec.extra = LambdaInfo(lamVars)
     if (stmts.isNotEmpty()) {

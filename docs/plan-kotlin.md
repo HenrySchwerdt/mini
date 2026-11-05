@@ -240,7 +240,7 @@ a warning, not an error.
 | Generics (erased in Kotlin) | reference types share code (one pointer layout), primitives are monomorphized. `reified` works via inlining. |
 | Lambdas/closures | the closure object goes through normal allocation placement, non-escaping lambdas live on the stack |
 | `String`, `StringBuilder` | UTF-16 like Kotlin (compatibility for `Char`/indices), from the std with `actual`s |
-| Coroutines/`suspend` | state-machine lowering from `backend.common`. The dispatcher runs on the libuv loop. `Dispatchers.IO`/`Default` use the libuv thread pool (`uv_queue_work`). |
+| Coroutines/`suspend` | State-machine lowering of our own (`compiler/lower/SuspendLowering.kt`). **Changed from the original plan: no libuv.** The event loop is our own (task queue, timer heap, condition variable; an epoll/kqueue/WSAPoll poller is the next step) and `Dispatchers.IO`/`Default` are pools of native threads (`runtime/src/sys.c`). See `docs/coroutines.md`. |
 | Async IO (`mini.io`) | `suspend` APIs over libuv (timers, files, TCP/UDP, DNS, processes): the callback resumes the continuation, no thread blocks. API shape modelled on kotlinx-io/ktor-io so that Ktor & co. can run on it later. Memory: coroutine frames go through the normal allocator resolution. An `Arena` can run per `coroutineScope` (e.g. one arena per HTTP request, everything gone at scope end). |
 | `object`/companion, `lateinit`, `lazy` | runtime init guards, thread-safe via atomics |
 

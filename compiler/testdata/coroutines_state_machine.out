@@ -1,0 +1,12 @@
+got 1
+got 2
+got 3
+done sum=6 null
+finally
+done ok 5 null
+finally
+done caught neg null
+finally
+done caught boom null
+finally
+done null java.lang.RuntimeException: other

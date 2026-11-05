@@ -128,7 +128,8 @@ private class Lowering<V : Any, B : Any>(
     lateinit var typeCheckPlan: TypeCheckPlan
     var customIsInstanceSymbol = false
 
-    val inlineRc: Boolean = rcPlan != null && !stats
+    // a program that can start threads calls the runtime for every count (it is atomic once a thread runs, see CEmitter)
+    val inlineRc: Boolean = rcPlan != null && !stats && module.functions.none { it.qualifiedName == "java.lang.Thread.start" }
     val szT: IrType = if (target.ptrBytes == 8) IrType.I64 else IrType.I32
     val pb: Int = target.ptrBytes
 
@@ -901,7 +902,9 @@ private class Lowering<V : Any, B : Any>(
             b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, typeInfoLinkage, 8, false)
             if (c.objectCtor != null) {
                 val obj = b.defineGlobal(IrSection.CLASSES, "${c.cName}_obj", b.constNull(), false, classLinkage, 0, false)
-                val alloc = declare("mk_alloc", TString, listOf(TString))
+                // the slow path (create + run the initialiser once, thread-safe) is the runtime's mk_object_init; `_obj` is published after the
+                // initialiser ran, so a non-null value is a complete object (readers depend on it by address)
+                val initFn = declare("mk_object_init", TString, listOf(TString, TString, TString))
                 beginGenerated(IrSection.CLASSES, "${c.cName}_get", TString, emptyList(), emptyList(), emptyList(), if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage)
                 val init0 = b.newBlock("init")
                 val done = b.newBlock("done")
@@ -909,13 +912,10 @@ private class Lowering<V : Any, B : Any>(
                 val n = b.cmp(IrCmp.IEQ, o, b.constNull(), "n")
                 b.condBr(n, init0, done, false)
                 b.appendBlock(init0)
-                val a = b.call(alloc, IrType.PTR, IrExt.NONE, listOf(b.global("${c.cName}_ti")), listOf(IrExt.NONE), -1, "a")
-                b.store(a, obj, 0)
-                b.call(b.global(fname(c.objectCtor)), IrType.VOID, IrExt.NONE, listOf(a), listOf(IrExt.NONE), -1, "")
-                b.br(done)
+                val a = b.call(initFn, IrType.PTR, IrExt.NONE, listOf(obj, b.global("${c.cName}_ti"), b.global(fname(c.objectCtor))), listOf(IrExt.NONE, IrExt.NONE, IrExt.NONE), -1, "a")
+                b.ret(a)
                 b.appendBlock(done)
-                val r = b.load(IrType.PTR, obj, 0, "r")
-                b.ret(r)
+                b.ret(o)
                 b.endFunction()
             }
             b.blankLine(IrSection.CLASSES)

@@ -5,6 +5,8 @@ import mini.frontend.*
 /** Where `return` goes: a function body or a lambda. */
 class ReturnTarget(val label: String?, val expected: Type?, val fn: FunSym?, val isLambda: Boolean) {
     val returned = ArrayList<Type>()
+    /** a lambda whose expected type is a suspend function type */
+    var isSuspend = false
 }
 
 /**
@@ -37,6 +39,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     fun record(node: Ast, type: Type, callee: Sym?): ExprRec {
         val isNew = rec.get(node) == null
         val r = rec.put(node, if (type is IntLiteralType) ops.literalDefault(type) else type, callee)
+        if (isNew && callee is FunSym && node is CallExpr && (callee.invokeSuspend || callee.mods()?.has("suspend") == true)) checkSuspendContext(node.start, callee)
         if (isNew) {
             var l = sema.fileNodes[file.index]
             if (l == null) {
@@ -46,6 +49,19 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             l.add(node)
         }
         return r
+    }
+
+    /** a call of a suspend function is only legal in a suspend function or a suspend lambda */
+    fun checkSuspendContext(pos: Int, callee: FunSym) {
+        var i = targets.size - 1
+        if (i >= 0) {
+            val t = targets[i]
+            if (t.isLambda && t.isSuspend) return
+            val f = t.fn
+            if (!t.isLambda && f != null && f.mods()?.has("suspend") == true) return
+        }
+        val what = if (callee.invokeSuspend) "Suspend function type" else "Suspend function '" + callee.name + "'"
+        err(pos, what + " should be called only from a coroutine or another suspend function (a lambda passed to an inline function does not count: suspension points there are not supported yet)")
     }
 
     fun err(pos: Int, msg: String) {

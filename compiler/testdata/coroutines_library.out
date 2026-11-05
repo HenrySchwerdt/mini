@@ -1,0 +1,12 @@
+send 1
+send 2
+got 1
+got 2
+send 3
+got 3
+[4, 6, 8]
+50
+null
+cancelled cleanup
+true
+caught boom

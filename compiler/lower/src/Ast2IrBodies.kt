@@ -130,7 +130,10 @@ fun Ast2Ir.buildFunctionBody(fn: IrSimpleFunction, sym: FunSym): IrBody? {
         }
         ci++
     }
-    return withCtx(bc) { functionBody(fn, body, d.expressionBody) }
+    return withCtx(bc) {
+        val fb = functionBody(fn, body, d.expressionBody)
+        if (fn.isSuspend && fb is IrBlockBody) lowerSuspendBody(fn, fb) else fb
+    }
 }
 
 /** the context a member of a local class continues in (the function the class was declared in) */
@@ -138,7 +141,7 @@ fun Ast2Ir.localClassCtx(c: IrClass): BodyCtx? = localClassCtxs[c]
 
 fun Ast2Ir.functionBody(fn: IrFunction, body: Expr, expressionBody: Boolean): IrBody {
     val stmts = ArrayList<IrStatement>()
-    val rt = fn.returnType
+    val rt = fn.origReturnType ?: fn.returnType
     if (expressionBody) {
         val e = convertWithExpected(body, rt)
         if (isUnit(rt) && !isUnitReturnValueNeeded(body)) {

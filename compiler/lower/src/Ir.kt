@@ -157,6 +157,8 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
     var isInline = false
     var isExternal = false
     var isSuspend = false
+    /** the declared return type of a suspend function (its IR return type is Any?: the value or COROUTINE_SUSPENDED) */
+    var origReturnType: Type? = null
     var isOperator = false
     var sym: FunSym? = null
     /** the value of `@CSymbol("...")`, if the function is natively implemented */
@@ -230,7 +232,7 @@ abstract class IrValueDeclaration : IrDeclaration() {
     abstract val type: Type
 }
 
-class IrVariable(override var name: String, override var type: Type, val isVar: Boolean) : IrValueDeclaration() {
+class IrVariable(override var name: String, override var type: Type, var isVar: Boolean) : IrValueDeclaration() {
     var initializer: IrExpression? = null
     var isLateinit = false
     var sym: VarSym? = null
@@ -360,9 +362,9 @@ class IrGetEnumValue(val entry: IrEnumEntry, type: Type) : IrExpression(type)
 
 class IrGetObjectValue(val classOwner: IrClass, type: Type) : IrExpression(type)
 
-class IrGetField(val field: IrField, val receiver: IrExpression?, type: Type) : IrExpression(type)
+class IrGetField(val field: IrField, var receiver: IrExpression?, type: Type) : IrExpression(type)
 
-class IrSetField(val field: IrField, val receiver: IrExpression?, var value: IrExpression, type: Type) : IrExpression(type)
+class IrSetField(val field: IrField, var receiver: IrExpression?, var value: IrExpression, type: Type) : IrExpression(type)
 
 class IrStringConcatenation(val arguments: ArrayList<IrExpression>, type: Type) : IrExpression(type)
 
@@ -375,7 +377,7 @@ class IrPropertyReference(val property: IrProperty, type: Type) : IrFunctionAcce
 
 class IrClassReference(val classType: Type, type: Type) : IrExpression(type)
 
-class IrGetClass(val argument: IrExpression, type: Type) : IrExpression(type)
+class IrGetClass(var argument: IrExpression, type: Type) : IrExpression(type)
 
 class IrTry(var tryResult: IrExpression, val catches: ArrayList<IrCatch>, var finallyExpression: IrExpression?, type: Type) : IrExpression(type)
 
@@ -386,7 +388,7 @@ interface IrVarargElement
 
 class IrVararg(val varargElementType: Type, val elements: ArrayList<IrVarargElement>, type: Type) : IrExpression(type)
 
-class IrSpreadElement(val expression: IrExpression) : IrElement(), IrVarargElement
+class IrSpreadElement(var expression: IrExpression) : IrElement(), IrVarargElement
 
 class IrThrow(var value: IrExpression, type: Type) : IrExpression(type)
 
@@ -409,7 +411,7 @@ class IrTypeOperatorCall(val operator: IrTypeOperator, type: Type, var argument:
 }
 
 /** A return from [returnTarget] (a function, or the lambda function of a function expression). */
-class IrReturn(val returnTarget: IrFunction, var value: IrExpression, type: Type) : IrExpression(type)
+class IrReturn(var returnTarget: IrFunction, var value: IrExpression, type: Type) : IrExpression(type)
 
 abstract class IrLoop(type: Type) : IrExpression(type) {
     lateinit var condition: IrExpression

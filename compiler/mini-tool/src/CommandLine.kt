@@ -165,7 +165,7 @@ object CommandLine {
             "Prints the description from the memory-model reference (docs/memory-model.md, section 7).",
             listOf("mini explain M0102", "mini explain --list"), maxPositionals = 1,
         ),
-        Command("doctor", "Check the toolchain (compiler, C compiler, git, libuv) and suggest fixes", "", emptyList()),
+        Command("doctor", "Check the toolchain (compiler, C compiler, git) and suggest fixes", "", emptyList()),
         Command("repl", "Start the persistent LLVM ORC REPL", "", emptyList(),
             "Starts an in-process LLVM ORC session. Enter a declaration or expression on each line; use :help or :quit.",
             listOf("mini repl")),

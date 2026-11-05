@@ -1,8 +1,8 @@
 /*
  * Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license (see stdlib/NOTICE).
- * Shape of kotlin-stdlib jvm/concurrent/Thread.kt; backed by the java.lang.Thread placeholder until
- * libuv threads land (the memory checker treats `thread { }` as a thread boundary).
+ * Shape of kotlin-stdlib jvm/concurrent/Thread.kt, on the native threads of java.lang.Thread (runtime/src/sys.c, no libuv);
+ * the memory checker treats `thread { }` as a thread boundary.
  */
 package kotlin.concurrent
 

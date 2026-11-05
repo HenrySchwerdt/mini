@@ -610,6 +610,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         }
         addValueParameters(fn, sym.params, idx)
         fn.returnType = irType(sema.returnTypeOf(sym))
+        if (fn.isSuspend) makeSuspend(fn, fn.returnType)
         fn.returnTypeAnnotations = typeAnnotationsOf(sym.decl?.returnType, sym.file ?: bodyFile())
         val fdecl = sym.decl
         if (fdecl != null) fn.startOffset = fdecl.start
