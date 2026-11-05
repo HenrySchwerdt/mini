@@ -53,6 +53,7 @@ class R(val lo: Int, val hi: Int) {
 infix fun Int.plus2(o: Int) = this + o + 2
 
 fun v(vararg a: Int) = a.size
+fun vsum(vararg a: Int) = a.sum()
 fun total(vararg a: Int): Int { var s = 0; for (x in a) s += x; return s }
 fun d(a: Int, b: Int = 2, c: Int = 3) = a * 100 + b * 10 + c
 
@@ -91,6 +92,7 @@ fun main() {
     val arr = intArrayOf(1, 2, 3)
     println(v(*arr, 4))
     println(total(*arr, 10, *arr))
+    println(vsum(1, 2, 3) + doubleArrayOf(1.5, 2.0).sum() + longArrayOf(4L).sum())
     println(d(1, c = 5))
     println(d(b = 9, a = 1))
     for ((k, vv) in listOf(1 to "a", 2 to "b")) println("$k$vv")
