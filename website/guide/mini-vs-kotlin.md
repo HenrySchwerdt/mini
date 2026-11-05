@@ -53,7 +53,7 @@ Output:
 
 These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus what the samples on this site ran into. Using one gives a compile error such as `unsupported construct: ...`, never wrong code.
 
-- No coroutines or `suspend` functions (planned, on top of libuv).
+- [Coroutines](/guide/coroutines): `suspend` functions, `sequence { }` and `mini.coroutines` work, with limits: no suspension points inside lambdas of `inline` functions, no builder inference (`sequence<Int> { }`), no `select`/`actor`/`StateFlow`, and the event loop and thread pools are native only (the browser has `sequence { }`, not `runBlocking`).
 - No property references (`::prop`), except `::lateinitProp.isInitialized`.
 - `Byte` and `Short` are supported as unboxed scalars for C interop; nullable or boxed uses are restricted. `Float` is a real 32-bit type (`FloatArray`, `List<Float>`, `Float?`, IEEE float32 arithmetic). General `value class` support and unsigned types are not available.
 - Annotations with arguments are not supported by the backend (the `mini.memory` annotations are handled by the checker).
@@ -61,7 +61,7 @@ These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus wh
 - A lambda parameter of an `inline` function may only be invoked or passed on to another inline function; use `noinline` to store it.
 - `entries` of an enum class did not resolve in the sample on the [types page](/tour/types), so it uses `values()` instead.
 - No regular expressions, no `String.format`, no reflection beyond `KClass` names.
-- Native [C interop](/guide/c-interop) supports `external`/`@CName`, pointers, callbacks and scoped C memory. It cannot run against host libraries in the browser. Networking and async IO are still [planned](/roadmap).
+- Native [C interop](/guide/c-interop) supports `external`/`@CName`, pointers, callbacks and scoped C memory. It cannot run against host libraries in the browser. Networking and async IO (sockets, files on an event-loop poller) are still [planned](/roadmap).
 - The generated C uses GNU statement expressions, so it needs clang or gcc (not MSVC).
 - Reference cycles leak under reference counting, for example a closure stored in a field of the object it captures.
 

@@ -62,4 +62,4 @@ block                       object (= MkObject *)
 
 ## Planned
 
-Rewriting the runtime in Kotlin (Strict mode plus `@NoAlloc`, with only libc and libuv as external libraries) is on the [roadmap](/roadmap) and not started.
+Rewriting the runtime in Kotlin (Strict mode plus `@NoAlloc`, with only libc and the platform thread API as external libraries) is on the [roadmap](/roadmap) and not started.

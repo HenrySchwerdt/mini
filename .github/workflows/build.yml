@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
-          libuv: 'true'
+          tsan: 'true'
       - name: Runtime tests (ASan, UBSan, TSan)
         run: runtime/run_tests.sh
 

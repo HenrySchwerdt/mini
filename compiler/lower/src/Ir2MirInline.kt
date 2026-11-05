@@ -121,7 +121,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
             } else {
                 val d = p.defaultValue?.expression
                 if (d == null && p.varargElementType != null) emptyVararg(p, c, out)
-                else coerceFlexible(value(d ?: unsupported(c, "call with omitted argument '${p.name}' of '${callee.name}'"), out), t, c, out)
+                else coerceFlexible(value(d ?: unsupported(c, if (p.name == "\$completion") "suspension point ('${callee.name}') in a lambda that is not a suspend lambda, for example the lambda of an inline function: not supported yet" else "call with omitted argument '${p.name}' of '${callee.name}'"), out), t, c, out)
             }
             val l = MirLocal(localCounter++, p.name.ifEmpty { "p$i" }, t)
             out += MirStmt.Declare(l, v)

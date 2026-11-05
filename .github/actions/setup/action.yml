@@ -1,23 +1,15 @@
 name: Setup
-description: Build job prerequisites (the runners have a C compiler); optionally libuv for the runtime tests
+description: Build job prerequisites (the runners have a C compiler); optionally relax ASLR for the ThreadSanitizer runtime tests
 inputs:
-  libuv:
-    description: Install libuv (only the runtime tests need it)
+  tsan:
+    description: Prepare the runner for ThreadSanitizer runs (the runtime threading tests)
     default: 'false'
 runs:
   using: composite
   steps:
-    - name: Install libuv (Linux)
-      if: inputs.libuv == 'true' && runner.os == 'Linux'
+    - name: Prepare ThreadSanitizer (Linux)
+      if: inputs.tsan == 'true' && runner.os == 'Linux'
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y libuv1-dev
         # ThreadSanitizer cannot map its shadow memory with the runner's default ASLR entropy.
         sudo sysctl vm.mmap_rnd_bits=28
-    - name: Install libuv (macOS)
-      if: inputs.libuv == 'true' && runner.os == 'macOS'
-      shell: bash
-      run: |
-        brew install libuv
-        echo "LIBUV_ROOT=$(brew --prefix libuv)" >> "$GITHUB_ENV"

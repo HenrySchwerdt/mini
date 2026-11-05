@@ -64,6 +64,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     }
     val retExpected: Type? = if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
     val target = ReturnTarget(label, retExpected, null, true)
+    target.isSuspend = ef != null && ef.suspend
     targets.add(target)
     lambdaDepth++
     // statements of the body, value of the last expression

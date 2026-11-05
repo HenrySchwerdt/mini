@@ -234,3 +234,9 @@ Ported from the Kotlin 2.4.21 stdlib sources (Apache-2.0 headers kept) or reimpl
 * `kotlin.comparisons`: `compareBy(vararg selectors)`, `thenByDescending`, `thenComparator`, `then`.
 * `kotlin`: `Result`/`runCatching` (an ordinary class, not a value class), `Double.isNaN/isInfinite/isFinite`, `Double/Float.MIN_VALUE/MAX_VALUE`,
   `KClass.simpleName/qualifiedName` (`KClassImpl`, created by the backend for `Foo::class` / `x::class` from the type info name).
+
+## Coroutines, sequences and threads
+
+`kotlin.coroutines`, `kotlin.sequences`, `java.lang.Thread` / `kotlin.concurrent.thread`, `mini.concurrent` (`Lock`, `Condition`,
+atomics, clocks) and `mini.coroutines` (jobs, `launch`/`async`, dispatchers, `Mutex`, `Channel`, `Flow`) are part of the standard
+library; the native part is `mini.internal.Sys` over `runtime/src/sys.c`. Details: `docs/coroutines.md`.

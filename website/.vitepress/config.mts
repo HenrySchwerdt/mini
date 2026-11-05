@@ -15,6 +15,7 @@ const guideSidebar = [
               { text: 'Getting started', link: '/guide/getting-started' },
               { text: 'Mini and Kotlin/JVM', link: '/guide/mini-vs-kotlin' },
               { text: 'C interop', link: '/guide/c-interop' },
+              { text: 'Coroutines and sequences', link: '/guide/coroutines' },
               { text: 'WebAssembly libraries', link: '/guide/wasm-library' },
               { text: 'Command line', link: '/reference/cli' },
               { text: 'Playground and notebook', link: '/guide/playground' },

@@ -151,6 +151,7 @@ void mk_sys_cond_broadcast(MkObject *c) { (void)c; }
 
 /* ---- threads ----------------------------------------------------------------------------------------------------------- */
 
+#if defined(_WIN32) || defined(MK_POSIX_THREADS)
 /* Calls `fn.invoke()` of a Kotlin `() -> Unit` (the itable of its kotlin.Function0 interface, slot 0). */
 static void call_function0(MkObject *fn) {
     const MkTypeInfo *t = fn->type;
@@ -205,6 +206,8 @@ static void *thread_main(void *p) {
 }
 #endif
 
+#endif /* threads */
+
 /* Starts a thread that runs the Kotlin function [fn]; returns a handle for mk_sys_thread_join, or 0 when threads are not supported. */
 int64_t mk_sys_thread_start(MkObject *fn) {
 #if defined(_WIN32) || defined(MK_POSIX_THREADS)
@@ -236,15 +239,19 @@ int64_t mk_sys_thread_start(MkObject *fn) {
 }
 
 void mk_sys_thread_join(int64_t h) {
+#if defined(_WIN32) || defined(MK_POSIX_THREADS)
     MkThread *th = (MkThread *)(intptr_t)h;
     if (th == NULL) return;
 #if defined(_WIN32)
     WaitForSingleObject(th->handle, INFINITE);
     CloseHandle(th->handle);
-#elif defined(MK_POSIX_THREADS)
+#else
     pthread_join(th->handle, NULL);
 #endif
     free(th);
+#else
+    (void)h;
+#endif
 }
 
 /* ---- atomics ---------------------------------------------------------------------------------------------------------------- */

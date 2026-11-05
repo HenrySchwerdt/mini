@@ -38,7 +38,7 @@ mini [OPTIONS] <COMMAND>
 | `mini update [NAME...]` | Move the pins of git dependencies in `mini.lock` to the newest commits |
 | `mini tree` | Print the dependency tree |
 | `mini explain [CODE]` | Explain a diagnostic code such as `M0102`; `--list` lists all codes |
-| `mini doctor` | Check the native toolchain (compiler engine, C compiler, git, optional libuv) and suggest fixes |
+| `mini doctor` | Check the native toolchain (compiler engine, C compiler, git) and suggest fixes |
 | `mini completions <SHELL>` | Print a completion script for `bash`, `zsh` or `fish` |
 | `mini help [COMMAND]` | Show help for a command |
 

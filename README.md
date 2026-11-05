@@ -96,9 +96,9 @@ In Strict mode a separate checker runs before code generation.
 | Project tool `mini` (`mini new/build/run/test`, `mini.toml`, path and git dependencies) | **Done, and native**: `mini` is Kotlin compiled by Mini itself and calls `minic-native`; no JVM, no Gradle. It ships in the release archives. See [docs/mini-tool.md](docs/mini-tool.md). Dropping Gradle from the rest of the repository (tests, K2 oracle) is next. |
 | Reflection (static metadata, ownership-aware) and a compiler-plugin API in the toolchain; JSON (`mini-serialization`) and a web framework with compile-time DI and one arena per request (`mini-web`) as separate libraries | Planned after B3. |
 | LLVM API compiler, statically linked LLVM, API default, C fallback, and ORC REPL | **Done.** Release compilers include LLVM 18 with no LLVM runtime dependency; building programs still uses the platform C linker. |
-| Embedded lld, statically bundled libuv, `.kts` scripts | Planned. |
-| Native Windows x64 C compatibility build and project tool | Experimental; see [Windows support](docs/windows.md). An opt-in LLVM API source install includes the native REPL. Windows threads remain unsupported. |
-| Coroutines and async IO on libuv, runtime written in Kotlin | Later. |
+| Embedded lld, `.kts` scripts | Planned. |
+| Native Windows x64 C compatibility build and project tool | Experimental; see [Windows support](docs/windows.md). An opt-in LLVM API source install includes the native REPL. Native Windows threads (`runtime/src/sys.c`) are written against the Win32 API and not yet run. |
+| `suspend` functions, `sequence { }`, native threads and `mini.coroutines` (jobs, `launch`/`async`, channels, flows; own event loop, no libuv: [docs/coroutines.md](docs/coroutines.md)) | **Done** (v1); async IO on an epoll/kqueue/Windows poller and a runtime written in Kotlin: later. |
 
 Platforms: Linux and macOS with the LLVM API backend; experimental native Windows x64 with a C compatibility lane and an opt-in LLVM API source build. Windows packages from 0.9.0 include the LLVM API and REPL; the older 0.8.0 ZIP is C-only. The full plan is in
 [docs/plan-kotlin.md](docs/plan-kotlin.md).
@@ -126,7 +126,7 @@ seed (`mini-<version>-bootstrap-c.tar.gz`): `./build.sh` in it builds a native c
 
 Requirements: clang (or gcc). No JDK and no Gradle: the first `./mini` builds the native compiler and the tool
 (`scripts/build-mini.sh`, about a minute) starting from a native compiler it finds or downloads (the latest release).
-libuv is only needed for the runtime tests.
+There is no libuv dependency; the threading tests of the runtime use the platform's own threads.
 
 ```sh
 ./mini new hello && cd hello && ../mini run
