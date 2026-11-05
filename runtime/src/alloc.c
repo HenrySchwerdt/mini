@@ -1,13 +1,16 @@
 /* Allocation: default (Rc) and Heap allocators, the hidden allocator prefix,
  * mk_alloc*, mk_free.
  *
- * Block layout for every heap object:
+ * Small blocks of the Rc and Heap allocators (the vast majority of objects) have no prefix: the object is the block, and
+ * its flags say who owns it (MK_FLAG_HEAP, else Rc) and which size class it is (bits 8..15), see alloc_small.h.
+ *
+ * Every other object (arena, pool, debug and user allocators; Rc/Heap objects too large for the size classes) has a prefix:
  *
  *   block                      object (= MkObject*)
  *   |<---- MK_MAX_ALIGN ------>|
- *   [ MkAllocator *owner | pad ][ MkObject header | fields ... ]
+ *   [ MkAllocator *owner | size ][ MkObject header | fields ... ]
  *
- * The prefix is exactly MK_MAX_ALIGN bytes so the object stays max-aligned.
+ * and MK_FLAG_PREFIXED in its flags. The prefix is exactly MK_MAX_ALIGN bytes so the object stays max-aligned.
  * `allocator->free` receives the block pointer (what `allocate` returned).
  * Static and stack objects have no prefix; their flags keep them away from
  * the free path.
@@ -16,7 +19,8 @@
  * header (block+MK_MAX_ALIGN) of freed blocks intact (the Pool stores its
  * free-list link at block+sizeof(void*); the DebugAllocator quarantines the
  * block), which is what
- * lets mk_free diagnose double frees (MK_FLAG_FREED). */
+ * lets mk_free diagnose double frees (MK_FLAG_FREED). A freed small block keeps the refcount and flags of its header
+ * (its first word, the type, becomes the free-list link). */
 #include "alloc_arena.h"
 #include "alloc_small.h"
 #include "internal.h"
@@ -45,6 +49,12 @@ static MkAllocator default_allocator = {malloc_allocate, malloc_free,
 static MkAllocator heap_allocator = {malloc_allocate, malloc_free,
                                      MK_ALLOCATOR_DEALLOCATING | MK_ALLOCATOR_THREAD_SAFE};
 
+/* The allocator that owns a heap object: from the flags for an unprefixed (small Rc/Heap) block, else from the prefix. */
+static inline MkAllocator *object_owner(const MkObject *object) {
+    if (object->flags & MK_FLAG_PREFIXED) return *(MkAllocator **)(void *)((unsigned char *)object - MK_PREFIX_SIZE);
+    return (object->flags & MK_FLAG_HEAP) ? &heap_allocator : &default_allocator;
+}
+
 MkAllocator *mk_default_allocator(void) { return &default_allocator; }
 MkAllocator *mk_rc_allocator(void) { return &default_allocator; }
 MkAllocator *mk_heap_allocator(void) { return &heap_allocator; }
@@ -60,28 +70,67 @@ size_t mk_object_block_size(const MkTypeInfo *type) {
     return type->instance_size + MK_PREFIX_SIZE;
 }
 
+/* Zeroes `n` bytes (a multiple of 16) at `b`: small blocks without a libc call. */
+#if MK_SMALL_ALLOC
+static inline void zero_small(void *b, size_t cls) {
+    uint64_t *p = (uint64_t *)b;
+    switch (cls) {
+    case 4: p[6] = 0; p[7] = 0; /* fallthrough */
+    case 3: p[4] = 0; p[5] = 0; /* fallthrough */
+    case 2: p[2] = 0; p[3] = 0; /* fallthrough */
+    case 1: p[0] = 0; p[1] = 0; break;
+    default: memset(b, 0, cls * MK_SMALL_GRAN); break;
+    }
+}
+#endif
+
+#if MK_SMALL_ALLOC
+/* A small object of the Rc allocator (no prefix); NULL when the block cannot be had (the callers fall back to the slow path). */
+static inline MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size) {
+    size_t cls = mk_small_class(size);
+    unsigned char *block = mk_small_alloc(cls);
+    if (block == NULL) return NULL;
+    MK_STAT_SMALL(MK_SMALL_STAT_SMALL, 0);
+    zero_small(block, cls);
+    MK_STAT_ALLOC(cls * MK_SMALL_GRAN);
+    MkObject *object = (MkObject *)(void *)block;
+    object->type = type;
+    object->refcount = 1;
+    object->flags = (uint32_t)cls << SMALL_CLASS_SHIFT;
+    return object;
+}
+#endif
+
 MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, size_t size,
                               const char *site) {
     if (type == NULL || size < sizeof(MkObject)) return NULL;
     if (allocator == NULL) allocator = &default_allocator;
     if (size > SIZE_MAX - MK_PREFIX_SIZE) return NULL;
+#if MK_SMALL_ALLOC
+    if ((allocator == &default_allocator || allocator == &heap_allocator) && size <= MK_SMALL_MAX) {
+        /* Rc and Heap: thread-local size classes for small blocks, no prefix. Blocks of these two allocators are only ever
+         * made here; mk_free_object_memory finds the class and the owner in the flags. */
+        size_t cls = mk_small_class(size);
+        unsigned char *block = mk_small_alloc(cls);
+        MK_STAT_SMALL(MK_SMALL_STAT_SMALL, 0);
+        if (block == NULL) return NULL;
+        zero_small(block, cls);
+        MK_STAT_ALLOC(cls * MK_SMALL_GRAN);
+        MkObject *object = (MkObject *)(void *)block;
+        object->type = type;
+        object->refcount = 1;
+        object->flags = ((uint32_t)cls << SMALL_CLASS_SHIFT) | (allocator == &heap_allocator ? MK_FLAG_HEAP : 0u);
+        return object;
+    }
+#endif
     size_t total = size + MK_PREFIX_SIZE;
     unsigned char *block;
     bool zeroed = false;
 #if MK_SMALL_ALLOC
     if (allocator == &default_allocator || allocator == &heap_allocator) {
-        /* Rc and Heap: thread-local size classes for small blocks, malloc for the rest. Blocks of these two
-         * allocators are only ever made here, and mk_free_object_memory finds the size at block+sizeof(void*). */
-        if (total <= MK_SMALL_MAX) {
-            block = mk_small_alloc(mk_small_class(total));
-            MK_STAT_SMALL(MK_SMALL_STAT_SMALL, 0);
-        } else {
-            block = malloc(total);
-            MK_STAT_SMALL(MK_SMALL_STAT_LARGE, 0);
-        }
-        if (block == NULL) return NULL;
-        goto have_block;
-    }
+        block = malloc(total); /* too large for the size classes */
+        MK_STAT_SMALL(MK_SMALL_STAT_LARGE, 0);
+    } else
 #endif
     if (mk_arena_is_fast(allocator)) {
         MK_STAT_SMALL(MK_SMALL_STAT_ARENA_ALLOC, 0);
@@ -95,9 +144,6 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
         mk_tls_ctx.site = NULL;
     }
     if (block == NULL) return NULL;
-#if MK_SMALL_ALLOC
-have_block:
-#endif
     if (!zeroed) memset(block, 0, total);
     *(MkAllocator **)(void *)block = allocator;
     /* the padding of the prefix remembers the block size (mk_free_object_memory; statistics) */
@@ -109,11 +155,17 @@ have_block:
     MkObject *object = (MkObject *)(void *)(block + MK_PREFIX_SIZE);
     object->type = type;
     object->refcount = 1;
-    object->flags = 0;
+    object->flags = MK_FLAG_PREFIXED;
     return object;
 }
 
 MkObject *mk_alloc_sized(MkAllocator *allocator, const MkTypeInfo *type, size_t size) {
+#if MK_SMALL_ALLOC
+    if ((allocator == NULL || allocator == &default_allocator) && type != NULL && size >= sizeof(MkObject) && size <= MK_SMALL_MAX) {
+        MkObject *object = alloc_small_rc(type, size);
+        if (object != NULL) return object;
+    }
+#endif
     return mk_alloc_sized_site(allocator, type, size, NULL);
 }
 
@@ -128,12 +180,26 @@ MkObject *mk_alloc_with_site(MkAllocator *allocator, const MkTypeInfo *type, con
 }
 
 MkObject *mk_alloc(const MkTypeInfo *type) {
+#if MK_SMALL_ALLOC
+    if (type != NULL && type->instance_size >= sizeof(MkObject) && type->instance_size <= MK_SMALL_MAX) {
+        MkObject *object = alloc_small_rc(type, type->instance_size);
+        if (object != NULL) return object;
+    }
+#endif
     MkObject *object = mk_alloc_with(&default_allocator, type);
     if (object == NULL) mk_panic("out of memory");
     return object;
 }
 
 void mk_free_object_memory(MkObject *object) {
+#if MK_SMALL_ALLOC
+    if (!(object->flags & MK_FLAG_PREFIXED)) {
+        mk_small_free_object(object);
+        return;
+    }
+#endif
+    object->refcount = 0;
+    object->flags |= MK_FLAG_FREED;
     unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
     MkAllocator *owner = *(MkAllocator **)(void *)block;
     size_t total = *(size_t *)(void *)(block + sizeof(void *));
@@ -141,12 +207,9 @@ void mk_free_object_memory(MkObject *object) {
 #ifdef MK_STATS
     if (!mk_arena_is_fast(owner)) MK_STAT_FREE(total); /* an arena counts its objects when it dies */
 #endif
-    object->refcount = 0;
-    object->flags |= MK_FLAG_FREED;
 #if MK_SMALL_ALLOC
     if (owner == &default_allocator || owner == &heap_allocator) {
-        if (total <= MK_SMALL_MAX) mk_small_free(block, mk_small_class(total));
-        else free(block);
+        free(block); /* a large Rc/Heap block */
         return;
     }
 #endif
@@ -157,14 +220,16 @@ static void free_with_site(MkObject *object, const char *site) {
     if (object == NULL) return;
     if (object->flags & (MK_FLAG_STATIC | MK_FLAG_STACK))
         mk_panic("mk_free: object is static or stack-allocated");
-    unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
-    MkAllocator *owner = *(MkAllocator **)(void *)block;
+    MkAllocator *owner = object_owner(object);
     if (object->flags & MK_FLAG_FREED) {
-        if (mk_debug_is_debug(owner)) mk_debug_double_free(owner, block, site);
-        char msg[160];
-        snprintf(msg, sizeof msg, "mk_free: double free of %s",
-                 object->type != NULL && object->type->name != NULL ? object->type->name : "?");
-        mk_panic(msg);
+        if (object->flags & MK_FLAG_PREFIXED) {
+            if (mk_debug_is_debug(owner)) mk_debug_double_free(owner, (unsigned char *)object - MK_PREFIX_SIZE, site);
+            char msg[160];
+            snprintf(msg, sizeof msg, "mk_free: double free of %s",
+                     object->type != NULL && object->type->name != NULL ? object->type->name : "?");
+            mk_panic(msg);
+        }
+        mk_panic("mk_free: double free"); /* the type word of a freed small block is a free-list link */
     }
     if (mk_allocator_traits(owner) & MK_ALLOCATOR_SCOPED)
         mk_panic("mk_free: objects of a scoped allocator (arena) cannot be freed individually");
@@ -228,8 +293,7 @@ void mk_free_dealloc(MkObject *object) {
     if (object == NULL) return;
     if (object->flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) return;
     if (!(object->flags & MK_FLAG_FREED)) {
-        unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
-        MkAllocator *owner = *(MkAllocator **)(void *)block;
+        MkAllocator *owner = object_owner(object);
         if (mk_allocator_traits(owner) & MK_ALLOCATOR_MANAGED) return; /* reference counted: frees itself */
     }
     free_with_site(object, NULL);
@@ -239,8 +303,7 @@ void mk_free_owned(MkObject *object) {
     if (object == NULL) return;
     if (object->flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) return;
     if (!(object->flags & MK_FLAG_FREED)) {
-        unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
-        MkAllocator *owner = *(MkAllocator **)(void *)block;
+        MkAllocator *owner = object_owner(object);
         if (mk_allocator_traits(owner) & MK_ALLOCATOR_MANAGED) {
             mk_release(object); /* the owner's count; anybody else holding a reference keeps the object alive */
             return;
@@ -251,8 +314,7 @@ void mk_free_owned(MkObject *object) {
 
 void mk_discard(MkObject *object) {
     if (object == NULL) return;
-    unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
-    MkAllocator *owner = *(MkAllocator **)(void *)block;
+    MkAllocator *owner = object_owner(object);
     uint32_t traits = mk_allocator_traits(owner);
     if (traits & MK_ALLOCATOR_SCOPED) return;
     if (traits & MK_ALLOCATOR_MANAGED) mk_release(object);

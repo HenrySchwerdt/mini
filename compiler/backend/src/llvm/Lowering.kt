@@ -234,6 +234,7 @@ private class Lowering<V : Any, B : Any>(
         val e1 = listOf(IrExt.NONE)
         val e2 = listOf(IrExt.NONE, IrExt.NONE)
         b.declareDefined("mkh_cast_nn", IrType.PTR, IrExt.NONE, p2, e2, IrAttrs.STD, IrLinkage.INTERNAL)
+        b.declareDefined("mkh_cc", IrType.PTR, IrExt.NONE, p2, e2, IrAttrs.STD, IrLinkage.INTERNAL)
         b.declareDefined("mkh_nn", IrType.PTR, IrExt.NONE, p1, e1, IrAttrs.STD, IrLinkage.INTERNAL)
         for (t in listOf(IrType.I32, IrType.I64)) {
             val n = if (t == IrType.I32) "int" else "long"
@@ -516,8 +517,33 @@ private class Lowering<V : Any, B : Any>(
     }
 
     /** Call of a C function of the program ([MirExpr.CCall]): declared once per symbol, the call carries its own signature. */
+    /** The LLVM intrinsic of a libm function of the `Double -> Double` / `(Double, Double) -> Double` shape: no errno, so it can fold, hoist and vectorize. */
+    private fun libmIntrinsic(x: MirExtern): String? {
+        if (x.isVariadic || x.returnType !== TDouble || x.params.isEmpty() || x.params.size > 2) return null
+        for (p in x.params) if (p !== TDouble) return null
+        return when {
+            x.params.size == 1 && x.symbol == "sqrt" -> "llvm.sqrt.f64"
+            x.params.size == 1 && x.symbol == "floor" -> "llvm.floor.f64"
+            x.params.size == 1 && x.symbol == "ceil" -> "llvm.ceil.f64"
+            x.params.size == 1 && x.symbol == "trunc" -> "llvm.trunc.f64"
+            x.params.size == 1 && x.symbol == "rint" -> "llvm.rint.f64"
+            x.params.size == 1 && x.symbol == "fabs" -> "llvm.fabs.f64"
+            x.params.size == 1 && x.symbol == "sin" -> "llvm.sin.f64"
+            x.params.size == 1 && x.symbol == "cos" -> "llvm.cos.f64"
+            x.params.size == 1 && x.symbol == "exp" -> "llvm.exp.f64"
+            x.params.size == 1 && x.symbol == "log" -> "llvm.log.f64"
+            x.params.size == 2 && x.symbol == "pow" -> "llvm.pow.f64"
+            else -> null
+        }
+    }
+
     fun cCall(x: MirExtern, args: List<MirExpr>): V {
         val vs = args.map { expr(it) }
+        val intrinsic = libmIntrinsic(x)
+        if (intrinsic != null) {
+            val f = b.declareExternal(intrinsic, ity(x.returnType), rext(x.returnType), x.prototypeParams.map { ity(it) }, exts(x.prototypeParams), IrAttrs.PURE, false)
+            return call(x.returnType, f, x.params, vs)
+        }
         val callee = b.declareExternal(
             x.symbol, ity(x.returnType), rext(x.returnType), x.prototypeParams.map { ity(it) }, exts(x.prototypeParams), IrAttrs.NONE, x.isVariadic,
         )
@@ -678,6 +704,36 @@ private class Lowering<V : Any, B : Any>(
             b.call(raise, IrType.VOID, IrExt.NONE, listOf(npeTi, npeMsg), listOf(IrExt.NONE, IrExt.NONE), -1, "")
             b.ret(nul)
             b.appendBlock(ok)
+            // the exact type is the common case: no runtime call (the hierarchy walk of mk_checked_cast is for the rest)
+            val exact = b.newBlock("exact")
+            val walk = b.newBlock("walk")
+            val ty = b.load(ptr, o, 0, "ty")
+            val same = b.cmp(IrCmp.IEQ, ty, t, "same")
+            b.condBr(same, exact, walk, true)
+            b.appendBlock(exact)
+            b.ret(o)
+            b.appendBlock(walk)
+            val r = b.call(checkedCast, ptr, IrExt.NONE, listOf(o, t), listOf(IrExt.NONE, IrExt.NONE), -1, "r")
+            b.ret(r)
+        }
+        endHelper()
+        // the nullable form: null passes, the exact type is the common case
+        beginHelper("mkh_cc", ptr, listOf("o", "t"), listOf(ptr, ptr), IrAttrs.STD)
+        run {
+            val o = b.param(0)
+            val t = b.param(1)
+            val nonnull = b.newBlock("nonnull")
+            val exact = b.newBlock("exact")
+            val walk = b.newBlock("walk")
+            val n = b.cmp(IrCmp.IEQ, o, nul, "n")
+            b.condBr(n, exact, nonnull, false)
+            b.appendBlock(nonnull)
+            val ty = b.load(ptr, o, 0, "ty")
+            val same = b.cmp(IrCmp.IEQ, ty, t, "same")
+            b.condBr(same, exact, walk, true)
+            b.appendBlock(exact)
+            b.ret(o)
+            b.appendBlock(walk)
             val r = b.call(checkedCast, ptr, IrExt.NONE, listOf(o, t), listOf(IrExt.NONE, IrExt.NONE), -1, "r")
             b.ret(r)
         }
@@ -1218,6 +1274,14 @@ private class Lowering<V : Any, B : Any>(
         if (s is MirStmt.Declare) pending.remove(s.local.id)
         val gone = fplan?.dead?.get(s)
         if (gone != null) for (l in gone) dead.add(l.id)
+        // the last use of an owned local: release it here, not at the end of its scope (RcOpt: RcFunctionPlan.early)
+        val early = fplan?.early?.get(s)
+        if (early != null && !terminated) for (l in early) {
+            if (l.id in dead || l.id in pending) continue
+            val sl = slot(l)
+            rel(load(TString, sl))
+            store(b.constNull(), sl)
+        }
     }
 
     fun closedFor(s: MirStmt?, l: MirLocal): Boolean = s != null && fplan?.dead?.get(s)?.any { it === l } == true
@@ -1596,6 +1660,7 @@ private class Lowering<V : Any, B : Any>(
                 val owns = NativeConventions.ownedArgs(e.cName)
                 if (e.cName == "mk_free_dealloc" && !tr.enabled) b.none
                 else if (arrayAccessKind(e.cName) != null) arrayAccess(e, fplan?.borrowedReads?.contains(e) == true)
+                else if (isRefArrayAccess(e)) refArrayAccess(e, fplan?.borrowedReads?.contains(e) == true)
                 else if (isStringLengthCall(e)) stringLength(e)
                 else if (isStringCharAtCall(e)) stringCharAt(e)
                 else if (owns != null) {
@@ -1747,6 +1812,52 @@ private class Lowering<V : Any, B : Any>(
         if (cName == "mk_array_length") return "length"
         val k = if (cName.startsWith("mk_array_get_")) cName.substring(13) else if (cName.startsWith("mk_array_set_")) cName.substring(13) else return null
         return if (k == "int" || k == "long" || k == "double" || k == "float" || k == "byte" || k == "short" || k == "boolean" || k == "char" || k == "obj") k else null
+    }
+
+    /** The slot accessors of the stdlib's reference arrays (runtime v1s.c; the layout is MkArray's), inlined like the `mk_array_*_obj` ones. */
+    private fun isRefArrayAccess(e: MirExpr.RuntimeCall): Boolean = when (e.cName) {
+        "mk_ref_array_get", "mk_ref_array_get_b" -> e.args.size == 2 && e.args[1].type === TInt
+        "mk_ref_array_set", "mk_ref_array_set_o" -> e.args.size == 3 && e.args[1].type === TInt
+        "mk_ref_array_length" -> e.args.size == 1
+        else -> false
+    }
+
+    /**
+     * Inline form of the reference array accessors, like the C prelude's mkh_ra_*: an unsigned compare covers both bounds; a failing
+     * index calls the runtime function, which panics (the fast path tests nothing but the length). `get` retains unless [borrowedRead]
+     * (or `get_b`), `set` retains the stored value, `set_o` takes over the caller's reference; the old element is released.
+     */
+    private fun refArrayAccess(e: MirExpr.RuntimeCall, borrowedRead: Boolean): V {
+        val n = e.cName
+        val vs = e.args.map { expr(it) }
+        val arr = vs[0]
+        val lengthPtr = gep(arr, layouts.headerSize)
+        if (n == "mk_ref_array_length") return loadTag(TInt, lengthPtr, "array length")
+        val idx = vs[1]
+        if (n == "mk_ref_array_set_o") handOverShifted(e.args, e.args.map { it.type }, vs, BooleanArray(3) { k -> k == 2 }, 0)
+        val len = loadTag(TInt, lengthPtr, "array length")
+        val badL = newLabel("raoob")
+        val okL = newLabel("raok")
+        condBr(icmp(IrCmp.UGE, idx, len), badL, okL, true)
+        startBlock(badL)
+        rt(n, e.type, e.args.map { it.type }, vs)
+        unreachable()
+        startBlock(okL)
+        openBlock()
+        val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
+        val off = b.bin(IrOp.ADD, b.bin(IrOp.MUL, b.cast(IrCast.SEXT, idx, IrType.I64, ""), c64(pb), ""), c64(elemOff), "")
+        val p = b.gep(arr, off, true, "")
+        if (n == "mk_ref_array_get" || n == "mk_ref_array_get_b") {
+            val v = b.loadTagged(IrType.PTR, p, "array obj", "")
+            if (n == "mk_ref_array_get" && !borrowedRead) retain(v)
+            return v
+        }
+        val value = vs[2]
+        if (n == "mk_ref_array_set") retain(value)
+        val old = b.loadTagged(IrType.PTR, p, "array obj", "")
+        b.storeTagged(value, p, "array obj")
+        rel(old)
+        return b.none
     }
 
     private fun isStringLengthCall(e: MirExpr.RuntimeCall): Boolean =
@@ -1902,7 +2013,7 @@ private class Lowering<V : Any, B : Any>(
                     if (to.nullable) return o
                     return call(TString, b.global("mkh_nn"), listOf(TString), listOf(o))
                 }
-                if (isNullableRef(to)) rt("mk_checked_cast", TString, listOf(TString, TString), listOf(o, typeInfoOf(to)))
+                if (isNullableRef(to)) call(TString, b.global("mkh_cc"), listOf(TString, TString), listOf(o, typeInfoOf(to)))
                 else call(TString, b.global("mkh_cast_nn"), listOf(TString, TString), listOf(o, typeInfoOf(to)))
             }
             MirExpr.CastMode.Safe -> {

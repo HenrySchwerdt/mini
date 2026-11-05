@@ -83,8 +83,11 @@ rm -rf "$MINI_BUILD"
 
 echo "== libminirt.a (-O2)"
 OBJ="$(mktemp -d)"
+SECFLAGS=""
+[ "$(uname -s)" = Linux ] && SECFLAGS="-ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables"
 for f in "$ROOT"/runtime/src/*.c; do
-    "$CC" -std=c17 -O2 -w -I "$ROOT/runtime/include" -c "$f" -o "$OBJ/$(basename "$f" .c).o"
+    # shellcheck disable=SC2086
+    "$CC" -std=c17 -O2 -w $SECFLAGS -I "$ROOT/runtime/include" -c "$f" -o "$OBJ/$(basename "$f" .c).o"
 done
 # entry.c holds `main`; it stays in the archive (the linker only pulls it in when the program has no main of its own)
 ar rcs "$STAGE/lib/libminirt.a" "$OBJ"/*.o

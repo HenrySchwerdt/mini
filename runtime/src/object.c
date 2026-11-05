@@ -1,4 +1,5 @@
 /* Reference counting, type tests and the built-in Any type. */
+#include "alloc_small.h"
 #include "internal.h"
 #include "lock.h"
 
@@ -46,6 +47,12 @@ void mk_release(MkObject *object) {
     for (const MkTypeInfo *t = object->type; t != NULL; t = t->super) {
         if (t->dispose != NULL) t->dispose(object);
     }
+#if MK_SMALL_ALLOC
+    if (!(object->flags & MK_FLAG_PREFIXED)) {
+        mk_small_free_object(object);
+        return;
+    }
+#endif
     mk_free_object_memory(object);
 }
 
@@ -66,7 +73,16 @@ static bool type_is(const MkTypeInfo *t, const MkTypeInfo *target) {
 
 bool mk_is_instance(const MkObject *object, const MkTypeInfo *type) {
     if (object == NULL || type == NULL) return false;
-    return type_is(object->type, type);
+    const MkTypeInfo *t = object->type;
+    if (t == type) return true;
+    if (type->instance_size != 0) {
+        /* a class (interfaces have no instance size): only the superclass chain can contain it */
+        for (t = t->super; t != NULL; t = t->super) {
+            if (t == type) return true;
+        }
+        return false;
+    }
+    return type_is(t, type);
 }
 
 /* ---- thread-safe lazy initialisation of objects and top-level properties ---- */
