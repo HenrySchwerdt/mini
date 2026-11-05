@@ -45,7 +45,7 @@ The two modes mix in one program. Managed objects seen from Strict code are *bor
 | Direction | Rule |
 |---|---|
 | Strict passes an untracked value (`Int`, `String`, Managed object) to Managed code | allowed |
-| Strict passes a tracked value to a Managed function | only if the parameter is `@Borrowed` (a promise by the author, not checked yet), otherwise [M0110](/reference/diagnostics/M0110) |
+| Strict passes a tracked value to a Managed function or a library function | allowed when the callee only borrows it: the compiler infers this from the callee's body (`println`, `toString`, `StringBuilder.append`, scope functions, your own Managed helpers) and stores the result in precompiled libraries. If the callee keeps the value (stores it in a field or collection, returns it), [M0110](/reference/diagnostics/M0110) names the reason. `@Borrowed` on the parameter is still an explicit promise |
 | Strict stores a tracked value in a field of a Managed class | [M0110](/reference/diagnostics/M0110) |
 | Strict puts a tracked value in a Kotlin collection | [M0110](/reference/diagnostics/M0110) |
 | Managed calls a Strict function with `@Owned` parameters or an owning return | [M0110](/reference/diagnostics/M0110): Managed code cannot keep the promise. Write a Strict wrapper that frees internally |

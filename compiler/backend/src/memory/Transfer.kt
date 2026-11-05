@@ -158,6 +158,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     /** Hands [v] to a new owner (owned parameter, return, owning field, thread). False when it is a borrow (M0109 reported). */
     private fun takeOwnership(v: AVal, whatFor: String): Boolean {
         if (!v.tracked || v.isNull) return true
+        if (v.caps && v.refs.isNotEmpty()) { escapeClosure(v, "is $whatFor"); return false }
         if (v.fresh) { escape(v); return true }
         if (v.src >= 0) {
             val s = slot(v.src) ?: return true
@@ -213,7 +214,14 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val id = e.local.id
         val t = e.type
         val s = slot(id)
-        if (!t.tracked || s == null) return AVal.untracked(t, e.pos)
+        if (s == null) return AVal.untracked(t, e.pos)
+        if (s.bits and K != 0) {
+            // a closure: every use needs the owners it borrows from to be alive (a call of a function value has no position of its own)
+            checkUse(id, if (e.pos.line > 0) e.pos else s.vpos)
+            val c = slot(id) ?: s
+            return AVal(t, false, id, rootsOf(id), if (t.tracked) sitesOf(id) else c.sites, false, false, c.vpos, caps = true)
+        }
+        if (!t.tracked) return AVal.untracked(t, e.pos)
         checkUse(id, e.pos)
         val s2 = slot(id)!!
         val refs = rootsOf(id)
@@ -237,6 +245,15 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     }
 
     private fun evalNew(e: MExpr.New, env: Env): AVal {
+        val r = evalNew0(e, env)
+        if (e.captures.isEmpty()) return r
+        val (refs, arena) = captureOf(e.captures, e.pos)
+        if (refs.isEmpty()) return r
+        // an instance of a local / anonymous class that borrows what it captures: a closure like a lambda
+        return AVal(r.type, false, -1, refs, arena, false, false, e.pos, caps = true)
+    }
+
+    private fun evalNew0(e: MExpr.New, env: Env): AVal {
         val cls = e.cls
         val fn = e.ctor
         val args = processArgs(fn, null, e.args, env, e, ctor = true)
@@ -325,13 +342,26 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val v = eval(a, env)
             out += v
             val p = fn.params.getOrNull(i)
+            if (v.caps && v.refs.isNotEmpty() && p != null && !p.isContext) {
+                val fnName = fn.qname.substringAfterLast('.')
+                val why = when {
+                    p.annot.borrowed != null || fn.borrowsAll -> null
+                    p.owned -> if (ctor) "is stored into a field of the new object" else "is consumed by `$fnName` (`@Owned` parameter `${p.local.name}`)"
+                    else -> Summaries.escapeReason(fn, i)?.let { "is kept by `$fnName`, whose parameter `${p.local.name}` $it" }
+                }
+                if (why != null) { escapeClosure(v, why); continue }
+                if (!v.tracked) { arenaEscapeArg(v); continue }
+            }
             if (p == null || p.isContext) { if (!v.tracked) arenaEscapeArg(v); continue }
             if (!v.tracked) { arenaEscapeArg(v); continue }
             if (foreign) {
-                if (p.annot.borrowed == null && !fn.borrowsAll) {
+                val why = if (p.annot.borrowed == null && !fn.borrowsAll) Summaries.escapeReason(fn, i) else null
+                if (why != null) {
+                    val fnName = fn.qname.substringAfterLast('.')
                     diag(
-                        "M0110", v.pos, "Strict value handed to Managed code", "passed to a Managed function that does not promise to borrow",
-                        "mark the parameter `@Borrowed`, or wrap the call in a Strict function",
+                        "M0110", v.pos, "Strict value handed to Managed code that keeps it",
+                        "parameter `${p.local.name}` of `$fnName` $why",
+                        "keep the value in Strict code and pass only what is needed (`x.field`), or mark the parameter `@Borrowed` if `$fnName` really only lends it",
                     )
                 }
                 discard(v)
@@ -374,8 +404,15 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (!(e.receiver is MExpr.Local)) checkMovedFields(e.pos)
         val args = processArgs(fn, rv, e.args, env, e)
         val rt = e.type
-        if (!rt.tracked) return AVal.untracked(rt, e.pos)
-        if (fn.mode == MemMode.Managed || fn.external) return AVal.untracked(rt, e.pos)
+        if (!rt.tracked) {
+            // a function that returns a closure over some of its parameters (FnSummary.carries): the result borrows what those arguments borrow
+            val carries: Set<Int> = Summaries.of(fn)?.carries ?: emptySet()
+            if (carries.isEmpty()) return AVal.untracked(rt, e.pos)
+            val refs = LinkedHashSet<Int>()
+            for (i in carries) args.getOrNull(i)?.let { a -> if (!a.fresh && !a.isNull) refs += a.refs }
+            return if (refs.isEmpty()) AVal.untracked(rt, e.pos) else AVal(rt, false, -1, refs, emptySet(), false, false, e.pos, caps = true)
+        }
+        if ((fn.mode == MemMode.Managed || fn.external) && fn.ret.annot.borrowed == null) return AVal.untracked(rt, e.pos)
         if (fn.ret.annot.borrowed != null) {
             val refs = HashSet<Int>()
             val sites = HashSet<Site>()
@@ -520,7 +557,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                         "only owners can be moved; make the parameter `@Owned`", slot = rootsOf(t.local.id).firstOrNull() ?: -1,
                     )
                 }
-                return AVal(t.type, false, -1, rootsOf(t.local.id), sitesOf(t.local.id), s2.bits and N != 0, false, if (e.implicit) s2.vpos else e.pos)
+                return AVal(t.type, false, -1, rootsOf(t.local.id), sitesOf(t.local.id), s2.bits and N != 0, false, if (e.implicit) s2.vpos else e.pos, caps = s2.bits and K != 0)
             }
             put(t.local.id, Slot(M, s2.refs, s2.sites, s2.vpos))
             return AVal(t.type, true, -1, emptySet(), s2.sites, s2.bits and N != 0, s2.bits == N, if (e.implicit) s2.vpos else e.pos)
@@ -531,30 +568,74 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
 
     private fun discardNone(@Suppress("UNUSED_PARAMETER") v: AVal) {}
 
-    private fun evalLambda(e: MExpr.Lambda, env: Env): AVal {
-        val arenaSites = HashSet<Site>()
-        for (c in e.captures) {
-            if (!c.type.tracked) continue
+    /**
+     * The captures of a closure (lambda, anonymous object, local class instance) borrow their owners: the closure object does not
+     * count references to a Strict object, so it must not outlive the owner. Returns the owners borrowed and the arena sites seen;
+     * where the closure goes decides later (a use after the owner is gone is M0101, an escape is M0112, see [escapeClosure]).
+     */
+    private fun captureOf(captures: List<MLocal>, pos: Pos): Pair<Set<Int>, Set<Site>> {
+        val refs = LinkedHashSet<Int>()
+        val arena = HashSet<Site>()
+        for (c in captures) {
             val s = slot(c.id) ?: continue
-            checkUse(c.id, e.pos)
+            if (s.bits and K != 0) {   // a closure captured by another closure
+                checkUse(c.id, pos)
+                refs += rootsOf(c.id)
+                arena += s.sites
+                continue
+            }
+            if (!c.type.tracked) continue
+            checkUse(c.id, pos)
             val s2 = slot(c.id) ?: s
             val sites = sitesOf(c.id)
-            if (sites.any { it.kind == SK.Arena }) { arenaSites += sites.filter { it.kind == SK.Arena }; continue }
+            if (sites.any { it.kind == SK.Arena }) { arena += sites.filter { it.kind == SK.Arena }; continue }
             if (s2.bits and B != 0) {
-                diag(
-                    "M0109", e.pos, "borrowed `${c.name}` is captured by a lambda that escapes", "captures a borrowed value",
-                    "pass the value as a parameter instead", slot = rootsOf(c.id).firstOrNull() ?: -1,
-                )
+                refs += rootsOf(c.id)
             } else if (s2.bits and O != 0) {
-                diag(
-                    "M0112", e.pos, "owned `${c.name}` is captured by a lambda that escapes", "captured here",
-                    "pass the value as a parameter, or read what you need before creating the lambda", slot = c.id,
-                )
-                put(c.id, Slot(X, s2.refs, s2.sites, s2.vpos))
+                if (c.isVar) {
+                    diag(
+                        "M0112", pos, "owned `var ${c.name}` is captured by a closure", "the closure shares a reference-counting cell with the variable and keeps `${c.name}` alive",
+                        "capture a `val` (`val ${c.name}2 = ${c.name}`), or pass `${c.name}` as a parameter", slot = c.id,
+                    )
+                    put(c.id, Slot(X, s2.refs, s2.sites, s2.vpos))
+                } else {
+                    refs += c.id
+                }
             }
         }
+        return Pair(refs, arena)
+    }
+
+    private fun evalLambda(e: MExpr.Lambda, env: Env): AVal {
+        val (refs, arena) = captureOf(e.captures, e.pos)
         queue(e, env.ctx)
-        return AVal(MType.OTHER, false, -1, emptySet(), arenaSites, false, false, e.pos)
+        return AVal(MType.OTHER, false, -1, refs, arena, false, false, e.pos, caps = refs.isNotEmpty())
+    }
+
+    /**
+     * A closure that borrows its owners flows somewhere it can outlive them ([how]): M0112 for owners, M0109 for borrowed values.
+     * Returns true when something was reported.
+     */
+    private fun escapeClosure(v: AVal, how: String): Boolean {
+        if (!v.caps || v.refs.isEmpty()) return false
+        val borrowed = v.refs.firstOrNull { slot(it)?.let { s -> s.bits and B != 0 } == true }
+        if (borrowed != null) {
+            val nm = name(borrowed)
+            diag(
+                "M0109", v.pos, "borrowed `$nm` is captured by a closure that escapes", "the closure borrows `$nm` and $how",
+                "pass the value as a parameter instead", slot = borrowed,
+            )
+            return true
+        }
+        val owner = v.refs.first()
+        val nm = name(owner)
+        diag(
+            "M0112", v.pos, "owned `$nm` is captured by a closure that escapes", "the closure borrows `$nm` and $how",
+            "keep the closure inside the function (call it or pass it to a function that does not keep it), make the called function `inline`, pass `$nm` as a parameter, or read what you need before creating the closure",
+            slot = owner,
+        )
+        for (r in v.refs) slot(r)?.let { s -> if (s.bits and O != 0) put(r, Slot((s.bits and O.inv()) or X, s.refs, s.sites, s.vpos)) }
+        return true
     }
 
     // ---- statements / operations ---------------------------------------------------------------
@@ -609,7 +690,12 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (assign && v.sites.isNotEmpty()) {
             arenaEscape(v) { id -> id !in scopes }
         }
-        if (!l.type.tracked) { discard(v); return }
+        if (!l.type.tracked) {
+            discard(v)
+            if (v.caps && v.refs.isNotEmpty()) put(l.id, Slot(B or K, v.refs, v.sites, if (v.pos.line > 0) v.pos else l.pos))
+            else if (slot(l.id) != null) put(l.id, Slot(0, emptySet(), emptySet(), v.pos))
+            return
+        }
         val old = slot(l.id)
         if (assign && old != null && old.bits and O != 0) {
             for (s in old.sites) if (s.kind.obligation && s.kind != SK.Param || s.kind == SK.Param) {
@@ -621,12 +707,14 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             }
         }
         st = st.withoutFieldsOf(l.id)
+        val kb = if (v.caps) K else 0
+        val vp = if (v.caps && v.pos.line == 0) l.pos else v.pos
         val ns: Slot = when {
             v.isNull -> Slot(N, emptySet(), emptySet(), v.pos)
-            forceAlias -> Slot(B or (if (v.nullable) N else 0), v.refs.ifEmpty { if (v.src >= 0) setOf(v.src) else emptySet() }, emptySet(), v.pos)
+            forceAlias -> Slot(B or kb or (if (v.nullable) N else 0), v.refs.ifEmpty { if (v.src >= 0) setOf(v.src) else emptySet() }, emptySet(), v.pos)
             v.fresh -> Slot(O or (if (v.nullable) N else 0), emptySet(), v.sites, v.pos)
             v.tracked && (v.src >= 0 || v.refs.isNotEmpty()) ->
-                Slot(B or (if (v.nullable) N else 0), v.refs.ifEmpty { setOf(v.src) }, emptySet(), v.pos)
+                Slot(B or kb or (if (v.nullable) N else 0), v.refs.ifEmpty { setOf(v.src) }, if (v.caps) v.sites else emptySet(), vp)
             else -> Slot(B or (if (v.nullable) N else 0), emptySet(), emptySet(), v.pos)
         }
         put(l.id, ns)
@@ -641,6 +729,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         discard(ov)
         val vv = eval(s.value, op.env)
         val f = s.field
+        if (!vv.tracked) escapeClosure(vv, "is stored into field `${f.name}` of `${f.owner.name.substringAfterLast('.')}`")
         // Strict value stored into a Managed class
         if (f.owner.mode == MemMode.Managed) {
             if (vv.tracked) {
@@ -700,6 +789,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun doSetGlobal(op: Op.SetGlobal) {
         val s = op.s
         val v = eval(s.value, op.env)
+        if (!v.tracked) escapeClosure(v, "is stored into a global")
         if (s.managedOwner && v.tracked) {
             diag("M0110", v.pos, "Strict value stored in a global of Managed code", "stored here", "keep the value in Strict code")
             return
@@ -713,6 +803,8 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (e != null) {
             val v = eval(e, op.env)
             if (v.sites.isNotEmpty()) arenaEscape(v) { true }
+            // a closure may be returned while it only borrows parameters (the caller learns that from the summary, see FnSummary.carries)
+            if (!v.tracked && v.caps && v.refs.any { r -> slot(r)?.let { it.bits and B == 0 } != false }) escapeClosure(v, "is returned")
             if (v.tracked) {
                 if (u.retOwned && !u.isLambda) {
                     takeOwnership(v, "returned as owned")
@@ -773,6 +865,8 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun doThreadStart(op: Op.ThreadStart) {
         for (c in op.captures) {
             if (!c.type.tracked) {
+                val ks = slot(c.id)
+                if (ks != null && ks.bits and K != 0) escapeClosure(AVal(c.type, false, c.id, rootsOf(c.id), emptySet(), false, false, ks.vpos, caps = true), "is used by a thread that may outlive it")
                 continue
             }
             val s = slot(c.id) ?: continue

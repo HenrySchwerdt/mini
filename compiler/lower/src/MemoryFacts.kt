@@ -1,7 +1,10 @@
 package mini.lower
 
 import mini.backend.memory.AllocKind
+import mini.backend.memory.FnSummary
 import mini.backend.memory.FreeKind
+import mini.backend.memory.Summaries
+import mini.backend.memory.SummaryText
 import mini.backend.memory.MAnnot
 import mini.backend.memory.MClass
 import mini.backend.memory.MExpr
@@ -37,12 +40,111 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     private var lambdaCounter = 0
     private var labelCounter = 0
     private var curFile: IrFile? = null
+    /** Summaries stored in the precompiled libraries (key -> summary). */
+    private var libSummaries: Map<String, FnSummary> = emptyMap()
+    private val bodies = HashMap<IrFunction, List<MStmt>?>()
 
     /** Functions that could not be lowered (name -> reason); the checker skips them. */
     val failures = ArrayList<String>()
     val strictFailures = ArrayList<String>()
 
+    /** The body of [f] lowered on demand (null when it has none or cannot be lowered); used for the inferred summaries of callees. */
+    private fun bodyOf(f: IrFunction): List<MStmt>? {
+        if (bodies.containsKey(f)) return bodies[f]
+        bodies[f] = null
+        val b = f.body ?: return null
+        val saved = curFile
+        curFile = fileOf(f) ?: saved
+        val r = try { Lowerer(f).lowerFunctionBody(b) } catch (e: Exception) { null } finally { curFile = saved }
+        bodies[f] = r
+        return r
+    }
+
+    /** One line per function of the user files with an inferred summary (the `summary` section of a `.mlib`). */
+    fun summaryText(module: IrModule): String {
+        libSummaries = module.summaries
+        curModule = module
+        val sb = StringBuilder()
+        val fs = ArrayList<IrFunction>()
+        fun collect(d: IrDeclaration) {
+            when (d) {
+                is IrSimpleFunction -> if (d.origin == "DEFINED") fs.add(d)
+                is IrClass -> for (m in d.declarations) {
+                    when (m) {
+                        is IrSimpleFunction -> if (!m.isFakeOverride && m.origin == "DEFINED") fs.add(m)
+                        is IrProperty -> { m.getter?.let { if (it.origin != "DEFAULT_PROPERTY_ACCESSOR") fs.add(it) }; m.setter?.let { if (it.origin != "DEFAULT_PROPERTY_ACCESSOR") fs.add(it) } }
+                        is IrClass -> collect(m)
+                        else -> {}
+                    }
+                }
+                else -> {}
+            }
+        }
+        for (file in module.files) if (isUserFile(file)) for (d in file.declarations) collect(d)
+        for (f in fs) {
+            if (f.body == null) continue
+            val m = funOf(f)
+            val s = Summaries.of(m) ?: continue
+            val line = SummaryText.line(summaryKey(m), s) ?: continue
+            sb.append(line).append('\n')
+        }
+        return sb.toString()
+    }
+
+    private var curModule: IrModule? = null
+    private var closureOf: Pair<IrModule, ClosureInfo>? = null
+
+    /** Which outer values the local and anonymous classes of the module capture. */
+    private fun closureInfo(): ClosureInfo {
+        val mod = curModule!!
+        closureOf?.let { if (it.first === mod) return it.second }
+        val ci = ClosureInfo()
+        ci.analyze(mod)
+        closureOf = Pair(mod, ci)
+        return ci
+    }
+    private var overrideIndex: HashMap<IrSimpleFunction, ArrayList<IrSimpleFunction>>? = null
+
+    /** All functions that (transitively) override [f] in the classes of the module (user code, library stubs, standard library). */
+    private fun overridersOf(f: IrSimpleFunction): List<IrSimpleFunction> {
+        var idx = overrideIndex
+        if (idx == null) {
+            idx = HashMap()
+            val fresh = idx
+            fun visit(d: IrDeclaration) {
+                if (d is IrClass) {
+                    for (m in d.declarations) {
+                        if (m is IrSimpleFunction) { for (o in m.overridden) fresh.getOrPut(o) { ArrayList() }.add(m) }
+                        else if (m is IrClass) visit(m)
+                    }
+                }
+            }
+            val mod = curModule
+            if (mod != null) for (file in mod.files) for (d in file.declarations) visit(d)
+            overrideIndex = fresh
+        }
+        val out = ArrayList<IrSimpleFunction>()
+        val seen = HashSet<IrSimpleFunction>()
+        val work = ArrayList<IrSimpleFunction>()
+        work.add(f)
+        while (work.isNotEmpty()) {
+            val x = work.removeAt(work.size - 1)
+            val subs = idx[x] ?: continue
+            for (s in subs) if (seen.add(s)) { out.add(s); work.add(s) }
+        }
+        return out
+    }
+
+    /** Stable identity of a function across source and stub: qualified name and the parameter types. */
+    private fun summaryKey(m: MFun): String {
+        val sb = StringBuilder(m.qname).append('/')
+        for (p in m.params) sb.append(p.local.type.display).append(',')
+        return sb.toString()
+    }
+
     fun lower(module: IrModule): MModule {
+        libSummaries = module.summaries
+        curModule = module
         cFreeFns = collectCFreeFns(module)
         val functions = ArrayList<MFunction>()
         val sources = HashMap<String, List<String>>()
@@ -336,6 +438,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val name = f.name
         var retAnnot = annotOf(f.annotations, f.returnTypeAnnotations)
         if (interop && mapType(f.returnType).tracked) retAnnot = MAnnot(null, pos(f))
+        // a result of generic type (`fun <T> first(xs: Box<T>): T`) is a reference some argument keeps alive, not a fresh allocation: a loan
+        if (retAnnot.owned == null && retAnnot.borrowed == null && f.returnType is TypeParamType) retAnnot = MAnnot(null, pos(f))
         val parent = f.parent
         val fq = if (parent is IrFile) parent.packageFqName + "." + name
         else (if (cls != null) cls.kotlinFqName else "") + "." + name
@@ -354,6 +458,21 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             cFree = if (f.isExternal && file != null) ownedFree(f) else null,
         )
         funs[f] = m
+        if (f.body != null) m.bodyProvider = { bodyOf(f) } else if (libSummaries.isNotEmpty()) m.storedSummary = libSummaries[summaryKey(m)]
+        // the standard library marks the parameters its functions store with `@TakesOwnership`; the array-store intrinsics store their value
+        val takes = HashSet<Int>()
+        var pi = 0
+        for (p in f.parameters) {
+            if (p.kind == IrParameterKind.Regular || p.kind == IrParameterKind.Context) {
+                if (hasAnnotation(p.annotations, TAKES_OWNERSHIP)) takes.add(pi)
+                pi++
+            }
+        }
+        if (fq.startsWith("mini.internal.refArraySet") && params.size == 3) takes.add(2)
+        if (takes.isNotEmpty()) m.takesOwnership = takes
+        if (f is IrSimpleFunction && !f.isFakeOverride && (f.modality != IrModality.FINAL || (parent as? IrClass)?.kind == IrClassKind.INTERFACE)) {
+            m.virtualTargets = { overridersOf(f).map { funOf(it) } }
+        }
         return m
     }
 
@@ -399,6 +518,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 l = paramLocals[v]
                 if (l == null) {
                     l = newLocal(v.name, mapType(v.type), pos(v))
+                    l.isVar = (v as? IrVariable)?.isVar == true
                     owner[l.id] = frames.size
                 }
                 locals[v] = l
@@ -415,6 +535,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
 
         private fun declareLocal(v: IrValueDeclaration, name: String = v.name): MLocal {
             val l = paramLocals[v] ?: newLocal(name, mapType(v.type), pos(v))
+            l.isVar = (v as? IrVariable)?.isVar == true
             owner[l.id] = frames.size
             locals[v] = l
             return l
@@ -662,6 +783,16 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     return opaque(e.type, e, cs)
                 }
                 is IrFunctionExpression -> return lambdaExpr(e)
+                is IrVararg -> {
+                    // the elements of `listOf(a, b)` / `arrayOf(...)` are stored into an array: a Strict value there leaves Strict code
+                    val els = ArrayList<MExpr>()
+                    for (el in e.elements) if (el is IrExpression) els.add(expr(el, out))
+                    if (els.none { it.type.tracked }) return opaque(e.type, e, els)
+                    val params = els.map { MParam(newLocal("element", it.type, it.pos)) }
+                    val fn = MFun("kotlin.vararg", MemMode.Managed, params, MReturn(MType.OTHER), external = true)
+                    fn.storedSummary = FnSummary(els.indices.associateWith { "stores it in the array of the vararg" })
+                    return MExpr.Call(fn, null, els, MType.OTHER, pos(e))
+                }
                 is IrGetField -> {
                     val f = e.field
                     val cls = f.parent as? IrClass
@@ -1063,11 +1194,17 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             var i = 0
             for (p in ps) {
                 val a = args[i]
-                val v: MExpr = if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out)
+                var v: MExpr = if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out)
+                if (v is MExpr.Local && v.pos.line == 0) v = MExpr.Local(v.local, pos(c))   // the function value of `f(x)` has no position of its own
                 if (p.kind == IrParameterKind.DispatchReceiver || p.kind == IrParameterKind.ExtensionReceiver) {
                     if (recv == null) recv = v
                 } else margs.add(v)
                 i++
+            }
+            // a call of a local function / lambda value that the compiler resolved statically still reads what the closure captured:
+            // the extra arguments are uses of the captured values (the owners must be alive)
+            if (callee.origin == "LOCAL_FUNCTION_FOR_LAMBDA" || callee.origin == "LOCAL_FUNCTION" || callee.visibility == "local") {
+                for (v in closureInfo().capturesOf(callee)) margs.add(MExpr.Local(local(v), pos(c)))
             }
             return MExpr.Call(m, recv, margs, mapType(c.type), pos(c))
         }
@@ -1095,7 +1232,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 margs.add(if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out))
             }
             val mc = classOf(cls)
-            return MExpr.New(m, mc, margs, mapType(c.type), pos(c))
+            // a local or anonymous class keeps the outer values it uses in hidden fields: its instance is a closure
+            val caps = if (cls.visibility == "local") closureInfo().capturesOf(cls).map { local(it) } else emptyList()
+            // an object expression may carry no position of its own: the class declaration stands in
+            val np = pos(c).let { if (it.line > 0 || caps.isEmpty()) it else pos(cls) }
+            return MExpr.New(m, mc, margs, mapType(c.type), np, caps)
         }
 
         /** Calls with lambda arguments read like code (use, context, run, let, repeat, thread boundaries...). */
@@ -1210,6 +1351,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         const val ALLOCATED_BY = "mini.memory.AllocatedBy"
         const val NO_ALLOC = "mini.memory.NoAlloc"
         const val THREAD_BOUNDARY = "mini.memory.ThreadBoundary"
+        const val TAKES_OWNERSHIP = "kotlin.internal.TakesOwnership"
 
         private val PRIMS = mapOf(
             "kotlin.Int" to "Int", "kotlin.Long" to "Long", "kotlin.Short" to "Short", "kotlin.Byte" to "Byte",

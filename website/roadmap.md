@@ -29,6 +29,13 @@ This page separates what exists today from what is planned. Anything under "Plan
 
 ## Planned
 
+<p class="status-planned">The rows below are not implemented yet.</p>
+
+| Area | Plan |
+|---|---|
+| **Strict values in collections** | `List<Box>` of owned Strict objects is still [M0110](/reference/diagnostics/M0110). Next steps: release of temporaries per statement in Strict functions (then a temporary `listOf(a, b)` can borrow its elements), and an owning `OwnedList<T>` in `mini.memory` that frees its elements. See the design note in `docs/memory-model.md`, section 5.4. |
+
+
 <p class="status-planned">Everything in this section does not exist yet.</p>
 
 | Area | Plan |
