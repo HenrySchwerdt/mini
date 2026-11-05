@@ -49,6 +49,11 @@ class RcFunctionPlan(
      * (an alias validated like a field read), so the emitters use the non-retaining form (`mk_array_get_obj_b`).
      */
     val borrowedReads: HashSet<MirExpr> = HashSet(),
+    /**
+     * After this statement the listed owned locals have had their last use: the emitters release and clear them right there
+     * instead of at the end of the scope, so a temporary (or a local) does not keep its object alive for the rest of the block.
+     */
+    val early: HashMap<MirStmt, ArrayList<MirLocal>> = HashMap(),
 ) {
     fun isBorrowed(l: MirLocal): Boolean = l.id in borrowed
 }
@@ -304,6 +309,10 @@ private class RcAnalyzer(
     private val moves = HashMap<MirStmt, MirLocal>()
     private val takes = HashMap<MirExpr, MirLocal>()
     private val dead = HashMap<MirStmt, ArrayList<MirLocal>>()
+    private val early = HashMap<MirStmt, ArrayList<MirLocal>>()
+    private var anyTracked: Boolean? = null
+    /** The statement that consumed (moved or handed over) the owned local of each index last, see [noteConsumed]. */
+    private val consumedAt = HashMap<Int, MirStmt>()
     private var curList: List<MirStmt> = f.body
     private val consumedTop = BitIds()
     private val fresh = HashSet<MirStmt>()
@@ -360,11 +369,11 @@ private class RcAnalyzer(
         stats.takes += takes.size
         stats.ownedParams += ownedParams.size
         if (!probe && f.constructorOf != null && f.params.isNotEmpty()) findFreshStores()
-        if (borrowedIds.isEmpty() && moves.isEmpty() && takes.isEmpty() && ownedParams.isEmpty() && fresh.isEmpty()) return null
+        if (borrowedIds.isEmpty() && moves.isEmpty() && takes.isEmpty() && ownedParams.isEmpty() && fresh.isEmpty() && early.isEmpty()) return null
         val reads = HashSet<MirExpr>()
         if (!probe) for ((i, e) in readDefs) if (i.borrowed) reads += e
         if (reads.isNotEmpty()) stats.borrowedReads += reads.size
-        return RcFunctionPlan(borrowedIds, moves, takes, ownedParams, dead, fresh, selfTakes, reads)
+        return RcFunctionPlan(borrowedIds, moves, takes, ownedParams, dead, fresh, selfTakes, reads, early)
     }
 
     // ---- borrowed results (Conventions) ---------------------------------------------------------------------------------
@@ -885,6 +894,7 @@ private class RcAnalyzer(
     }
 
     private fun noteConsumed(x: LocalInfo, s: MirStmt) {
+        consumedAt[x.index] = s
         if (x.isParam && ctxStack.isNotEmpty() && ctxStack[ctxStack.size - 1].list === f.body) consumedTop.add(x.local.id)
         if (closed(x)) {
             var l = dead[s]
@@ -992,6 +1002,48 @@ private class RcAnalyzer(
         noteConsumed(x, s)
     }
 
+    private fun collectUsed(e: MirExpr, into: ArrayList<LocalInfo>) {
+        if (e is MirExpr.Local) {
+            val i = byId[e.local.id] ?: return
+            if (!into.contains(i)) into.add(i)
+            if (i.borrowed) for (r in i.roots) if (!into.contains(r)) into.add(r)
+            return
+        }
+        for (c in mirChildren(e)) collectUsed(c, into)
+    }
+
+    /**
+     * Owned locals of the statement list of [s] whose last use is the simple statement [s] ([out] is the live set after it) are
+     * released right after it (see [RcFunctionPlan.early]). Not when the statement hands the reference away (a move or a take: the
+     * emitters clear or retire the local themselves), not for borrowers, parameters, reassigned locals, and not when [s] is the
+     * last statement of its list (the scope ends there anyway).
+     */
+    private fun noteEarly(s: MirStmt, exprs: List<MirExpr>, out: RcBits, record: Boolean) {
+        if (!record || ctxStack.isEmpty() || probe || f.strict) return
+        // tracked locals (Strict values) alias owned ones without being counted as uses of them: leave such functions alone
+        if (anyTracked == null) anyTracked = infos.any { it.tracked }
+        if (anyTracked == true) return
+        val ctx = ctxStack[ctxStack.size - 1]
+        if (ctx.noClose || ctx.index >= ctx.list.size - 1) return
+        val used = ArrayList<LocalInfo>()
+        for (e in exprs) collectUsed(e, used)
+        for (x in used) {
+            if (x.isParam || x.tracked || x.borrowed || x.duplicate || x.assignPos.isNotEmpty() || x.declaredEmpty) continue
+            if (x.declList !== ctx.list || out.get(x.index)) continue
+            if (s is MirStmt.Declare && s.local === x.local) continue
+            if (!tr.rcLocal(f, x.local) || consumedAt[x.index] === s) continue
+            val d = dead[s]
+            if (d != null && d.any { it === x.local }) continue
+            if (moves[s] === x.local) continue
+            var l = early[s]
+            if (l == null) {
+                l = ArrayList()
+                early[s] = l
+            }
+            if (l.none { it === x.local }) l.add(x.local)
+        }
+    }
+
     private fun liveStmt(s: MirStmt, out0: RcBits, record: Boolean): RcBits {
         val exc = excLive
         val out = if (exc == null) out0 else out0.copy().also { it.orWith(exc) }
@@ -1000,6 +1052,7 @@ private class RcAnalyzer(
                 val init = s.init
                 consume(s, init, out, s.local, record)
                 if (init != null) takesIn(s, listOf(init), out, record)
+                if (init != null) noteEarly(s, listOf(init), out, record)
                 val inn = out.copy()
                 byId[s.local.id]?.let { inn.clear(it.index) }
                 if (init != null) addUses(init, inn)
@@ -1012,6 +1065,7 @@ private class RcAnalyzer(
                 byId[s.local.id]?.let { outTake.clear(it.index) }
                 if (exc != null) outTake.orWith(exc)
                 takesIn(s, listOf(s.value), outTake, record)
+                noteEarly(s, listOf(s.value), out, record)
                 val inn = out.copy()
                 byId[s.local.id]?.let { inn.clear(it.index) }
                 addUses(s.value, inn)
@@ -1020,6 +1074,7 @@ private class RcAnalyzer(
             is MirStmt.SetField -> {
                 if (tr.rcStore(f, s)) consume(s, s.value, out, null, record)
                 takesIn(s, listOf(s.obj, s.value), out, record)
+                noteEarly(s, listOf(s.obj, s.value), out, record)
                 val inn = out.copy()
                 addUses(s.obj, inn)
                 addUses(s.value, inn)
@@ -1034,6 +1089,7 @@ private class RcAnalyzer(
             }
             is MirStmt.Eval -> {
                 takesIn(s, listOf(s.expr), out, record)
+                noteEarly(s, listOf(s.expr), out, record)
                 val inn = out.copy()
                 addUses(s.expr, inn)
                 return inn

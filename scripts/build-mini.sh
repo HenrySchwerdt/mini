@@ -69,8 +69,13 @@ build_runtime() {
     if ! newer "$OUT/lib/libminirt.a" "$ROOT/runtime/src" "$ROOT/runtime/include"; then return 0; fi
     say "libminirt.a ($OPT)"
     local obj="$OUT/work/rt"; rm -rf "$obj"; mkdir -p "$obj"
+    # ELF: a section per function and datum, no unwind tables: programs link with --gc-sections (scripts/minic.sh) and the
+    # unused part of the runtime disappears from them
+    local secflags=""
+    [ "$(uname -s)" = Linux ] && secflags="-ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables"
     for f in "$ROOT"/runtime/src/*.c; do
-        "$CC" -std=c17 "$OPT" -w -I "$ROOT/runtime/include" -c "$f" -o "$obj/$(basename "$f" .c).o"
+        # shellcheck disable=SC2086
+        "$CC" -std=c17 "$OPT" -w $secflags -I "$ROOT/runtime/include" -c "$f" -o "$obj/$(basename "$f" .c).o"
     done
     rm -f "$OUT/lib/libminirt.a"
     ar rcs "$OUT/lib/libminirt.a" "$obj"/*.o

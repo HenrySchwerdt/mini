@@ -22,6 +22,7 @@ object Devirt {
         val fns = HashMap<String, MirFunction>()
         val instantiated = HashSet<String>()
         var changed = false
+        var hasMain = false
 
         /** class cName -> instantiated classes assignable to it (itself and all its subclasses; for an interface, its implementors). */
         val assignable = HashMap<String, List<MirClass>>()
@@ -85,7 +86,10 @@ object Devirt {
         fun analyze() {
             for (c in m.classes) if (c.external) { instantiated.add(c.cName); instantiatedList.add(c) }
             reach(Mangling.MAIN)
-            if (reachable.isEmpty()) for (f in m.functions) reach(f.cName)   // a library-like program: everything is a root
+            hasMain = fns.containsKey(Mangling.MAIN)
+            if (!hasMain) for (f in m.functions) reach(f.cName)   // a library-like program: everything is a root
+            // the emitters make an accessor for every `object`: its initialiser stays
+            for (c in m.classes) reach(c.objectCtor)
             while (workF.isNotEmpty()) collect(workF.removeAt(workF.size - 1).body)
         }
 
@@ -101,8 +105,30 @@ object Devirt {
                 out.add(if (body === f.body) f else MirFunction(f.qualifiedName, f.cName, f.params, f.returnType, body, f.constructorOf, f.strict,
                     f.returnsBorrowed, f.ownsParams, f.noHeapEffects))
             }
-            if (!changed) return m
-            return MirModule(m.sourceName, out, m.classes, m.externs, m.includes, m.links, m.wasmExports)
+            if (!hasMain) return if (!changed) m else MirModule(m.sourceName, out, m.classes, m.externs, m.includes, m.links, m.wasmExports)
+            return prune(out)
+        }
+
+        /**
+         * Drops the functions nothing can call (not reachable from `main` through calls and the dispatch of the instantiated classes)
+         * and the entries that name them in vtables and interface tables (the emitters make those entries abstract). The pruning of
+         * [MirLink] keeps every method of every live class; this one keeps what the program can reach.
+         */
+        fun prune(fs: List<MirFunction>): MirModule {
+            val keep = ArrayList<MirFunction>(fs.size)
+            for (f in fs) if (f.cName in reachable) keep.add(f)
+            if (keep.size == fs.size && !changed) return m
+            val cs = ArrayList<MirClass>(m.classes.size)
+            for (c in m.classes) {
+                var touched = false
+                for (e in c.vtable) if (e != null && e !in reachable) touched = true
+                for (t in c.itables) for (e in t.entries) if (e != null && e !in reachable) touched = true
+                if (!touched) { cs.add(c); continue }
+                val vt = c.vtable.map { if (it != null && it !in reachable) null else it }
+                val its = c.itables.map { t -> MirItable(t.interfaceCName, t.entries.map { if (it != null && it !in reachable) null else it }) }
+                cs.add(MirClass(c.qualifiedName, c.cName, c.isInterface, c.superCName, c.fields, c.interfaces, vt, its, c.objectCtor, c.external, c.strict))
+            }
+            return MirModule(m.sourceName, keep, cs, m.externs, m.includes, m.links, m.wasmExports)
         }
 
         // ---- which classes can have instances

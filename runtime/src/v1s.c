@@ -287,6 +287,18 @@ void mk_ref_array_set(MkObject *o, MkInt index, MkObject *value) {
     mk_release(old);
 }
 
+void mk_ref_array_move(MkObject *dst, MkObject *src, MkInt count) {
+    if (dst == NULL || src == NULL) mk_panic("NullPointerException");
+    MkRefArray *d = (MkRefArray *)dst, *s = (MkRefArray *)src;
+    if (count < 0 || count > d->length || count > s->length) mk_panic("ArrayIndexOutOfBoundsException");
+    for (MkInt i = 0; i < count; i++) {
+        MkObject *old = d->items[i]; /* NULL by contract; released anyway so that a misuse cannot leak */
+        d->items[i] = s->items[i];
+        s->items[i] = NULL;
+        if (old != NULL) mk_release(old);
+    }
+}
+
 MkInt mk_ref_array_length(MkObject *o) {
     if (o == NULL) mk_panic("NullPointerException");
     return ((MkRefArray *)o)->length;

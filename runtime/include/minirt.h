@@ -420,6 +420,9 @@ void mk_ref_array_set(MkObject *array, MkInt index, MkObject *value); /* retains
 MkInt mk_ref_array_length(MkObject *array);
 MkObject *mk_ref_array_get_b(MkObject *array, MkInt index); /* D2: borrowed, no retain (valid while the array keeps the slot) */
 void mk_ref_array_set_o(MkObject *array, MkInt index, MkObject *value); /* D2: takes over the caller's reference to value */
+/* Moves the first `count` slots of `src` into the same slots of `dst` (whose slots there must be NULL): no reference count changes,
+ * the slots of `src` are NULL afterwards. Growing a collection's storage. */
+void mk_ref_array_move(MkObject *dst, MkObject *src, MkInt count);
 
 /* Failures of the stdlib (until exceptions exist): print "fatal: <Kind>: <message>" to stderr and abort. */
 _Noreturn void mk_throw_illegal_argument(const MkString *message);

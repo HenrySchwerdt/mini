@@ -1249,6 +1249,14 @@ private class Lowering<V : Any, B : Any>(
         if (s is MirStmt.Declare) pending.remove(s.local.id)
         val gone = fplan?.dead?.get(s)
         if (gone != null) for (l in gone) dead.add(l.id)
+        // the last use of an owned local: release it here, not at the end of its scope (RcOpt: RcFunctionPlan.early)
+        val early = fplan?.early?.get(s)
+        if (early != null && !terminated) for (l in early) {
+            if (l.id in dead || l.id in pending) continue
+            val sl = slot(l)
+            rel(load(TString, sl))
+            store(b.constNull(), sl)
+        }
     }
 
     fun closedFor(s: MirStmt?, l: MirLocal): Boolean = s != null && fplan?.dead?.get(s)?.any { it === l } == true

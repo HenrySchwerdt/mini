@@ -457,6 +457,13 @@ object CEmitter {
             if (s is MirStmt.Declare) pending -= s.local.id
             val gone = fplan?.dead?.get(s)
             if (gone != null) for (l in gone) dead += l.id
+            // the last use of an owned local: release it here, not at the end of its scope (RcOpt: RcFunctionPlan.early)
+            val early = fplan?.early?.get(s)
+            if (early != null) for (l in early) {
+                if (l.id in dead || l.id in pending) continue
+                out.append(ind(d)).append(rel(lname(l), "last use")).append(";\n")
+                out.append(ind(d)).append(lname(l)).append(" = NULL;\n")
+            }
         }
 
         fun closedFor(s: MirStmt?, l: MirLocal): Boolean = s != null && fplan?.dead?.get(s)?.any { it === l } == true

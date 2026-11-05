@@ -10,13 +10,14 @@ import kotlin.internal.TakesOwnership
 import mini.internal.refArrayGet
 import mini.internal.refArrayGetBorrowed
 import mini.internal.refArrayLength
+import mini.internal.refArrayMove
 import mini.internal.refArrayNew
 import mini.internal.refArraySet
 import mini.internal.refArraySetOwned
 
 public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
-    private var array: Any
-    private var length: Int = 0
+    internal var array: Any
+    internal var length: Int = 0
 
     public constructor() {
         array = refArrayNew(4)
@@ -131,11 +132,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         var newCap = cap * 2
         if (newCap < minCapacity) newCap = minCapacity
         val newArray = refArrayNew(newCap)
-        var i = 0
-        while (i < length) {
-            refArraySet(newArray, i, refArrayGet(array, i))
-            i++
-        }
+        refArrayMove(newArray, array, length)
         array = newArray
     }
 
@@ -143,6 +140,32 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
     }
 
+    // reads the storage directly: no list interface, no index checks beyond the one the loop needs
+    override fun iterator(): MutableIterator<E> = ArrayListIterator(this)
+
     @kotlin.internal.NoHeapEffects
     override fun toString(): String = super.toString()
+}
+
+internal class ArrayListIterator<E>(private val list: ArrayList<E>) : MutableIterator<E> {
+    private var index: Int = 0
+    private var last: Int = -1
+
+    override fun hasNext(): Boolean = index < list.length
+
+    @Suppress("UNCHECKED_CAST")
+    @ReturnsBorrowed
+    override fun next(): E {
+        if (index >= list.length) mini.internal.throwNoSuchElement(null)
+        last = index
+        index++
+        return refArrayGetBorrowed(list.array, last) as E
+    }
+
+    override fun remove() {
+        if (last < 0) mini.internal.throwIllegalState(null)
+        list.removeAt(last)
+        if (last < index) index--
+        last = -1
+    }
 }

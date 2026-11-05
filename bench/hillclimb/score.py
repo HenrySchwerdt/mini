@@ -40,6 +40,7 @@ MINIC_C = os.environ.get("MINIC_C", os.path.join(ROOT, "build/native/bin/minic")
 MINIC_API = os.environ.get("MINIC_API", os.path.join(ROOT, "build/api/bin/minic"))
 BACKENDS = {"c": (MINIC_C, "c"), "api": (MINIC_API, "llvm-api")}
 RUSTFLAGS = ["-C", "opt-level=3", "-C", "codegen-units=1"]
+MINI_OPT = os.environ.get("MINI_OPT", "-O2")
 
 
 def sh(cmd, timeout=1800, env=None):
@@ -69,7 +70,7 @@ def build_rust(src, exe):
 
 def build_mini(backend, src, exe):
     minic, name = BACKENDS[backend]
-    rc, out, t = sh([minic, "build", src, "-o", exe, "-O2", "--backend", name])
+    rc, out, t = sh([minic, "build", src, "-o", exe, MINI_OPT, "--backend", name])
     return t, (None if rc == 0 else out[-600:])
 
 
