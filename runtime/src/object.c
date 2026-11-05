@@ -190,18 +190,18 @@ void mk_release(MkObject *object) {
         if (flags & MK_FLAG_ARMED) mk_cycles_candidate(object); /* a possible root of a garbage cycle */
         return;
     }
+    bool watch = false;
     if (MK_UNLIKELY((flags & (MK_FLAG_ARMED | MK_FLAG_BUFFERED)) != 0)) {
         /* An object of a class that can be part of a cycle (and so of a long chain): the stack is watched. Objects of the other
-         * classes (strings, boxes, plain data) cannot nest deeply and take the plain path below. */
+         * classes (strings, boxes, plain data) cannot nest deeply and skip this. */
         if (flags & MK_FLAG_BUFFERED) {
             release_buffered(object);
             return;
         }
         if (MK_SP() < release_floor && release_defer(object)) return; /* a long chain (linked list, deep tree): not on the C stack */
-        free_dead(object, false, true);
-        return;
+        watch = true;
     }
-    free_dead(object, false, false);
+    free_dead(object, false, watch);
 }
 
 void mk_share(MkObject *object) {

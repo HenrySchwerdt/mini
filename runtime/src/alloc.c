@@ -71,6 +71,12 @@ size_t mk_object_block_size(const MkTypeInfo *type) {
     return type->instance_size + MK_PREFIX_SIZE;
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+#define MK_ALWAYS_INLINE static inline __attribute__((always_inline))
+#else
+#define MK_ALWAYS_INLINE static inline
+#endif
+
 /* Zeroes `n` bytes (a multiple of 16) at `b`: small blocks without a libc call. */
 #if MK_SMALL_ALLOC
 static inline void zero_small(void *b, size_t cls) {
@@ -88,7 +94,7 @@ static inline void zero_small(void *b, size_t cls) {
 #if MK_SMALL_ALLOC
 /* A small object of the Rc allocator (no prefix); NULL when the block cannot be had (the callers fall back to the slow path).
  * `arm`: the object is a cycle collection candidate (a class with a trace function; the compiler decides, see mk_alloc_armed). */
-static inline MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size, bool arm) {
+MK_ALWAYS_INLINE MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size, bool arm) {
     size_t cls = mk_small_class(size);
     unsigned char *block = mk_small_alloc(cls);
     if (block == NULL) return NULL;
@@ -203,7 +209,8 @@ MkObject *mk_alloc_with_site(MkAllocator *allocator, const MkTypeInfo *type, con
 
 /* The compiler knows whether a class has a trace function (can be part of a reference cycle): it calls mk_alloc_armed / mk_alloc_plain
  * and the decision costs nothing at run time. mk_alloc decides from `type->trace` (classes defined by the runtime). */
-static inline MkObject *alloc_class(const MkTypeInfo *type, bool arm) {
+MK_ALWAYS_INLINE MkObject *alloc_class(const MkTypeInfo *type, bool arm) {
+    (void)arm; /* (without the small-object allocator the generic path decides from type->trace) */
 #if MK_SMALL_ALLOC
     if (type->instance_size >= sizeof(MkObject) && type->instance_size <= MK_SMALL_MAX) {
         MkObject *object = alloc_small_rc(type, type->instance_size, arm);
