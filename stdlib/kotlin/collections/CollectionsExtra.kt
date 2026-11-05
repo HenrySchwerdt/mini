@@ -549,3 +549,9 @@ public fun <T> Iterable<T>.toSortedSet(comparator: Comparator<in T>): java.util.
     for (e in this) s.add(e)
     return s
 }
+
+public inline fun <E> buildSet(builderAction: MutableSet<E>.() -> Unit): Set<E> {
+    val set = LinkedHashSet<E>()
+    set.builderAction()
+    return set
+}

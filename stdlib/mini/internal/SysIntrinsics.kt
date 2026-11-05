@@ -16,3 +16,10 @@ public external fun nanoTime(): Long
 /** Milliseconds since the Unix epoch. */
 @CSymbol("mk_sys_epoch_millis")
 public external fun epochMillis(): Long
+
+/** The IEEE 754 bits of a Double / Float and back. */
+@CSymbol("mk_sys_double_bits")
+public external fun doubleToBits(v: Double): Long
+
+@CSymbol("mk_sys_float_bits")
+public external fun floatToBits(v: Float): Int

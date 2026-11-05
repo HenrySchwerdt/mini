@@ -60,7 +60,7 @@ These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus wh
 - Not supported: enum entries with bodies, local `object` declarations, nested classes inside local classes, `Unit?`; type aliases are ignored (no code is generated for them).
 - A lambda parameter of an `inline` function may only be invoked or passed on to another inline function; use `noinline` to store it.
 - `entries` of an enum class did not resolve in the sample on the [types page](/tour/types), so it uses `values()` instead.
-- No regular expressions, no `String.format`, no reflection beyond `KClass` names.
+- No reflection beyond `KClass` names. `Regex` and `"..".format(..)` exist (own engine, java.util.Formatter subset); the static `String.format(..)` form and `sequence { yield() }` do not (see `docs/stdlib.md`, section 10).
 - Native [C interop](/guide/c-interop) supports `external`/`@CName`, pointers, callbacks and scoped C memory. It cannot run against host libraries in the browser. Networking and async IO are still [planned](/roadmap).
 - The generated C uses GNU statement expressions, so it needs clang or gcc (not MSVC).
 - Reference cycles leak under reference counting, for example a closure stored in a field of the object it captures.

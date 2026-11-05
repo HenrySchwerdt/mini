@@ -33,7 +33,7 @@ Everything native goes through one annotation, `mini.internal.CSymbol("mk_name")
 ## Known deviations from Kotlin
 
 - `StringBuilder` is not a `CharSequence`/`Appendable`; `isEmpty`, `indices` and friends are declared on `String`.
-- Character classification and case conversion cover ASCII and Latin-1 only. No regular expressions, no `String.format`.
+- Character classification and case conversion cover ASCII and Latin-1 only. `Regex`, `"..".format(..)`, `Sequence`, `Random`, `Duration` and the array functions are available; coroutine-based `sequence { }` and the static `String.format(..)` form are not (see `docs/stdlib.md`, section 10).
 - `HashMap` and `HashSet` replicate `java.util.HashMap` iteration order (no tree bins).
 - Read-only lists, sets and maps are the mutable implementations behind the interface, as on Kotlin/Native.
 - Everything is single-threaded: `lazy` is unsynchronized.

@@ -71,3 +71,15 @@ MkLong mk_sys_epoch_millis(void) {
     return (MkLong)ts.tv_sec * 1000LL + (MkLong)(ts.tv_nsec / 1000000L);
 #endif
 }
+
+MkLong mk_sys_double_bits(MkDouble v) {
+    uint64_t u;
+    memcpy(&u, &v, sizeof u);
+    return (MkLong)u;
+}
+
+MkInt mk_sys_float_bits(MkFloat v) {
+    uint32_t u;
+    memcpy(&u, &v, sizeof u);
+    return (MkInt)u;
+}

@@ -635,6 +635,9 @@ MkString *mk_sys_read_line(void);
 MkLong mk_sys_nano_time(void);
 /* Milliseconds since the Unix epoch. */
 MkLong mk_sys_epoch_millis(void);
+/* IEEE 754 bits of a Double / Float. */
+MkLong mk_sys_double_bits(MkDouble v);
+MkInt mk_sys_float_bits(MkFloat v);
 /* ---- end SYS ---- */
 
 /* ---- D1 ---- */
