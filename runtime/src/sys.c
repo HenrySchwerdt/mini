@@ -18,7 +18,8 @@
 #if defined(_WIN32)
 #include <windows.h>
 #elif defined(__wasm__)
-/* single-threaded: no thread support */
+/* single-threaded: no thread support (a thread start or an unbounded wait panics instead of hanging); the clock is WASI's */
+#include <time.h>
 #else
 #define MK_POSIX_THREADS 1
 #include <errno.h>
@@ -73,6 +74,23 @@ int64_t mk_sys_cpu_count(void) {
     long n = sysconf(_SC_NPROCESSORS_ONLN);
     return n > 0 ? (int64_t)n : 1;
 }
+#elif defined(__wasm__)
+int64_t mk_sys_monotonic_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+int64_t mk_sys_wall_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
+}
+void mk_sys_sleep_ns(int64_t ns) {
+    if (ns <= 0) return;
+    struct timespec ts = {(time_t)(ns / 1000000000LL), (long)(ns % 1000000000LL)};
+    nanosleep(&ts, NULL);
+}
+int64_t mk_sys_cpu_count(void) { return 1; }
 #else
 int64_t mk_sys_monotonic_ns(void) { return 0; }
 int64_t mk_sys_wall_ms(void) { return 0; }
@@ -143,8 +161,9 @@ void mk_sys_lock(MkObject *a) { (void)a; }
 MkBoolean mk_sys_try_lock(MkObject *a) { (void)a; return true; }
 void mk_sys_unlock(MkObject *a) { (void)a; }
 void mk_sys_cond_init(MkObject *a) { (void)a; }
-void mk_sys_cond_wait(MkObject *c, MkObject *l) { (void)c; (void)l; }
-MkBoolean mk_sys_cond_wait_ns(MkObject *c, MkObject *l, MkLong ns) { (void)c; (void)l; (void)ns; return true; }
+/* Nothing can ever signal: an unbounded wait is a deadlock (it used to return at once and spin forever); a timed wait just sleeps. */
+void mk_sys_cond_wait(MkObject *c, MkObject *l) { (void)c; (void)l; mk_panic("deadlock: waiting for another thread, but this platform has no threads"); }
+MkBoolean mk_sys_cond_wait_ns(MkObject *c, MkObject *l, MkLong ns) { (void)c; (void)l; mk_sys_sleep_ns(ns); return true; }
 void mk_sys_cond_signal(MkObject *c) { (void)c; }
 void mk_sys_cond_broadcast(MkObject *c) { (void)c; }
 #endif
@@ -234,6 +253,7 @@ int64_t mk_sys_thread_start(MkObject *fn) {
     return (int64_t)(intptr_t)th;
 #else
     (void)fn;
+    mk_panic("threads are not supported on this platform (wasm32)");
     return 0;
 #endif
 }

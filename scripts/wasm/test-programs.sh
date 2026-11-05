@@ -35,7 +35,7 @@ one() {
         "$MINIC" --emit-ll "$w/$name.ll" --target=wasm32 "$src" $STDLIB >"$w/$name.compile" 2>&1 || { [ -f "compiler/testdata/$name.cerr" ] && exit 0; cat "$w/$name.compile"; exit 1; }
         $Y clang --target=wasm32-wasip1 -O1 -Wno-override-module -c "$w/$name.ll" -o "$w/$name.o" || exit 1
         $Y clang --target=wasm32-wasip1 "$w/$name.o" "$WASM_DIR/libminirt-wasm32.a" "$WASM_DIR/minirt-entry-wasm32.o" -o "$w/$name.wasm" || exit 1
-        mkdir -p "$w/tmp"; node --no-warnings "$root/scripts/wasm/run-wasi.mjs" --dir "$w/tmp=/tmp" "$w/$name.wasm" >"$w/$name.stdout" 2>"$w/$name.stderr"
+        mkdir -p "$w/tmp"; timeout 120 node --no-warnings "$root/scripts/wasm/run-wasi.mjs" --dir "$w/tmp=/tmp" "$w/$name.wasm" >"$w/$name.stdout" 2>"$w/$name.stderr"
         code=$?
         local want="compiler/testdata/$name.out"
         [ -f "$want" ] || want="examples/$name.out"
@@ -62,6 +62,8 @@ if [ $# -gt 0 ]; then names=("$@"); else
         # programs that deliberately do not compile (.cerr) never reach the backend
         # C interop programs bind LP64 libc signatures (strlen as Long) and need their own C files: not part of the browser toolchain
         case "$n" in cinterop_*) continue ;; esac
+        # wasm32 has no threads (Thread.start panics): programs that need them are marked with a .nowasm file
+        [ -f "compiler/testdata/$n.nowasm" ] && continue
         [ -f "compiler/testdata/$n.cerr" ] || names+=("$n")
     done
 fi
