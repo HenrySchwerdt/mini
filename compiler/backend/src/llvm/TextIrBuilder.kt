@@ -472,7 +472,29 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         if (!target.pendingAccessor) out.append("@mk_pending_exception = external thread_local(initialexec) global ptr\n")
         for ((_, line) in externGlobals) out.append(line).append('\n')
         out.append('\n')
-        for ((_, line) in externs) out.append(line).append('\n')
+        // Only the declarations something refers to: a program against a precompiled library (--wasm-separate-mlibs) is handed the
+        // signatures of every library function, and declaring thousands of unused ones only costs parse time.
+        val used = HashSet<String>()
+        for (partBuilder in listOf(strings, literals, classes, prelude, functions)) {
+            val part = partBuilder.toString()
+            var i = part.indexOf('@')
+            while (i >= 0) {
+                var j = i + 1
+                if (j < part.length && part[j] == '"') {
+                    j++
+                    while (j < part.length && part[j] != '"') j++
+                    if (j < part.length) j++
+                } else {
+                    while (j < part.length) {
+                        val c = part[j]
+                        if (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '_' || c == '.' || c == '$') j++ else break
+                    }
+                }
+                used.add(part.substring(i, j))
+                i = part.indexOf('@', j)
+            }
+        }
+        for ((name, line) in externs) if (gname(name) in used) out.append(line).append('\n')
         out.append("\n")
         out.append(strings)
         if (literals.isNotEmpty()) {
