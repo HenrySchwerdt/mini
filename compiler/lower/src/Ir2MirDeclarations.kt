@@ -277,7 +277,7 @@ internal fun Ir2Mir.labelOf(loop: IrLoop, at: IrElement): MirLabel =
     loopLabels[loop] ?: unsupported(at, "jump to a loop outside the current function")
 
 internal fun Ir2Mir.localOf(owner: Any, at: IrElement): MirLocal =
-    locals[owner] ?: unsupported(at, "reference to a variable that is not a local of the current function")
+    locals[owner] ?: unsupported(at, "reference to a variable that is not a local of the current function" + ((owner as? IrValueDeclaration)?.let { " ('${it.name}')" } ?: ""))
 
 // ---- classes: constructors and fields -------------------------------------------------------
 

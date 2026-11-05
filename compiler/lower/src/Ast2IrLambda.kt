@@ -163,13 +163,19 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
     val sym = r.callee
     val adapted = r.extra as? AdaptedRef
     if (sym is FunSym && adapted != null) return adaptedRef(e, r, adapted, sym)
+    if (sym is FunSym && sym.kind == FunKind.SYNTH && sym.owner?.isEnum == true && (sym.name == "valueOf" || sym.name == "values")) {
+        // `E::valueOf` / `E::values`: the synthesized static functions are called from a lambda
+        val n = sym.params.size
+        return adaptedRef(e, r, AdaptedRef(AdaptMap(IntArray(n) { it }, IntArray(n) { 1 }), 0), sym)
+    }
     if (sym is FunSym) {
         val target: IrFunction = if (sym.kind == FunKind.CONSTRUCTOR) irConstructorOf(sym) else functionFor(sym, null)
         val call = IrFunctionReference(target, t)
         val rv = e.receiver
         for (p in target.parameters) call.arguments.add(null)
-        if (rv != null && !isClassQualifier(rv)) {
-            val bound = convert(rv)
+        val objQ = if (rv != null) objectQualifier(rv) else null
+        if (rv != null && (objQ != null || !isClassQualifier(rv))) {
+            val bound = if (objQ != null) IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)) else convert(rv)
             var k = 0
             for (p in target.parameters) {
                 if (p.kind == IrParameterKind.DispatchReceiver || p.kind == IrParameterKind.ExtensionReceiver) {
@@ -185,7 +191,9 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val p = propertyOf(sym)
         val ref = IrPropertyReference(p, t)
         val rv = e.receiver
-        if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
+        val objQ = if (rv != null) objectQualifier(rv) else null
+        if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
+        else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
         else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
         return ref
     }
@@ -293,4 +301,12 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     if (outer.isEmpty()) return fe
     outer.add(fe)
     return IrBlock(outer, ft, null)
+}
+
+/** `Obj::member` of an object (or companion): the object, to which the reference is bound; null for other qualifiers. */
+private fun Ast2Ir.objectQualifier(e: Expr): IrClass? {
+    if (!isClassQualifier(e)) return null
+    val t = rec(unparen(e))?.type as? ClassType ?: return null
+    if (!t.cls.isObject) return null
+    return irClass(t.cls)
 }

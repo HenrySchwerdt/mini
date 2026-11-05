@@ -242,23 +242,36 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         val ri = resolveReceiver(rcv, null)
         if (ri is ClassRecv) {
             val ct = ri.cls.thisType()
+            // `Obj::f` of an object (a companion) is bound to the object
+            val objBound = ri.cls.isObject
             for (m in members.funsNamed(ct, name)) {
                 val fn = m.fn
                 if (fn.decl?.receiver != null) continue
+                if (ri.cls.isEnum && fn.kind == FunKind.SYNTH && (name == "valueOf" || name == "values")) continue
                 sema.ensureSig(fn)
                 val ps = ArrayList<Type>()
-                ps.add(ct)
+                if (!objBound) ps.add(ct)
                 for (p in fn.params) ps.add(ops.substitute(p.type ?: ErrType("param"), m.subst))
                 cands.add(RefCand(fn, ps, ops.substitute(sema.returnTypeOf(fn), m.subst), fn.typeParams, m.subst))
+            }
+            if (ri.cls.isEnum && (name == "valueOf" || name == "values")) {
+                // the synthesized static functions of an enum class
+                for (fn in members.staticFuns(ri.cls, name)) {
+                    if (fn.kind != FunKind.SYNTH) continue
+                    sema.ensureSig(fn)
+                    val ps = ArrayList<Type>()
+                    for (p in fn.params) ps.add(p.type ?: ErrType("param"))
+                    cands.add(RefCand(fn, ps, sema.returnTypeOf(fn), emptyList(), HashMap()))
+                }
             }
             val nc = ri.cls.nested[name]
             if (nc != null) for (c in ctorCandidates(nc)) funRefCand(c, false, cands)
             for (mp in members.propsNamed(ct, name)) {
                 if (mp.prop.receiver != null) continue
-                val rc = RefCand(mp.prop, listOf(ct), ops.substitute(sema.typeOfProp(mp.prop), mp.subst), emptyList(), mp.subst)
+                val rc = RefCand(mp.prop, if (objBound) emptyList() else listOf(ct), ops.substitute(sema.typeOfProp(mp.prop), mp.subst), emptyList(), mp.subst)
                 rc.isProp = true
                 rc.mutable = mp.prop.isVar
-                rc.propReceiver = true
+                rc.propReceiver = !objBound
                 cands.add(rc)
             }
             val xp = extensionProp(name, ct)
