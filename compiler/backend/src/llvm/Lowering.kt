@@ -605,6 +605,7 @@ private class Lowering<V : Any, B : Any>(
         if (inlineRc) {
             val retain = declare("mk_retain", TUnit, listOf(TString))
             val release = declare("mk_release", TUnit, listOf(TString))
+            val candidate = declare("mk_cycles_candidate", TUnit, listOf(TString))
             for (isRetain in listOf(true, false)) {
                 beginHelper(if (isRetain) "mkh_retain" else "mkh_rel", IrType.VOID, listOf("o"), listOf(ptr), IrAttrs.INLINE)
                 val o = b.param(0)
@@ -639,8 +640,7 @@ private class Lowering<V : Any, B : Any>(
                     b.call(retain, IrType.VOID, IrExt.NONE, listOf(o), listOf(IrExt.NONE), -1, "")
                     b.br(done)
                 } else {
-                    // SHARED (4) and ARMED (16, a cycle collection candidate in the making): the runtime counts
-                    val sh = b.bin(IrOp.AND, fl, c32(20), "sh")
+                    val sh = b.bin(IrOp.AND, fl, c32(4), "sh")
                     val nsh = b.cmp(IrCmp.IEQ, sh, c32(0), "nsh")
                     val rp = b.gep(o, c64(rcOff), true, "rp")
                     val rc = b.load(i32, rp, 0, "rc")
@@ -650,6 +650,13 @@ private class Lowering<V : Any, B : Any>(
                     b.appendBlock(upd)
                     val rc1 = b.bin(IrOp.SUB, rc, c32(1), "rc1")
                     b.store(rc1, rp, 0)
+                    // ARMED (16): a cycle collection candidate in the making, the runtime records it
+                    val ar = b.bin(IrOp.AND, fl, c32(16), "ar")
+                    val isar = b.cmp(IrCmp.INE, ar, c32(0), "isar")
+                    val cand = b.newBlock("cand")
+                    b.condBr(isar, cand, done, false)
+                    b.appendBlock(cand)
+                    b.call(candidate, IrType.VOID, IrExt.NONE, listOf(o), listOf(IrExt.NONE), -1, "")
                     b.br(done)
                     b.appendBlock(slow)
                     b.call(release, IrType.VOID, IrExt.NONE, listOf(o), listOf(IrExt.NONE), -1, "")

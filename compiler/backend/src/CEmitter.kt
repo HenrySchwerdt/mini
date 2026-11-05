@@ -1183,7 +1183,7 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
         else mk_retain(mkr_); } } while (0)
 #define MKH_REL(x) do { MkObject *mkr_ = (MkObject *)(x); \
     if (mkr_ != NULL && (mkr_->flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) == 0) { \
-        if ((mkr_->flags & (MK_FLAG_SHARED | MK_FLAG_ARMED)) == 0 && mkr_->refcount > 1u) mkr_->refcount--; \
+        if ((mkr_->flags & MK_FLAG_SHARED) == 0 && mkr_->refcount > 1u) { mkr_->refcount--; if (mkr_->flags & MK_FLAG_ARMED) mk_cycles_candidate(mkr_); } \
         else mk_release(mkr_); } } while (0)
 #endif
 

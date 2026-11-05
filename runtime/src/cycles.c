@@ -19,15 +19,21 @@
 #include <string.h>
 
 #define COLOR_MASK (7u << MK_COLOR_SHIFT)
+/* A buffered object keeps its slot in the candidate buffer in the upper flag bits, so that it can be freed at once when its
+ * count reaches zero (the slot is cleared) instead of lingering as a zombie until the next collection. */
+#define IDX_SHIFT 11
+#define IDX_MASK (~0u << IDX_SHIFT)
+#define UNBUFFER (MK_FLAG_BUFFERED | COLOR_MASK | IDX_MASK)
 #define COLOR(o) (((o)->flags >> MK_COLOR_SHIFT) & 7u)
 #define SET_COLOR(o, c) ((o)->flags = ((o)->flags & ~COLOR_MASK) | ((uint32_t)(c) << MK_COLOR_SHIFT))
 enum { BLACK = 0, GRAY = 1, WHITE = 2, PURPLE = 3, DEAD = 4 /* = MK_CYCLES_ZOMBIE, also: a collected garbage object */, DYING = 5 };
 
 #define PIN 0x40000000u /* count of a garbage object while its dispose runs */
-#define MIN_THRESHOLD 4096u
-#define MAX_THRESHOLD (1u << 20)
-#define MIN_ALLOC_LIMIT ((size_t)8 << 20) /* bytes of new candidate-capable objects between two collections, at least */
+#define MIN_THRESHOLD 32768u
+#define MAX_THRESHOLD (1u << 21)
+#define MIN_ALLOC_LIMIT ((size_t)16 << 20) /* bytes of new candidate-capable objects between two collections, at least */
 #define MAX_THREADED_ROOTS (1u << 20)
+#define MAX_SLOTS ((1u << 21) - 4096)
 
 volatile int mk_threads_running = 0;
 
@@ -38,6 +44,7 @@ size_t mk_cycles_alloc_bytes;
 static size_t alloc_limit = MIN_ALLOC_LIMIT;
 static uint64_t work_bytes;
 static int trace_enabled = -1;
+static unsigned backoff = 1; /* grows while collections find (almost) nothing to free, back to 1 when they do */
 static bool in_collect;
 static volatile int roots_lock;
 
@@ -171,15 +178,15 @@ size_t mk_cycles_collect(void) {
     size_t keep = 0;
     for (size_t i = 0; i < n; i++) {
         MkObject *s = list[i];
-        if (COLOR(s) == DEAD) { /* died while buffered (zombie): only the block is left */
-            mk_free_object_memory(s);
+        if (s == NULL) { /* freed while buffered */
+            continue;
         } else if (COLOR(s) == DYING) { /* its dispose is running (it triggered this collection): stays buffered */
             stack_push(&carry, s);
         } else if (COLOR(s) == PURPLE) {
             mark_gray(s);
             list[keep++] = s;
         } else { /* gray: part of the subgraph of an earlier root, handled with it */
-            s->flags = (s->flags & ~MK_FLAG_BUFFERED) | MK_FLAG_ARMED;
+            s->flags = (s->flags & ~(MK_FLAG_BUFFERED | IDX_MASK)) | MK_FLAG_ARMED;
         }
     }
     n = keep;
@@ -191,7 +198,7 @@ size_t mk_cycles_collect(void) {
         if (COLOR(s) == WHITE) {
             collect_white(s);
         } else if (COLOR(s) != DEAD) {
-            s->flags = (s->flags & ~(MK_FLAG_BUFFERED | COLOR_MASK)) | MK_FLAG_ARMED;
+            s->flags = (s->flags & ~UNBUFFER) | MK_FLAG_ARMED;
         }
     }
     for (size_t i = 0; i < carry.n; i++) { /* (appended to the buffer of the candidates that the collection itself produces) */
@@ -200,6 +207,7 @@ size_t mk_cycles_collect(void) {
             roots = (MkObject **)realloc(roots, roots_cap * sizeof(MkObject *));
             if (roots == NULL) mk_panic("out of memory");
         }
+        carry.v[i]->flags = (carry.v[i]->flags & ~IDX_MASK) | ((uint32_t)roots_n << IDX_SHIFT);
         roots[roots_n++] = carry.v[i];
     }
     carry.n = 0;
@@ -220,12 +228,15 @@ size_t mk_cycles_collect(void) {
     garbage.n = 0;
     /* adaptive trigger: the next collection comes after as many new candidates as a quarter of the work of this one, so the
      * cost per candidate stays bounded however large the live graph is */
+    /* collections that free next to nothing (a big live graph that is only retained and released) are made rarer, up to 32 times */
+    backoff = freed * 8 < work ? (backoff < 32 ? backoff * 2 : backoff) : 1;
     size_t live = (size_t)(work > freed ? work - freed : 0);
     size_t t = live / 4;
-    threshold = t > MAX_THRESHOLD ? MAX_THRESHOLD : t > MIN_THRESHOLD ? t : MIN_THRESHOLD;
-    /* allocation volume: the next collection after as many new bytes as this one visited (the live heap doubles at most) */
+    threshold = (t > MAX_THRESHOLD ? MAX_THRESHOLD : t > MIN_THRESHOLD ? t : MIN_THRESHOLD) * backoff;
+    if (threshold > MAX_SLOTS) threshold = MAX_SLOTS; /* (the slot index has 21 bits) */
+    /* allocation volume: the next collection after twice the bytes that survived this one (the live heap triples at most) */
     uint64_t live_bytes = work_bytes > garbage_bytes ? work_bytes - garbage_bytes : 0;
-    alloc_limit = live_bytes > MIN_ALLOC_LIMIT ? (size_t)live_bytes : MIN_ALLOC_LIMIT;
+    alloc_limit = (live_bytes * 2 > MIN_ALLOC_LIMIT ? (size_t)(live_bytes * 2) : MIN_ALLOC_LIMIT) * backoff;
     mk_cycles_alloc_bytes = 0;
     if (trace_enabled < 0) { const char *e = getenv("MINI_GC_TRACE"); trace_enabled = e != NULL && e[0] != '\0' && e[0] != '0'; }
     if (trace_enabled) fprintf(stderr, "[cycles] roots=%zu visited=%llu (%llu bytes survive) freed=%zu next: %zu roots or %zu bytes\n", n, (unsigned long long)work, (unsigned long long)live_bytes, freed_now, threshold, alloc_limit);
@@ -244,18 +255,19 @@ void mk_cycles_candidate(MkObject *o) {
     bool threaded = __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0;
     if (threaded) roots_lock_acquire();
     if (o->flags & MK_FLAG_ARMED) { /* (re-checked under the lock) */
-        if (!(threaded && roots_n >= MAX_THREADED_ROOTS)) {
+        if (!(threaded && roots_n >= MAX_THREADED_ROOTS) && roots_n < MAX_SLOTS) {
             if (roots_n == roots_cap) {
                 roots_cap = roots_cap ? roots_cap * 2 : 1024;
                 roots = (MkObject **)realloc(roots, roots_cap * sizeof(MkObject *));
                 if (roots == NULL) mk_panic("out of memory");
             }
+            uint32_t idx = (uint32_t)roots_n;
             roots[roots_n++] = o;
             if (threaded) {
-                __atomic_fetch_and(&o->flags, ~(MK_FLAG_ARMED | COLOR_MASK), __ATOMIC_ACQ_REL);
-                __atomic_fetch_or(&o->flags, MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT), __ATOMIC_ACQ_REL);
+                __atomic_fetch_and(&o->flags, ~(MK_FLAG_ARMED | COLOR_MASK | IDX_MASK), __ATOMIC_ACQ_REL);
+                __atomic_fetch_or(&o->flags, MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT) | (idx << IDX_SHIFT), __ATOMIC_ACQ_REL);
             } else {
-                o->flags = (o->flags & ~(MK_FLAG_ARMED | COLOR_MASK)) | MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT);
+                o->flags = (o->flags & ~(MK_FLAG_ARMED | COLOR_MASK | IDX_MASK)) | MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT) | (idx << IDX_SHIFT);
             }
         }
     }
@@ -263,8 +275,8 @@ void mk_cycles_candidate(MkObject *o) {
     if ((roots_n >= threshold || mk_cycles_alloc_bytes >= alloc_limit) && mk_threads_running == 0) mk_cycles_collect();
 }
 
-/* Called by mk_release when the count of a BUFFERED object reached zero: it is DYING while its dispose runs and a ZOMBIE
- * afterwards; the buffer keeps pointing to it, so only the collector frees the block. */
+/* Called by mk_release when the count of a BUFFERED object reached zero: it is DYING while its dispose runs (a collection that
+ * its dispose triggers leaves it alone); mk_cycles_forget then clears its slot in the buffer and the caller frees the block. */
 void mk_cycles_state(MkObject *o, unsigned state) {
     if (__atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
         __atomic_fetch_and(&o->flags, ~COLOR_MASK, __ATOMIC_ACQ_REL);
@@ -274,10 +286,36 @@ void mk_cycles_state(MkObject *o, unsigned state) {
     }
 }
 
-/* Frees the garbage cycles that remain at the end of main (freeing a cycle can make another one garbage: repeat). */
+void mk_cycles_forget(MkObject *o) {
+    bool threaded = __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0;
+    if (threaded) roots_lock_acquire();
+    size_t idx = o->flags >> IDX_SHIFT;
+    if (idx < roots_n && roots[idx] == o) roots[idx] = NULL;
+    if (threaded) roots_lock_release();
+}
+
+/* Frees the garbage cycles that remain at the end of main (freeing a cycle can make another one garbage: repeat). The process
+ * is about to end and the system takes everything back, so this only runs where somebody looks for leaks: in sanitizer builds
+ * (LeakSanitizer must not see garbage cycles) and with MINI_GC_AT_EXIT=1 (valgrind and friends). */
 size_t mk_cycles_at_exit(void) {
     size_t total = 0, n;
     if (mk_threads_running != 0) return 0;
+#if defined(__SANITIZE_ADDRESS__)
+    int wanted = 1;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+    int wanted = 1;
+#else
+    int wanted = 0;
+#endif
+#else
+    int wanted = 0;
+#endif
+    if (!wanted) {
+        const char *e = getenv("MINI_GC_AT_EXIT");
+        wanted = e != NULL && e[0] != '\0' && e[0] != '0';
+    }
+    if (!wanted) return 0;
     while ((n = mk_cycles_collect()) > 0) total += n;
     return total;
 }

@@ -2,6 +2,16 @@
 #include "internal.h"
 #include "lock.h"
 
+#if defined(__GNUC__) || defined(__clang__)
+#define MK_UNLIKELY(x) __builtin_expect((x) != 0, 0)
+#define MK_INLINE static inline __attribute__((always_inline))
+#define MK_NOINLINE __attribute__((noinline))
+#else
+#define MK_UNLIKELY(x) (x)
+#define MK_INLINE static inline
+#define MK_NOINLINE
+#endif
+
 const MkTypeInfo mk_type_Any = {
     "kotlin.Any", sizeof(MkObject), NULL, NULL, NULL, 0, NULL, 0,
 };
@@ -38,7 +48,7 @@ static MK_TLS MkObject *pending_inline[MK_PENDING_INLINE];
 static MK_TLS MkObject **pending_heap;
 static MK_TLS size_t pending_n, pending_cap;
 
-static void pending_push(MkObject *o) {
+MK_NOINLINE static void pending_push(MkObject *o) {
     if (pending_n < MK_PENDING_INLINE) { pending_inline[pending_n++] = o; return; }
     if (pending_n - MK_PENDING_INLINE == pending_cap) {
         pending_cap = pending_cap ? pending_cap * 2 : 1024;
@@ -48,19 +58,16 @@ static void pending_push(MkObject *o) {
     pending_heap[pending_n++ - MK_PENDING_INLINE] = o;
 }
 
-/* the dispose chain of an object whose count reached zero, then its memory (or, when the candidate buffer points to it, its state) */
-static void free_dead(MkObject *object) {
+/* the dispose chain of an object whose count reached zero, then its memory */
+MK_INLINE void free_dead(MkObject *object) {
     for (const MkTypeInfo *t = object->type; t != NULL; t = t->super) {
         if (t->dispose != NULL) t->dispose(object);
     }
-    if (object->flags & MK_FLAG_BUFFERED) {
-        mk_cycles_state(object, MK_CYCLES_ZOMBIE);
-        return;
-    }
+    if (object->flags & MK_FLAG_BUFFERED) mk_cycles_forget(object); /* (its slot in the candidate buffer) */
     mk_free_object_memory(object);
 }
 
-static void pending_drain(void) {
+MK_NOINLINE static void pending_drain(void) {
     while (pending_n > 0) {
         size_t i = --pending_n;
         free_dead(i < MK_PENDING_INLINE ? pending_inline[i] : pending_heap[i - MK_PENDING_INLINE]);
@@ -89,15 +96,16 @@ void mk_release(MkObject *object) {
     }
     /* a buffered object is pointed to by the candidate buffer: its block is freed by the collector, not here; it is DYING
      * from now on, so that a collection that runs before its dispose is done leaves it alone */
-    if (object->flags & MK_FLAG_BUFFERED) mk_cycles_state(object, MK_CYCLES_DYING);
-    if (release_depth >= MK_RELEASE_DEPTH) { /* a long chain (linked list, deep tree): not on the C stack */
+    if (MK_UNLIKELY(object->flags & MK_FLAG_BUFFERED)) mk_cycles_state(object, MK_CYCLES_DYING);
+    if (MK_UNLIKELY(release_depth >= MK_RELEASE_DEPTH)) { /* a long chain (linked list, deep tree): not on the C stack */
         pending_push(object);
         return;
     }
-    release_depth++;
+    unsigned depth = release_depth;
+    release_depth = depth + 1;
     free_dead(object);
-    if (release_depth == 1) pending_drain();
-    release_depth--;
+    if (depth == 0 && pending_n != 0) pending_drain();
+    release_depth = depth;
 }
 
 void mk_share(MkObject *object) {

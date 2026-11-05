@@ -96,6 +96,8 @@ void mk_release(MkObject *object);
  * threads run). The runtime also runs it when enough candidates piled up and at the end of main. Returns the number of
  * objects freed. */
 size_t mk_cycles_collect(void);
+/* Generated code: a release that left an object with MK_FLAG_ARMED alive (inline fast path of MKH_REL) records it as a candidate. */
+void mk_cycles_candidate(MkObject *object);
 
 /* Marks an object (but not its fields) as shared between threads. */
 void mk_share(MkObject *object);
