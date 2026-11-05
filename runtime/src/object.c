@@ -13,7 +13,7 @@
 #endif
 
 const MkTypeInfo mk_type_Any = {
-    "kotlin.Any", sizeof(MkObject), NULL, NULL, NULL, 0, NULL, 0,
+    "kotlin.Any", sizeof(MkObject), NULL, NULL, NULL, 0, NULL, 0, NULL,
 };
 
 static bool is_plain(const MkObject *o) {

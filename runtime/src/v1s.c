@@ -124,7 +124,7 @@ static void sb_dispose(MkObject *self) {
 }
 
 static const MkTypeInfo sb_type = {
-    "mini.internal.StringBuilderBuffer", sizeof(MkSb), &mk_type_Any, sb_dispose, NULL, 0, NULL, 0,
+    "mini.internal.StringBuilderBuffer", sizeof(MkSb), &mk_type_Any, sb_dispose, NULL, 0, NULL, 0, NULL,
 };
 
 static MkSb *sb_of(MkObject *o) {

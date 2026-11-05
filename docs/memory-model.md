@@ -1237,7 +1237,11 @@ thread-locally and the outermost release works the queue off. Dispose only relea
 
 ### Measured overhead
 
-See "Cycle collector overhead" at the end of this section (numbers from `bench/run.sh`).
+`bench/run.sh --langs mini-managed` (best of 3-5, noisy shared host), before -> after: binarytrees 1.95 -> 2.24 s (+15 %, 100 M short-lived
+`Node`s: every allocation is armed and every release goes through the depth bookkeeping; +12 % instructions), json 1.89 -> 2.20 s (+16 %),
+wordcount 7.5 -> 8.1 s (+8 %), strbuild 1.41 -> 1.40 s (strings are never armed); peak RSS unchanged (json 125 -> 128 MiB). The
+compiler compiling itself (stage1 without, stage3 with the collector): 633 MiB peak RSS both, 27 s both. Programs with garbage cycles get
+the opposite trade: `stress_cycles` peak RSS 35 MiB -> 134 MiB at 4x the rounds without the collector, a flat 11.4 MiB with it.
 
 ### Tests
 
