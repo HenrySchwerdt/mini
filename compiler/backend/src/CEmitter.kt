@@ -69,6 +69,7 @@ object CEmitter {
         val literals = LinkedHashMap<String, String>() // kotlin value -> C name
         val sig = HashMap<String, MirFunction>()
         val classes = HashMap<String, MirClass>()
+        val cycles = CycleAnalysis(classes) // which classes can be part of a reference cycle
         var usedLabels = HashSet<String>()
         val scopes = ArrayList<Scope>()
         var currentReturn: MirType = TUnit
@@ -270,6 +271,14 @@ object CEmitter {
         /** Classes (C names) whose instances are cycle collection candidates: they have a trace function. */
         val cyclicClasses = HashSet<String>()
 
+        /** The allocation entry of a class: the cycle collector decision (armed or not) is made here, at compile time (the runtime
+         *  entry `mk_alloc` decides at run time from the type info; classes defined by the runtime use it). */
+        fun allocFn(cName: String): String = when {
+            classes[cName]?.external != false -> "mk_alloc"
+            cyclicClasses.contains(cName) -> "mk_alloc_armed"
+            else -> "mk_alloc_plain"
+        }
+
         fun emitClasses(out: StringBuilder) {
             for (c in module.classes) {
                 if (c.external) continue
@@ -294,7 +303,7 @@ object CEmitter {
                 val ownedFields = c.fields.filter { tr.ownedTrackedField(c, it) }
                 var dispose = "NULL"
                 // cycle collection (docs/memory-model.md, "Cycles"): the fields that can lead to a cycle; strings and boxes cannot
-                val traceFields = refFields.filter { cycleCapableType(it.type) }
+                val traceFields = refFields.filter { cycles.fieldCapable(c, it) }
                 val superTraced = sup != null && cyclicClasses.contains(sup.cName)
                 var trace = "NULL"
                 if (traceFields.isNotEmpty() || superTraced) {
@@ -347,7 +356,7 @@ object CEmitter {
                 val decl = if (ps.isEmpty()) "void" else ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }
                 val call = (listOf("o") + ps.indices.map { "a$it" }).joinToString(", ")
                 val check = if (f.cName in throwing.mayThrow) "    if (mk_pending_exception != NULL) {\n        mk_release(o);\n        return NULL;\n    }\n" else ""
-                out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = mk_alloc(&${cls}_ti);\n    ${f.cName}($call);\n$check    return o;\n}\n")
+                out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = ${allocFn(cls)}(&${cls}_ti);\n    ${f.cName}($call);\n$check    return o;\n}\n")
                 if (f.cName in newaUsed) {
                     // allocation through a chosen allocator (Strict code): the same, from `al` (0 = the default allocator)
                     val decla = if (ps.isEmpty()) "MkLong al" else "MkLong al, " + ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }

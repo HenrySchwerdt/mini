@@ -1187,9 +1187,18 @@ collector** (Bacon & Rajan, *Concurrent Cycle Collection in Reference Counted Sy
 ### What is a candidate
 
 * A Managed object whose class has a `trace` function (`MkTypeInfo.trace != NULL`) is born with the header flag
-  `MK_FLAG_ARMED`. The compiler emits `trace` for every class with a reference field that can lead to a cycle (anything but
-  `String` and boxed primitives; a subclass inherits the trace of its superclass); the runtime has one for object arrays
-  and the `RefArray` behind `ArrayList`/`HashMap`. Strings, boxes, primitive arrays and plain data classes are never armed.
+  `MK_FLAG_ARMED`. The compiler decides **per class at compile time** whether the class can be part of a cycle
+  (`CycleAnalysis` in `compiler/backend/src/Tracking.kt`, shared by the C and the LLVM backend): a class is *acyclic* when every
+  field it declares or inherits is a string, a boxed primitive, a primitive array, or a reference to a *final* acyclic class of
+  the program (a class without subclasses; a subclass could add a field that closes a cycle). `Any`, interfaces, object arrays,
+  classes defined by the runtime and classes on a cycle of field types (`class Node(val left: Node?, ...)`) can be part of a
+  cycle. Only those get a `trace` function (a subclass inherits the trace of its superclass); the stdlib's `StringBuilder`, whose
+  native buffer is typed `Any`, is listed as acyclic by name. The runtime has a trace for object arrays and the `RefArray`
+  behind `ArrayList`/`HashMap`. Strings, boxes, primitive arrays and acyclic data classes are never armed.
+* The compiler also picks the **allocation entry**: `mk_alloc_armed` for classes with a trace, `mk_alloc_plain` for the others
+  (`mk_alloc` decides at run time from `type->trace` and stays for classes defined by the runtime; strings and primitive arrays
+  use `mk_alloc_sized_plain`). The arming test therefore costs nothing at run time, and the specialised entries are shorter
+  than the generic one.
 * **Strict, Heap, Pool and arena objects are never armed** (`mk_alloc_sized_site` arms only objects of the default
   reference-counting allocator). They do not know the collector exists: no flag, no extra branch, no buffer entry.
 * The inline fast path of a release (`MKH_REL`, `mkh_rel` in the LLVM backend) was `not SHARED and rc > 1: rc--`. It is now `not
@@ -1202,10 +1211,14 @@ collector** (Bacon & Rajan, *Concurrent Cycle Collection in Reference Counted Sy
 
 ### Collection
 
-`mk_cycles_collect` runs from the slow path that records a candidate, when (a) the buffer holds `threshold` candidates (4096 at the
-start, afterwards a quarter of the objects that survived the last collection, at most 2^20) or (b) the candidate-capable objects
-allocated since the last collection add up to `alloc_limit` bytes (8 MiB at the start, afterwards the bytes that survived the last
-collection: the "heap doubling" rule, so the amortised cost per allocated byte is bounded however big the live heap is). Rule (b)
+`mk_cycles_collect` runs from the slow path that records a candidate, when (a) the buffer holds `threshold` candidates (32768 at the
+start, afterwards a quarter of the objects that survived the last collection, at most 2^21) or (b) the candidate-capable objects
+allocated since the last collection add up to `alloc_limit` bytes (32 MiB at the start, afterwards three times the bytes that
+survived the last collection, so the amortised cost per allocated byte is bounded however big the live heap is). A collection that
+frees less than an eighth of what it visited multiplies both limits by 4 (up to 64), so a big live graph that is only retained and
+released is not traced over and over; the next collection that frees something resets the factor. The 32 MiB floor (it was 16)
+is what a garbage cycle can add to the heap before the first collection; it is flat, not growing with the run time
+(`stress-rss` checks that). Rule (b)
 matters because a single candidate can hide a 100 MB cycle: counting candidates alone let `stress_cycles` grow 4x with the rounds.
 It also runs, until nothing is freed any more, when `main` returns (so LeakSanitizer does not see garbage cycles).
 `MINI_GC_TRACE=1` prints one line per collection to stderr.
@@ -1232,16 +1245,36 @@ frees cycles during that time.
 ### Release depth
 
 Dropping the head of a long singly linked list released the next node from the dispose of the previous one: recursion as deep as
-the list, a stack overflow for lists of some 10^5 nodes. `mk_release` now bounds the nesting (200 levels); deeper dead objects are queued
-thread-locally and the outermost release works the queue off. Dispose only releases, so the different order is not observable.
+the list, a stack overflow for lists of some 10^5 nodes. The nesting of `mk_release` is bounded by the **stack**, not by a
+counter: each thread finds the middle of its stack once (`pthread_getattr_np`, `pthread_get_stackaddr_np`,
+`GetCurrentThreadStackLimits`; a fixed distance below the first frame elsewhere) and a dying object of an armed class (the only
+ones that can form long chains; strings and plain data skip the test) whose release runs below that address is queued
+thread-locally instead of disposed. A release back above the floor works the queue off, at the latest at the end of `main` or of the
+thread (`mk_release_drain`). Dispose only releases, so the different order is not observable. The common path is one compare of the
+stack pointer with a thread-local word (read-only): the previous 200-level counter was written and read back at every level, a
+store-to-load dependency of the whole recursion (it was half of the overhead on binarytrees).
 
 ### Measured overhead
 
-`bench/run.sh --langs mini-managed` (best of 3-5, noisy shared host), before -> after: binarytrees 1.95 -> 2.24 s (+15 %, 100 M short-lived
-`Node`s: every allocation is armed and every release goes through the depth bookkeeping; +12 % instructions), json 1.89 -> 2.20 s (+16 %),
-wordcount 7.5 -> 8.1 s (+8 %), strbuild 1.41 -> 1.40 s (strings are never armed); peak RSS unchanged (json 125 -> 128 MiB). The
-compiler compiling itself (stage1 without, stage3 with the collector): 633 MiB peak RSS both, 27 s both. Programs with garbage cycles get
-the opposite trade: `stress_cycles` peak RSS 35 MiB -> 134 MiB at 4x the rounds without the collector, a flat 11.4 MiB with it.
+Reference: the same benchmark compiled by `origin/main` (no collector), runtime built the same way (-O1, like `libminirt.a`). The
+host is shared and noisy, so the main metric is the instruction count (`valgrind --tool=cachegrind --cache-sim=no`, deterministic);
+CPU time (user+sys, `taskset`, median of 7 interleaved runs) is the check.
+
+| Benchmark | first collector: CPU | stack floor + collector tuning: CPU | final: instructions vs no collector |
+|---|---:|---:|---:|
+| binarytrees | +12.4 % | +3.7 % | 13.83 G vs 15.40 G (-10 %) |
+| json | +14.5 % | +5.8 % | 6.27 G vs 6.38 G (-2 %) |
+| wordcount | +0.2 % | -1.7 % | 32.57 G vs 32.61 G (-0.1 %) |
+| strbuild | +7.7 % | +4.2 % | 13.22 G vs 13.94 G (-5 %) |
+
+What each step bought (binarytrees, json instructions): the counter of the release depth was half of the overhead (a store-to-load chain
+through the whole recursion) and became one read-only compare; the collector itself was most of the rest on json (three fruitless
+collections visiting 1.5 M objects: the limits above, one visitor function per phase instead of a switch per child); `StringBuilder`
+stopped being armed; and the compiler-picked allocation entries (`mk_alloc_armed` / `mk_alloc_plain` / `mk_alloc_sized_plain`) skip
+both the run-time arming test and two layers of the generic path. Part of the last gain (shorter entries) would also speed up a
+runtime without the collector; the CPU columns do not contain it. The compiler compiling itself (stage1 without, stage3 with the
+collector): 633 MiB peak RSS both, 27 s both. Programs with garbage cycles get the opposite trade: `stress_cycles` peak RSS 35 MiB ->
+134 MiB at 4x the rounds without the collector, a flat peak with it (bounded by the 32 MiB floor plus the live heap; `stress-rss` checks 4x vs 1x rounds).
 
 ### Tests
 

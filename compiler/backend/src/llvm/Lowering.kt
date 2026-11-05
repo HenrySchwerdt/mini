@@ -17,7 +17,7 @@ import mini.backend.MirStmt
 import mini.backend.MirType
 import mini.backend.NativeConventions
 import mini.backend.Tracking
-import mini.backend.cycleCapableType
+import mini.backend.CycleAnalysis
 import mini.backend.RcFunctionPlan
 import mini.backend.RcOpt
 import mini.backend.RcPlan
@@ -124,6 +124,7 @@ private class Lowering<V : Any, B : Any>(
 
     val sig = HashMap<String, MirFunction>()
     val classes = HashMap<String, MirClass>()
+    val cycles = CycleAnalysis(classes) // which classes can be part of a reference cycle
 
     /** Classes (C names) whose instances are cycle collection candidates: they have a trace function. */
     val cyclicClasses = HashSet<String>()
@@ -882,7 +883,7 @@ private class Lowering<V : Any, B : Any>(
                 dispose = b.global("${c.cName}_dispose")
             }
             // cycle collection (docs/memory-model.md, "Cycles"): visits the fields that can lead to a cycle; strings and boxes cannot
-            val traceFields = refFields.filter { cycleCapableType(it.type) }
+            val traceFields = refFields.filter { cycles.fieldCapable(c, it) }
             val superTraced = sup != null && cyclicClasses.contains(sup.cName)
             var trace: V = b.constNull()
             if (traceFields.isNotEmpty() || superTraced) {
@@ -958,7 +959,12 @@ private class Lowering<V : Any, B : Any>(
             val pnames = ps.indices.map { "a$it" }
             val ptypes = ps.map { ity(it.type) }
             val pexts = ps.map { ext(it.type) }
-            val alloc = declare("mk_alloc", TString, listOf(TString))
+            val allocName = when {
+                classes[cls]?.external != false -> "mk_alloc"
+                cyclicClasses.contains(cls) -> "mk_alloc_armed"
+                else -> "mk_alloc_plain"
+            }
+            val alloc = declare(allocName, TString, listOf(TString))
             beginGenerated(IrSection.CLASSES, "${f.cName}_new", TString, pnames, ptypes, pexts, IrLinkage.EXTERNAL)
             val a = call(TString, alloc, listOf(TString), listOf(b.global("${cls}_ti")))
             val argv = ArrayList<V>()

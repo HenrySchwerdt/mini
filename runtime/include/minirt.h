@@ -80,6 +80,10 @@ enum {
 /* Allocates a zeroed instance with refcount 1 from the default (Managed) allocator
  * (see mk_default_allocator). Aborts through mk_panic on out-of-memory. */
 MkObject *mk_alloc(const MkTypeInfo *type);
+/* Same, with the cycle collection decision made by the compiler (it knows whether the class has a trace function): the object is
+ * armed (MK_FLAG_ARMED) / never armed. `mk_alloc` decides at run time from `type->trace`. */
+MkObject *mk_alloc_armed(const MkTypeInfo *type);
+MkObject *mk_alloc_plain(const MkTypeInfo *type);
 
 /* Slow path of the generated `<object>_get` accessors of Kotlin `object`s and file classes holding top-level properties:
  * creates the instance and runs its initialiser once, also when threads race on the first access. `*slot` is published

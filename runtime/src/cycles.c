@@ -31,7 +31,7 @@ enum { BLACK = 0, GRAY = 1, WHITE = 2, PURPLE = 3, DEAD = 4 /* = MK_CYCLES_ZOMBI
 #define PIN 0x40000000u /* count of a garbage object while its dispose runs */
 #define MIN_THRESHOLD 32768u
 #define MAX_THRESHOLD (1u << 21)
-#define MIN_ALLOC_LIMIT ((size_t)16 << 20) /* bytes of new candidate-capable objects between two collections, at least */
+#define MIN_ALLOC_LIMIT ((size_t)32 << 20) /* bytes of new candidate-capable objects between two collections, at least */
 #define MAX_THREADED_ROOTS (1u << 20)
 #define MAX_SLOTS ((1u << 21) - 4096)
 
@@ -40,7 +40,7 @@ volatile int mk_threads_running = 0;
 static MkObject **roots;
 static size_t roots_n, roots_cap;
 static size_t threshold = MIN_THRESHOLD;
-size_t mk_cycles_alloc_bytes;
+
 static size_t alloc_limit = MIN_ALLOC_LIMIT;
 static uint64_t work_bytes;
 static int trace_enabled = -1;
@@ -52,12 +52,18 @@ typedef struct { MkObject **v; size_t n, cap; } Stack;
 static Stack stack_a, stack_b, garbage, carry;
 static Stack *cs = &stack_a; /* where visit() pushes */
 
-static void stack_push(Stack *s, MkObject *o) {
-    if (s->n == s->cap) {
-        s->cap = s->cap ? s->cap * 2 : 1024;
-        s->v = (MkObject **)realloc(s->v, s->cap * sizeof(MkObject *));
-        if (s->v == NULL) mk_panic("out of memory");
-    }
+#if defined(__GNUC__) || defined(__clang__)
+#define MK_CYC_NOINLINE __attribute__((noinline))
+#else
+#define MK_CYC_NOINLINE
+#endif
+MK_CYC_NOINLINE static void stack_grow(Stack *s) {
+    s->cap = s->cap ? s->cap * 2 : 1024;
+    s->v = (MkObject **)realloc(s->v, s->cap * sizeof(MkObject *));
+    if (s->v == NULL) mk_panic("out of memory");
+}
+static inline void stack_push(Stack *s, MkObject *o) {
+    if (s->n == s->cap) stack_grow(s);
     s->v[s->n++] = o;
 }
 
@@ -66,36 +72,42 @@ static inline bool cyclic(const MkObject *o) { return o != NULL && (o->flags & (
 
 /* ---- the phases (explicit stacks: the graphs can be millions of objects deep) ---- */
 
-static int phase;
 static uint64_t work;
 
-static void visit(MkObject *c, void *ctx) {
+/* One visitor per phase (the trace functions call it through a pointer for every reference field: no switch per child). */
+static void visit_mark(MkObject *c, void *ctx) { /* trial-delete the reference, colour gray */
     (void)ctx;
     if (!cyclic(c)) return;
-    switch (phase) {
-    case 0: /* mark gray: trial-delete the reference */
-        c->refcount--;
-        if (COLOR(c) != GRAY) { SET_COLOR(c, GRAY); stack_push(cs, c); }
-        break;
-    case 1: /* scan black: give the reference back */
-        c->refcount++;
-        if (COLOR(c) != BLACK) { SET_COLOR(c, BLACK); stack_push(cs, c); }
-        break;
-    case 2: /* scan: children of a white object */
-        if (COLOR(c) == GRAY) stack_push(cs, c);
-        break;
-    case 4: /* garbage about to be disposed: give back the trial deletion of its references to live objects (the dispose
-             * releases them for real) */
-        c->refcount++;
-        break;
-    case 3: /* collect white */
-        if (COLOR(c) == WHITE) {
-            SET_COLOR(c, DEAD);
-            c->flags &= ~(MK_FLAG_ARMED | MK_FLAG_BUFFERED);
-            stack_push(cs, c);
-            stack_push(&garbage, c);
-        }
-        break;
+    c->refcount--;
+    if (COLOR(c) != GRAY) { SET_COLOR(c, GRAY); stack_push(cs, c); }
+}
+
+static void visit_restore(MkObject *c, void *ctx) { /* scan black: give the reference back */
+    (void)ctx;
+    if (!cyclic(c)) return;
+    c->refcount++;
+    if (COLOR(c) != BLACK) { SET_COLOR(c, BLACK); stack_push(cs, c); }
+}
+
+static void visit_scan(MkObject *c, void *ctx) { /* children of a white object */
+    (void)ctx;
+    if (cyclic(c) && COLOR(c) == GRAY) stack_push(cs, c);
+}
+
+static void visit_unmark(MkObject *c, void *ctx) { /* garbage about to be disposed: give back the trial deletion of its references to
+                                                      * live objects (the dispose releases them for real) */
+    (void)ctx;
+    if (cyclic(c)) c->refcount++;
+}
+
+static void visit_collect(MkObject *c, void *ctx) { /* collect white */
+    (void)ctx;
+    if (!cyclic(c)) return;
+    if (COLOR(c) == WHITE) {
+        SET_COLOR(c, DEAD);
+        c->flags &= ~(MK_FLAG_ARMED | MK_FLAG_BUFFERED);
+        stack_push(cs, c);
+        stack_push(&garbage, c);
     }
 }
 
@@ -103,34 +115,35 @@ static inline size_t block_bytes(const MkObject *o) {
     return *(const size_t *)(const void *)((const unsigned char *)o - MK_PREFIX_SIZE + sizeof(void *));
 }
 
-static inline void trace_of(MkObject *o) {
-    if (phase == 0) { /* (the mark phase expands every visited object once) */
-        work++;
-        work_bytes += block_bytes(o);
-    }
+static inline void trace_with(MkObject *o, void (*visit)(MkObject *, void *)) {
     if (o->type->trace != NULL) o->type->trace(o, visit, NULL);
 }
 
-static void run_stack(Stack *st) {
+static void run_stack_mark(Stack *st) { /* (the mark phase expands every visited object once: it also measures the work) */
     cs = st;
     while (st->n > 0) {
         MkObject *o = st->v[--st->n];
-        trace_of(o);
+        work++;
+        work_bytes += block_bytes(o);
+        trace_with(o, visit_mark);
     }
 }
 
+static void run_stack(Stack *st, void (*visit)(MkObject *, void *)) {
+    cs = st;
+    while (st->n > 0) trace_with(st->v[--st->n], visit);
+}
+
 static void mark_gray(MkObject *s) {
-    phase = 0;
     SET_COLOR(s, GRAY);
     stack_push(&stack_a, s);
-    run_stack(&stack_a);
+    run_stack_mark(&stack_a);
 }
 
 static void scan_black(MkObject *s) {
-    phase = 1;
     SET_COLOR(s, BLACK);
     stack_push(&stack_b, s);
-    run_stack(&stack_b);
+    run_stack(&stack_b, visit_restore);
 }
 
 static void scan(MkObject *s) {
@@ -142,20 +155,18 @@ static void scan(MkObject *s) {
             scan_black(o);
         } else {
             SET_COLOR(o, WHITE);
-            phase = 2;
             cs = &stack_a;
-            trace_of(o);
+            trace_with(o, visit_scan);
         }
     }
 }
 
 static void collect_white(MkObject *s) {
-    phase = 3;
     SET_COLOR(s, DEAD);
     s->flags &= ~(MK_FLAG_ARMED | MK_FLAG_BUFFERED);
     stack_push(&stack_a, s);
     stack_push(&garbage, s);
-    run_stack(&stack_a);
+    run_stack(&stack_a, visit_collect);
 }
 
 static void run_dispose(MkObject *o) {
@@ -214,8 +225,7 @@ size_t mk_cycles_collect(void) {
     if (roots == NULL) { roots = list; roots_cap = list_cap; roots_n = 0; } else free(list);
     /* the garbage: pinned, disposed (releases the live objects it holds), freed */
     for (size_t i = 0; i < garbage.n; i++) garbage.v[i]->refcount = PIN;
-    phase = 4;
-    for (size_t i = 0; i < garbage.n; i++) trace_of(garbage.v[i]);
+    for (size_t i = 0; i < garbage.n; i++) trace_with(garbage.v[i], visit_unmark);
     for (size_t i = 0; i < garbage.n; i++) run_dispose(garbage.v[i]);
     uint64_t garbage_bytes = 0;
     for (size_t i = 0; i < garbage.n; i++) {
@@ -229,14 +239,14 @@ size_t mk_cycles_collect(void) {
     /* adaptive trigger: the next collection comes after as many new candidates as a quarter of the work of this one, so the
      * cost per candidate stays bounded however large the live graph is */
     /* collections that free next to nothing (a big live graph that is only retained and released) are made rarer, up to 32 times */
-    backoff = freed * 8 < work ? (backoff < 32 ? backoff * 2 : backoff) : 1;
+    backoff = freed * 8 < work ? (backoff < 64 ? backoff * 4 : backoff) : 1;
     size_t live = (size_t)(work > freed ? work - freed : 0);
     size_t t = live / 4;
     threshold = (t > MAX_THRESHOLD ? MAX_THRESHOLD : t > MIN_THRESHOLD ? t : MIN_THRESHOLD) * backoff;
     if (threshold > MAX_SLOTS) threshold = MAX_SLOTS; /* (the slot index has 21 bits) */
     /* allocation volume: the next collection after twice the bytes that survived this one (the live heap triples at most) */
     uint64_t live_bytes = work_bytes > garbage_bytes ? work_bytes - garbage_bytes : 0;
-    alloc_limit = (live_bytes * 2 > MIN_ALLOC_LIMIT ? (size_t)(live_bytes * 2) : MIN_ALLOC_LIMIT) * backoff;
+    alloc_limit = (live_bytes * 3 > MIN_ALLOC_LIMIT ? (size_t)(live_bytes * 3) : MIN_ALLOC_LIMIT) * backoff;
     mk_cycles_alloc_bytes = 0;
     if (trace_enabled < 0) { const char *e = getenv("MINI_GC_TRACE"); trace_enabled = e != NULL && e[0] != '\0' && e[0] != '0'; }
     if (trace_enabled) fprintf(stderr, "[cycles] roots=%zu visited=%llu (%llu bytes survive) freed=%zu next: %zu roots or %zu bytes\n", n, (unsigned long long)work, (unsigned long long)live_bytes, freed_now, threshold, alloc_limit);

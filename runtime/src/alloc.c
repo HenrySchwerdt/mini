@@ -24,6 +24,7 @@
 #include <string.h>
 
 MK_TLS MkAllocCtx mk_tls_ctx;
+size_t mk_cycles_alloc_bytes; /* (defined here, next to its only writer: a direct access) */
 
 /* malloc/free underneath both the Rc and the Heap allocator. Stateless, so
  * trivially thread-safe. */
@@ -60,8 +61,15 @@ size_t mk_object_block_size(const MkTypeInfo *type) {
     return type->instance_size + MK_PREFIX_SIZE;
 }
 
-MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, size_t size,
-                              const char *site) {
+#if defined(__GNUC__) || defined(__clang__)
+#define MK_ALLOC_INLINE static inline __attribute__((always_inline))
+#else
+#define MK_ALLOC_INLINE static inline
+#endif
+
+/* arm: 1 = the object of the default (Managed) allocator is a cycle collection candidate, 0 = it is not (the compiler knows
+ * which; the allocator must be the default one for 1), -1 = decide here (default allocator and a trace function). */
+MK_ALLOC_INLINE MkObject *alloc_object(MkAllocator *allocator, const MkTypeInfo *type, size_t size, const char *site, int arm) {
     if (type == NULL || size < sizeof(MkObject)) return NULL;
     if (allocator == NULL) allocator = &default_allocator;
     if (size > SIZE_MAX - MK_PREFIX_SIZE) return NULL;
@@ -110,13 +118,17 @@ have_block:
     object->type = type;
     object->refcount = 1;
     /* a Managed object of a class that can be in a reference cycle: a candidate for the cycle collector (cycles.c) */
-    if (allocator == &default_allocator && type->trace != NULL) {
+    if (arm > 0 || (arm < 0 && allocator == &default_allocator && type->trace != NULL)) {
         object->flags = MK_FLAG_ARMED;
         mk_cycles_alloc_bytes += total; /* (not atomic: only a heuristic) */
     } else {
         object->flags = 0;
     }
     return object;
+}
+
+MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, size_t size, const char *site) {
+    return alloc_object(allocator, type, size, site, -1);
 }
 
 MkObject *mk_alloc_sized(MkAllocator *allocator, const MkTypeInfo *type, size_t size) {
@@ -131,6 +143,23 @@ MkObject *mk_alloc_with(MkAllocator *allocator, const MkTypeInfo *type) {
 MkObject *mk_alloc_with_site(MkAllocator *allocator, const MkTypeInfo *type, const char *site) {
     if (type == NULL) return NULL;
     return mk_alloc_sized_site(allocator, type, type->instance_size, site);
+}
+
+/* A block of `size` bytes of the default allocator for a type that is never a cycle collection candidate (strings, primitive arrays). */
+MkObject *mk_alloc_sized_plain(const MkTypeInfo *type, size_t size) {
+    return alloc_object(&default_allocator, type, size, NULL, 0);
+}
+
+MkObject *mk_alloc_armed(const MkTypeInfo *type) {
+    MkObject *object = alloc_object(&default_allocator, type, type->instance_size, NULL, 1);
+    if (object == NULL) mk_panic("out of memory");
+    return object;
+}
+
+MkObject *mk_alloc_plain(const MkTypeInfo *type) {
+    MkObject *object = alloc_object(&default_allocator, type, type->instance_size, NULL, 0);
+    if (object == NULL) mk_panic("out of memory");
+    return object;
 }
 
 MkObject *mk_alloc(const MkTypeInfo *type) {

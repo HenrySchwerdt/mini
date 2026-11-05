@@ -402,7 +402,8 @@ static MkObject *array_new(const MkTypeInfo *type, MkInt length, size_t elem) {
         mk_raise(&MkNegativeArraySizeException_ti, buf);
         return NULL;
     }
-    MkObject *o = mk_alloc_sized(NULL, type, sizeof(MkArray) + elem * (size_t)length);
+    size_t bytes = sizeof(MkArray) + elem * (size_t)length;
+    MkObject *o = type == &MkObjectArray_ti ? mk_alloc_sized(NULL, type, bytes) : mk_alloc_sized_plain(type, bytes); /* (primitive arrays are never candidates) */
     ((MkArray *)o)->length = length;
     return o;
 }

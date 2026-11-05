@@ -211,6 +211,7 @@ static void run_thread_body(MkThread *th) {
     }
     mk_release(th->fn);
     th->fn = NULL;
+    mk_release_drain();
     __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST); /* the last reference count operation of this thread */
 }
 

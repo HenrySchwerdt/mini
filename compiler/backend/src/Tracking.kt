@@ -143,3 +143,58 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
 
 /** A reference of this type can be part of a reference cycle (cycle collection traces it): strings and boxed primitives hold no references. */
 fun cycleCapableType(t: MirType): Boolean = t.isRef && t !== TString && t !== TNString && t !== TNull && t !is TBoxed
+
+/**
+ * Which classes of a program can never be part of a reference cycle (docs/memory-model.md, "Cycles"): their instances are not
+ * candidates for the cycle collector (no trace function, never armed), so releasing them costs nothing extra. A class is acyclic
+ * when none of the fields it declares or inherits can lead back to an object that holds references: every field is a string, a
+ * boxed primitive, a primitive array, or a reference to a *final* acyclic class of the program (a class without subclasses: a
+ * subclass could add a field that closes a cycle). `Any`, interfaces, object arrays, classes defined by the runtime and classes
+ * on a cycle of field types are cycle capable. Decided once per class at compile time, the same way by both backends.
+ */
+class CycleAnalysis(private val classes: Map<String, MirClass>) {
+    private val memo = HashMap<String, Boolean>() // class C name -> acyclic
+    private val visiting = HashSet<String>()
+    private var subclassedSet: Set<String>? = null
+    private fun subclassed(): Set<String> {
+        var r = subclassedSet
+        if (r == null) { r = classes.values.mapNotNull { it.superCName }.toSet(); subclassedSet = r }
+        return r
+    }
+
+    /** The field [f] of [owner] can lead to a cycle (a reference field that cannot is not traced). */
+    fun fieldCapable(owner: MirClass, f: MirField): Boolean {
+        // the native buffer of a StringBuilder is typed Any in the library, but it only ever holds characters
+        if (owner.qualifiedName == "kotlin.text.StringBuilder" && f.name == "buf") return false
+        return typeCapable(f.type)
+    }
+
+    private fun typeCapable(t: MirType): Boolean {
+        if (!cycleCapableType(t)) return false
+        if (t !is TObject) return true
+        if (t.cName in PRIMITIVE_ARRAYS) return false
+        if (t.isInterface || t.cName == ANY_CNAME) return true
+        return !classAcyclic(t.cName)
+    }
+
+    private fun classAcyclic(cName: String): Boolean {
+        memo[cName]?.let { return it }
+        val c = classes[cName] ?: return false
+        if (c.external || c.isInterface || cName in subclassed()) return false
+        if (!visiting.add(cName)) return false // on a cycle of field types
+        var ok = true
+        var k: MirClass? = c
+        while (ok && k != null) {
+            if (k.external || k.isInterface) { ok = false; break }
+            for (f in k.fields) if (fieldCapable(k, f)) { ok = false; break }
+            k = k.superCName?.let { classes[it] }
+        }
+        visiting.remove(cName)
+        memo[cName] = ok
+        return ok
+    }
+
+    private companion object {
+        val PRIMITIVE_ARRAYS = setOf("MkIntArray", "MkLongArray", "MkDoubleArray", "MkBooleanArray", "MkCharArray", "MkFloatArray", "MkByteArray", "MkShortArray")
+    }
+}
