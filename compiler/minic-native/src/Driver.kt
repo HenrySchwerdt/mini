@@ -1,6 +1,7 @@
 package mini.minicnative
 
 import mini.backend.CEmitter
+import mini.backend.Devirt
 import mini.backend.Mangling
 import mini.backend.WasmGlue
 import mini.backend.MirModule
@@ -137,6 +138,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     var llOut: String? = null
     var cOut: String? = null
     var rcOpt = true
+    var noDevirt = false
     var wasm32 = false
     var wasmLib = false
     var separateMlibs = false
@@ -260,6 +262,9 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         } else if (a == "--") {
             for (k in i + 1 until args.size) programArgs.add(args[k])
             i = args.size
+        } else if (a == "--no-devirt") {
+            noDevirt = true
+            i += 1
         } else if (a == "--no-rc-opt") {
             rcOpt = false
             i += 1
@@ -390,7 +395,12 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
             val userModule = lowerToMirAgainstLibs(inputs, ordered, name, lineDirs, { report -> reportMemory(report, name, werror, false, diag) })
             validateMlibFailures(userModule, ordered)
             userModule
-        } else lowerToMirWithLibs(inputs, ordered, name, lineDirs) { report -> reportMemory(report, name, werror, false, diag) }
+        } else {
+            // the whole program is linked and pruned here: calls with a single possible target become direct calls
+            // (a wasm library keeps its virtual calls: its exports can be called with objects the program never makes)
+            val whole = lowerToMirWithLibs(inputs, ordered, name, lineDirs) { report -> reportMemory(report, name, werror, false, diag) }
+            if (wasmLib || noDevirt) whole else Devirt.run(whole)
+        }
     } catch (e: LowerDiagnostics) {
         reportFrontend(e, name, diag)
         throw DriverExit(1)

@@ -140,14 +140,27 @@ int main(void) {
     MkObject *got = mk_ref_array_get(arr, 1);
     CHECK(got != NULL);
     CHECK_STR((MkString *)got, "elem");
-    MkObject *boxed = mk_box_int(42);
+    MkObject *boxed = mk_box_int(424242); /* outside the box cache: a heap box */
     mk_ref_array_set_o(arr, 2, boxed); /* the array takes over the caller's reference */
     CHECK_EQ_INT(boxed->refcount, 1);
     mk_ref_array_set(arr, 1, NULL);
     MkObject *b2 = mk_ref_array_get(arr, 2);
-    CHECK_EQ_INT(mk_unbox_int(b2), 42);
+    CHECK_EQ_INT(mk_unbox_int(b2), 424242);
     mk_release(b2);
     mk_release(arr);
+    /* growing: the slots move, the counts do not change, the old array is left empty */
+    {
+        MkObject *src = mk_ref_array_new(2);
+        MkObject *item = mk_box_int(777777);
+        mk_ref_array_set_o(src, 0, item);
+        MkObject *dst = mk_ref_array_new(5);
+        mk_ref_array_move(dst, src, 2);
+        CHECK(mk_ref_array_get_b(dst, 0) == item);
+        CHECK(mk_ref_array_get_b(src, 0) == NULL);
+        CHECK_EQ_INT(item->refcount, 1);
+        mk_release(src);
+        mk_release(dst); /* frees the item exactly once */
+    }
     MkObject *empty_arr = mk_ref_array_new(0);
     CHECK_EQ_INT(mk_ref_array_length(empty_arr), 0);
     mk_release(empty_arr);

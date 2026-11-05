@@ -532,8 +532,19 @@ find_cc
 # Mach-O records function boundaries without extra section flags. Let the linker discard unused code in
 # optimized native executables, while retaining the existing debug/O0 behavior and other platforms' flags.
 native_link_flags=""
+size_cflags=""
 if [ "$debug" = 0 ] && [ "$opt" != "-O0" ]; then
-    case "$(uname -s)" in Darwin) native_link_flags="-Wl,-dead_strip" ;; esac
+    case "$(uname -s)" in
+        Darwin) native_link_flags="-Wl,-dead_strip" ;;
+        # ELF: one section per function and datum (the runtime archive is built that way too), so that --gc-sections drops
+        # what the program never calls; no unwind tables (the error-return ABI has no unwinding; MINIC_UNWIND_TABLES=1 keeps
+        # them for profilers and debuggers that walk the stack with them)
+        Linux)
+            native_link_flags="-Wl,--gc-sections"
+            size_cflags="-ffunction-sections -fdata-sections"
+            [ -n "${MINIC_UNWIND_TABLES:-}" ] || size_cflags="$size_cflags -fno-unwind-tables -fno-asynchronous-unwind-tables"
+            ;;
+    esac
 fi
 if [ "$backend" = llvm-api ]; then
     frontend_api "$exe"
@@ -546,7 +557,8 @@ if [ -n "$emit" ]; then cfile="$emit"; else cfile="$tmp/$base.c"; fi
 
 frontend build "$cfile"
 
-cflags="-std=c17 $opt -w"
+# -fno-math-errno: Kotlin has no errno, and the math builtins (sqrt) then compile to the instruction alone
+cflags="-std=c17 $opt -w -fno-math-errno $size_cflags"
 if [ "$debug" = 1 ]; then cflags="$cflags -g -fno-omit-frame-pointer"; fi
 
 # libraries asked for by @file:CLink("name") travel in the generated C as `mini:link name`
