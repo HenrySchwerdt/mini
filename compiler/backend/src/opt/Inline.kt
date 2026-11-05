@@ -95,6 +95,9 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
     /** Is [f] inlinable? Returns what the expander needs to know. */
     fun analyze(f: MirFunction): InlineInfo? {
         if (f.strict || f.returnType === TNothing || f.cName == Mangling.MAIN) return null
+        val self = CallCollector()
+        self.walk(f.body)
+        if (self.names.contains(f.cName)) return null   // directly recursive
         val size = NodeCounter()
         size.walk(f.body)
         if (size.count > Inliner.SIZE_LIMIT) return null

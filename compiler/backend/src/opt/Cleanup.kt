@@ -97,6 +97,27 @@ private class CleanupPass(val u: UseScan, val f: MirFunction) : MirTransform() {
         var out: ArrayList<MirStmt>? = null
         while (i < cur.size) {
             val s = cur[i]
+            if (s is MirStmt.Declare && inDoWhile == 0 && !u.isParam(s.local) && u.assignCount(s.local) == 1 && (s.init == null || isDefaultConst(s.init))) {
+                // `declare x; ...; x = v` where the assignment is the first thing that mentions x: declare it there, with v
+                var j = i + 1
+                while (j < cur.size && !Mentions.of(cur[j], s.local)) j++
+                if (j < cur.size) {
+                    val a = cur[j]
+                    if (a is MirStmt.Assign && a.local === s.local && !Mentions.exprUses(a.value, s.local)) {
+                        val d = MirStmt.Declare(s.local, a.value)
+                        d.srcLine = a.srcLine
+                        d.srcFile = a.srcFile
+                        val head = ArrayList<MirStmt>()
+                        for (k in cur.indices) {
+                            if (k == i) continue
+                            head.add(if (k == j) d else cur[k])
+                        }
+                        cur = head
+                        out = ArrayList(cur)
+                        continue
+                    }
+                }
+            }
             if (s is MirStmt.Declare && s.init == null && inDoWhile == 0 && !u.isParam(s.local) && u.useCount(s.local) == 0 && u.assignCount(s.local) == 0) {
                 val head = ArrayList<MirStmt>()
                 for (k in 0 until cur.size) if (k != i) head.add(cur[k])
@@ -182,5 +203,36 @@ private class CleanupPass(val u: UseScan, val f: MirFunction) : MirTransform() {
             return true
         }
         return false
+    }
+}
+
+internal fun isDefaultConst(e: MirExpr?): Boolean =
+    e is MirExpr.IntConst || e is MirExpr.LongConst || e is MirExpr.DoubleConst || e is MirExpr.BooleanConst || e is MirExpr.CharConst || e is MirExpr.NullConst
+
+/** Does a statement (or a nested one) mention a local: read it, assign it or declare it? */
+internal class Mentions(val l: MirLocal) : MirVisitor() {
+    var found = false
+    override fun visit(e: MirExpr) {
+        if (e is MirExpr.Local && e.local === l) found = true
+    }
+    override fun stmt(s: MirStmt): MirStmt {
+        if (s is MirStmt.Assign && s.local === l) found = true
+        if (s is MirStmt.Declare && s.local === l) found = true
+        if (s is MirStmt.ForRange && s.variable === l) found = true
+        return super.stmt(s)
+    }
+
+    companion object {
+        fun of(s: MirStmt, l: MirLocal): Boolean {
+            val m = Mentions(l)
+            m.stmt(s)
+            return m.found
+        }
+
+        fun exprUses(e: MirExpr, l: MirLocal): Boolean {
+            val m = Mentions(l)
+            m.expr(e)
+            return m.found
+        }
     }
 }
