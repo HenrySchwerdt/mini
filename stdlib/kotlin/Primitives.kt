@@ -17,6 +17,8 @@ public class Byte private constructor() : Number(), Comparable<Byte> {
     public companion object {
         public const val MIN_VALUE: Byte = -128
         public const val MAX_VALUE: Byte = 127
+        public const val SIZE_BYTES: Int = 1
+        public const val SIZE_BITS: Int = 8
     }
     public override operator fun compareTo(other: Byte): Int
     public operator fun compareTo(other: Short): Int
@@ -78,6 +80,8 @@ public class Short private constructor() : Number(), Comparable<Short> {
     public companion object {
         public const val MIN_VALUE: Short = -32768
         public const val MAX_VALUE: Short = 32767
+        public const val SIZE_BYTES: Int = 2
+        public const val SIZE_BITS: Int = 16
     }
     public operator fun compareTo(other: Byte): Int
     public override operator fun compareTo(other: Short): Int
@@ -139,6 +143,8 @@ public class Int private constructor() : Number(), Comparable<Int> {
     public companion object {
         public const val MIN_VALUE: Int = -2147483647 - 1
         public const val MAX_VALUE: Int = 2147483647
+        public const val SIZE_BYTES: Int = 4
+        public const val SIZE_BITS: Int = 32
     }
     public operator fun compareTo(other: Byte): Int
     public operator fun compareTo(other: Short): Int
@@ -207,6 +213,8 @@ public class Long private constructor() : Number(), Comparable<Long> {
     public companion object {
         public const val MIN_VALUE: Long = -9223372036854775807L - 1L
         public const val MAX_VALUE: Long = 9223372036854775807L
+        public const val SIZE_BYTES: Int = 8
+        public const val SIZE_BITS: Int = 64
     }
     public operator fun compareTo(other: Byte): Int
     public operator fun compareTo(other: Short): Int

@@ -77,14 +77,29 @@ public fun Double.pow(n: Int): Double = this.pow(n.toDouble())
 public fun log(x: Double, base: Double): Double =
     if (base <= 0.0 || base == 1.0) Double.NaN else ln(x) / ln(base)
 
-/** Ties are rounded towards positive infinity (like `Math.round`). */
+/** Rounds half up (ties toward positive infinity), like kotlin-stdlib; NaN is an error. */
+private fun roundHalfUp(x: Double): Double {
+    val r = floor(x)
+    return if (x - r >= 0.5) r + 1.0 else r
+}
+
 public fun Double.roundToInt(): Int =
-    if (this != this) 0 else if (this >= 2147483647.0) Int.MAX_VALUE else if (this <= -2147483648.0) Int.MIN_VALUE else roundHalfUp(this).toInt()
+    if (this != this) throw IllegalArgumentException("Cannot round NaN value.")
+    else if (this >= 2147483647.0) Int.MAX_VALUE else if (this <= -2147483648.0) Int.MIN_VALUE else roundHalfUp(this).toInt()
 
 public fun Double.roundToLong(): Long =
-    if (this != this) 0L else if (this >= 9.223372036854775807E18) Long.MAX_VALUE else if (this <= -9.223372036854775808E18) Long.MIN_VALUE else roundHalfUp(this).toLong()
+    if (this != this) throw IllegalArgumentException("Cannot round NaN value.")
+    else if (this >= 9.223372036854775807E18) Long.MAX_VALUE else if (this <= -9.223372036854775808E18) Long.MIN_VALUE else roundHalfUp(this).toLong()
 
-private fun roundHalfUp(x: Double): Double {
-    val f = floor(x)
-    return if (x - f >= 0.5) f + 1.0 else f
-}
+public fun Float.roundToInt(): Int = toDouble().roundToInt()
+public fun Float.roundToLong(): Long = toDouble().roundToLong()
+
+public fun abs(x: Float): Float = if (x < 0.0f) -x else if (x == 0.0f) 0.0f else x
+public fun max(a: Float, b: Float): Float = if (a != a) a else if (b != b) b else if (a > b) a else if (b > a) b else if (a == 0.0f && 1.0f / a < 0.0f) b else a
+public fun min(a: Float, b: Float): Float = if (a != a) a else if (b != b) b else if (a < b) a else if (b < a) b else if (a == 0.0f && 1.0f / a < 0.0f) a else b
+
+public val Int.absoluteValue: Int get() = abs(this)
+public val Long.absoluteValue: Long get() = abs(this)
+public val Double.absoluteValue: Double get() = abs(this)
+public val Float.absoluteValue: Float get() = abs(this)
+

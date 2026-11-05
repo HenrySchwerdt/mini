@@ -197,6 +197,18 @@ data class TObject(
     val typeInfo: String get() = if (cName == ANY_CNAME) "mk_type_Any" else "${cName}_ti"
 }
 
+/**
+ * An unboxed value class over a primitive ([rep]): represented exactly like [rep] (C type, registers, fields), never reference
+ * counted. Its boxed form is `TBoxed(this)`, an object of the class [cName] (what `Any`, generics and `Foo?` hold).
+ */
+data class TInline(val qualifiedName: String, val cName: String, val rep: MirType) : MirType(qualifiedName) {
+    override fun toString(): String = displayName
+}
+
+/** The type with every [TInline] replaced by its representation. */
+val MirType.repr: MirType
+    get() = if (this is TInline) rep.repr else this
+
 /** `Int?`, `Long?`, `Boolean?`, `Double?`, `Char?`: a boxed primitive (a reference). */
 data class TBoxed(val prim: MirType) : MirType(prim.displayName + "?")
 
@@ -204,11 +216,11 @@ val MirType.isRef: Boolean
     get() = this === TString || this === TNString || this is TObject || this is TBoxed || this === TNull
 
 val MirType.isPrimitive: Boolean
-    get() = this === TInt || this === TLong || this === TBoolean || this === TDouble || this === TChar || this === TFloat
+    get() = this === TInt || this === TLong || this === TBoolean || this === TDouble || this === TChar || this === TFloat || this === TByte || this === TShort || this is TInline
 
 /** Byte, Short and pointers: the value types that exist for C interop but cannot be boxed. */
 val MirType.isInteropScalar: Boolean
-    get() = this === TByte || this === TShort || this is TPtr
+    get() = this is TPtr
 
 fun MirType.nonNull(): MirType = when (this) {
     TNString -> TString
@@ -222,7 +234,7 @@ fun MirType.asNullable(): MirType = when (this) {
     TString -> TNString
     is TPtr -> TPtr(true)
     is TObject -> if (nullable) this else copy(nullable = true)
-    TInt, TLong, TBoolean, TDouble, TChar, TFloat -> TBoxed(this)
+    TInt, TLong, TBoolean, TDouble, TChar, TFloat, TByte, TShort, is TInline -> TBoxed(this)
     else -> this
 }
 

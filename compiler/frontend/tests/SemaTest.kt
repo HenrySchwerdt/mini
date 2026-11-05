@@ -99,12 +99,11 @@ class SemaTest {
         val r = analyze(
             """
             fun f() {
-                val u = 1u
                 typealias Local = Int
             }
             """.trimIndent(),
         )
-        assertTrue(r.diags.any { it.startsWith("unsupported: unsigned literal") }, r.diags.toString())
+        assertTrue(r.diags.any { it.startsWith("unsupported:") }, r.diags.toString())
     }
 
     @Test

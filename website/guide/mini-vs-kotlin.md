@@ -66,7 +66,7 @@ Declarations and references are covered as follows (programs in `compiler/testda
 These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus what the samples on this site ran into. Using one gives a compile error such as `unsupported construct: ...`, never wrong code.
 
 - No coroutines or `suspend` functions (planned, on top of libuv).
-- `Byte` and `Short` are supported as unboxed scalars for C interop; nullable or boxed uses are restricted. `Float` is a real 32-bit type (`FloatArray`, `List<Float>`, `Float?`, IEEE float32 arithmetic). General `value class` support and unsigned types are not available.
+- Numeric types: `Byte`, `Short`, `Int`, `Long`, `Float`, `Double`, `Char` and the unsigned types `UByte`, `UShort`, `UInt`, `ULong` (literals `1u`, `1uL`, arrays `UIntArray`, ranges) follow Kotlin, including boxing in `Any`, nullable and generic positions. `Float` is a real 32-bit type. `value class` (also `@JvmInline`) over a primitive is unboxed; over a reference (String, objects, generics) it is an ordinary class with value `equals`/`hashCode`/`toString`. A value class with a secondary constructor is boxed too. `Number` members (`toInt()`, ...) work on boxed numbers. Not available: `UIntArray`/`ULongArray` vararg interop with C, `Iterable<UInt>.sum()`, unsigned `MIN_VALUE`/`MAX_VALUE` as compile-time `const`.
 - Local `object` declarations are rejected as in Kotlin; `typealias` is only allowed at the top level.
 - A lambda parameter of an `inline` function may only be invoked or passed on to another inline function; use `noinline` to store it.
 - No reflection beyond `KClass` names. `Regex` and `"..".format(..)` exist (own engine, java.util.Formatter subset); the static `String.format(..)` form and `sequence { yield() }` do not (see `docs/stdlib.md`, section 10).
@@ -74,6 +74,6 @@ These are the documented limits (`compiler/README.md`, `docs/stdlib.md`) plus wh
 - The generated C uses GNU statement expressions, so it needs clang or gcc (not MSVC).
 - Reference cycles leak under reference counting, for example a closure stored in a field of the object it captures.
 
-::: warning Strict mode and native code
-Programs in Strict mode are checked, but programs that use the allocator types (`Heap`, `Arena`, `Pool`) do not yet build natively: `minic build` stops with `unsupported construct: value class 'NativePtr'` while compiling `mini.memory`. Strict files that never touch an allocator (such as the [`@NoAlloc` sample](/memory/noalloc)) do build. Details in the [roadmap](/roadmap).
+::: tip Strict mode and native code
+Programs in Strict mode are checked and build natively, including programs that use the allocator types (`Heap`, `Arena`, `Pool`) and `context(...) { }`. Only `spawn` (threads) is not available yet.
 :::

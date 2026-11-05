@@ -49,6 +49,22 @@ public class FloatArray(size: Int) {
     public operator fun iterator(): kotlin.collections.FloatIterator
 }
 
+public class ByteArray(size: Int) {
+    public constructor(size: Int, init: (Int) -> Byte) : this(size)
+    public operator fun get(index: Int): Byte
+    public operator fun set(index: Int, value: Byte): Unit
+    public val size: Int
+    public operator fun iterator(): kotlin.collections.ByteIterator
+}
+
+public class ShortArray(size: Int) {
+    public constructor(size: Int, init: (Int) -> Short) : this(size)
+    public operator fun get(index: Int): Short
+    public operator fun set(index: Int, value: Short): Unit
+    public val size: Int
+    public operator fun iterator(): kotlin.collections.ShortIterator
+}
+
 public class DoubleArray(size: Int) {
     public constructor(size: Int, init: (Int) -> Double) : this(size)
     public operator fun get(index: Int): Double

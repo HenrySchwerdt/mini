@@ -204,10 +204,35 @@ fun Ast2Ir.literal(e: LiteralExpr): IrExpression {
         LitKind.INT -> {
             var text = e.text
             if (text.endsWith("L")) text = text.substring(0, text.length - 1)
+            if (text.endsWith("u") || text.endsWith("U")) {
+                val uv = parseIntLiteral(text.substring(0, text.length - 1)) ?: fail(e, "integer literal " + e.text)
+                return unsignedConst(e, t, uv)
+            }
             val v = parseIntLiteral(text) ?: fail(e, "integer literal " + e.text)
             return intConst(t, v)
         }
     }
+}
+
+/** `1u`, `1uL`: the constructor call of the unsigned value class [t] with the bit pattern of [v]. */
+fun Ast2Ir.unsignedConst(e: LiteralExpr, t: Type, v: Long): IrExpression {
+    val cs = classOf(t) ?: fail(e, "unsigned literal")
+    val pc = cs.primaryCtor ?: fail(e, "unsigned literal")
+    val k = irConstructorOf(pc)
+    val call = IrConstructorCall(k, t)
+    for (cp in k.parameters) call.arguments.add(null)
+    val under = when (t.classFqName) {
+        "kotlin.ULong" -> sema.longType
+        "kotlin.UInt" -> sema.intType
+        "kotlin.UShort" -> sema.classTypeOf("kotlin.Short")
+        else -> sema.classTypeOf("kotlin.Byte")
+    }
+    var idx = 0
+    for (cp in k.parameters) {
+        if (cp.kind == IrParameterKind.Regular) call.arguments[idx] = if (t.classFqName == "kotlin.ULong") IrConst(under, v) else IrConst(under, v.toInt())
+        idx++
+    }
+    return call
 }
 
 fun Ast2Ir.intConst(t: Type, v: Long): IrExpression {

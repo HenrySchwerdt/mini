@@ -8,6 +8,7 @@ import mini.backend.TBoolean
 import mini.backend.TByte
 import mini.backend.TChar
 import mini.backend.TFloat
+import mini.backend.TInline
 import mini.backend.TPtr
 import mini.backend.TShort
 import mini.backend.TDouble
@@ -57,6 +58,7 @@ internal class Layouts(private val classes: Map<String, MirClass>, private val t
     fun alignUp(n: Int, a: Int): Int = (n + a - 1) / a * a
 
     fun sizeOf(t: MirType): Int = when {
+        t is TInline -> sizeOf(t.rep)
         t === TInt -> 4
         t === TLong || t === TDouble -> 8
         t === TBoolean -> 1
