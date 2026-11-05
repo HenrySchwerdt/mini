@@ -444,7 +444,8 @@ internal class SamTarget(val iface: IrClass, val method: IrSimpleFunction, val a
 
 internal fun Ir2Mir.samTarget(iface: IrClass, at: IrElement): SamTarget {
     if (iface !in classInfos) unsupported(at, "SAM conversion to '${iface.name}'")
-    val abstract = interfaceMethods(iface).filter { it.modality == IrModality.ABSTRACT }
+    // the abstract method of the interface itself, or the one it inherits (`fun interface C : G<Char>`)
+    val abstract = (listOf(iface) + allInterfaces(iface)).flatMap { i -> interfaceMethods(i).filter { it.modality == IrModality.ABSTRACT } }.distinct()
     val m = abstract.singleOrNull() ?: unsupported(at, "SAM conversion to '${iface.name}' (needs exactly one abstract method)")
     val args = m.parameters.drop(1).map { mirType(it.type, it) }
     return SamTarget(iface, m, args, mirType(m.returnType, m))

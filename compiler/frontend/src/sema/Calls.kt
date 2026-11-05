@@ -930,16 +930,19 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
 }
 
 fun BodyChecker.samFunType(t: ClassType): FunType? {
-    val c = t.cls
-    // the single abstract method of a fun interface
-    for ((_, l) in c.funs) {
-        for (f in l) {
-            if (f.isAbstract) {
-                sema.ensureSig(f)
-                val m = ops.substOf(t)
-                val ps = ArrayList<Type>()
-                for (p in f.params) ps.add(ops.substitute(p.type ?: ErrType("sam"), m))
-                return FunType(null, ps, ops.substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
+    // the single abstract method of a fun interface (of the interface itself, or inherited from `fun interface C : G<Char>`)
+    for (st in ops.closure(t)) {
+        val c = st.cls
+        if (c === sema.anyType.cls) continue
+        for ((_, l) in c.funs) {
+            for (f in l) {
+                if (f.isAbstract) {
+                    sema.ensureSig(f)
+                    val m = ops.substOf(st)
+                    val ps = ArrayList<Type>()
+                    for (p in f.params) ps.add(ops.substitute(p.type ?: ErrType("sam"), m))
+                    return FunType(null, ps, ops.substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
+                }
             }
         }
     }
