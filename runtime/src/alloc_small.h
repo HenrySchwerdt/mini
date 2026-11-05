@@ -91,5 +91,19 @@ static inline void mk_small_free(void *b, size_t cls) {
     }
 }
 
+/* An object (no prefix) carries its size class in bits 8..15 of its flags, see alloc.c. */
+#define SMALL_CLASS_SHIFT 8
+#define SMALL_CLASS_MASK 0xffu
+
+/* The object is dead (disposed): mark it freed and give its block back. Only for objects without MK_FLAG_PREFIXED. */
+static inline void mk_small_free_object(MkObject *object) {
+    uint32_t flags = object->flags;
+    size_t cls = (flags >> SMALL_CLASS_SHIFT) & SMALL_CLASS_MASK;
+    object->refcount = 0;
+    object->flags = flags | MK_FLAG_FREED;
+    MK_STAT_FREE(cls * MK_SMALL_GRAN);
+    mk_small_free(object, cls); /* overwrites the type word with the free-list link */
+}
+
 #endif /* MK_SMALL_ALLOC */
 #endif

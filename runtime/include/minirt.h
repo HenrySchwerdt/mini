@@ -258,6 +258,11 @@ MkString *mk_string_from_utf8(const char *utf8, size_t length); /* refcount 1 */
 MkString *mk_string_alloc(MkInt length);
 MkInt mk_string_length(const MkString *string); /* 0 for NULL */
 MkString *mk_string_concat(const MkString *left, const MkString *right);
+/* a + b + c ... in one allocation (a NULL operand is "null", like mk_string_concat) */
+MkString *mk_string_concat3(const MkString *a, const MkString *b, const MkString *c);
+MkString *mk_string_concat4(const MkString *a, const MkString *b, const MkString *c, const MkString *d);
+MkString *mk_string_concat5(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e);
+MkString *mk_string_concat6(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e, const MkString *f);
 MkString *mk_string_from_int(MkInt value);
 MkString *mk_string_from_long(MkLong value);
 MkString *mk_string_from_float(MkFloat value); /* Kotlin/JVM Float.toString */

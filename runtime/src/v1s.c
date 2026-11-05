@@ -184,11 +184,9 @@ void mk_sb_append_char(MkObject *o, MkChar c) {
 /* The digits go straight into the buffer: no temporary string. */
 void mk_sb_append_long(MkObject *o, MkLong value) {
     MkSb *sb = sb_of(o);
-    sb_reserve(sb, MK_ITOA_MAX);
-    char buf[MK_ITOA_MAX];
-    size_t n = mk_itoa(value, buf);
-    MkChar *out = sb->chars + sb->length;
-    for (size_t i = 0; i < n; i++) out[i] = (MkChar)(unsigned char)buf[i];
+    size_t n = mk_i64_length(value);
+    sb_reserve(sb, (MkInt)n);
+    mk_i64_write(value, sb->chars + sb->length, n);
     sb->length += (MkInt)n;
 }
 

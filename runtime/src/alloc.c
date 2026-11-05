@@ -55,9 +55,6 @@ static inline MkAllocator *object_owner(const MkObject *object) {
     return (object->flags & MK_FLAG_HEAP) ? &heap_allocator : &default_allocator;
 }
 
-#define SMALL_CLASS_SHIFT 8
-#define SMALL_CLASS_MASK 0xffu
-
 MkAllocator *mk_default_allocator(void) { return &default_allocator; }
 MkAllocator *mk_rc_allocator(void) { return &default_allocator; }
 MkAllocator *mk_heap_allocator(void) { return &heap_allocator; }
@@ -84,6 +81,23 @@ static inline void zero_small(void *b, size_t cls) {
     case 1: p[0] = 0; p[1] = 0; break;
     default: memset(b, 0, cls * MK_SMALL_GRAN); break;
     }
+}
+#endif
+
+#if MK_SMALL_ALLOC
+/* A small object of the Rc allocator (no prefix); NULL when the block cannot be had (the callers fall back to the slow path). */
+static inline MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size) {
+    size_t cls = mk_small_class(size);
+    unsigned char *block = mk_small_alloc(cls);
+    if (block == NULL) return NULL;
+    MK_STAT_SMALL(MK_SMALL_STAT_SMALL, 0);
+    zero_small(block, cls);
+    MK_STAT_ALLOC(cls * MK_SMALL_GRAN);
+    MkObject *object = (MkObject *)(void *)block;
+    object->type = type;
+    object->refcount = 1;
+    object->flags = (uint32_t)cls << SMALL_CLASS_SHIFT;
+    return object;
 }
 #endif
 
@@ -146,6 +160,12 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
 }
 
 MkObject *mk_alloc_sized(MkAllocator *allocator, const MkTypeInfo *type, size_t size) {
+#if MK_SMALL_ALLOC
+    if ((allocator == NULL || allocator == &default_allocator) && type != NULL && size >= sizeof(MkObject) && size <= MK_SMALL_MAX) {
+        MkObject *object = alloc_small_rc(type, size);
+        if (object != NULL) return object;
+    }
+#endif
     return mk_alloc_sized_site(allocator, type, size, NULL);
 }
 
@@ -161,20 +181,9 @@ MkObject *mk_alloc_with_site(MkAllocator *allocator, const MkTypeInfo *type, con
 
 MkObject *mk_alloc(const MkTypeInfo *type) {
 #if MK_SMALL_ALLOC
-    /* the common case straight away: a small Rc object (see mk_alloc_sized_site) */
     if (type != NULL && type->instance_size >= sizeof(MkObject) && type->instance_size <= MK_SMALL_MAX) {
-        size_t cls = mk_small_class(type->instance_size);
-        unsigned char *block = mk_small_alloc(cls);
-        if (block != NULL) {
-            MK_STAT_SMALL(MK_SMALL_STAT_SMALL, 0);
-            zero_small(block, cls);
-            MK_STAT_ALLOC(cls * MK_SMALL_GRAN);
-            MkObject *object = (MkObject *)(void *)block;
-            object->type = type;
-            object->refcount = 1;
-            object->flags = (uint32_t)cls << SMALL_CLASS_SHIFT;
-            return object;
-        }
+        MkObject *object = alloc_small_rc(type, type->instance_size);
+        if (object != NULL) return object;
     }
 #endif
     MkObject *object = mk_alloc_with(&default_allocator, type);
@@ -183,17 +192,14 @@ MkObject *mk_alloc(const MkTypeInfo *type) {
 }
 
 void mk_free_object_memory(MkObject *object) {
-    uint32_t flags = object->flags;
-    object->refcount = 0;
-    object->flags = flags | MK_FLAG_FREED;
 #if MK_SMALL_ALLOC
-    if (!(flags & MK_FLAG_PREFIXED)) {
-        size_t cls = (flags >> SMALL_CLASS_SHIFT) & SMALL_CLASS_MASK;
-        MK_STAT_FREE(cls * MK_SMALL_GRAN);
-        mk_small_free(object, cls); /* overwrites the type word with the free-list link */
+    if (!(object->flags & MK_FLAG_PREFIXED)) {
+        mk_small_free_object(object);
         return;
     }
 #endif
+    object->refcount = 0;
+    object->flags |= MK_FLAG_FREED;
     unsigned char *block = (unsigned char *)object - MK_PREFIX_SIZE;
     MkAllocator *owner = *(MkAllocator **)(void *)block;
     size_t total = *(size_t *)(void *)(block + sizeof(void *));

@@ -858,7 +858,7 @@ object CEmitter {
                 is MirExpr.Box -> "mk_box_${boxName(e.operand.type)}(${expr(e.operand)})"
                 is MirExpr.Unbox -> "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
                 is MirExpr.Cast -> cast(e)
-                is MirExpr.IsInstance -> "mk_is_instance((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
+                is MirExpr.IsInstance -> "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
                 is MirExpr.NotNull -> "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
@@ -973,6 +973,9 @@ object CEmitter {
                 MirExpr.CastMode.Safe -> "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
             }
         }
+
+        /** A class (not an interface) as the target of an `is` test: only the superclass chain of the object's type can contain it. */
+        fun isClassTarget(t: MirType): Boolean = t === TString || t === TNString || t is TBoxed || (t is TObject && classes[t.cName]?.isInterface == false)
 
         fun MirType.isNullableRef(): Boolean = this === TNString || (this is TObject && nullable) || this is TBoxed
 
@@ -1220,6 +1223,15 @@ MKH_FN MkInt mkh_ra_length(MkObject *a) {
 #define mk_ref_array_set(a, i, v) mkh_ra_set((a), (i), (v))
 #define mk_ref_array_length(a) mkh_ra_length((a))
 
+/* Strings (minirt.h MkString): the length and the indexing of the common case are inline; NULL and a bad index take the runtime. */
+MKH_FN MkInt mkh_str_length(const MkString *s) { return s != NULL ? s->length : 0; }
+MKH_FN MkChar mkh_str_char_at(const MkString *s, MkInt i) {
+    if (__builtin_expect(s == NULL || (uint32_t)i >= (uint32_t)s->length, 0)) return (mk_string_char_at)(s, i);
+    return s->chars[i];
+}
+#define mk_string_length(s) mkh_str_length((s))
+#define mk_string_char_at(s, i) mkh_str_char_at((s), (i))
+
 MKH_FN void mkh_abstract(void) { mk_panic("AbstractMethodError"); }
 MKH_FN MkObject *mkh_cast_nn(MkObject *o, const MkTypeInfo *t) {
     if (o == NULL) {
@@ -1234,6 +1246,12 @@ MKH_FN MkObject *mkh_nn(MkObject *o) {
     return o;
 }
 MKH_FN MkObject *mkh_safe_cast(MkObject *o, const MkTypeInfo *t) { return mk_is_instance(o, t) ? o : NULL; }
+/* `is` with a class: the superclass chain of the object's type (an interface needs the runtime's search of the interface tables) */
+MKH_FN bool mkh_is_class(const MkObject *o, const MkTypeInfo *t) {
+    if (o == NULL) return false;
+    for (const MkTypeInfo *k = o->type; k != NULL; k = k->super) if (k == t) return true;
+    return false;
+}
 
 /* Kotlin-exact integer helpers. */
 MKH_FN MkInt mkh_div_int(MkInt a, MkInt b) {
