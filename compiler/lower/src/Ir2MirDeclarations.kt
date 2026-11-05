@@ -24,7 +24,7 @@ internal fun Ir2Mir.convertFunction(f: IrFunction, cName: String, qualifiedName:
         try {
             if (f is IrConstructor) {
                 params += MirLocal(localCounter++, "this", typeOf(f.parent as IrClass))
-                if ((f.parent as IrClass).kind == IrClassKind.ENUM_CLASS) {
+                if ((f.parent as IrClass).kind == IrClassKind.ENUM_CLASS || isEnumBody(f.parent as IrClass)) {
                     params += MirLocal(localCounter++, "\$name", TString)
                     params += MirLocal(localCounter++, "\$ordinal", TInt)
                 }
@@ -49,9 +49,10 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         val self = MirLocal(localCounter++, "this", typeOf(cls))
         params += self
         f.parent.let { (it as IrClass).thisReceiver }?.let { locals[it] = self }
-        if (cls.kind == IrClassKind.ENUM_CLASS) {
+        if (cls.kind == IrClassKind.ENUM_CLASS || isEnumBody(cls)) {
             params += MirLocal(localCounter++, "\$name", TString)
             params += MirLocal(localCounter++, "\$ordinal", TInt)
+            enumHidden = params.subList(1, 3).toList()
         }
     }
     for (p in f.parameters) {
@@ -289,7 +290,8 @@ internal fun Ir2Mir.delegatingCall(c: IrDelegatingConstructorCall, out: MutableL
     val cName = functionNames[k] ?: unsupported(c, "call of constructor of '${cls.kotlinFqName}'")
     val self = MirExpr.Local(locals.values.first { it.name == "this" && it.id == 0 })
     val args = callArgs(c, k, out)
-    out += MirStmt.Eval(MirExpr.Call(cName, listOf<MirExpr>(self) + args + captureArgsFor(cls, c), TUnit))
+    val hidden = if (cls.kind == IrClassKind.ENUM_CLASS) enumHidden.map { MirExpr.Local(it) } else emptyList()
+    out += MirStmt.Eval(MirExpr.Call(cName, listOf<MirExpr>(self) + hidden + args + captureArgsFor(cls, c), TUnit))
 }
 
 internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirStmt>): MirExpr {

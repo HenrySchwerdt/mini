@@ -79,7 +79,14 @@ class Ir2Mir {
     /** `KClassImpl` (package kotlin, reflect) of the stdlib sources (what `Foo::class` creates), if present in the module. */
     internal var kclassImpl: IrClass? = null
 
+    /** `kotlin.enums.EnumEntriesImpl` (what `Color.entries` creates), if present in the module. */
+    internal var entriesImpl: IrClass? = null
+
+    /** The hidden name and ordinal parameters of the enum-body constructor being converted. */
+    internal var enumHidden: List<MirLocal> = emptyList()
+
     fun convert(module: IrModule, sourceName: String): MirModule {
+        entriesImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == "kotlin.enums.EnumEntriesImpl" }
         kclassImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == REFLECT_PKG + ".KClassImpl" }
         closure.analyze(module)
         // pass 1: classes and top-level declarations

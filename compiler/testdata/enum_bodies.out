@@ -1,0 +1,19 @@
+ADD 0 + 1 7 op +
+MUL 1 * 2 12 times
+NEG 2 - 3 -3 op -
+[+, *, -]
+MUL
+3
+RED-GREEN-BLUE
+GREEN
+-2
+2
+GREEN
+RED
+true
+[low, mid, high]
+true
+1
+0:RED 1:GREEN 2:BLUE 
+no PINK
+op +

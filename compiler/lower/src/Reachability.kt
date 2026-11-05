@@ -65,7 +65,9 @@ object Reachability {
                     break
                 }
             }
-            if (marker.kclassImpl != null) break
+        }
+        for (f in module.files) {
+            for (d in f.declarations) if (d is IrClass && d.kotlinFqName == "kotlin.enums.EnumEntriesImpl") marker.entriesImpl = d
         }
         val keepFiles = ArrayList<IrFile>()
         for (f in module.files) if (!isBuiltinFile(f)) keepFiles.add(f)
@@ -102,6 +104,8 @@ object Reachability {
         val kept = HashSet<IrDeclaration>()
         /** `Foo::class` / `x::class` create a KClassImpl (Ir2MirExpressions.classReference). */
         var kclassImpl: IrClass? = null
+        /** `Color.entries` creates an EnumEntriesImpl (Ir2MirCalls.enumSpecialCall). */
+        var entriesImpl: IrClass? = null
         private val classes = HashSet<IrClass>()
 
         private fun isStdlibClass(c: IrClass): Boolean {
@@ -137,6 +141,7 @@ object Reachability {
                     val callee = calleeOf(e)
                     val dispatch = dispatchReceiverTypeOf(e, callee)
                     if (!(dispatch != null && isBuiltinClassType(dispatch))) markSymbolOwner(callee)
+                    if (callee?.name == "<get-entries>") entriesImpl?.let { markClass(it) }
                     if (e is IrFunctionReference) markSymbolOwner(e.target)
                 }
                 is IrGetObjectValue -> markClass(e.classOwner)

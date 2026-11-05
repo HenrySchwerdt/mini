@@ -37,7 +37,7 @@ internal fun Ir2Mir.callArgs(
         } else {
             val d = p.defaultValue?.expression
             v = if (d == null && p.varargElementType != null) emptyVararg(p, c, out)
-            else coerceOperand(value(d ?: unsupported(c, "call with omitted argument '${p.name}' of '${callee.name}'"), out), mirType(sigParam.type, sigParam), c, out)
+            else coerceOperand(value(d ?: unsupported(c, "call with omitted argument '${p.name}' of '${callee.name}' (${c::class.simpleName} ${(callee.parent as? IrClass)?.name} ${given.size} ${params.size} ${given.map { it == null }})"), out), mirType(sigParam.type, sigParam), c, out)
         }
         // make this value visible to the default expressions of later parameters
         if (idxs.size == params.size) {
@@ -111,7 +111,6 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         is IrFile -> parent.packageFqName
         else -> unsupported(c, "call of '$name'")
     }
-    if (parent is IrClass && isEnumEntriesList(c, parent)) return arrayMember(c, name, arrayKindOfFq("kotlin.Array")!!, out)
     if (parent is IrClass) arrayKindOfFq(ownerName)?.let { return arrayMember(c, name, it, out) }
     arrayFunction(c, name, ownerName, out)?.let { return it }
     val args = c.arguments.map { it ?: unsupported(c, "call with omitted argument to '$ownerName.$name'") }
@@ -495,19 +494,20 @@ internal fun Ir2Mir.comparableCompareTo(c: IrCall, out: MutableList<MirStmt>): M
     return MirExpr.RuntimeCall("mk_compare_to", listOf(a, b, MirExpr.TypeInfoOf(cmp?.let { typeOf(it) })), TInt)
 }
 
-/** `get` / `size` of `Enum.entries` (a list in Kotlin; here the same array as `values()`). */
-internal fun Ir2Mir.isEnumEntriesList(c: IrCall, parent: IrClass): Boolean {
-    val n = c.callee.name
-    if (n != "get" && n != "<get-size>") return false
-    return c.arguments.getOrNull(0)?.type?.classFqName == "kotlin.enums.EnumEntries"
-}
-
 /** `values()`, `valueOf(String)` and `entries` of an enum class (generated functions, see Ir2MirClasses). */
 internal fun Ir2Mir.enumSpecialCall(c: IrCall, enumClass: IrClass, f: IrSimpleFunction, out: MutableList<MirStmt>): MirExpr {
     val inf = info(enumClass)
     val arrType = arrayType(arrayKindOfFq("kotlin.Array")!!)
     return when (f.name) {
-        "values", "<get-entries>" -> MirExpr.Call(inf.cName + "_values", emptyList(), arrType)
+        "values" -> MirExpr.Call(inf.cName + "_values", emptyList(), arrType)
+        "<get-entries>" -> {
+            val impl = entriesImpl ?: unsupported(c, "`entries` (the stdlib class EnumEntriesImpl is not available)")
+            val ctor = impl.declarations.filterIsInstance<IrConstructor>().firstOrNull()
+            val cName = ctor?.let { functionNames[it] } ?: unsupported(c, "`entries` (EnumEntriesImpl was pruned)")
+            val arr = tmpOf(MirExpr.Call(inf.cName + "_values", emptyList(), arrType), out)
+            val made = tmpOf(MirExpr.New(cName, listOf(arr), typeOf(impl)), out)
+            MirExpr.Cast(made, mirType(c.type, c), MirExpr.CastMode.Unchecked)
+        }
         else -> {
             val a = operands(c.arguments.map { it ?: unsupported(c, "omitted argument") }, out)
             MirExpr.Call(inf.cName + "_valueOf", a, typeOf(enumClass))

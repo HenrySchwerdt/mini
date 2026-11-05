@@ -207,7 +207,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
     fun irClass(sym: ClassSym): IrClass {
         val ex = classMap[sym]
         if (ex != null) return ex
-        val name = if (sym.isAnonymous) "<no name provided>" else sym.name
+        val name = if (sym.isAnonymous && !sym.isEnumEntryBody) "<no name provided>" else sym.name
         val c = IrClass(name, sym)
         classMap[sym] = c
         allClasses.add(c)
@@ -289,7 +289,8 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         // primary constructor, then the properties it declares
         val pc = sym.primaryCtor
         if (pc == null && sym.kind == ClassKind.OBJECT) decls.add(objectConstructor(c))
-        if (pc != null && sym.kind != ClassKind.INTERFACE) {
+        if (sym.isEnumEntryBody) enumBodyConstructor(c, sym)?.let { decls.add(it) }
+        if (pc != null && sym.kind != ClassKind.INTERFACE && !sym.isEnumEntryBody) {
             val k = irConstructor(pc, c)
             decls.add(k)
             if (d != null) {
@@ -310,7 +311,18 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
             // enum entries come first in the body
             for (e in d.enumEntries) {
                 val es = findEntry(sym, e)
-                if (es != null) decls.add(irEnumEntry(es, c))
+                if (es != null) {
+                    val ent = irEnumEntry(es, c)
+                    decls.add(ent)
+                    val bs = sema.enumEntryBodies[e]
+                    if (bs != null) {
+                        // an entry with a body: an anonymous subclass of the enum, nested in it
+                        val bc = irClass(bs)
+                        bc.parent = c
+                        ent.correspondingClass = bc
+                        decls.add(bc)
+                    }
+                }
             }
             for (m in d.members) {
                 when (m) {

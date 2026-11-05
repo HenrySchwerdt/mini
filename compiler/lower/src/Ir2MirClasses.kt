@@ -40,6 +40,9 @@ internal fun Ir2Mir.classKind(c: IrClass): String = when (c.kind) {
     else -> "class"
 }
 
+/** The anonymous subclass of an enum that is the body of an entry (`A { ... }`). */
+internal fun isEnumBody(c: IrClass): Boolean = c.sym?.isEnumEntryBody == true
+
 internal fun Ir2Mir.isAny(c: IrClass) = c.kotlinFqName == "kotlin.Any"
 
 internal fun Ir2Mir.superclassOf(c: IrClass): IrClass? {
@@ -116,14 +119,14 @@ internal fun Ir2Mir.registerMembers(info: ClassInfo) {
         functionNames[f] = Mangling.method(info.cName, f.name, params)
     }
     for (k in c.declarations.filterIsInstance<IrConstructor>()) {
-        val hidden = if (c.kind == IrClassKind.ENUM_CLASS) listOf(TString, TInt) else emptyList()
+        val hidden = if (c.kind == IrClassKind.ENUM_CLASS || isEnumBody(c)) listOf(TString, TInt) else emptyList()
         // captured values of local classes follow the declared parameters
         functionNames[k] = Mangling.constructor(info.cName, hidden + k.parameters.map { mirType(it.type, it) } + captureTypesFor(c))
     }
     for (d in c.declarations) {
         when (d) {
             is IrSimpleFunction, is IrProperty, is IrConstructor, is IrClass, is IrAnonymousInitializer, is IrField -> {}
-            is IrEnumEntry -> if (d.correspondingClass != null) unsupported(d, "enum entry with a body '${d.name}'")
+            is IrEnumEntry -> {}
             else -> unsupported(d, describe(d))
         }
         if (d is IrProperty) {
@@ -191,7 +194,8 @@ internal fun Ir2Mir.convertEnumHolder(info: ClassInfo): MirFunction {
         val k = call.callee
         val args = callArgs(call, k, out)
         val ctor = functionNames[k] ?: unsupported(e, "enum entry '${e.name}'")
-        val n = MirExpr.New(ctor, listOf(MirExpr.StringConst(e.name), MirExpr.IntConst(i)) + args, typeOf(info.ir))
+        val made = MirExpr.New(ctor, listOf(MirExpr.StringConst(e.name), MirExpr.IntConst(i)) + args, typeOf(k.parent as IrClass))
+        val n = if (k.parent === info.ir) made else MirExpr.Cast(tmpOf(made, out), typeOf(info.ir), MirExpr.CastMode.Unchecked)
         out += MirStmt.SetField(MirExpr.Local(self), holderName(info), "e$i", typeOf(info.ir), n)
     }
     return MirFunction(info.qualified + ".<entries>", holderName(info) + "_C", listOf(self), TUnit, out)
@@ -337,6 +341,7 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
         vtable = (0..2).map { implAny(c, it) } + slots.map { implClass(c, it) }
         if (vtable[0] == null && inheritsBuiltin(c)) vtable = listOf<String?>("mk_throwable_to_string") + vtable.drop(1)
         if (c.kind == IrClassKind.ENUM_CLASS && vtable[0] == null) vtable = listOf<String?>(info.cName + "_enumToString") + vtable.drop(1)
+        if (isEnumBody(c) && vtable[0] == null) superclassOf(c)?.let { vtable = listOf<String?>(info(it).cName + "_enumToString") + vtable.drop(1) }
         itables = ifaces.map { i ->
             MirItable(info(i).cName, interfaceMethods(i).map { m -> bridged(findImpl(c, m), m) })
         }
