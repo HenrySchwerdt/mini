@@ -3,7 +3,7 @@
 # `mini` is Kotlin compiled by Mini itself (compiler/mini-tool + compiler/frontend, with the native platform layer
 # compiler/mini-tool/src/NativePlatform.kt + host/), exactly like the compiler's own self-host.
 #
-#   scripts/build-mini.sh [--out <dir>] [--minic-native <path> | --stage0 <path>] [--backend c|llvm-api] [--opt -O1|-O2] [--quiet]
+#   scripts/build-mini.sh [--out <dir>] [--minic-native <path> | --stage0 <path>] [--backend c|llvm-api] [--opt -O1|-O2] [--quiet] [--skip-tool]
 #
 # Output (default <repo>/build/native), the layout of a release archive:
 #   bin/minic-native   the native compiler          bin/mini   the project tool          bin/minic  the driver script (scripts/minic.sh)
@@ -23,7 +23,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/build/native"
 OPT="-O1"
-GIVEN="" STAGE0="" QUIET=0 BACKEND=c
+GIVEN="" STAGE0="" QUIET=0 BACKEND=c SKIP_TOOL=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --out) OUT="$(mkdir -p "$2" && cd "$2" && pwd)"; shift 2 ;;
@@ -32,6 +32,7 @@ while [ $# -gt 0 ]; do
         --backend) BACKEND="$2"; shift 2 ;;
         --opt) OPT="$2"; shift 2 ;;
         --quiet) QUIET=1; shift ;;
+        --skip-tool) SKIP_TOOL=1; shift ;;
         -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "build-mini.sh: unknown argument $1" >&2; exit 2 ;;
     esac
@@ -119,7 +120,9 @@ fi
 
 # --- mini itself, compiled by the native compiler
 tool_stale() { newer "$OUT/bin/mini" "${TOOL_DIRS[@]}" "$HOST_C" "$ROOT/stdlib" "$ROOT/runtime/src" "$ROOT/runtime/include" "$OUT/bin/minic-native"; }
-if tool_stale || [ -n "$GIVEN" ] || [ -n "$STAGE0" ]; then
+if [ "$SKIP_TOOL" = 1 ]; then
+    say "mini: skipped (--skip-tool)"
+elif tool_stale || [ -n "$GIVEN" ] || [ -n "$STAGE0" ]; then
     say "mini: compiled by minic-native (--backend=$BACKEND, $OPT)"
     TOOL_SRCS="$(find "${TOOL_DIRS[@]}" -name '*.kt' | LC_ALL=C sort)"
     "$CC" -std=gnu17 "$OPT" -w -I "$ROOT/runtime/include" -c "$HOST_C/mini_host.c" -o "$OUT/work/mini_host.o"

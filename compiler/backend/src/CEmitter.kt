@@ -108,6 +108,11 @@ object CEmitter {
                 val base = "mkx_" + cIdent(x.symbol)
                 val n = symbolCount[base] ?: 0
                 symbolCount[base] = n + 1
+                if (isLibmBuiltin(x)) {
+                    // clang does not recognise a libm function behind an `__asm__` label: call the builtin (sqrtsd, roundsd, ...)
+                    externNames[key] = "__builtin_" + x.symbol
+                    continue
+                }
                 externNames[key] = if (n == 0) base else base + "_" + n
                 externProtos[key] = x
             }
@@ -213,6 +218,17 @@ object CEmitter {
             val sb = StringBuilder()
             for (c in s) sb.append(if (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '_') c else '_')
             return sb.toString()
+        }
+
+        /** A libm function of the `Double -> Double` or `(Double, Double) -> Double` shape that the compiler knows as a builtin. */
+        fun isLibmBuiltin(x: MirExtern): Boolean {
+            if (x.isVariadic || x.returnType !== TDouble || x.params.isEmpty() || x.params.size > 2) return false
+            for (p in x.params) if (p !== TDouble) return false
+            return when (x.symbol) {
+                "sqrt", "floor", "ceil", "trunc", "rint", "sin", "cos", "exp", "log", "fabs" -> x.params.size == 1
+                "pow", "remainder", "nextafter" -> x.params.size == 2
+                else -> false
+            }
         }
 
         fun asmLabel(s: String): String {
