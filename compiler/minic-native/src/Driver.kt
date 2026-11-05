@@ -4,6 +4,8 @@ import mini.backend.CEmitter
 import mini.backend.Mangling
 import mini.backend.WasmGlue
 import mini.backend.MirModule
+import mini.backend.MirOpt
+import mini.backend.MirOptions
 import mini.backend.MirReader
 import mini.backend.MirFunction
 import mini.backend.MirExpr
@@ -137,6 +139,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     var llOut: String? = null
     var cOut: String? = null
     var rcOpt = true
+    val optOptions = MirOptions()
     var wasm32 = false
     var wasmLib = false
     var separateMlibs = false
@@ -263,6 +266,8 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         } else if (a == "--no-rc-opt") {
             rcOpt = false
             i += 1
+        } else if (optOptions.accept(a)) {
+            i += 1
         } else if (a == "--check") {
             check = true
             i += 1
@@ -385,7 +390,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         reportMemory(report, name, werror, brief, diag)
         return
     }
-    val module = try {
+    val unoptimized = try {
         if (separateMlibs && ordered.isNotEmpty()) {
             val userModule = lowerToMirAgainstLibs(inputs, ordered, name, lineDirs, { report -> reportMemory(report, name, werror, false, diag) })
             validateMlibFailures(userModule, ordered)
@@ -395,6 +400,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         reportFrontend(e, name, diag)
         throw DriverExit(1)
     }
+    val module = if (separateMlibs || wasmLib) unoptimized else MirOpt.run(unoptimized, optOptions) { line -> errln(line) }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (wasmLib) {
         if (module.functions.any { it.cName == Mangling.MAIN }) {

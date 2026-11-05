@@ -225,9 +225,13 @@ object CEmitter {
             return s
         }
 
+        /** A whole program (it has `main`): its functions have internal linkage, so the C compiler can inline them and drop the unused ones. */
+        val closedWorld: Boolean = module.functions.any { it.cName == Mangling.MAIN }
+
         fun prototype(f: MirFunction): String {
             val params = if (f.params.isEmpty()) "void" else f.params.joinToString(", ") { cType(it.type) + " " + Mangling.local(it.name, it.id) }
-            return "${cType(f.returnType)} ${if (f.cName == Mangling.MAIN) USER_MAIN else f.cName}($params)"
+            val linkage = if (closedWorld && f.cName != Mangling.MAIN) "MKH_STATIC " else ""
+            return "$linkage${cType(f.returnType)} ${if (f.cName == Mangling.MAIN) USER_MAIN else f.cName}($params)"
         }
 
         // ---- classes -----------------------------------------------------------------
@@ -1148,8 +1152,10 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
     private const val PRELUDE = """
 #if defined(__GNUC__) || defined(__clang__)
 #define MKH_FN static inline __attribute__((unused))
+#define MKH_STATIC static __attribute__((unused))
 #else
 #define MKH_FN static inline
+#define MKH_STATIC static
 #endif
 
 /* Reference counting with inline fast paths (RcOpt code generation). Anything unusual goes to the runtime:
