@@ -265,6 +265,14 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                     addReceiverGroups(nrt, name, groups, nref)
                     seenRecv = true
                 }
+                // `values()` / `valueOf(s)` written in the companion object of an enum class
+                if (!s.instance && s.cls.isEnum && (name == "values" || name == "valueOf")) {
+                    for (f in sema.members.staticFuns(s.cls, name)) {
+                        if (f.kind != FunKind.SYNTH) continue
+                        sema.ensureSig(f)
+                        groups.add(listOf(Candidate(f, HashMap(), null)))
+                    }
+                }
                 val comp = s.cls.companion
                 if (comp != null) addReceiverGroups(comp.thisType(), name, groups, RecvRef(comp, null, true))
                 if (s.cls.isObject && !s.instance) addReceiverGroups(s.cls.thisType(), name, groups, RecvRef(s.cls, null, true))
