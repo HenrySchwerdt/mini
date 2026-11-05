@@ -385,7 +385,7 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
     val isInterface = c.kind == IrClassKind.INTERFACE
     val ifaces = if (isInterface) allInterfaces(c).filter { it !== c } else allInterfaces(c)
     val hiddenFields = if (c.kind == IrClassKind.ENUM_CLASS) listOf(MirField("\$name", TString), MirField("\$ordinal", TInt)) else emptyList()
-    val capFields = classCaptures(c).mapIndexed { i, v -> MirField("cap$i", capturedType(v)) }
+    val capFields = classCaptures(c).mapIndexed { i, v -> MirField("cap$i", capturedType(v), isStrictClass(c) && v !in closure.boxed && v.type.classOrNull?.let { k -> isStrictClass(k) } == true) }
     val outerField = if (c.isInner) listOf(MirField("\$outer", typeOf(c.parent as IrClass))) else emptyList()
     val fields = if (isInterface) emptyList() else hiddenFields + outerField + capFields + ownFields(c).map { f ->
         MirField(f.name, mirType(f.type, f), isBorrowedField(f))

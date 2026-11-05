@@ -4,7 +4,10 @@ import mini.frontend.sema.*
 
 /* Helpers over the IR: type queries (the semantic types of the frontend are the IR types) and the tree walker. */
 
-class IrModule(val files: ArrayList<IrFile>)
+class IrModule(val files: ArrayList<IrFile>) {
+    /** Memory summaries stored in the precompiled libraries (key -> summary), see [mini.backend.memory.Summaries]. */
+    var summaries: Map<String, mini.backend.memory.FnSummary> = emptyMap()
+}
 
 /** Global state of one lowering run: the symbol to IR declaration tables shared by the builder and the converter. */
 object LowerState {

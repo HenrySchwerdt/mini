@@ -26,7 +26,7 @@ import mini.frontend.StubWriter
  */
 
 /** The version of the container format; a reader refuses every other one. */
-const val MLIB_FORMAT_VERSION = 1
+const val MLIB_FORMAT_VERSION = 2
 
 const val MLIB_MAGIC = "mini-mlib"
 
@@ -53,6 +53,8 @@ class Mlib(
     val mir: String,
     val hash: String,
     val failures: List<MlibFailure> = emptyList(),
+    /** Inferred memory summaries of the library's functions (`mini.backend.memory.SummaryText`), used by the Strict-mode checker of programs that use it. */
+    val summaries: String = "",
 )
 
 /** The MIR inputs needed to emit one separately compiled wasm library object. */
@@ -245,11 +247,12 @@ class MlibHasher {
 object MlibFormat {
     fun tagOf(name: String): String = "L" + MlibHasher().add(name).hex().substring(0, 8) + "_"
 
-    fun hashOf(name: String, version: String, compilerId: String, deps: List<MlibDep>, stubs: List<MlibStub>, mir: String, failures: List<MlibFailure>): String {
+    fun hashOf(name: String, version: String, compilerId: String, deps: List<MlibDep>, stubs: List<MlibStub>, mir: String, failures: List<MlibFailure>, summaries: String = ""): String {
         val h = MlibHasher().add(name).add(version).add(compilerId).add(MLIB_FORMAT_VERSION.toString())
         for (d in deps) h.add(d.name).add(d.hash)
         for (s in stubs) h.add(s.path).add(s.text)
         for (f in failures) h.add(f.cName).add(f.message)
+        h.add(summaries)
         h.add(mir)
         return h.hex()
     }
@@ -269,6 +272,8 @@ object MlibFormat {
             sb.append("stub ").append(s.text.length).append(' ').append(s.path).append('\n')
             sb.append(s.text).append('\n')
         }
+        sb.append("summary ").append(m.summaries.length).append('\n')
+        sb.append(m.summaries).append('\n')
         sb.append("mir ").append(m.mir.length).append('\n')
         sb.append(m.mir).append('\n')
         sb.append("end\n")
@@ -310,6 +315,7 @@ object MlibFormat {
         val stubs = ArrayList<MlibStub>()
         val failures = ArrayList<MlibFailure>()
         var mir: String? = null
+        var summaries = ""
         while (true) {
             val l = line()
             if (l == "end") break
@@ -329,6 +335,11 @@ object MlibFormat {
                 if (pos + n > text.length) throw MlibError("$origin: truncated library (stub ${rest.substring(sp + 1)})")
                 stubs.add(MlibStub(rest.substring(sp + 1), text.substring(pos, pos + n)))
                 pos += n + 1
+            } else if (l.startsWith("summary ")) {
+                val n = l.substring(8).toIntOrNull() ?: throw MlibError("$origin: damaged summary section line '$l'")
+                if (pos + n > text.length) throw MlibError("$origin: truncated library (summary section)")
+                summaries = text.substring(pos, pos + n)
+                pos += n + 1
             } else if (l.startsWith("mir ")) {
                 val n = l.substring(4).toIntOrNull() ?: throw MlibError("$origin: damaged MIR section line '$l'")
                 if (pos + n > text.length) throw MlibError("$origin: truncated library (MIR section)")
@@ -340,12 +351,12 @@ object MlibFormat {
         }
         if (mir == null) throw MlibError("$origin: damaged library (no MIR section)")
         if (verify) {
-            val actual = hashOf(name, version, compilerId, deps, stubs, mir, failures)
+            val actual = hashOf(name, version, compilerId, deps, stubs, mir, failures, summaries)
             if (actual != hash) {
                 throw MlibError("$origin: content hash mismatch (header says $hash, content is $actual); the file is damaged or was edited, rebuild it")
             }
         }
-        return Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures)
+        return Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures, summaries)
     }
 
     /**
@@ -389,7 +400,13 @@ object MlibFormat {
 /** The stubs of [libs] as declaration-only inputs of the analysis. */
 fun libInputs(libs: List<Mlib>): List<LowerInput> {
     val out = ArrayList<LowerInput>()
-    for (l in libs) for (s in l.stubs) out.add(LowerInput(s.path, s.text, true, true))
+    for (l in libs) {
+        var first = true
+        for (s in l.stubs) {
+            out.add(LowerInput(s.path, s.text, true, true, if (first) l.summaries else ""))
+            first = false
+        }
+    }
     return out
 }
 
@@ -441,16 +458,18 @@ fun buildMlib(
     inputs.addAll(sources)
     inputs.addAll(libInputs(libs))
     val failMap = LinkedHashMap<String, String>()
-    val module = lowerToMir(inputs, name, false, memoryGate, tag, true, failMap)
+    val summaryOut = StringBuilder()
+    val module = lowerToMir(inputs, name, false, memoryGate, tag, true, failMap, summaryOut)
     val mir = MirWriter.write(module)
+    val summaries = summaryOut.toString()
     val stubs = ArrayList<MlibStub>()
     for (s in sources) stubs.add(MlibStub(s.path, StubWriter.stub(s.text)))
     val deps = ArrayList<MlibDep>()
     for (l in libs) deps.add(MlibDep(l.name, l.hash))
     val failures = ArrayList<MlibFailure>()
     for ((k, v) in failMap) failures.add(MlibFailure(k, v))
-    val hash = MlibFormat.hashOf(name, version, compilerId, deps, stubs, mir, failures)
-    return Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures)
+    val hash = MlibFormat.hashOf(name, version, compilerId, deps, stubs, mir, failures, summaries)
+    return Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures, summaries)
 }
 
 /** The roots of the program for the link: `main`, or every function of the program when it has none (a library-like program). */
