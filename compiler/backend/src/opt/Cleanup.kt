@@ -1,18 +1,23 @@
 package mini.backend
 
 /*
- * Local clean-up after inlining and the other opt passes: copy propagation of single-definition locals that merely alias another
- * never-reassigned local or a constant, removal of unused pure declarations and of `if` on constants.
+ * Local clean-up after inlining and the other opt passes (one linear pass per round, a few rounds):
+ *  - copy propagation: a local declared once, never reassigned, that merely aliases a never-reassigned local of the same type or a
+ *    constant is replaced by it everywhere;
+ *  - unused pure declarations and pure `eval`s are removed;
+ *  - `declare x; ...; x = v` where the assignment is the first thing that mentions x becomes `declare x = v`;
+ *  - `if` on a constant.
  */
 internal object Cleanup {
     fun run(body: List<MirStmt>, f: MirFunction): List<MirStmt> {
         var cur = body
         var round = 0
-        while (round < 4) {
+        while (round < 3) {
             val u = UseScan(f)
             u.walk(cur)
-            val next = CleanupPass(u, f).stmts(cur)
-            if (next === cur) break
+            val pass = CleanupPass(u)
+            val next = pass.stmts(cur)
+            if (!pass.changed) break
             cur = next
             round++
         }
@@ -69,143 +74,6 @@ internal fun isPureExpr(e: MirExpr): Boolean = when (e) {
     else -> false
 }
 
-private class Replace(val from: MirLocal, val to: MirExpr) : MirTransform() {
-    override fun expr(e: MirExpr): MirExpr {
-        if (e is MirExpr.Local && e.local === from) return cloneLeaf(to)
-        return rebuildExpr(e)
-    }
-}
-
-private class CleanupPass(val u: UseScan, val f: MirFunction) : MirTransform() {
-    /** Inside the body of a do-while the declarations are also visible in the condition: leave them alone. */
-    var inDoWhile = 0
-
-    override fun stmt(s: MirStmt): MirStmt {
-        if (s is MirStmt.DoWhile) {
-            inDoWhile++
-            val r = rebuildStmt(s)
-            inDoWhile--
-            return r
-        }
-        return rebuildStmt(s)
-    }
-
-    /** Pending replacements discovered while scanning a list: applied to the rest of the list (and nested bodies). */
-    override fun stmts(l: List<MirStmt>): List<MirStmt> {
-        var cur = l
-        var i = 0
-        var out: ArrayList<MirStmt>? = null
-        while (i < cur.size) {
-            val s = cur[i]
-            if (s is MirStmt.Declare && inDoWhile == 0 && !u.isParam(s.local) && u.assignCount(s.local) == 1 && (s.init == null || isDefaultConst(s.init))) {
-                // `declare x; ...; x = v` where the assignment is the first thing that mentions x: declare it there, with v
-                var j = i + 1
-                while (j < cur.size && !Mentions.of(cur[j], s.local)) j++
-                if (j < cur.size) {
-                    val a = cur[j]
-                    if (a is MirStmt.Assign && a.local === s.local && !Mentions.exprUses(a.value, s.local)) {
-                        val d = MirStmt.Declare(s.local, a.value)
-                        d.srcLine = a.srcLine
-                        d.srcFile = a.srcFile
-                        val head = ArrayList<MirStmt>()
-                        for (k in cur.indices) {
-                            if (k == i) continue
-                            head.add(if (k == j) d else cur[k])
-                        }
-                        cur = head
-                        out = ArrayList(cur)
-                        continue
-                    }
-                }
-            }
-            if (s is MirStmt.Declare && s.init == null && inDoWhile == 0 && !u.isParam(s.local) && u.useCount(s.local) == 0 && u.assignCount(s.local) == 0) {
-                val head = ArrayList<MirStmt>()
-                for (k in 0 until cur.size) if (k != i) head.add(cur[k])
-                cur = head
-                out = ArrayList(cur)
-                continue
-            }
-            if (s is MirStmt.Declare && s.init != null) {
-                val init = s.init
-                val l0 = s.local
-                if (inDoWhile == 0 && u.assignCount(l0) == 0 && u.declared[l0.id] == 1 && !u.isParam(l0)) {
-                    var drop = false
-                    if (u.useCount(l0) == 0 && isPureExpr(init)) drop = true
-                    else if (aliasable(init, l0)) {
-                        // replace every use in the rest of this list (uses cannot lie outside it: the local is scoped to it)
-                        val rep = Replace(l0, init)
-                        val rest = ArrayList<MirStmt>()
-                        for (k in i + 1 until cur.size) rest.add(rep.stmt(cur[k]))
-                        val head = ArrayList<MirStmt>()
-                        for (k in 0 until i) head.add(cur[k])
-                        head.addAll(rest)
-                        cur = head
-                        out = ArrayList(cur)
-                        continue
-                    }
-                    if (drop) {
-                        val head = ArrayList<MirStmt>()
-                        for (k in 0 until cur.size) if (k != i) head.add(cur[k])
-                        cur = head
-                        out = ArrayList(cur)
-                        continue
-                    }
-                }
-            }
-            if (s is MirStmt.Eval && isPureExpr(s.expr)) {
-                val head = ArrayList<MirStmt>()
-                for (k in 0 until cur.size) if (k != i) head.add(cur[k])
-                cur = head
-                out = ArrayList(cur)
-                continue
-            }
-            i++
-        }
-        // nested bodies
-        var res: ArrayList<MirStmt>? = null
-        for (k in cur.indices) {
-            val s = cur[k]
-            val r = foldIf(stmt(s))
-            if (res == null && r !== s) {
-                res = ArrayList(cur.size)
-                for (j in 0 until k) res.add(cur[j])
-            }
-            if (res != null) res.add(r)
-        }
-        if (res != null) return res
-        return if (out != null) cur else l
-    }
-
-    fun foldIf(s: MirStmt): MirStmt {
-        if (s is MirStmt.If) {
-            val c = s.cond
-            if (c is MirExpr.BooleanConst) {
-                val b = if (c.value) s.thenBody else s.elseBody
-                val n = MirStmt.Block(b)
-                n.srcLine = s.srcLine
-                n.srcFile = s.srcFile
-                return n
-            }
-        }
-        return s
-    }
-
-    /** [init] can stand for the local everywhere: a constant, or a never-reassigned local of the same type. */
-    fun aliasable(init: MirExpr, l0: MirLocal): Boolean {
-        if (init is MirExpr.IntConst || init is MirExpr.LongConst || init is MirExpr.DoubleConst || init is MirExpr.BooleanConst || init is MirExpr.CharConst) {
-            return init.type == l0.type
-        }
-        if (init is MirExpr.Local) {
-            val x = init.local
-            if (x === l0) return false
-            if (u.assignCount(x) != 0) return false
-            if (x.type != l0.type) return false
-            return true
-        }
-        return false
-    }
-}
-
 internal fun isDefaultConst(e: MirExpr?): Boolean =
     e is MirExpr.IntConst || e is MirExpr.LongConst || e is MirExpr.DoubleConst || e is MirExpr.BooleanConst || e is MirExpr.CharConst || e is MirExpr.NullConst
 
@@ -216,6 +84,7 @@ internal class Mentions(val l: MirLocal) : MirVisitor() {
         if (e is MirExpr.Local && e.local === l) found = true
     }
     override fun stmt(s: MirStmt): MirStmt {
+        if (found) return s
         if (s is MirStmt.Assign && s.local === l) found = true
         if (s is MirStmt.Declare && s.local === l) found = true
         if (s is MirStmt.ForRange && s.variable === l) found = true
@@ -234,5 +103,138 @@ internal class Mentions(val l: MirLocal) : MirVisitor() {
             m.expr(e)
             return m.found
         }
+    }
+}
+
+private class CleanupPass(val u: UseScan) : MirTransform() {
+    var changed = false
+    /** Aliases: local id -> the expression that stands for it. */
+    val alias = HashMap<Int, MirExpr>()
+    var inDoWhile = 0
+    var prepared = false
+
+    private fun prepare() {
+        prepared = true
+        for ((id, init) in u.inits) {
+            if (u.declared[id] != 1 || u.assigns[id] != null) continue
+            if (init is MirExpr.IntConst || init is MirExpr.LongConst || init is MirExpr.DoubleConst || init is MirExpr.BooleanConst || init is MirExpr.CharConst) {
+                alias[id] = init
+            } else if (init is MirExpr.Local) {
+                if (init.local.id != id && u.assigns[init.local.id] == null) alias[id] = init
+            }
+        }
+    }
+
+    private fun resolve(l: MirLocal): MirExpr? {
+        var r = alias[l.id] ?: return null
+        var guard = 0
+        while (r is MirExpr.Local && guard < 50) {
+            val n = alias[r.local.id] ?: break
+            r = n
+            guard++
+        }
+        return r
+    }
+
+    override fun expr(e: MirExpr): MirExpr {
+        if (e is MirExpr.Local) {
+            val r = resolve(e.local)
+            if (r != null && r.type == e.local.type) {
+                changed = true
+                return cloneLeaf(r)
+            }
+            return e
+        }
+        return rebuildExpr(e)
+    }
+
+    override fun stmt(s: MirStmt): MirStmt {
+        if (s is MirStmt.DoWhile) {
+            inDoWhile++
+            val r = rebuildStmt(s)
+            inDoWhile--
+            return r
+        }
+        val r = rebuildStmt(s)
+        if (r is MirStmt.If) {
+            val c = r.cond
+            if (c is MirExpr.BooleanConst) {
+                changed = true
+                val n = MirStmt.Block(if (c.value) r.thenBody else r.elseBody)
+                n.srcLine = r.srcLine
+                n.srcFile = r.srcFile
+                return n
+            }
+        }
+        return r
+    }
+
+    private fun droppable(s: MirStmt): Boolean {
+        if (s is MirStmt.Declare) {
+            val l = s.local
+            if (u.isParam(l)) return false
+            val init = s.init
+            // aliases are replaced everywhere, so their declarations go
+            if (init != null && alias.containsKey(l.id)) {
+                val r = resolve(l)
+                if (r != null && r.type == l.type) return true
+            }
+            if (u.useCount(l) == 0 && u.assignCount(l) == 0 && inDoWhile == 0) {
+                return init == null || isPureExpr(init)
+            }
+            return false
+        }
+        if (s is MirStmt.Eval) return isPureExpr(s.expr)
+        return false
+    }
+
+    override fun stmts(l: List<MirStmt>): List<MirStmt> {
+        if (!prepared) prepare()
+        var out: ArrayList<MirStmt>? = null
+        var skip: ArrayList<MirStmt>? = null
+        var merged: ArrayList<MirStmt.Declare>? = null
+        var mergedFrom: ArrayList<MirStmt>? = null
+        // `declare x; ...; x = v`: look a few statements ahead
+        if (inDoWhile == 0) {
+            for (i in l.indices) {
+                val s = l[i]
+                if (s !is MirStmt.Declare) continue
+                val x = s.local
+                if (u.isParam(x) || u.assignCount(x) != 1 || u.declared[x.id] != 1) continue
+                if (!(s.init == null || isDefaultConst(s.init))) continue
+                var j = i + 1
+                while (j < l.size && j < i + 10 && !Mentions.of(l[j], x)) j++
+                if (j >= l.size || j >= i + 10) continue
+                val a = l[j]
+                if (a is MirStmt.Assign && a.local === x && !Mentions.exprUses(a.value, x)) {
+                    val d = MirStmt.Declare(x, a.value)
+                    d.srcLine = a.srcLine
+                    d.srcFile = a.srcFile
+                    if (skip == null) { skip = ArrayList(); merged = ArrayList(); mergedFrom = ArrayList() }
+                    skip.add(s)
+                    merged!!.add(d)
+                    mergedFrom!!.add(a)
+                }
+            }
+        }
+        for (i in l.indices) {
+            val s = l[i]
+            var drop = false
+            var repl: MirStmt? = null
+            if (skip != null) {
+                for (k in skip.indices) if (skip[k] === s) drop = true
+                for (k in mergedFrom!!.indices) if (mergedFrom[k] === s) repl = merged!![k]
+            }
+            if (!drop && repl == null && droppable(s)) drop = true
+            var r: MirStmt? = null
+            if (!drop) r = stmt(repl ?: s)
+            if (drop || repl != null) changed = true
+            if (out == null && (drop || r !== s)) {
+                out = ArrayList(l.size)
+                for (k in 0 until i) out.add(l[k])
+            }
+            if (out != null && r != null) out.add(r)
+        }
+        return out ?: l
     }
 }

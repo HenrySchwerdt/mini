@@ -1,5 +1,7 @@
 package mini.backend
 
+import mini.internal.nanoTime
+
 /*
  * MIR-level inlining of small functions (getters, setters, iterator steps, small stdlib helpers), across the library boundary
  * (the whole program is linked MIR). Functions are processed callees first, so the body that is inlined is already optimized.
@@ -21,8 +23,15 @@ object Inliner {
         var functions = 0
         var exactDevirt = 0
         var scalarReplaced = 0
+        var tExact = 0L
+        var tExpand = 0L
+        var tClean = 0L
+        var tSroa = 0L
+        var tOther = 0L
     }
 
+    /** Always inlined up to this size; up to [SIZE_LIMIT] when an argument is a fresh local object (scalar replacement can remove it). */
+    const val SMALL_LIMIT = 40
     const val SIZE_LIMIT = 70
     const val GROWTH_LIMIT = 700
 
@@ -38,7 +47,7 @@ object Inliner {
     }
 }
 
-internal class InlineInfo(val fn: MirFunction, val paramAssigned: BooleanArray)
+internal class InlineInfo(val fn: MirFunction, val paramAssigned: BooleanArray, val size: Int)
 
 internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
     val byName = HashMap<String, MirFunction>()
@@ -70,17 +79,25 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
             while (round < 4) {
                 round++
                 var progress = false
+                val t0 = nanoTime()
                 val us = UseScan(cur)
                 us.walk(cur.body)
                 val ed = ExactDevirt(classes, byName, us)
                 var body = if (doExact) ed.stmts(cur.body) else cur.body
+                val t1 = nanoTime()
+                stats.tExact += t1 - t0
                 if (ed.count > 0) { progress = true; stats.exactDevirt += ed.count }
                 val ex = Expander(this, cur.withBody(body))
                 if (doInline) body = ex.stmts(body)
                 if (ex.expanded > 0) { progress = true; stats.sites += ex.expanded }
+                val t2 = nanoTime()
+                stats.tExpand += t2 - t1
                 if (progress) body = Cleanup.run(body, cur)
+                val t3 = nanoTime()
+                stats.tClean += t3 - t2
                 val sr = Sroa(this, cur.withBody(body))
                 val body2 = if (doSroa) sr.run(body) else body
+                stats.tSroa += nanoTime() - t3
                 if (sr.count > 0) {
                     progress = true
                     stats.scalarReplaced += sr.count
@@ -110,7 +127,7 @@ internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
         if (!tailReturnsOnly(f.body, f.returnType === TUnit)) return null
         val assigned = AssignedParams(f.params)
         assigned.walk(f.body)
-        return InlineInfo(f, assigned.flags)
+        return InlineInfo(f, assigned.flags, size.count)
     }
 
     /** All `return`s are in tail position (and a function with a value ends in one on every path we can see). */
@@ -309,11 +326,23 @@ internal class Expander(val st: InlineState, val caller: MirFunction) : MirTrans
     var nextLabel: Int
     var budget = Inliner.GROWTH_LIMIT
     var expanded = 0
+    var allowAll = false
+    var loopDepth = 0
 
     init {
         val ids = IdScan(caller)
         nextLocal = ids.maxLocal + 1
         nextLabel = ids.maxLabel + 1
+    }
+
+    override fun stmt(s: MirStmt): MirStmt {
+        if (s is MirStmt.While || s is MirStmt.Loop || s is MirStmt.DoWhile || s is MirStmt.ForRange) {
+            loopDepth++
+            val r = rebuildStmt(s)
+            loopDepth--
+            return r
+        }
+        return rebuildStmt(s)
     }
 
     override fun stmts(l: List<MirStmt>): List<MirStmt> {
@@ -338,7 +367,25 @@ internal class Expander(val st: InlineState, val caller: MirFunction) : MirTrans
         val info = st.infos[e.cName] ?: return null
         if (info.fn.params.size != e.args.size) return null
         if (info.fn.cName == caller.cName) return null
+        if (info.size > Inliner.SMALL_LIMIT && !allowAll && !hasFreshObjectArg(e)) return null
+        if (loopDepth == 0 && !allowAll && !hasFreshObjectArg(e)) return null   // outside loops only what scalar replacement needs
         return info
+    }
+
+    private var freshObjects: HashSet<Int>? = null
+
+    /** Is one of the arguments a local that holds an object created in this function (a candidate for scalar replacement)? */
+    fun hasFreshObjectArg(call: MirExpr.Call): Boolean {
+        var fo = freshObjects
+        if (fo == null) {
+            fo = HashSet()
+            val u = UseScan(caller)
+            u.walk(caller.body)
+            for ((id, init) in u.inits) if (init is MirExpr.New && u.assigns[id] == null && u.declared[id] == 1) fo.add(id)
+            freshObjects = fo
+        }
+        for (a in call.args) if (a is MirExpr.Local && fo.contains(a.local.id)) return true
+        return false
     }
 
     fun freshTmp(name: String, t: MirType): MirLocal = MirLocal(nextLocal++, name, t)

@@ -142,13 +142,50 @@ internal class CandidateScan : MirVisitor() {
     }
 }
 
+/** Locals that hold a fresh object and are used only as the object of field accesses or as an argument of an inlinable call. */
+internal class EscapeScan(val st: InlineState) : MirVisitor() {
+    val total = HashMap<Int, Int>()
+    val benign = HashMap<Int, Int>()
+    val news = ArrayList<MirStmt.Declare>()
+    val assigned = HashSet<Int>()
+
+    private fun ok(e: MirExpr) {
+        if (e is MirExpr.Local) benign[e.local.id] = (benign[e.local.id] ?: 0) + 1
+    }
+
+    override fun visit(e: MirExpr) {
+        when (e) {
+            is MirExpr.Local -> total[e.local.id] = (total[e.local.id] ?: 0) + 1
+            is MirExpr.FieldGet -> ok(e.obj)
+            is MirExpr.Call -> if (st.infos.containsKey(e.cName)) for (a in e.args) ok(a)
+            else -> {}
+        }
+    }
+
+    override fun stmt(s: MirStmt): MirStmt {
+        when (s) {
+            is MirStmt.SetField -> ok(s.obj)
+            is MirStmt.Assign -> assigned.add(s.local.id)
+            is MirStmt.Declare -> { val i = s.init; if (i is MirExpr.New) news.add(s) }
+            else -> {}
+        }
+        return super.stmt(s)
+    }
+
+    fun candidates(): List<MirStmt.Declare> {
+        val out = ArrayList<MirStmt.Declare>()
+        for (d in news) {
+            val id = d.local.id
+            if (assigned.contains(id)) continue
+            if ((total[id] ?: 0) == (benign[id] ?: 0)) out.add(d)
+        }
+        return out
+    }
+}
+
 internal class Sroa(val st: InlineState, val caller: MirFunction) {
     var count = 0
-    val classes = HashMap<String, MirClass>()
-
-    init {
-        for (c in st.module.classes) classes[c.cName] = c
-    }
+    val classes: HashMap<String, MirClass> = st.classes
 
     /** All fields of [c] including inherited ones, as (key, field); null when the hierarchy is not fully known. */
     private fun fieldsOf(c: MirClass, keys: ArrayList<String>, types: ArrayList<MirType>): Boolean {
@@ -173,9 +210,9 @@ internal class Sroa(val st: InlineState, val caller: MirFunction) {
     fun run(body: List<MirStmt>): List<MirStmt> {
         if (caller.strict) return body
         var cur = body
-        val scan = CandidateScan()
+        val scan = EscapeScan(st)
         scan.walk(cur)
-        for (d in scan.decls) {
+        for (d in scan.candidates()) {
             val r = tryReplace(cur, d)
             if (r != null) {
                 cur = r
@@ -230,6 +267,7 @@ internal class Sroa(val st: InlineState, val caller: MirFunction) {
         val expansion = ex.expandCall(call, info, 0, null)
         // constructors of the super classes (and whatever else is small) inside the expansion
         val ex2 = Expander(st, caller.withBody(body))
+        ex2.allowAll = true
         ex2.nextLocal = ex.nextLocal
         ex2.nextLabel = ex.nextLabel
         repl.addAll(ex2.stmts(expansion))
