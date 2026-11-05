@@ -434,7 +434,31 @@ fun BodyChecker.paramsOf(c: Candidate): List<VarSym> {
         return l
     }
     sema.ensureSig(c.fn)
+    inheritDefaults(c.fn)
     return c.fn.params
+}
+
+/** An overriding function has the default values of the function it overrides (`override fun f(a: Int)` of `open fun f(a: Int = 1)`). */
+fun BodyChecker.inheritDefaults(fn: FunSym) {
+    if (fn.defaultsInherited) return
+    fn.defaultsInherited = true
+    val o = fn.owner ?: return
+    if (!fn.has("override") || fn.params.isEmpty()) return
+    for (site in ops.closure(o.thisType())) {
+        if (site.cls === o) continue
+        sema.members.ensureSynth(site.cls)
+        val l = site.cls.funs[fn.name] ?: continue
+        for (g in l) {
+            sema.ensureSig(g)
+            if (g.params.size != fn.params.size) continue
+            inheritDefaults(g)
+            var j = 0
+            while (j < g.params.size) {
+                if (g.params[j].hasDefault) fn.params[j].hasDefault = true
+                j++
+            }
+        }
+    }
 }
 
 fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {

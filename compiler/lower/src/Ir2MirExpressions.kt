@@ -70,6 +70,7 @@ internal fun Ir2Mir.bindValue(e: IrExpression, to: MirType, out: MutableList<Mir
 }
 
 internal fun Ir2Mir.coerceOperand(v: MirExpr, to: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
+    if (v.type == TUnit && to.isRef) return unitAsRef(v, out)
     val c = convertTo(v, to, at)
     return if (c.isOwned()) tmpOf(c, out) else c
 }
@@ -205,6 +206,7 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (from.isPrimitive && to.isPrimitive) unsupported(at, "conversion from $from to $to")
     if (from is TPtr && to is TPtr) return e // the same address: nullability is a Kotlin-level fact
     if (from === TNull && (to.isRef || to is TPtr)) return MirExpr.NullConst(to)
+    if (from == TUnit && to.isRef && e === MirExpr.UnitValue) return unitInstance()
     if ((from.isInteropScalar || to.isInteropScalar) && (from.isRef || to.isRef)) {
         unsupported(at, "boxing of a value of type ${from.displayName} as ${to.displayName} (Byte, Short and C pointers cannot be stored in Any, collections or generic code)")
     }
@@ -224,7 +226,7 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
 }
 
 internal fun Ir2Mir.asAny(e: MirExpr): MirExpr =
-    if (e.type is TObject && (e.type as TObject).cName == ANY_CNAME) e else MirExpr.Cast(e, anyNullable, MirExpr.CastMode.Unchecked)
+    if (e === MirExpr.UnitValue) unitInstance() else if (e.type is TObject && (e.type as TObject).cName == ANY_CNAME) e else MirExpr.Cast(e, anyNullable, MirExpr.CastMode.Unchecked)
 
 internal fun Ir2Mir.boxIfPrim(e: MirExpr, at: IrElement, out: MutableList<MirStmt>): MirExpr =
     if (e.type.isPrimitive) coerceOperand(e, TBoxed(e.type), at, out) else e

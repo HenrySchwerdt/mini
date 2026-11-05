@@ -64,6 +64,27 @@ internal fun Ir2Mir.refClassFor(t: MirType): RefClass = refClasses.getOrPut(t) {
     RefClass(cName, ctorName, type, t)
 }
 
+/** The `Unit` object (what a `Unit` value is when it is stored as `Any?` / `Unit?`): the singleton of a generated object class. */
+internal fun Ir2Mir.unitInstance(): MirExpr {
+    val uc = unitClass ?: run {
+        val cName = Mangling.className("kotlin", listOf("UnitValue"))
+        val type = TObject("kotlin.Unit", cName, false)
+        val ctorName = Mangling.constructor(cName, emptyList())
+        val toStr = Mangling.method(cName, "toString", emptyList())
+        extraClasses += MirClass("kotlin.Unit", cName, false, null, emptyList(), emptyList(), listOf(toStr, null, null), emptyList(), ctorName)
+        extraFunctions += MirFunction("kotlin.Unit.<init>", ctorName, listOf(MirLocal(0, "this", type)), TUnit, emptyList(), cName)
+        extraFunctions += MirFunction("kotlin.Unit.toString", toStr, listOf(MirLocal(0, "this", type)), TString, listOf(MirStmt.Return(MirExpr.StringConst("kotlin.Unit"))))
+        type.also { unitClass = it }
+    }
+    return MirExpr.Cast(MirExpr.ObjectGet(uc.cName, uc), anyNullable, MirExpr.CastMode.Unchecked)
+}
+
+/** A `Unit`-typed value [v] used where a reference is needed: [v] runs for its effects, the result is the Unit object. */
+internal fun Ir2Mir.unitAsRef(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
+    if (v !== MirExpr.UnitValue && v !is MirExpr.Local) out += MirStmt.Eval(v)
+    return unitInstance()
+}
+
 internal fun zeroOf(t: MirType): MirExpr = when (t) {
     TInt -> MirExpr.IntConst(0)
     TLong -> MirExpr.LongConst(0)

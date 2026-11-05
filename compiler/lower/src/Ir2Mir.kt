@@ -83,6 +83,11 @@ class Ir2Mir {
     internal var entriesImpl: IrClass? = null
 
     /** The hidden name and ordinal parameters of the enum-body constructor being converted. */
+    internal var unitClass: TObject? = null
+
+    /** the loop of the `tailrec` function being converted, if any (Ir2MirTailrec) */
+    internal var tailLoop: TailLoop? = null
+
     internal var enumHidden: List<MirLocal> = emptyList()
 
     fun convert(module: IrModule, sourceName: String): MirModule {

@@ -85,7 +85,25 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$name", TString, MirExpr.Local(params[1]))
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$ordinal", TInt, MirExpr.Local(params[2]))
     }
-    convertBody(f, ret, out)
+    val tails = if (f is IrSimpleFunction && f.sym?.has("tailrec") == true && f.parameters.none { it in closure.boxed }) tailCallsOf(f) else emptySet()
+    if (tails.isNotEmpty()) {
+        // the body runs in a loop over copies of the parameters; a tail call assigns the copies and continues
+        val copies = HashMap<IrValueParameter, MirLocal>()
+        for (p in f.parameters) {
+            if (p.kind != IrParameterKind.Regular) continue
+            val orig = locals[p] ?: continue
+            val cp = MirLocal(localCounter++, p.name, orig.type)
+            out += MirStmt.Declare(cp, MirExpr.Local(orig))
+            locals[p] = cp
+            copies[p] = cp
+        }
+        val label = MirLabel(labelCounter++)
+        tailLoop = TailLoop(label, copies, tails)
+        val inner = ArrayList<MirStmt>()
+        try { convertBody(f, ret, inner) } finally { tailLoop = null }
+        if (ret == TUnit) inner += MirStmt.Break(label)
+        out += MirStmt.Loop(label, inner)
+    } else convertBody(f, ret, out)
     return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
 }
 
@@ -230,6 +248,11 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
         else out += MirStmt.Assign(rt, bindValue(s.value, rt.type, out))
         runFinalizers(r.finallyDepth, out)
         out += MirStmt.Break(r.label)
+        return
+    }
+    val tl = tailLoop
+    if (tl != null && target === f && finallyStack.isEmpty() && hasTailCall(s.value, tl.calls)) {
+        returnWithTail(s.value, tl, out)
         return
     }
     if (target !== f) unsupported(s, "return from a lambda or nested function (target ${(target as? IrFunction)?.name}, in ${f.name}, inline stack ${returnTargets.keys.map { it.name }})")
