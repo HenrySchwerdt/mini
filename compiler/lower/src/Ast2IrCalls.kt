@@ -34,7 +34,7 @@ fun Ast2Ir.irConstructorOf(fn: FunSym): IrConstructor {
 
 /** the function a call refers to: for members the declared or fake override function of the static receiver class */
 fun Ast2Ir.functionFor(fn: FunSym, staticRecv: Type?): IrSimpleFunction {
-    if (fn.kind == FunKind.FUNCTION_INVOKE) return invokeFunction(fn.invokeArity)
+    if (fn.kind == FunKind.FUNCTION_INVOKE) return invokeFunction(fn.invokeArity + (if (fn.invokeSuspend) 1 else 0))
     val f = irFunctionOf(fn)
     if (fn.owner != null && staticRecv != null) {
         val c = classOf(staticRecv)
@@ -345,10 +345,10 @@ fun Ast2Ir.invokeCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExp
         staticType = fv.type
     } else fail(node, "invoke without a function value")
     val callee: IrSimpleFunction
-    if (fn.kind == FunKind.FUNCTION_INVOKE) callee = invokeFunction(fn.invokeArity)
+    if (fn.kind == FunKind.FUNCTION_INVOKE) callee = invokeFunction(fn.invokeArity + (if (fn.invokeSuspend) 1 else 0))
     else callee = functionFor(fn, staticType)
     val call = IrCall(callee, type)
-    call.origin = "INVOKE"
+    call.origin = if (fn.invokeSuspend) "SUSPEND_INVOKE" else "INVOKE"
     call.typeArguments = info.typeArgs.map { irType(it) }
     // arguments: the first one may be the receiver of a function type with receiver
     var regular = 0

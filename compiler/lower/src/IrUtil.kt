@@ -33,7 +33,7 @@ val Type.classOrNull: IrClass?
         val c = LowerState.ctx ?: return null
         return when (t) {
             is ClassType -> c.irClass(t.cls)
-            is FunType -> c.functionClass(t.arity)
+            is FunType -> c.functionClass(t.arity + (if (t.suspend) 1 else 0))
             is IsectType -> if (t.parts.isNotEmpty()) t.parts[0].classOrNull else null
             else -> null
         }

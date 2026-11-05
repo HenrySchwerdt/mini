@@ -150,6 +150,11 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             var v = value(e.argument, out)
             val target = mirType(e.type, e)
             val safe = e.operator == IrTypeOperator.SAFE_CAST
+            // `value as T` with T = Unit (an inlined generic function): nothing to check, there is no Unit object
+            if (target == TUnit) {
+                if (v is MirExpr.Call) out += MirStmt.Eval(v)
+                return MirExpr.UnitValue
+            }
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
             if (target.isPrimitive) {
                 return MirExpr.Unbox(MirExpr.Cast(v, TBoxed(target), MirExpr.CastMode.Checked), target)
@@ -202,6 +207,8 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (e.type == to || e.type == TNothing) return e
     val from = e.type
     if (isNumericType(from) && isNumericType(to)) return MirExpr.Convert(e, to)
+    // the Unit value in a generic position (`Result.success(Unit)`, a `Continuation<Unit>`) is null, like the result of a Unit lambda
+    if ((e === MirExpr.UnitValue || e is MirExpr.Local) && from == TUnit && to.isRef) return MirExpr.NullConst(to)
     if (from.isPrimitive && to.isPrimitive) unsupported(at, "conversion from $from to $to")
     if (from is TPtr && to is TPtr) return e // the same address: nullability is a Kotlin-level fact
     if (from === TNull && (to.isRef || to is TPtr)) return MirExpr.NullConst(to)

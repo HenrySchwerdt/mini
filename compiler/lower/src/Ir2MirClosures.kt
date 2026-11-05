@@ -30,6 +30,7 @@ internal class InlineReturn(val result: MirLocal?, val label: MirLabel, val fina
 
 internal fun Ir2Mir.functionArity(t: Type): Int? {
     val n = t.classFqName ?: return null
+    if (n.startsWith("kotlin.coroutines.SuspendFunction")) return (n.removePrefix("kotlin.coroutines.SuspendFunction").toIntOrNull() ?: return null) + 1
     val rest = when {
         n.startsWith("kotlin.Function") -> n.removePrefix("kotlin.Function")
         n.startsWith(REFLECT_PKG + ".KFunction") -> n.removePrefix(REFLECT_PKG + ".KFunction")

@@ -234,7 +234,7 @@ object CEmitter {
             TString, TNString -> "mk_type_String"
             is TObject -> t.typeInfo
             is TBoxed -> boxTypeInfo(t.prim)
-            else -> throw EmitError("no type info for $t")
+            else -> throw EmitError("no type info for $t" + (if (curFn != null) " (in " + curFn!!.qualifiedName + ")" else ""))
         }
 
         fun boxTypeInfo(p: MirType): String = when (p) {
@@ -443,7 +443,7 @@ object CEmitter {
             when (s) {
                 is MirStmt.Declare -> {
                     val t = s.local.type
-                    if (t == TUnit || t == TNothing) throw EmitError("local of type $t")
+                    if (t == TUnit || t == TNothing) throw EmitError("local of type $t" + (if (curFn != null) " (in " + curFn!!.qualifiedName + ")" else ""))
                     if (rcL(s.local)) {
                         // declared (NULL) at the top of the scope
                         val init = s.init ?: return
