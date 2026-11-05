@@ -755,25 +755,25 @@ public fun <T> Iterable<T>.joinToString(
 
 public fun <T : Comparable<T>> Iterable<T>.sorted(): List<T> {
     val list = this.toMutableList()
-    list.sortWith(Comparator { a, b -> a.compareTo(b) })
+    list.sortWith(Comparator<T> { a, b -> a.compareTo(b) })
     return list
 }
 
 public fun <T : Comparable<T>> Iterable<T>.sortedDescending(): List<T> {
     val list = this.toMutableList()
-    list.sortWith(Comparator { a, b -> b.compareTo(a) })
+    list.sortWith(Comparator<T> { a, b -> b.compareTo(a) })
     return list
 }
 
 public inline fun <T, R : Comparable<R>> Iterable<T>.sortedBy(crossinline selector: (T) -> R?): List<T> {
     val list = this.toMutableList()
-    list.sortWith(Comparator { a, b -> compareValues(selector(a), selector(b)) })
+    list.sortWith(Comparator<T> { a, b -> compareValues(selector(a), selector(b)) })
     return list
 }
 
 public inline fun <T, R : Comparable<R>> Iterable<T>.sortedByDescending(crossinline selector: (T) -> R?): List<T> {
     val list = this.toMutableList()
-    list.sortWith(Comparator { a, b -> compareValues(selector(b), selector(a)) })
+    list.sortWith(Comparator<T> { a, b -> compareValues(selector(b), selector(a)) })
     return list
 }
 
@@ -784,11 +784,11 @@ public fun <T> Iterable<T>.sortedWith(comparator: Comparator<in T>): List<T> {
 }
 
 public fun <T : Comparable<T>> MutableList<T>.sort() {
-    sortWith(Comparator { a, b -> a.compareTo(b) })
+    sortWith(Comparator<T> { a, b -> a.compareTo(b) })
 }
 
 public inline fun <T, R : Comparable<R>> MutableList<T>.sortBy(crossinline selector: (T) -> R?) {
-    sortWith(Comparator { a, b -> compareValues(selector(a), selector(b)) })
+    sortWith(Comparator<T> { a, b -> compareValues(selector(a), selector(b)) })
 }
 
 /** Stable merge sort (java.util.List.sort is stable too, so results agree with the JVM). */
