@@ -328,10 +328,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (p == null || p.isContext) { if (!v.tracked) arenaEscapeArg(v); continue }
             if (!v.tracked) { arenaEscapeArg(v); continue }
             if (foreign) {
-                if (p.annot.borrowed == null && !fn.borrowsAll) {
+                val why = if (p.annot.borrowed == null && !fn.borrowsAll) Summaries.escapeReason(fn, i) else null
+                if (why != null) {
+                    val fnName = fn.qname.substringAfterLast('.')
                     diag(
-                        "M0110", v.pos, "Strict value handed to Managed code", "passed to a Managed function that does not promise to borrow",
-                        "mark the parameter `@Borrowed`, or wrap the call in a Strict function",
+                        "M0110", v.pos, "Strict value handed to Managed code that keeps it",
+                        "parameter `${p.local.name}` of `$fnName` $why",
+                        "keep the value in Strict code and pass only what is needed (`x.field`), or mark the parameter `@Borrowed` if `$fnName` really only lends it",
                     )
                 }
                 discard(v)
@@ -375,7 +378,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val args = processArgs(fn, rv, e.args, env, e)
         val rt = e.type
         if (!rt.tracked) return AVal.untracked(rt, e.pos)
-        if (fn.mode == MemMode.Managed || fn.external) return AVal.untracked(rt, e.pos)
+        if ((fn.mode == MemMode.Managed || fn.external) && fn.ret.annot.borrowed == null) return AVal.untracked(rt, e.pos)
         if (fn.ret.annot.borrowed != null) {
             val refs = HashSet<Int>()
             val sites = HashSet<Site>()
@@ -547,8 +550,9 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 )
             } else if (s2.bits and O != 0) {
                 diag(
-                    "M0112", e.pos, "owned `${c.name}` is captured by a lambda that escapes", "captured here",
-                    "pass the value as a parameter, or read what you need before creating the lambda", slot = c.id,
+                    "M0112", e.pos, "owned `${c.name}` is captured by a lambda that is a closure object",
+                    "captured here: the closure object keeps a reference to `${c.name}` and may outlive it",
+                    "make the called function `inline` (inline lambdas are read like code at the call), pass `${c.name}` as a parameter, or read what you need before creating the lambda", slot = c.id,
                 )
                 put(c.id, Slot(X, s2.refs, s2.sites, s2.vpos))
             }

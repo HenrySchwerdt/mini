@@ -139,6 +139,18 @@ class MFun(
     val cFree: String? = null,
 ) {
     var body: List<MStmt>? = null
+    /** Lowers the body on demand (library functions that are not part of the checked module); see [Summaries]. */
+    var bodyProvider: (() -> List<MStmt>?)? = null
+    /** Parameters (indices into [params]) the declaration marks `@TakesOwnership` (standard library: stored by the callee). */
+    var takesOwnership: Set<Int> = emptySet()
+    /** Known overriding implementations of a virtual (open, abstract, interface) function; their summaries are merged into its own. */
+    var virtualTargets: (() -> List<MFun>)? = null
+    /** Summary read from a precompiled library (`.mlib`) for a function whose body is not available. */
+    var storedSummary: FnSummary? = null
+    /** Inferred summary ([Summaries.of]); null until computed. */
+    var summary: FnSummary? = null
+    internal var summaryBusy: Boolean = false
+    internal var summaryAssumed: FnSummary? = null
     /** Parameters that are visible allocators (context parameters whose type is an allocator). */
     val contextAllocParams: List<MParam> get() = params.filter { it.isContext && it.local.type.tk == TK.Alloc }
     /** Summary: contains (transitively) a throw. Filled by the checker. */
