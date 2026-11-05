@@ -369,12 +369,25 @@ export interface Assembled {
 
 export const NOTEBOOK_FILE = 'notebook.kt'
 
+/** The name of a plain top-level `val`/`var` declaration (not an extension property or destructuring), or null. */
+export function topLevelPropertyName(lines: string[]): string | null {
+  const first = lines.find((l) => l.trim() !== '' && !/^\s*(\/\/|@)/.test(l))
+  if (!first) return null
+  const m = /^\s*(?:(?:public|private|internal|protected|const|lateinit|override|open|final)\s+)*(?:val|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:[:=]|$|by\b)/.exec(first)
+  return m ? m[1] : null
+}
+
+/**
+ * A later cell may declare a top-level property again (`val x = ...` in two cells): the later declaration wins, as in a
+ * REPL, and the earlier one is left out so the program has no conflicting declarations.
+ */
 export function assembleProgram(cells: Cell[], target: number): Assembled {
   const header: { origin: LineOrigin; text: string }[] = []
   const imports: { origin: LineOrigin; text: string }[] = []
   const decls: { origin: LineOrigin; text: string }[] = []
   const body: { origin: LineOrigin; text: string }[] = []
   const seenImports = new Set<string>()
+  const propChunks = new Map<string, { start: number; count: number; cell: number }>()
   let ownMain = false
   let hasBody = false
   let any = false
@@ -393,6 +406,14 @@ export function assembleProgram(cells: Cell[], target: number): Assembled {
       } else if (chunk.kind === 'decl') {
         if (chunk.isMain && !isTarget) continue
         if (chunk.isMain) ownMain = true
+        const prop = topLevelPropertyName(chunk.lines)
+        if (prop !== null) {
+          const old = propChunks.get(prop)
+          if (old && old.cell !== ci) {
+            for (let k = old.start; k < old.start + old.count; k++) decls[k] = { origin: decls[k].origin, text: '' }
+          }
+          propChunks.set(prop, { start: decls.length, count: chunk.lines.length, cell: ci })
+        }
         place(decls)
         decls.push({ origin: { cell: -1, line: 0 }, text: '' })
       } else if (isTarget) {

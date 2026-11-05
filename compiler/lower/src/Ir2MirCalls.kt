@@ -37,7 +37,7 @@ internal fun Ir2Mir.callArgs(
         } else {
             val d = p.defaultValue?.expression
             v = if (d == null && p.varargElementType != null) emptyVararg(p, c, out)
-            else coerceOperand(value(d ?: unsupported(c, "call with omitted argument '${p.name}' of '${callee.name}' (${c::class.simpleName} ${(callee.parent as? IrClass)?.name} ${given.size} ${params.size} ${given.map { it == null }})"), out), mirType(sigParam.type, sigParam), c, out)
+            else coerceOperand(value(d ?: unsupported(c, "call with omitted argument '${p.name}' of '${callee.name}'"), out), mirType(sigParam.type, sigParam), c, out)
         }
         // make this value visible to the default expressions of later parameters
         if (idxs.size == params.size) {

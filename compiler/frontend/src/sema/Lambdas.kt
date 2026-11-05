@@ -16,6 +16,8 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     val savedFlow = flow
     val label = pendingLabel ?: lambdaLabel
     pendingLabel = null
+    val probe = probeLambda
+    probeLambda = false
     var base: Scope = scope
     val recvT = ef?.receiver
     if (recvT != null) {
@@ -62,7 +64,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
             i++
         }
     }
-    val retExpected: Type? = if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
+    val retExpected: Type? = if (probe) null else if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
     val target = ReturnTarget(label, retExpected, null, true)
     targets.add(target)
     lambdaDepth++
