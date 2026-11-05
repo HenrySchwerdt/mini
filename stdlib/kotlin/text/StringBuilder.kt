@@ -145,8 +145,132 @@ public class StringBuilder {
 
     public fun isNotEmpty(): Boolean = length != 0
 
+    public fun append(value: Float): StringBuilder {
+        sbAppendString(buf, value.toString())
+        return this
+    }
+
+    public fun append(value: Byte): StringBuilder = append(value.toInt())
+
+    public fun append(value: Short): StringBuilder = append(value.toInt())
+
+    public fun append(value: CharArray): StringBuilder {
+        var i = 0
+        while (i < value.size) {
+            sbAppendChar(buf, value[i])
+            i++
+        }
+        return this
+    }
+
+    /** `append(value, startIndex, endIndex)`: appends the characters of [value] in [startIndex, endIndex). */
+    public fun append(value: String?, startIndex: Int, endIndex: Int): StringBuilder {
+        val s = value ?: "null"
+        if (startIndex < 0 || startIndex > endIndex || endIndex > s.length) {
+            mini.internal.throwIndexOutOfBounds("start " + startIndex + ", end " + endIndex + ", length " + s.length)
+        }
+        sbAppendString(buf, s.substring(startIndex, endIndex))
+        return this
+    }
+
+    public fun appendLine(value: Long): StringBuilder = append(value).append('\n')
+
+    public fun appendLine(value: Double): StringBuilder = append(value).append('\n')
+
+    public fun appendLine(value: Float): StringBuilder = append(value).append('\n')
+
+    public fun appendLine(value: Boolean): StringBuilder = append(value).append('\n')
+
+    public fun appendLine(value: CharArray): StringBuilder = append(value).append('\n')
+
+    public fun insert(index: Int, value: Any?): StringBuilder = insert(index, value.toString())
+
+    public fun insert(index: Int, value: Int): StringBuilder = insert(index, value.toString())
+
+    public fun insert(index: Int, value: Long): StringBuilder = insert(index, value.toString())
+
+    public fun insert(index: Int, value: Double): StringBuilder = insert(index, value.toString())
+
+    public fun insert(index: Int, value: Boolean): StringBuilder = insert(index, value.toString())
+
+    public fun deleteCharAt(index: Int): StringBuilder {
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        return delete(index, index + 1)
+    }
+
+    public fun replace(startIndex: Int, endIndex: Int, value: String): StringBuilder {
+        val len = length
+        if (startIndex < 0 || startIndex > len || startIndex > endIndex) {
+            mini.internal.throwIndexOutOfBounds("start: " + startIndex + ", end: " + endIndex + ", length: " + len)
+        }
+        val end = if (endIndex > len) len else endIndex
+        val s = toString()
+        clear()
+        sbAppendString(buf, s.substring(0, startIndex))
+        sbAppendString(buf, value)
+        sbAppendString(buf, s.substring(end))
+        return this
+    }
+
+    public fun setRange(startIndex: Int, endIndex: Int, value: String): StringBuilder = replace(startIndex, endIndex, value)
+
+    public fun deleteRange(startIndex: Int, endIndex: Int): StringBuilder = delete(startIndex, endIndex)
+
+    public fun indexOf(string: String): Int = toString().indexOf(string)
+
+    public fun indexOf(string: String, fromIndex: Int): Int = toString().indexOf(string, fromIndex)
+
+    public fun lastIndexOf(string: String): Int = toString().lastIndexOf(string)
+
+    public fun lastIndexOf(string: String, fromIndex: Int): Int = toString().lastIndexOf(string, fromIndex)
+
+    public fun capacity(): Int = if (length < 16) 16 else length
+
+    public fun ensureCapacity(minimumCapacity: Int) {}
+
+    public fun trimToSize() {}
+
+    public fun setCharAt(index: Int, value: Char) { set(index, value) }
+
+    public fun contentEquals(other: String): Boolean = toString() == other
+
+    public fun contentEquals(other: StringBuilder): Boolean = toString() == other.toString()
+
+    public fun toCharArray(): CharArray = toString().toCharArray()
+
     override fun toString(): String = sbToString(buf)
 }
+
+public fun StringBuilder.append(vararg value: String?): StringBuilder {
+    for (v in value) append(v)
+    return this
+}
+
+public fun StringBuilder.insertRange(index: Int, value: String, startIndex: Int, endIndex: Int): StringBuilder =
+    insert(index, value.substring(startIndex, endIndex))
+
+public inline fun StringBuilder.appendLine(vararg value: String?): StringBuilder {
+    for (v in value) appendLine(v)
+    return this
+}
+
+public fun StringBuilder.substring(range: IntRange): String = substring(range.start, range.endInclusive + 1)
+
+public inline fun StringBuilder.forEach(action: (Char) -> Unit) {
+    var i = 0
+    while (i < length) { action(this[i]); i++ }
+}
+
+public fun StringBuilder.first(): Char = this[0]
+
+public fun StringBuilder.last(): Char = this[length - 1]
+
+public val StringBuilder.lastIndex: Int
+    get() = length - 1
+
+public val StringBuilder.indices: IntRange
+    get() = IntRange(0, length - 1)
+
 
 public inline fun buildString(builderAction: StringBuilder.() -> Unit): String {
     val sb = StringBuilder()

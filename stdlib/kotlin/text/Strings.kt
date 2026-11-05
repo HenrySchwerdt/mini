@@ -281,40 +281,6 @@ public fun String.replace(oldValue: String, newValue: String): String {
     return sb.toString()
 }
 
-public fun String.split(delimiter: String): List<String> {
-    val result = ArrayList<String>()
-    if (delimiter.length == 0) {
-        var k = 0
-        while (k < length) {
-            result.add(this[k].toString())
-            k++
-        }
-        return result
-    }
-    var start = 0
-    var index = indexOf(delimiter)
-    while (index >= 0) {
-        result.add(substring(start, index))
-        start = index + delimiter.length
-        index = indexOf(delimiter, start)
-    }
-    result.add(substring(start))
-    return result
-}
-
-public fun String.split(delimiter: Char): List<String> {
-    val result = ArrayList<String>()
-    var start = 0
-    var index = indexOf(delimiter)
-    while (index >= 0) {
-        result.add(substring(start, index))
-        start = index + 1
-        index = indexOf(delimiter, start)
-    }
-    result.add(substring(start))
-    return result
-}
-
 public fun String.lines(): List<String> {
     val result = ArrayList<String>()
     var start = 0
