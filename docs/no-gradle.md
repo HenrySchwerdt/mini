@@ -23,6 +23,7 @@ compiler/
   bootstrap.sh         stage0 (native) -> stage1 -> stage2 -> stage3, stage2 == stage3 (C, LLVM, LLVM API)
 scripts/               build-mini.sh, test-e2e.sh, check-purity.sh, fetch-stage0.sh, ci-*.sh, wasm/
 tools/k2-oracle/       the only Gradle build: K2 cross-checks on the JVM
+tools/conformance/     the Kotlin box tests through minic (Python + shell, docs/conformance.md)
 ```
 
 `mini` learned two things for this: `@Test` methods of classes and objects are found next to top-level `@Test` functions
