@@ -35,3 +35,8 @@ public annotation class CArray(val length: Int)
 @Target(FUNCTION)
 @Retention(AnnotationRetention.BINARY)
 public annotation class CVariadic(val fixed: Int)
+
+@RequiresOptIn
+@Retention(AnnotationRetention.BINARY)
+@Target(CLASS, FUNCTION, PROPERTY, TYPEALIAS)
+public annotation class ExperimentalForeignApi

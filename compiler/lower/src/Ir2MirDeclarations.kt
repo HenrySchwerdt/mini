@@ -168,6 +168,12 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
     when (s) {
         is IrVariable -> {
             val t = mirType(s.type, s)
+            if (t == TUnit && s !in closure.boxed) {
+                // a variable of type Unit has no storage: the initializer runs for its effect, reads are the Unit value
+                s.initializer?.let { stmt(it, out) }
+                unitVars += s
+                return
+            }
             if (t == TUnit || t == TNothing) unsupported(s, "variable '${s.name}' of type $t")
             val init = s.initializer?.let { bindValue(it, t, out) }
             if (s in closure.boxed) {
@@ -194,7 +200,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
         is IrThrow -> throwStmt(s, out)
         is IrTry -> discard(tryValue(s, out, true), out)
         is IrReturn -> returnStmt(s, out)
-        is IrSetValue -> {
+        is IrSetValue -> if (s.owner in unitVars) stmt(s.value, out) else {
             val owner = s.owner
             val l = localOf(owner, s)
             if (owner in closure.boxed) {

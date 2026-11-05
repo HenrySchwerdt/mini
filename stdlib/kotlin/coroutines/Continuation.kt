@@ -4,10 +4,19 @@
  */
 package kotlin.coroutines
 
+import kotlin.coroutines.intrinsics.*
+
 public interface Continuation<in T> {
     public val context: CoroutineContext
     public fun resumeWith(result: Result<T>)
 }
+
+/** Creates a [Continuation] with the given [context] that passes the result to [resumeWith]. */
+public fun <T> Continuation(context: CoroutineContext, resumeWith: (Result<T>) -> Unit): Continuation<T> =
+    object : Continuation<T> {
+        override val context: CoroutineContext = context
+        override fun resumeWith(result: Result<T>) = resumeWith(result)
+    }
 
 public fun <T> Continuation<T>.resume(value: T) {
     resumeWith(Result.success(value))
@@ -92,14 +101,6 @@ public interface ContinuationInterceptor : CoroutineContext.Element {
     public companion object Key : CoroutineContext.Key<ContinuationInterceptor>
 }
 
-public fun <T> Continuation<T>.intercepted(): Continuation<T> {
-    if (this is BaseContinuation) {
-        @Suppress("UNCHECKED_CAST")
-        return interceptedContinuation() as Continuation<T>
-    }
-    return this
-}
-
 @Suppress("UNCHECKED_CAST")
 public fun <T> (suspend () -> T).createCoroutine(completion: Continuation<T>): Continuation<Unit> =
     SafeStarter(completion as Continuation<Any?>, { c -> (this as (Continuation<T>) -> Any?)(c as Continuation<T>) }).intercepted() as Continuation<Unit>
@@ -116,32 +117,10 @@ public fun <R, T> (suspend R.() -> T).startCoroutine(receiver: R, completion: Co
     createCoroutine(receiver, completion).resume(Unit)
 }
 
-@Suppress("UNCHECKED_CAST")
-public fun <T> (suspend () -> T).createCoroutineUnintercepted(completion: Continuation<T>): Continuation<Unit> =
-    SafeStarter(completion as Continuation<Any?>, { c -> (this as (Continuation<T>) -> Any?)(c as Continuation<T>) }) as Continuation<Unit>
-
-@Suppress("UNCHECKED_CAST")
-public fun <R, T> (suspend R.() -> T).createCoroutineUnintercepted(receiver: R, completion: Continuation<T>): Continuation<Unit> =
-    SafeStarter(completion as Continuation<Any?>, { c -> (this as (R, Continuation<T>) -> Any?)(receiver, c as Continuation<T>) }) as Continuation<Unit>
-
-/** Runs the block as a suspend function with [completion] as its continuation; the result is the value or COROUTINE_SUSPENDED. */
-@Suppress("UNCHECKED_CAST")
-public fun <T> (suspend () -> T).startCoroutineUninterceptedOrReturn(completion: Continuation<T>): Any? =
-    (this as (Continuation<T>) -> Any?)(completion)
-
-@Suppress("UNCHECKED_CAST")
-public fun <R, T> (suspend R.() -> T).startCoroutineUninterceptedOrReturn(receiver: R, completion: Continuation<T>): Any? =
-    (this as (R, Continuation<T>) -> Any?)(receiver, completion)
-
 public suspend fun <T> suspendCoroutine(block: (Continuation<T>) -> Unit): T = suspendCoroutineUninterceptedOrReturn { c ->
     val safe = SafeContinuation(c.intercepted())
     block(safe)
     safe.getOrThrow()
-}
-
-/** The compiler lowers a call of this function to `block(<current continuation>)`, which may return COROUTINE_SUSPENDED. */
-public suspend fun <T> suspendCoroutineUninterceptedOrReturn(block: (Continuation<T>) -> Any?): T {
-    throw IllegalStateException("suspendCoroutineUninterceptedOrReturn is lowered by the compiler")
 }
 
 public suspend fun currentCoroutineContext(): CoroutineContext = suspendCoroutineUninterceptedOrReturn { c -> c.context }

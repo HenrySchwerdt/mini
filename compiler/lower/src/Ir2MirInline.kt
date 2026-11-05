@@ -110,7 +110,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
         val params = callee.parameters
         for ((i, p) in params.withIndex()) {
             val arg = c.arguments.getOrNull(i)
-            val lam = if (arg != null && !p.isNoinline && !p.isCrossinline) inlineLambdaOf(arg) else null
+            val lam = if (arg != null && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlineLambdaOf(arg) else null
             if (lam != null) {
                 inlineLambdaParams[p] = lam
                 boundLambdas += p

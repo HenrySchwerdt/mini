@@ -45,3 +45,14 @@ public annotation class DeprecatedSinceKotlin(val warningSince: String = "", val
 @Target(FUNCTION)
 @Retention(AnnotationRetention.BINARY)
 public annotation class OverloadResolutionByLambdaReturnType
+
+/** Opt-in marker of standard library APIs that may change. */
+@RequiresOptIn
+@Retention(AnnotationRetention.BINARY)
+@Target(CLASS, FUNCTION, PROPERTY, TYPEALIAS)
+public annotation class ExperimentalStdlibApi
+
+@RequiresOptIn
+@Retention(AnnotationRetention.BINARY)
+@Target(CLASS, FUNCTION, PROPERTY, TYPEALIAS)
+public annotation class ExperimentalUnsignedTypes

@@ -6,13 +6,13 @@
 #include <string.h>
 
 const MkTypeInfo mk_type_String = {
-    "kotlin.String", sizeof(MkString), &mk_type_Any, NULL, NULL, 0, NULL, 0,
+    "kotlin.String", sizeof(MkString), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL,
 };
 
 static MkString *string_alloc(size_t length) {
     if (length > (size_t)INT32_MAX) mk_panic("string too long");
     size_t size = sizeof(MkString) + length * sizeof(MkChar);
-    MkObject *o = mk_alloc_sized(NULL, &mk_type_String, size);
+    MkObject *o = mk_alloc_sized_plain(&mk_type_String, size);
     if (o == NULL) mk_panic("out of memory");
     MkString *s = (MkString *)o;
     s->length = (MkInt)length;

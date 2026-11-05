@@ -376,6 +376,7 @@ fun bindArgs(params: List<VarSym>, args: List<Arg>): Binding? {
             assigned[found] = true
             paramOfArg[i] = found
             if (params[found].isVararg) usesVararg = true
+            else if (found == pos) pos = found + 1 // `f(a = 1, 2)`: a named argument in its own position
         } else {
             var target: Int
             if (a.trailing) {
@@ -665,7 +666,14 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
             val cs = ConstraintSystem(sema)
             val m = HashMap<TypeParamSym, Type>()
             m.putAll(single.subst)
-            if (tps.isNotEmpty()) {
+            if (typeArgs != null && typeArgs.isNotEmpty() && typeArgs.size == tps.size) {
+                // explicit type arguments (`listOf<ULong>(1u)`): they are the expectation of the arguments
+                var j = 0
+                for (tp in tps) {
+                    m[tp] = typeArgs[j]
+                    j++
+                }
+            } else if (tps.isNotEmpty()) {
                 cs.addVariables(tps, m)
                 val fr = single.fn.receiver
                 val er = single.extRecv

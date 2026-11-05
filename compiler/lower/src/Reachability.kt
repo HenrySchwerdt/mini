@@ -147,7 +147,7 @@ object Reachability {
                     val callee = calleeOf(e)
                     val dispatch = dispatchReceiverTypeOf(e, callee)
                     if (!(dispatch != null && isBuiltinClassType(dispatch))) markSymbolOwner(callee)
-                    if (callee?.name == "<get-entries>") entriesImpl?.let { markClass(it) }
+                    if (callee?.name == "<get-entries>" || callee?.name == "enumEntries") entriesImpl?.let { markClass(it) }
                     if (e is IrFunctionReference) markSymbolOwner(e.target)
                 }
                 is IrGetObjectValue -> markClass(e.classOwner)

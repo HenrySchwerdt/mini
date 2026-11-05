@@ -171,7 +171,11 @@ internal fun Ir2Mir.closureClass(
     val ctorName = Mangling.constructor(cName, capTypes)
     // invoke
     val invokeName = Mangling.method(cName, sam?.method?.name ?: "invoke", argTypes)
+    // the body of a lambda of Strict code is Strict code: its captured Strict objects are borrowed (no counts, see borrowedCapture),
+    // the checker proved who frees them (a `free()` in a thread lambda moves the owner into it)
+    val strictHere = currentStrict
     val fn = inFreshFunction {
+        currentStrict = strictHere
         val self = MirLocal(localCounter++, "this", type)
         val args = List(arity) { MirLocal(localCounter++, "p$it", argTypes[it]) }
         val out = ArrayList<MirStmt>()
@@ -181,7 +185,7 @@ internal fun Ir2Mir.closureClass(
             l
         }
         makeBody(self, args, caps, out)
-        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, out)
+        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, out, strict = strictHere)
     }
     // the constructor, invoke and class are registered together and only after the body lowered: when building a library an unsupported
     // construct in the body is recorded and the enclosing function becomes a stub, which must not leave a constructor without its class
@@ -503,6 +507,23 @@ internal fun Ir2Mir.propertyReference(e: IrPropertyReference, out: MutableList<M
     args += MirExpr.StringConst(prop.name)
     args += accessor(getter)
     if (setter != null) args += accessor(setter)
+    val made = tmpOf(MirExpr.New(cName, args, typeOf(impl)), out)
+    return MirExpr.Cast(made, mirType(e.type, e), MirExpr.CastMode.Unchecked)
+}
+
+/**
+ * The `property` argument of `getValue` / `setValue` of a delegated property: an object that knows the name of the property
+ * (`property.name`); its getter and setter are not available.
+ */
+internal fun Ir2Mir.delegateProperty(e: IrPropertyReference, out: MutableList<MirStmt>): MirExpr {
+    val fq = e.type.classFqName ?: return MirExpr.NullConst(anyNullable)
+    val k = fq.last() - '0'
+    if (k !in 0..1) return MirExpr.NullConst(anyNullable)
+    val implFq = REFLECT_PKG + ".KProperty" + k + "Impl"
+    val impl = classInfos.keys.firstOrNull { it.kotlinFqName == implFq } ?: return MirExpr.NullConst(anyNullable)
+    val ctor = impl.declarations.filterIsInstance<IrConstructor>().firstOrNull()
+    val cName = ctor?.let { functionNames[it] } ?: return MirExpr.NullConst(anyNullable)
+    val args = listOf<MirExpr>(MirExpr.StringConst(e.property.name), MirExpr.NullConst(anyNullable))
     val made = tmpOf(MirExpr.New(cName, args, typeOf(impl)), out)
     return MirExpr.Cast(made, mirType(e.type, e), MirExpr.CastMode.Unchecked)
 }

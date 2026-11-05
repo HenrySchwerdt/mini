@@ -99,7 +99,7 @@ static void *const throwable_vtable[] = {
 
 #define EXC(Name, qualified, Super, dispose)                                                       \
     const MkTypeInfo Name##_ti = {qualified, sizeof(MkThrowable), &Super, dispose, throwable_vtable, \
-                                  4, NULL, 0};                                                     \
+                                  4, NULL, 0, NULL};                                                     \
     MkObject *Name##_new(const MkString *message, MkObject *cause) {                               \
         MkThrowable *t = (MkThrowable *)mk_alloc(&Name##_ti);                                      \
         t->message = message;                                                                      \
@@ -379,15 +379,21 @@ static void object_array_dispose(MkObject *self) {
     for (MkInt i = 0; i < a->length; i++) mk_release(e[i]);
 }
 
-const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_Any, object_array_dispose, NULL, 0, NULL, 0};
-const MkTypeInfo MkIntArray_ti = {"kotlin.IntArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
-const MkTypeInfo MkLongArray_ti = {"kotlin.LongArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
-const MkTypeInfo MkDoubleArray_ti = {"kotlin.DoubleArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
-const MkTypeInfo MkByteArray_ti = {"kotlin.ByteArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
-const MkTypeInfo MkShortArray_ti = {"kotlin.ShortArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
-const MkTypeInfo MkFloatArray_ti = {"kotlin.FloatArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
-const MkTypeInfo MkBooleanArray_ti = {"kotlin.BooleanArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
-const MkTypeInfo MkCharArray_ti = {"kotlin.CharArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
+static void object_array_trace(MkObject *self, void (*visit)(MkObject *, void *), void *ctx) {
+    MkArray *a = (MkArray *)self;
+    MkObject **e = (MkObject **)(a + 1);
+    for (MkInt i = 0; i < a->length; i++) visit(e[i], ctx);
+}
+
+const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_Any, object_array_dispose, NULL, 0, NULL, 0, object_array_trace};
+const MkTypeInfo MkIntArray_ti = {"kotlin.IntArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkLongArray_ti = {"kotlin.LongArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkDoubleArray_ti = {"kotlin.DoubleArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkByteArray_ti = {"kotlin.ByteArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkShortArray_ti = {"kotlin.ShortArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkFloatArray_ti = {"kotlin.FloatArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkBooleanArray_ti = {"kotlin.BooleanArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkCharArray_ti = {"kotlin.CharArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
 
 static MkObject *array_new(const MkTypeInfo *type, MkInt length, size_t elem) {
     if (length < 0) {
@@ -396,7 +402,8 @@ static MkObject *array_new(const MkTypeInfo *type, MkInt length, size_t elem) {
         mk_raise(&MkNegativeArraySizeException_ti, buf);
         return NULL;
     }
-    MkObject *o = mk_alloc_sized(NULL, type, sizeof(MkArray) + elem * (size_t)length);
+    size_t bytes = sizeof(MkArray) + elem * (size_t)length;
+    MkObject *o = type == &MkObjectArray_ti ? mk_alloc_sized(NULL, type, bytes) : mk_alloc_sized_plain(type, bytes); /* (primitive arrays are never candidates) */
     ((MkArray *)o)->length = length;
     return o;
 }

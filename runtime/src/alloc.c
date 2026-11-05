@@ -28,6 +28,7 @@
 #include <string.h>
 
 MK_TLS MkAllocCtx mk_tls_ctx;
+size_t mk_cycles_alloc_bytes; /* (defined here, next to its only writer: a direct access) */
 
 /* malloc/free underneath both the Rc and the Heap allocator. Stateless, so
  * trivially thread-safe. */
@@ -70,6 +71,12 @@ size_t mk_object_block_size(const MkTypeInfo *type) {
     return type->instance_size + MK_PREFIX_SIZE;
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+#define MK_ALWAYS_INLINE static inline __attribute__((always_inline))
+#else
+#define MK_ALWAYS_INLINE static inline
+#endif
+
 /* Zeroes `n` bytes (a multiple of 16) at `b`: small blocks without a libc call. */
 #if MK_SMALL_ALLOC
 static inline void zero_small(void *b, size_t cls) {
@@ -85,8 +92,9 @@ static inline void zero_small(void *b, size_t cls) {
 #endif
 
 #if MK_SMALL_ALLOC
-/* A small object of the Rc allocator (no prefix); NULL when the block cannot be had (the callers fall back to the slow path). */
-static inline MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size) {
+/* A small object of the Rc allocator (no prefix); NULL when the block cannot be had (the callers fall back to the slow path).
+ * `arm`: the object is a cycle collection candidate (a class with a trace function; the compiler decides, see mk_alloc_armed). */
+MK_ALWAYS_INLINE MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size, bool arm) {
     size_t cls = mk_small_class(size);
     unsigned char *block = mk_small_alloc(cls);
     if (block == NULL) return NULL;
@@ -96,7 +104,8 @@ static inline MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size) {
     MkObject *object = (MkObject *)(void *)block;
     object->type = type;
     object->refcount = 1;
-    object->flags = (uint32_t)cls << SMALL_CLASS_SHIFT;
+    object->flags = ((uint32_t)cls << SMALL_CLASS_SHIFT) | (arm ? MK_FLAG_ARMED : 0u);
+    if (arm) mk_cycles_alloc_bytes += cls * MK_SMALL_GRAN; /* (not atomic: only a heuristic) */
     return object;
 }
 #endif
@@ -120,6 +129,10 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
         object->type = type;
         object->refcount = 1;
         object->flags = ((uint32_t)cls << SMALL_CLASS_SHIFT) | (allocator == &heap_allocator ? MK_FLAG_HEAP : 0u);
+        if (allocator == &default_allocator && type->trace != NULL) { /* a candidate for the cycle collector (cycles.c) */
+            object->flags |= MK_FLAG_ARMED;
+            mk_cycles_alloc_bytes += cls * MK_SMALL_GRAN;
+        }
         return object;
     }
 #endif
@@ -156,17 +169,32 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
     object->type = type;
     object->refcount = 1;
     object->flags = MK_FLAG_PREFIXED;
+    if (allocator == &default_allocator && type->trace != NULL) { /* a large candidate for the cycle collector */
+        object->flags |= MK_FLAG_ARMED;
+        mk_cycles_alloc_bytes += total;
+    }
     return object;
 }
 
 MkObject *mk_alloc_sized(MkAllocator *allocator, const MkTypeInfo *type, size_t size) {
 #if MK_SMALL_ALLOC
     if ((allocator == NULL || allocator == &default_allocator) && type != NULL && size >= sizeof(MkObject) && size <= MK_SMALL_MAX) {
-        MkObject *object = alloc_small_rc(type, size);
+        MkObject *object = alloc_small_rc(type, size, type->trace != NULL);
         if (object != NULL) return object;
     }
 #endif
     return mk_alloc_sized_site(allocator, type, size, NULL);
+}
+
+/* A block of `size` bytes of the default allocator for a type that is never a cycle collection candidate (strings, primitive arrays). */
+MkObject *mk_alloc_sized_plain(const MkTypeInfo *type, size_t size) {
+#if MK_SMALL_ALLOC
+    if (size >= sizeof(MkObject) && size <= MK_SMALL_MAX) {
+        MkObject *object = alloc_small_rc(type, size, false);
+        if (object != NULL) return object;
+    }
+#endif
+    return mk_alloc_sized_site(&default_allocator, type, size, NULL);
 }
 
 MkObject *mk_alloc_with(MkAllocator *allocator, const MkTypeInfo *type) {
@@ -179,16 +207,27 @@ MkObject *mk_alloc_with_site(MkAllocator *allocator, const MkTypeInfo *type, con
     return mk_alloc_sized_site(allocator, type, type->instance_size, site);
 }
 
-MkObject *mk_alloc(const MkTypeInfo *type) {
+/* The compiler knows whether a class has a trace function (can be part of a reference cycle): it calls mk_alloc_armed / mk_alloc_plain
+ * and the decision costs nothing at run time. mk_alloc decides from `type->trace` (classes defined by the runtime). */
+MK_ALWAYS_INLINE MkObject *alloc_class(const MkTypeInfo *type, bool arm) {
+    (void)arm; /* (without the small-object allocator the generic path decides from type->trace) */
 #if MK_SMALL_ALLOC
-    if (type != NULL && type->instance_size >= sizeof(MkObject) && type->instance_size <= MK_SMALL_MAX) {
-        MkObject *object = alloc_small_rc(type, type->instance_size);
+    if (type->instance_size >= sizeof(MkObject) && type->instance_size <= MK_SMALL_MAX) {
+        MkObject *object = alloc_small_rc(type, type->instance_size, arm);
         if (object != NULL) return object;
     }
 #endif
     MkObject *object = mk_alloc_with(&default_allocator, type);
     if (object == NULL) mk_panic("out of memory");
     return object;
+}
+
+MkObject *mk_alloc_armed(const MkTypeInfo *type) { return alloc_class(type, true); }
+MkObject *mk_alloc_plain(const MkTypeInfo *type) { return alloc_class(type, false); }
+
+MkObject *mk_alloc(const MkTypeInfo *type) {
+    if (type == NULL) mk_panic("out of memory");
+    return alloc_class(type, type->trace != NULL);
 }
 
 void mk_free_object_memory(MkObject *object) {

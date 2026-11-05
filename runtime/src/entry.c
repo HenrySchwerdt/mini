@@ -73,6 +73,8 @@ int wmain(int argc, wchar_t **argv) {
     mk_b1_set_args_utf16(argc, owned_argv);
     mk_runtime_init();
     mk_main();
+    mk_release_drain();
+    mk_cycles_at_exit();
     mk_runtime_flush();
     return 0;
 }
@@ -83,6 +85,8 @@ int main(int argc, char **argv) {
     mk_b1_set_args(argc, argv);
     mk_runtime_init();
     mk_main();
+    mk_release_drain();
+    mk_cycles_at_exit();
     mk_runtime_flush();
     return 0;
 }
