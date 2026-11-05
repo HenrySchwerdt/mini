@@ -352,7 +352,7 @@ object MlibFormat {
                 throw MlibError("$origin: content hash mismatch (header says $hash, content is $actual); the file is damaged or was edited, rebuild it")
             }
         }
-        return Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures)
+        return Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures, summaries)
     }
 
     /**
