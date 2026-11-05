@@ -23,6 +23,8 @@ private val ARRAY_KINDS = listOf(
     ArrayKind("MkCharArray", "kotlin.CharArray", TChar, "char"),
     ArrayKind("MkObjectArray", "kotlin.Array", null, "obj"),
     ArrayKind("MkFloatArray", "kotlin.FloatArray", TFloat, "float"),
+    ArrayKind("MkByteArray", "kotlin.ByteArray", TByte, "byte"),
+    ArrayKind("MkShortArray", "kotlin.ShortArray", TShort, "short"),
 )
 
 internal fun arrayKindOfFq(fq: String?): ArrayKind? = when (fq) {
@@ -57,6 +59,9 @@ internal fun Ir2Mir.arrayMember(c: IrCall, name: String, kind: ArrayKind, out: M
         "get" -> adaptResult(arrayGet(kind, v[0], v[1]), expected, c, out)
         "set" -> arraySet(kind, v[0], v[1], coerceFlexible(v[2], kind.elem ?: anyN, c, out))
         "<get-size>" -> arrayLength(v[0])
+        "hashCode" -> MirExpr.RuntimeCall("mk_hash_code", listOf(asAny(v[0])), TInt)
+        "equals" -> MirExpr.RuntimeCall("mk_equals", listOf(asAny(v[0]), asAny(v[1])), TBoolean)
+        "toString" -> MirExpr.RuntimeCall("mk_to_string", listOf(asAny(v[0])), TString)
         else -> unsupported(c, "call to array member '$name'")
     }
 }
@@ -90,6 +95,8 @@ internal fun Ir2Mir.arrayFunction(c: IrCall, name: String, pkg: String, out: Mut
             "longArrayOf" -> ARRAY_KINDS[1]
             "doubleArrayOf" -> ARRAY_KINDS[2]
             "floatArrayOf" -> ARRAY_KINDS[6]
+            "byteArrayOf" -> ARRAY_KINDS[7]
+            "shortArrayOf" -> ARRAY_KINDS[8]
             "booleanArrayOf" -> ARRAY_KINDS[3]
             "charArrayOf" -> ARRAY_KINDS[4]
             else -> null

@@ -276,7 +276,7 @@ internal fun Ir2Mir.localOf(owner: Any, at: IrElement): MirLocal =
 internal fun Ir2Mir.fieldOwner(f: IrField): ClassInfo = info(f.parent as? IrClass ?: unsupported(f, "top-level field"))
 
 internal fun Ir2Mir.fieldGet(recv: MirExpr, f: IrField): MirExpr =
-    MirExpr.FieldGet(recv, fieldOwner(f).cName, f.name, mirType(f.type, f))
+    if (recv.type is TInline) retag(recv, mirType(f.type, f)) else MirExpr.FieldGet(recv, fieldOwner(f).cName, f.name, mirType(f.type, f))
 
 internal fun Ir2Mir.setField(s: IrSetField, out: MutableList<MirStmt>) {
     val f = s.field
@@ -321,6 +321,7 @@ internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirSt
     val k = c.callee
     val cls = k.parent as IrClass
     builtinOf(cls)?.let { return builtinNew(c, cls, it, out) }
+    if (inlineRepOf(cls) != null) return valueClassNew(c, k, cls, out)
     if (cls.kotlinFqName == "kotlin.Any") return MirExpr.RuntimeCall("mk_any_new", emptyList(), anyType)
     arrayKindOfFq(cls.kotlinFqName)?.let { return arrayConstructor(c, it, out) }
     val cName = functionNames[k] ?: unsupported(c, "construction of '${cls.kotlinFqName}'")

@@ -1027,3 +1027,10 @@ A program with `.diag` and `.out` (`arena_loop_warn`) is accepted, but has a war
   arena-allocated graph leaks the field value.
 - `minic mem-report` / `-Wrc` (M0207) show where counting remains: in the stdlib mostly "returned reference is not owned
   here", "reference stored into a field" and string temporaries; the report has function names but no source positions.
+
+## Native status of the allocator types
+
+`Heap`, `Arena`, `Pool`, `DebugAllocator` and `context(a) { ... }` build and run natively on the C and LLVM backends (the old blocker, value
+classes, is gone: `NativePtr` is an ordinary class and general `value class` support exists). The accepted samples under
+`website/samples/memory/` are Run cells and are verified by `website/scripts/check-samples.sh`; the checker (Strict mode) is unchanged.
+What is still missing: threads (`spawn`, `thread_move`, `thread_pool` stay Check-only).
