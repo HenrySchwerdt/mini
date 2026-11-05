@@ -109,7 +109,13 @@ have_block:
     MkObject *object = (MkObject *)(void *)(block + MK_PREFIX_SIZE);
     object->type = type;
     object->refcount = 1;
-    object->flags = 0;
+    /* a Managed object of a class that can be in a reference cycle: a candidate for the cycle collector (cycles.c) */
+    if (allocator == &default_allocator && type->trace != NULL) {
+        object->flags = MK_FLAG_ARMED;
+        mk_cycles_alloc_bytes += total; /* (not atomic: only a heuristic) */
+    } else {
+        object->flags = 0;
+    }
     return object;
 }
 

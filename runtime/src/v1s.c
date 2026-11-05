@@ -243,8 +243,13 @@ static void ref_array_dispose(MkObject *self) {
     a->items = NULL;
 }
 
+static void ref_array_trace(MkObject *self, void (*visit)(MkObject *, void *), void *ctx) {
+    MkRefArray *a = (MkRefArray *)self;
+    for (MkInt i = 0; i < a->length; i++) visit(a->items[i], ctx);
+}
+
 static const MkTypeInfo ref_array_type = {
-    "mini.internal.RefArray", sizeof(MkRefArray), &mk_type_Any, ref_array_dispose, NULL, 0, NULL, 0,
+    "mini.internal.RefArray", sizeof(MkRefArray), &mk_type_Any, ref_array_dispose, NULL, 0, NULL, 0, ref_array_trace,
 };
 
 static MkRefArray *ra_of(MkObject *o, MkInt index) {

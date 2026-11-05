@@ -27,6 +27,47 @@ void mk_retain(MkObject *object) {
     }
 }
 
+/* Dropping the last reference to the head of a long linked list releases the next node from the dispose of the previous
+ * one: recursion as deep as the list. The nesting is bounded: beyond MK_RELEASE_DEPTH nested releases the dead object is
+ * queued, and the outermost release works the queue off (the objects are disposed in a different order, which nobody can
+ * observe: dispose only releases). */
+#define MK_RELEASE_DEPTH 200
+#define MK_PENDING_INLINE 64
+static MK_TLS unsigned release_depth;
+static MK_TLS MkObject *pending_inline[MK_PENDING_INLINE];
+static MK_TLS MkObject **pending_heap;
+static MK_TLS size_t pending_n, pending_cap;
+
+static void pending_push(MkObject *o) {
+    if (pending_n < MK_PENDING_INLINE) { pending_inline[pending_n++] = o; return; }
+    if (pending_n - MK_PENDING_INLINE == pending_cap) {
+        pending_cap = pending_cap ? pending_cap * 2 : 1024;
+        pending_heap = (MkObject **)realloc(pending_heap, pending_cap * sizeof(MkObject *));
+        if (pending_heap == NULL) mk_panic("out of memory");
+    }
+    pending_heap[pending_n++ - MK_PENDING_INLINE] = o;
+}
+
+/* the dispose chain of an object whose count reached zero, then its memory (or, when the candidate buffer points to it, its state) */
+static void free_dead(MkObject *object) {
+    for (const MkTypeInfo *t = object->type; t != NULL; t = t->super) {
+        if (t->dispose != NULL) t->dispose(object);
+    }
+    if (object->flags & MK_FLAG_BUFFERED) {
+        mk_cycles_state(object, MK_CYCLES_ZOMBIE);
+        return;
+    }
+    mk_free_object_memory(object);
+}
+
+static void pending_drain(void) {
+    while (pending_n > 0) {
+        size_t i = --pending_n;
+        free_dead(i < MK_PENDING_INLINE ? pending_inline[i] : pending_heap[i - MK_PENDING_INLINE]);
+    }
+    if (pending_heap != NULL) { free(pending_heap); pending_heap = NULL; pending_cap = 0; } /* a thread that ends leaves nothing behind */
+}
+
 void mk_release(MkObject *object) {
     if (object == NULL || is_plain(object)) {
         MK_STAT_RELEASE(0);
@@ -42,11 +83,21 @@ void mk_release(MkObject *object) {
         if (old != 0u) object->refcount = old - 1u;
     }
     if (old == 0u) mk_panic("reference count underflow");
-    if (old != 1u) return;
-    for (const MkTypeInfo *t = object->type; t != NULL; t = t->super) {
-        if (t->dispose != NULL) t->dispose(object);
+    if (old != 1u) {
+        if (object->flags & MK_FLAG_ARMED) mk_cycles_candidate(object); /* a possible root of a garbage cycle */
+        return;
     }
-    mk_free_object_memory(object);
+    /* a buffered object is pointed to by the candidate buffer: its block is freed by the collector, not here; it is DYING
+     * from now on, so that a collection that runs before its dispose is done leaves it alone */
+    if (object->flags & MK_FLAG_BUFFERED) mk_cycles_state(object, MK_CYCLES_DYING);
+    if (release_depth >= MK_RELEASE_DEPTH) { /* a long chain (linked list, deep tree): not on the C stack */
+        pending_push(object);
+        return;
+    }
+    release_depth++;
+    free_dead(object);
+    if (release_depth == 1) pending_drain();
+    release_depth--;
 }
 
 void mk_share(MkObject *object) {

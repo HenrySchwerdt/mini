@@ -10,7 +10,11 @@
 #   strict-leak, strict-llvm-leak   the runnable programs of the strict corpus under AddressSanitizer + LeakSanitizer (C and LLVM backend)
 #   leak       the same programs (and the Strict programs of testdata/memory with a .out) built with AddressSanitizer +
 #                LeakSanitizer + UBSan: same output, exit 0, no report. Skipped without a C compiler that links the sanitizers.
-#                `<name>.noleakcheck` opts a program out.
+#                There is no opt-out: a program that leaks is a bug (reference cycles are collected, see docs/memory-model.md).
+#   stress     compiler/testdata/stress: allocation-heavy programs (millions of small objects, maps of lists, string building, cyclic
+#                structures built and dropped over and over). stress-leak / stress-llvm-leak: LeakSanitizer clean, output equals .out;
+#                stress-rss: the peak RSS (scripts/peak-rss.py) with 4x the rounds stays within 25 percent (+8 MiB) of the peak with
+#                1x, and under the limit in `<name>.rss` (KiB) when there is one: memory must not grow with the number of rounds
 #   llvm       like `c`, through the LLVM backend (MIR -> textual LLVM IR -> clang)
 #   llvm-leak  the sanitizer run on the LLVM build
 #   llvm-variants  --stats, --no-rc-opt, --no-strict and --no-conv through bin/native-driver (needs NATIVE_DRIVER)
@@ -54,7 +58,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -136,6 +140,26 @@ has_lines_in() { # <file with expected lines> <text file>: every non-blank line 
 links_of() { grep -o '/\* mini:link [^ ]* \*/' "$1" 2>/dev/null | sed 's|/\* mini:link \([^ ]*\) \*/|-l\1|' | tr '\n' ' '; }
 c_extra() { # <src>: the C test library for the interop programs
     if grep -q 'cinterop_lib.h' "$1"; then echo "$TESTDATA/cinterop_lib.c"; fi
+}
+
+t_stress_rss() { # <src>: the peak RSS must not grow with the number of rounds (argument: the scale)
+    local src="$1" name; name="$(basename "$src" .kt).rss"
+    local c="$W/$name.c" log="$W/$name.log" exe="$W/$name.exe"
+    compile_to_c "$src" "$c" "$log" || { echo "build failed:"; head -20 "$log"; return 1; }
+    "$CC" -std=c17 -O1 -w -I "$INCLUDE" "$c" "$RTLIB" -o "$exe" -lm > "$W/$name.cc" 2>&1 || { echo "C compiler failed:"; head -20 "$W/$name.cc"; return 1; }
+    local r1 r4 st
+    r1="$(python3 "$ROOT/scripts/peak-rss.py" --timeout 120 --stdout "$W/$name.o1" -- "$exe" 1)"; st=$?
+    [ $st -eq 0 ] || { echo "scale 1: exit $st"; return 1; }
+    cmp -s "$(sib "$src" out)" "$W/$name.o1" || { echo "scale 1: stdout differs from $(sib "$src" out)"; return 1; }
+    r4="$(python3 "$ROOT/scripts/peak-rss.py" --timeout 240 --stdout "$W/$name.o4" -- "$exe" 4)"; st=$?
+    [ $st -eq 0 ] || { echo "scale 4: exit $st"; return 1; }
+    echo "$name: peak RSS ${r1} KiB at scale 1, ${r4} KiB at scale 4" >> "$W/rss.txt"
+    if [ "$r4" -gt $(( r1 + r1 / 4 + 8192 )) ]; then echo "memory grows with the rounds: ${r1} KiB at scale 1, ${r4} KiB at scale 4"; return 1; fi
+    if [ -f "$(sib "$src" rss)" ]; then
+        local limit; limit="$(tr -d ' \n' < "$(sib "$src" rss)")"
+        [ "$r4" -le "$limit" ] || { echo "peak RSS ${r4} KiB exceeds the limit of ${limit} KiB"; return 1; }
+    fi
+    return 0
 }
 
 run_and_compare() { # <name> <src> <exe> <label>: run, compare stdout with .out, stderr with .err, exit status
@@ -400,7 +424,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_allfiles t_mlib_chain t_mlib_errors t_mlib_summaries run_with_timeout
+export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_allfiles t_mlib_chain t_mlib_errors t_mlib_summaries run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -408,12 +432,12 @@ LISTFILE="$W/tests.txt"
 : > "$LISTFILE"
 add() { echo "$1|$2|$3" >> "$LISTFILE"; }
 progs() { find "$TESTDATA" -maxdepth 1 -name '*.kt' | LC_ALL=C sort; }
-leakable() { # sources with .out and no .err/.cerr/.noleakcheck
+leakable() { # sources with .out and no .err/.cerr
     local d f
     for d in "$TESTDATA" "$TESTDATA/memory"; do
         [ -d "$d" ] || continue
         for f in $(find "$d" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do
-            [ -f "${f%.kt}.out" ] && [ ! -f "${f%.kt}.cerr" ] && [ ! -f "${f%.kt}.err" ] && [ ! -f "${f%.kt}.noleakcheck" ] && echo "$f"
+            [ -f "${f%.kt}.out" ] && [ ! -f "${f%.kt}.cerr" ] && [ ! -f "${f%.kt}.err" ] && echo "$f"
         done
     done
 }
@@ -427,9 +451,13 @@ want_suite memcheck && for f in $(find "$TESTDATA/memory" "$TESTDATA/memory-extr
 want_suite memrun && for f in $(find "$TESTDATA/memory" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do [ -f "${f%.kt}.out" ] && add memrun "$(basename "$f" .kt)" "t_memrun $f"; done
 want_suite strict && for f in $(find "$TESTDATA/strict-corpus" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do add strict "$(basename "$f" .kt)" "t_strict $f"; done
 # the accepted corpus programs that run (closures that borrow their captures, object expressions...) under ASan + LSan, both backends
-strict_runnable() { local f; for f in $(find "$TESTDATA/strict-corpus" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do [ -f "${f%.kt}.out" ] && [ ! -f "${f%.kt}.noleakcheck" ] && echo "$f"; done; }
+strict_runnable() { local f; for f in $(find "$TESTDATA/strict-corpus" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do [ -f "${f%.kt}.out" ] && echo "$f"; done; }
 want_suite strict-leak && for f in $(strict_runnable); do add strict-leak "$(basename "$f" .kt)" "t_c $f asan"; done
 want_suite strict-llvm-leak && for f in $(strict_runnable); do add strict-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
+stress_progs() { find "$TESTDATA/stress" -maxdepth 1 -name '*.kt' 2>/dev/null | LC_ALL=C sort; }
+want_suite stress-leak && for f in $(stress_progs); do add stress-leak "$(basename "$f" .kt)" "t_c $f asan"; done
+want_suite stress-llvm-leak && for f in $(stress_progs); do add stress-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
+want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
 want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib summaries t_mlib_summaries; }
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; }
 
@@ -438,7 +466,7 @@ total="$(wc -l < "$LISTFILE" | tr -d ' ')"
 if [ "$LIST" = 1 ]; then awk -F'|' '{ print $1 "::" $2 }' "$LISTFILE"; echo "$total tests" >&2; exit 0; fi
 
 # runtime objects for the sanitizer / stats flavours, once
-if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak)\|' "$LISTFILE"; then
+if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak)\|' "$LISTFILE"; then
     if [ -n "$SANCC" ]; then build_rt "$W/rt-asan" "$SANCC" $SAN_FLAGS; else echo "test-e2e: no C compiler can link the sanitizer runtimes: the leak suites are skipped" >&2; fi
 fi
 if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK_STATS; fi
@@ -446,7 +474,7 @@ if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK
 run_one() { # "<suite>|<id>|<cmd>"
     local suite id cmd out rc
     suite="${1%%|*}"; local rest="${1#*|}"; id="${rest%%|*}"; cmd="${rest#*|}"
-    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
+    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
     # shellcheck disable=SC2086
     out="$(eval "$cmd" 2>&1)"; rc=$?
     local f="$W/res/$(echo "$suite-$id" | tr '/ ' '__')"
@@ -471,6 +499,7 @@ for f in "$W"/res/*; do
     esac
     bysuite[$suite]=$(( ${bysuite[$suite]:-0} + 1 ))
 done
+[ -f "$W/rss.txt" ] && { echo; echo "Peak RSS of the stress programs:"; LC_ALL=C sort "$W/rss.txt" | sed 's/^/  /'; }
 echo
 for s in "${!bysuite[@]}"; do echo "  $s: ${bysuite[$s]}"; done | sort
 echo "test result: $([ $fail -eq 0 ] && echo ok || echo FAILED). $pass passed; $fail failed; $skip skipped"

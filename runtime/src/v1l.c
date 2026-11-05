@@ -379,7 +379,13 @@ static void object_array_dispose(MkObject *self) {
     for (MkInt i = 0; i < a->length; i++) mk_release(e[i]);
 }
 
-const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_Any, object_array_dispose, NULL, 0, NULL, 0};
+static void object_array_trace(MkObject *self, void (*visit)(MkObject *, void *), void *ctx) {
+    MkArray *a = (MkArray *)self;
+    MkObject **e = (MkObject **)(a + 1);
+    for (MkInt i = 0; i < a->length; i++) visit(e[i], ctx);
+}
+
+const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_Any, object_array_dispose, NULL, 0, NULL, 0, object_array_trace};
 const MkTypeInfo MkIntArray_ti = {"kotlin.IntArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkLongArray_ti = {"kotlin.LongArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};
 const MkTypeInfo MkDoubleArray_ti = {"kotlin.DoubleArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0};

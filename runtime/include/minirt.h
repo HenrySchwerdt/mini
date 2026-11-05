@@ -37,6 +37,10 @@ typedef struct MkTypeInfo MkTypeInfo;
 /* Releases references held by the fields of `self`. It must not free `self`. */
 typedef void (*MkDisposeFn)(MkObject *self);
 
+/* Cycle collection (docs/memory-model.md, "Cycles"): calls `visit(child, ctx)` for every reference field of `self` that can
+ * lead to a reference cycle (it may omit others, e.g. strings; NULL children are passed and must be ignored). */
+typedef void (*MkTraceFn)(MkObject *self, void (*visit)(MkObject *child, void *ctx), void *ctx);
+
 struct MkTypeInfo {
     const char *name;          /* fully qualified Kotlin name, e.g. "kotlin.String" */
     size_t instance_size;      /* bytes, including the MkObject header */
@@ -46,6 +50,7 @@ struct MkTypeInfo {
     size_t vtable_length;
     const MkTypeInfo *const *interfaces; /* implemented interfaces, may be NULL */
     size_t interface_count;
+    MkTraceFn trace;           /* NULL: instances cannot be part of a reference cycle (not cycle collection candidates) */
 };
 
 /* Every heap or stack object starts with this header. */
@@ -62,6 +67,11 @@ enum {
     MK_FLAG_FREED = 1u << 3,  /* set by the runtime when the memory is returned; lets
                                  mk_free / mk_release diagnose double frees. Never set
                                  it from generated code. */
+    MK_FLAG_ARMED = 1u << 4,  /* cycle collection: a Managed object of a class with a trace function that is not in the
+                                 candidate buffer. A release that leaves it alive must go through mk_release (the inline
+                                 fast path of generated code tests this bit together with MK_FLAG_SHARED). */
+    MK_FLAG_BUFFERED = 1u << 5, /* cycle collection: in the candidate buffer (runtime only) */
+    MK_COLOR_SHIFT = 8,         /* cycle collection: colour of the object during a collection (bits 8..10, runtime only) */
 };
 
 /* Initialiser for an MkObject header in static storage. */
@@ -81,6 +91,11 @@ MkObject *mk_object_init(MkObject **slot, const MkTypeInfo *type, void (*ctor)(M
  * `dispose` along its type chain, most derived first) when the count reaches 0. */
 void mk_retain(MkObject *object);
 void mk_release(MkObject *object);
+
+/* Runs the cycle collector now: frees the unreachable reference cycles among the buffered candidates (no-op while
+ * threads run). The runtime also runs it when enough candidates piled up and at the end of main. Returns the number of
+ * objects freed. */
+size_t mk_cycles_collect(void);
 
 /* Marks an object (but not its fields) as shared between threads. */
 void mk_share(MkObject *object);

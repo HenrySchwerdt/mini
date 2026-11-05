@@ -267,6 +267,9 @@ object CEmitter {
 
         fun fnRef(name: String?, abstractDefault: String): String = "(void *)" + (name ?: abstractDefault)
 
+        /** Classes (C names) whose instances are cycle collection candidates: they have a trace function. */
+        val cyclicClasses = HashSet<String>()
+
         fun emitClasses(out: StringBuilder) {
             for (c in module.classes) {
                 if (c.external) continue
@@ -290,6 +293,18 @@ object CEmitter {
                 // owned fields of tracked type (Strict classes): freeing the object frees them (docs/memory-model.md 5.3)
                 val ownedFields = c.fields.filter { tr.ownedTrackedField(c, it) }
                 var dispose = "NULL"
+                // cycle collection (docs/memory-model.md, "Cycles"): the fields that can lead to a cycle; strings and boxes cannot
+                val traceFields = refFields.filter { cycleCapableType(it.type) }
+                val superTraced = sup != null && cyclicClasses.contains(sup.cName)
+                var trace = "NULL"
+                if (traceFields.isNotEmpty() || superTraced) {
+                    cyclicClasses.add(c.cName)
+                    trace = "${c.cName}_trace"
+                    out.append("static void ${c.cName}_trace(MkObject *self, void (*fn)(MkObject *, void *), void *ctx) {\n    struct ${c.cName} *o = (struct ${c.cName} *)self;\n")
+                    if (superTraced) out.append("    ${sup!!.cName}_trace(self, fn, ctx);\n")
+                    for (f in traceFields) out.append("    fn((MkObject *)o->${Mangling.field(f.name)}, ctx);\n")
+                    out.append("}\n")
+                }
                 if (refFields.isNotEmpty() || ownedFields.isNotEmpty()) {
                     dispose = "${c.cName}_dispose"
                     out.append("static void ${c.cName}_dispose(MkObject *self) {\n    struct ${c.cName} *o = (struct ${c.cName} *)self;\n")
@@ -315,7 +330,7 @@ object CEmitter {
                 val superTi = if (sup == null) "&mk_type_Any" else "&${sup.cName}_ti"
                 out.append(
                     "static const MkTypeInfo ${c.cName}_ti = {${cStringLiteral(c.qualifiedName)}, sizeof(struct ${c.cName}), $superTi, $dispose, " +
-                        "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}};\n",
+                        "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}, $trace};\n",
                 )
                 if (c.objectCtor != null) {
                     out.append("static MkObject *${c.cName}_obj;\n")
@@ -902,7 +917,10 @@ object CEmitter {
             for (k in args.indices) {
                 if (k + shift >= mask.size || !mask[k + shift] || !ptypes[k].isRef || isStaticValue(args[k])) continue
                 val x = fplan?.takes?.get(args[k])
-                if (x == null) sb.append("${ret(temps[k], "reference handed to an owned parameter (the caller still needs its own)")}; ")
+                if (x == null) {
+                    // a compiler temporary that holds a fresh Strict object: its count is the one the callee takes
+                    if (!tr.movedTemp(curFn, args[k])) sb.append("${ret(temps[k], "reference handed to an owned parameter (the caller still needs its own)")}; ")
+                }
                 else if (closedFor(curStmt, x)) dead += x.id
                 else sb.append("${lname(x)} = NULL; ")
             }
@@ -1165,7 +1183,7 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
         else mk_retain(mkr_); } } while (0)
 #define MKH_REL(x) do { MkObject *mkr_ = (MkObject *)(x); \
     if (mkr_ != NULL && (mkr_->flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) == 0) { \
-        if ((mkr_->flags & MK_FLAG_SHARED) == 0 && mkr_->refcount > 1u) mkr_->refcount--; \
+        if ((mkr_->flags & (MK_FLAG_SHARED | MK_FLAG_ARMED)) == 0 && mkr_->refcount > 1u) mkr_->refcount--; \
         else mk_release(mkr_); } } while (0)
 #endif
 

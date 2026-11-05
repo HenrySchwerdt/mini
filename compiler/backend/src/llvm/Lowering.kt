@@ -17,6 +17,7 @@ import mini.backend.MirStmt
 import mini.backend.MirType
 import mini.backend.NativeConventions
 import mini.backend.Tracking
+import mini.backend.cycleCapableType
 import mini.backend.RcFunctionPlan
 import mini.backend.RcOpt
 import mini.backend.RcPlan
@@ -123,6 +124,9 @@ private class Lowering<V : Any, B : Any>(
 
     val sig = HashMap<String, MirFunction>()
     val classes = HashMap<String, MirClass>()
+
+    /** Classes (C names) whose instances are cycle collection candidates: they have a trace function. */
+    val cyclicClasses = HashSet<String>()
     lateinit var layouts: Layouts
     lateinit var throwing: ThrowAnalysis
     lateinit var typeCheckPlan: TypeCheckPlan
@@ -173,7 +177,7 @@ private class Lowering<V : Any, B : Any>(
         typeCheckPlan = if (customIsInstanceSymbol) TypeCheckPlan.EMPTY else TypeChecks.analyze(module, externalClassNames)
 
         b.beginModule(module.sourceName, module.links, target)
-        b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT))
+        b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT, IrType.PTR))
         predeclare()
         for (f in module.functions) emitFunction(f)
         val userMain = module.functions.firstOrNull { it.cName == Mangling.MAIN }
@@ -635,7 +639,8 @@ private class Lowering<V : Any, B : Any>(
                     b.call(retain, IrType.VOID, IrExt.NONE, listOf(o), listOf(IrExt.NONE), -1, "")
                     b.br(done)
                 } else {
-                    val sh = b.bin(IrOp.AND, fl, c32(4), "sh")
+                    // SHARED (4) and ARMED (16, a cycle collection candidate in the making): the runtime counts
+                    val sh = b.bin(IrOp.AND, fl, c32(20), "sh")
                     val nsh = b.cmp(IrCmp.IEQ, sh, c32(0), "nsh")
                     val rp = b.gep(o, c64(rcOff), true, "rp")
                     val rc = b.load(i32, rp, 0, "rc")
@@ -841,7 +846,7 @@ private class Lowering<V : Any, B : Any>(
             if (c.isInterface) {
                 val init = b.constNamedStruct(
                     "MkTypeInfo",
-                    listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong())),
+                    listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong()), b.constNull()),
                 )
                 b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage, 8, false)
                 b.blankLine(IrSection.CLASSES)
@@ -869,6 +874,25 @@ private class Lowering<V : Any, B : Any>(
                 b.endFunction()
                 dispose = b.global("${c.cName}_dispose")
             }
+            // cycle collection (docs/memory-model.md, "Cycles"): visits the fields that can lead to a cycle; strings and boxes cannot
+            val traceFields = refFields.filter { cycleCapableType(it.type) }
+            val superTraced = sup != null && cyclicClasses.contains(sup.cName)
+            var trace: V = b.constNull()
+            if (traceFields.isNotEmpty() || superTraced) {
+                cyclicClasses.add(c.cName)
+                beginGenerated(IrSection.CLASSES, "${c.cName}_trace", TUnit, listOf("self", "fn", "ctx"), listOf(IrType.PTR, IrType.PTR, IrType.PTR), listOf(IrExt.NONE, IrExt.NONE, IrExt.NONE), IrLinkage.INTERNAL)
+                val self = b.param(0)
+                val fn = b.param(1)
+                val ctx = b.param(2)
+                if (superTraced) call(TUnit, b.global("${sup!!.cName}_trace"), listOf(TString, TString, TString), listOf(self, fn, ctx))
+                for (f in traceFields) {
+                    val v = load(TString, gep(self, layouts.fieldOffset(c.cName, f.name)))
+                    call(TUnit, fn, listOf(TString, TString), listOf(v, ctx))
+                }
+                retVoid()
+                b.endFunction()
+                trace = b.global("${c.cName}_trace")
+            }
             // vtable (three Any slots, user slots, one pointer per itable) and itables
             val vt = ArrayList<V>()
             val anyDefaults = listOf("mk_any_to_string", "mk_any_equals", "mk_any_hash_code")
@@ -895,7 +919,7 @@ private class Lowering<V : Any, B : Any>(
                 "MkTypeInfo",
                 listOf(
                     nameSym, b.constInt(szT, lay.size.toLong()), superTi, dispose, vtg, b.constInt(szT, vt.size.toLong()), ifs,
-                    b.constInt(szT, c.interfaces.size.toLong()),
+                    b.constInt(szT, c.interfaces.size.toLong()), trace,
                 ),
             )
             val typeInfoLinkage = if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage
@@ -1726,7 +1750,10 @@ private class Lowering<V : Any, B : Any>(
         for (k in args.indices) {
             if (k + shift >= mask.size || !mask[k + shift] || !ptypes[k].isRef || isStaticValue(args[k])) continue
             val x = fplan?.takes?.get(args[k])
-            if (x == null) retain(vs[k])
+            if (x == null) {
+                // a compiler temporary that holds a fresh Strict object: its count is the one the callee takes
+                if (!tr.movedTemp(curFn, args[k])) retain(vs[k])
+            }
             else if (closedFor(curStmt, x)) dead.add(x.id)
             else store(b.constNull(), slot(x))
         }

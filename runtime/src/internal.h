@@ -36,6 +36,14 @@ typedef union MkMaxAlign {
 
 /* Set when the first thread is started (sys.c): from then on all reference counts are atomic. */
 extern volatile int mk_threads_active;
+/* The number of Kotlin threads running (sys.c): the cycle collector only runs while it is 0 (cycles.c). */
+extern volatile int mk_threads_running;
+/* cycles.c */
+void mk_cycles_candidate(MkObject *object);
+extern size_t mk_cycles_alloc_bytes; /* bytes of candidate-capable objects allocated since the last collection (allocation volume trigger) */
+enum { MK_CYCLES_DYING = 5, MK_CYCLES_ZOMBIE = 4 };
+void mk_cycles_state(MkObject *object, unsigned state); /* the colour of a buffered object that died */
+size_t mk_cycles_at_exit(void);
 
 /* ---- Atomics on plain uint32_t (the MkObject layout is fixed) ------------- */
 #if defined(_MSC_VER) && !defined(__clang__)

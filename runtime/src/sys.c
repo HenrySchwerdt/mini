@@ -211,6 +211,7 @@ static void run_thread_body(MkThread *th) {
     }
     mk_release(th->fn);
     th->fn = NULL;
+    __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST); /* the last reference count operation of this thread */
 }
 
 #if defined(_WIN32)
@@ -234,17 +235,20 @@ int64_t mk_sys_thread_start(MkObject *fn) {
     if (th == NULL) mk_panic("out of memory");
     /* from now on all reference counts are atomic: everything the thread can reach may be shared */
     __atomic_store_n(&mk_threads_active, 1, __ATOMIC_SEQ_CST);
+    __atomic_fetch_add(&mk_threads_running, 1, __ATOMIC_SEQ_CST);
     mk_retain(fn);
     th->fn = fn;
 #if defined(_WIN32)
     th->handle = CreateThread(NULL, 0, thread_main, th, 0, NULL);
     if (th->handle == NULL) {
+        __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST);
         mk_release(fn);
         free(th);
         return 0;
     }
 #else
     if (pthread_create(&th->handle, NULL, thread_main, th) != 0) {
+        __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST);
         mk_release(fn);
         free(th);
         return 0;

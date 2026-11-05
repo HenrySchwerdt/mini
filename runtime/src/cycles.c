@@ -1,0 +1,283 @@
+/* Cycle collector for Managed (reference counted) objects: synchronous trial deletion (Bacon & Rajan, "Concurrent Cycle
+ * Collection in Reference Counted Systems", the synchronous variant). Design notes: docs/memory-model.md, "Cycles".
+ *
+ * Candidates: a Managed object whose class can be part of a cycle (MkTypeInfo.trace != NULL) is born MK_FLAG_ARMED. The first
+ * release that leaves it alive (slow path of mk_release, reached from the inline fast path because of the ARMED bit) buffers it
+ * as a possible root: ARMED is replaced by BUFFERED + the purple colour. Objects of acyclic classes (strings, boxes,
+ * primitive arrays, plain data) and objects of Strict / arena / Heap allocators never carry the bit: no overhead for them.
+ *
+ * Collection (mk_cycles_collect): MarkRoots (trial-delete the internal references of the subgraph of every root: gray), Scan
+ * (gray objects whose count stays positive are referenced from outside: restore them black, the others are white), CollectWhite
+ * (the white objects are garbage). Garbage is freed by running the dispose chain with the objects pinned by a huge count (so the
+ * releases between garbage objects are harmless) and then returning the memory.
+ *
+ * Threads: a collection runs only while no Kotlin thread is running (everything is then single threaded; the counts of shared
+ * objects are exact). While threads run, candidates are still recorded under a spin lock (bounded) and collected after the last
+ * one ended. */
+#include "internal.h"
+
+#include <string.h>
+
+#define COLOR_MASK (7u << MK_COLOR_SHIFT)
+#define COLOR(o) (((o)->flags >> MK_COLOR_SHIFT) & 7u)
+#define SET_COLOR(o, c) ((o)->flags = ((o)->flags & ~COLOR_MASK) | ((uint32_t)(c) << MK_COLOR_SHIFT))
+enum { BLACK = 0, GRAY = 1, WHITE = 2, PURPLE = 3, DEAD = 4 /* = MK_CYCLES_ZOMBIE, also: a collected garbage object */, DYING = 5 };
+
+#define PIN 0x40000000u /* count of a garbage object while its dispose runs */
+#define MIN_THRESHOLD 4096u
+#define MAX_THRESHOLD (1u << 20)
+#define MIN_ALLOC_LIMIT ((size_t)8 << 20) /* bytes of new candidate-capable objects between two collections, at least */
+#define MAX_THREADED_ROOTS (1u << 20)
+
+volatile int mk_threads_running = 0;
+
+static MkObject **roots;
+static size_t roots_n, roots_cap;
+static size_t threshold = MIN_THRESHOLD;
+size_t mk_cycles_alloc_bytes;
+static size_t alloc_limit = MIN_ALLOC_LIMIT;
+static uint64_t work_bytes;
+static int trace_enabled = -1;
+static bool in_collect;
+static volatile int roots_lock;
+
+typedef struct { MkObject **v; size_t n, cap; } Stack;
+static Stack stack_a, stack_b, garbage, carry;
+static Stack *cs = &stack_a; /* where visit() pushes */
+
+static void stack_push(Stack *s, MkObject *o) {
+    if (s->n == s->cap) {
+        s->cap = s->cap ? s->cap * 2 : 1024;
+        s->v = (MkObject **)realloc(s->v, s->cap * sizeof(MkObject *));
+        if (s->v == NULL) mk_panic("out of memory");
+    }
+    s->v[s->n++] = o;
+}
+
+/* A child takes part in cycle collection when it is a Managed object of a class that can be in a cycle. */
+static inline bool cyclic(const MkObject *o) { return o != NULL && (o->flags & (MK_FLAG_ARMED | MK_FLAG_BUFFERED)) != 0; }
+
+/* ---- the phases (explicit stacks: the graphs can be millions of objects deep) ---- */
+
+static int phase;
+static uint64_t work;
+
+static void visit(MkObject *c, void *ctx) {
+    (void)ctx;
+    if (!cyclic(c)) return;
+    switch (phase) {
+    case 0: /* mark gray: trial-delete the reference */
+        c->refcount--;
+        if (COLOR(c) != GRAY) { SET_COLOR(c, GRAY); stack_push(cs, c); }
+        break;
+    case 1: /* scan black: give the reference back */
+        c->refcount++;
+        if (COLOR(c) != BLACK) { SET_COLOR(c, BLACK); stack_push(cs, c); }
+        break;
+    case 2: /* scan: children of a white object */
+        if (COLOR(c) == GRAY) stack_push(cs, c);
+        break;
+    case 4: /* garbage about to be disposed: give back the trial deletion of its references to live objects (the dispose
+             * releases them for real) */
+        c->refcount++;
+        break;
+    case 3: /* collect white */
+        if (COLOR(c) == WHITE) {
+            SET_COLOR(c, DEAD);
+            c->flags &= ~(MK_FLAG_ARMED | MK_FLAG_BUFFERED);
+            stack_push(cs, c);
+            stack_push(&garbage, c);
+        }
+        break;
+    }
+}
+
+static inline size_t block_bytes(const MkObject *o) {
+    return *(const size_t *)(const void *)((const unsigned char *)o - MK_PREFIX_SIZE + sizeof(void *));
+}
+
+static inline void trace_of(MkObject *o) {
+    if (phase == 0) { /* (the mark phase expands every visited object once) */
+        work++;
+        work_bytes += block_bytes(o);
+    }
+    if (o->type->trace != NULL) o->type->trace(o, visit, NULL);
+}
+
+static void run_stack(Stack *st) {
+    cs = st;
+    while (st->n > 0) {
+        MkObject *o = st->v[--st->n];
+        trace_of(o);
+    }
+}
+
+static void mark_gray(MkObject *s) {
+    phase = 0;
+    SET_COLOR(s, GRAY);
+    stack_push(&stack_a, s);
+    run_stack(&stack_a);
+}
+
+static void scan_black(MkObject *s) {
+    phase = 1;
+    SET_COLOR(s, BLACK);
+    stack_push(&stack_b, s);
+    run_stack(&stack_b);
+}
+
+static void scan(MkObject *s) {
+    stack_push(&stack_a, s);
+    while (stack_a.n > 0) {
+        MkObject *o = stack_a.v[--stack_a.n];
+        if (COLOR(o) != GRAY) continue;
+        if (o->refcount > 0) {
+            scan_black(o);
+        } else {
+            SET_COLOR(o, WHITE);
+            phase = 2;
+            cs = &stack_a;
+            trace_of(o);
+        }
+    }
+}
+
+static void collect_white(MkObject *s) {
+    phase = 3;
+    SET_COLOR(s, DEAD);
+    s->flags &= ~(MK_FLAG_ARMED | MK_FLAG_BUFFERED);
+    stack_push(&stack_a, s);
+    stack_push(&garbage, s);
+    run_stack(&stack_a);
+}
+
+static void run_dispose(MkObject *o) {
+    for (const MkTypeInfo *t = o->type; t != NULL; t = t->super) {
+        if (t->dispose != NULL) t->dispose(o);
+    }
+}
+
+size_t mk_cycles_collect(void) {
+    if (in_collect || mk_threads_running != 0 || roots_n == 0) return 0;
+    in_collect = true;
+    MkObject **list = roots;
+    size_t n = roots_n, list_cap = roots_cap;
+    roots = NULL; roots_n = roots_cap = 0; /* candidates that appear during the collection go to a fresh buffer */
+    work = 0;
+    work_bytes = 0;
+    carry.n = 0;
+
+    /* MarkRoots: purple roots with a positive count start a trial deletion; the others leave the buffer */
+    size_t keep = 0;
+    for (size_t i = 0; i < n; i++) {
+        MkObject *s = list[i];
+        if (COLOR(s) == DEAD) { /* died while buffered (zombie): only the block is left */
+            mk_free_object_memory(s);
+        } else if (COLOR(s) == DYING) { /* its dispose is running (it triggered this collection): stays buffered */
+            stack_push(&carry, s);
+        } else if (COLOR(s) == PURPLE) {
+            mark_gray(s);
+            list[keep++] = s;
+        } else { /* gray: part of the subgraph of an earlier root, handled with it */
+            s->flags = (s->flags & ~MK_FLAG_BUFFERED) | MK_FLAG_ARMED;
+        }
+    }
+    n = keep;
+    for (size_t i = 0; i < n; i++) scan(list[i]);
+    /* CollectWhite, after the survivors are re-armed */
+    garbage.n = 0;
+    for (size_t i = 0; i < n; i++) {
+        MkObject *s = list[i];
+        if (COLOR(s) == WHITE) {
+            collect_white(s);
+        } else if (COLOR(s) != DEAD) {
+            s->flags = (s->flags & ~(MK_FLAG_BUFFERED | COLOR_MASK)) | MK_FLAG_ARMED;
+        }
+    }
+    for (size_t i = 0; i < carry.n; i++) { /* (appended to the buffer of the candidates that the collection itself produces) */
+        if (roots_n == roots_cap) {
+            roots_cap = roots_cap ? roots_cap * 2 : 1024;
+            roots = (MkObject **)realloc(roots, roots_cap * sizeof(MkObject *));
+            if (roots == NULL) mk_panic("out of memory");
+        }
+        roots[roots_n++] = carry.v[i];
+    }
+    carry.n = 0;
+    if (roots == NULL) { roots = list; roots_cap = list_cap; roots_n = 0; } else free(list);
+    /* the garbage: pinned, disposed (releases the live objects it holds), freed */
+    for (size_t i = 0; i < garbage.n; i++) garbage.v[i]->refcount = PIN;
+    phase = 4;
+    for (size_t i = 0; i < garbage.n; i++) trace_of(garbage.v[i]);
+    for (size_t i = 0; i < garbage.n; i++) run_dispose(garbage.v[i]);
+    uint64_t garbage_bytes = 0;
+    for (size_t i = 0; i < garbage.n; i++) {
+        garbage.v[i]->flags &= ~COLOR_MASK;
+        garbage_bytes += block_bytes(garbage.v[i]);
+        mk_free_object_memory(garbage.v[i]);
+    }
+    size_t freed = garbage.n;
+    size_t freed_now = freed;
+    garbage.n = 0;
+    /* adaptive trigger: the next collection comes after as many new candidates as a quarter of the work of this one, so the
+     * cost per candidate stays bounded however large the live graph is */
+    size_t live = (size_t)(work > freed ? work - freed : 0);
+    size_t t = live / 4;
+    threshold = t > MAX_THRESHOLD ? MAX_THRESHOLD : t > MIN_THRESHOLD ? t : MIN_THRESHOLD;
+    /* allocation volume: the next collection after as many new bytes as this one visited (the live heap doubles at most) */
+    uint64_t live_bytes = work_bytes > garbage_bytes ? work_bytes - garbage_bytes : 0;
+    alloc_limit = live_bytes > MIN_ALLOC_LIMIT ? (size_t)live_bytes : MIN_ALLOC_LIMIT;
+    mk_cycles_alloc_bytes = 0;
+    if (trace_enabled < 0) { const char *e = getenv("MINI_GC_TRACE"); trace_enabled = e != NULL && e[0] != '\0' && e[0] != '0'; }
+    if (trace_enabled) fprintf(stderr, "[cycles] roots=%zu visited=%llu (%llu bytes survive) freed=%zu next: %zu roots or %zu bytes\n", n, (unsigned long long)work, (unsigned long long)live_bytes, freed_now, threshold, alloc_limit);
+    in_collect = false;
+    return freed;
+}
+
+/* ---- candidates ---- */
+
+static inline void roots_lock_acquire(void) {
+    while (__atomic_exchange_n(&roots_lock, 1, __ATOMIC_ACQUIRE) != 0) {}
+}
+static inline void roots_lock_release(void) { __atomic_store_n(&roots_lock, 0, __ATOMIC_RELEASE); }
+
+void mk_cycles_candidate(MkObject *o) {
+    bool threaded = __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0;
+    if (threaded) roots_lock_acquire();
+    if (o->flags & MK_FLAG_ARMED) { /* (re-checked under the lock) */
+        if (!(threaded && roots_n >= MAX_THREADED_ROOTS)) {
+            if (roots_n == roots_cap) {
+                roots_cap = roots_cap ? roots_cap * 2 : 1024;
+                roots = (MkObject **)realloc(roots, roots_cap * sizeof(MkObject *));
+                if (roots == NULL) mk_panic("out of memory");
+            }
+            roots[roots_n++] = o;
+            if (threaded) {
+                __atomic_fetch_and(&o->flags, ~(MK_FLAG_ARMED | COLOR_MASK), __ATOMIC_ACQ_REL);
+                __atomic_fetch_or(&o->flags, MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT), __ATOMIC_ACQ_REL);
+            } else {
+                o->flags = (o->flags & ~(MK_FLAG_ARMED | COLOR_MASK)) | MK_FLAG_BUFFERED | ((uint32_t)PURPLE << MK_COLOR_SHIFT);
+            }
+        }
+    }
+    if (threaded) roots_lock_release();
+    if ((roots_n >= threshold || mk_cycles_alloc_bytes >= alloc_limit) && mk_threads_running == 0) mk_cycles_collect();
+}
+
+/* Called by mk_release when the count of a BUFFERED object reached zero: it is DYING while its dispose runs and a ZOMBIE
+ * afterwards; the buffer keeps pointing to it, so only the collector frees the block. */
+void mk_cycles_state(MkObject *o, unsigned state) {
+    if (__atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
+        __atomic_fetch_and(&o->flags, ~COLOR_MASK, __ATOMIC_ACQ_REL);
+        __atomic_fetch_or(&o->flags, (uint32_t)state << MK_COLOR_SHIFT, __ATOMIC_ACQ_REL);
+    } else {
+        SET_COLOR(o, state);
+    }
+}
+
+/* Frees the garbage cycles that remain at the end of main (freeing a cycle can make another one garbage: repeat). */
+size_t mk_cycles_at_exit(void) {
+    size_t total = 0, n;
+    if (mk_threads_running != 0) return 0;
+    while ((n = mk_cycles_collect()) > 0) total += n;
+    return total;
+}

@@ -49,6 +49,7 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
      */
     fun owned(f: MirFunction?, e: MirExpr): Boolean {
         if (!e.isOwned()) return false
+        if (e is MirExpr.CaughtException) return true
         if (conv?.borrowedResult(e) == true) return false
         if (e is MirExpr.New && e.auto && f != null && f.strict && enabled) return true
         if (!rc(f, e.type)) return false
@@ -62,6 +63,20 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
     }
 
     private val autoCache = HashMap<String, Set<Int>>()
+    private val tempCache = HashMap<String, Set<Int>>()
+
+    /**
+     * The compiler temporaries of [f] (by local id) that hold a fresh object of tracked class (`Item(5)` as an argument: `tmp = Item(5); Cell(tmp)`).
+     * The object has its count of one. When the temporary is handed to a parameter that takes a reference (a generic `T` field of a container,
+     * which counts) that count is the one handed over, no retain: otherwise the owner's count would be left behind forever.
+     */
+    private fun moveTemps(f: MirFunction): Set<Int> {
+        autoLocals(f)
+        return tempCache[f.cName] ?: emptySet()
+    }
+
+    /** [e] is such a temporary of [f]: handing it to an owned reference parameter moves its count instead of retaining. */
+    fun movedTemp(f: MirFunction?, e: MirExpr): Boolean = f != null && f.strict && enabled && e is MirExpr.Local && e.local.id in moveTemps(f)
 
     /**
      * Locals of [f] (by id) that receive a `New` with [MirExpr.New.auto]: the stack-like objects of Strict code (no
@@ -72,23 +87,30 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
         if (f == null || !enabled || !f.strict) return emptySet()
         return autoCache.getOrPut(f.cName) {
             val ids = HashSet<Int>()
-            collectAuto(f.body, ids)
+            val temps = HashSet<Int>()
+            collectAuto(f.body, ids, temps)
+            tempCache[f.cName] = temps
             ids
         }
     }
 
-    private fun collectAuto(list: List<MirStmt>, ids: HashSet<Int>) {
+    private fun collectAuto(list: List<MirStmt>, ids: HashSet<Int>, temps: HashSet<Int>) {
         for (s in list) {
             when (s) {
-                is MirStmt.Declare -> if (isAuto(s.init)) ids += s.local.id
+                // a caught exception is owned (+1) by its local; of a tracked class it still gets a count that the scope releases
+                is MirStmt.Declare -> {
+                    val init = s.init
+                    if (isAuto(init) || init is MirExpr.CaughtException) ids += s.local.id
+                    else if (init is MirExpr.New && s.local.name.startsWith("tmp") && isTrackedType(init.type)) temps += s.local.id
+                }
                 is MirStmt.Assign -> if (isAuto(s.value)) ids += s.local.id
-                is MirStmt.If -> { collectAuto(s.thenBody, ids); collectAuto(s.elseBody, ids) }
-                is MirStmt.Block -> collectAuto(s.body, ids)
-                is MirStmt.While -> collectAuto(s.body, ids)
-                is MirStmt.Loop -> collectAuto(s.body, ids)
-                is MirStmt.DoWhile -> { collectAuto(s.body, ids); collectAuto(s.condStmts, ids) }
-                is MirStmt.ForRange -> collectAuto(s.body, ids)
-                is MirStmt.Try -> { collectAuto(s.body, ids); for (c in s.catches) collectAuto(c.body, ids) }
+                is MirStmt.If -> { collectAuto(s.thenBody, ids, temps); collectAuto(s.elseBody, ids, temps) }
+                is MirStmt.Block -> collectAuto(s.body, ids, temps)
+                is MirStmt.While -> collectAuto(s.body, ids, temps)
+                is MirStmt.Loop -> collectAuto(s.body, ids, temps)
+                is MirStmt.DoWhile -> { collectAuto(s.body, ids, temps); collectAuto(s.condStmts, ids, temps) }
+                is MirStmt.ForRange -> collectAuto(s.body, ids, temps)
+                is MirStmt.Try -> { collectAuto(s.body, ids, temps); for (c in s.catches) collectAuto(c.body, ids, temps) }
                 else -> {}
             }
         }
@@ -118,3 +140,6 @@ class Tracking(module: MirModule, val enabled: Boolean = true) {
     fun rcField(owner: MirClass, f: MirField): Boolean =
         f.type.isRef && !(enabled && ((owner.strict && (isTrackedType(f.type) || f.borrowed)) || (f.borrowed && isTrackedType(f.type))))
 }
+
+/** A reference of this type can be part of a reference cycle (cycle collection traces it): strings and boxed primitives hold no references. */
+fun cycleCapableType(t: MirType): Boolean = t.isRef && t !== TString && t !== TNString && t !== TNull && t !is TBoxed
