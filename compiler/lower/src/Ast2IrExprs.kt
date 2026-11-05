@@ -69,6 +69,11 @@ fun Ast2Ir.convertNoSmart(e: Expr): IrExpression {
  * callee; when the original type already fits it, the cast is dropped.
  */
 fun Ast2Ir.adaptReceiver(v: IrExpression?, p: IrValueParameter?): IrExpression? {
+    if (v == null && p != null && p.kind == IrParameterKind.DispatchReceiver) {
+        // a member of an `object` used through a plain import (`import kotlin.time.Duration.Companion.seconds`): the instance is the receiver
+        val pt = p.type
+        if (pt is ClassType && pt.cls.isObject) return IrGetObjectValue(irClass(pt.cls), irType(pt))
+    }
     if (v == null || p == null) return v
     if (p.kind == IrParameterKind.DispatchReceiver && v is IrCall && v.callee.returnType is TypeParamType) {
         // K2 coerces a generic-result receiver of an `Any` member called through an interface to `Any`

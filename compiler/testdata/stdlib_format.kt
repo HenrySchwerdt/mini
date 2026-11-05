@@ -1,0 +1,28 @@
+fun main() {
+    println("%d %s %.2f".format(1, "a", 2.5))
+    println("%5d|%-5s|%05.1f|%x".format(42, "ab", 3.14159, 255))
+    println("%,d".format(1234567))
+    println("%+d % d %(d".format(5, 5, -5))
+    println("%08.3f".format(-3.14159))
+    println("%.0f %.0f %.0f".format(0.5, 1.5, 2.5))
+    println("%.1f".format(0.25))
+    println("%.2f".format(2.675))
+    println("%e".format(12345.6789))
+    println("%.3e".format(0.000123456))
+    println("%g %g".format(0.0001234, 123456789.0))
+    println("%10.4f|".format(Math_PI))
+    println("%s %S %b %c %%".format(null, "abc", true, 'x'))
+    println("%x %X %o %#x".format(-1, 255L, 8, 255))
+    println("%2\$s %1\$s".format("a", "b"))
+    println("%s".format(listOf(1, 2)))
+    println("%.3s|%10s|%-10s|".format("abcdef", "hi", "hi"))
+    println("%f".format(1e20))
+    println("%.2f".format(1.0 / 3))
+    println("%5.1f%%".format(45.678))
+    println("%d%n".format(7))
+    println("%.2f".format(100.0f))
+    println("%b".format(null))
+    println("%,.2f".format(1234567.891))
+}
+
+const val Math_PI = 3.141592653589793

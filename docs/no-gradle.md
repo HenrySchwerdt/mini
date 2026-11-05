@@ -76,5 +76,5 @@ that the K2 path produces the same results on the same programs.
 ## Known differences
 
 * `mini test` has no per-test timeout (the JUnit `NegativeTest` limited each parse to 20 s): the CI job timeout catches a hang.
-* The Mini standard library has no `Regex`; the emitter tests use plain string scans (`backend/tests/Support.kt`).
+* The emitter tests still use plain string scans (`backend/tests/Support.kt`) although the Mini standard library has `Regex` now (`docs/stdlib.md`, section 10).
 * The `java.util.Random` sequence of the fuzz tests is reproduced exactly by `frontend/tests/JavaRandom.kt`.

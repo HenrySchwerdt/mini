@@ -26,7 +26,7 @@ object MemoryChecker {
         val escapes = all.values.filter { it.code == "M0105" }.map { it.pos }.toSet()
         return all.values
             .filter { !(it.code == "M0102" && it.slot in dirty) && !(it.code == "M0109" && it.pos in escapes) && it.pos.line > 0 }
-            .sortedWith(compareBy({ it.file }, { it.pos.line }, { it.pos.col }, { it.code }))
+            .sortedWith(compareBy<Diag>({ it.file }, { it.pos.line }, { it.pos.col }, { it.code }))
     }
 
     // ---- exception summaries (5.6) -------------------------------------------------------------

@@ -64,6 +64,15 @@ fun <T : Any> assertNotNull(actual: T?, message: String? = null): T {
     return actual
 }
 
+fun assertFails(message: String?, block: () -> Unit): Throwable {
+    try {
+        block()
+    } catch (e: Throwable) {
+        return e
+    }
+    throw AssertionError(formatAssertMessage(message, "Expected an exception to be thrown, but was completed successfully."))
+}
+
 fun assertFails(block: () -> Unit): Throwable {
     try {
         block()
@@ -71,6 +80,111 @@ fun assertFails(block: () -> Unit): Throwable {
         return e
     }
     throw AssertionError("Expected an exception to be thrown, but was completed successfully.")
+}
+
+fun assertEquals(expected: Double, actual: Double, absoluteTolerance: Double, message: String? = null) {
+    if (absoluteTolerance < 0.0) throw IllegalArgumentException("Illegal negative absolute tolerance <" + absoluteTolerance + ">.")
+    if (expected.isNaN() && actual.isNaN()) return
+    val diff = if (expected > actual) expected - actual else actual - expected
+    if (!(diff <= absoluteTolerance) && expected != actual) {
+        throw AssertionError(formatAssertMessage(message, "Expected <" + expected + "> with absolute tolerance <" + absoluteTolerance + ">, actual <" + actual + ">."))
+    }
+}
+
+fun assertEquals(expected: Float, actual: Float, absoluteTolerance: Float, message: String? = null) {
+    assertEquals(expected.toDouble(), actual.toDouble(), absoluteTolerance.toDouble(), message)
+}
+
+fun assertTrue(message: String? = null, block: () -> Boolean) {
+    assertTrue(block(), message)
+}
+
+fun assertFalse(message: String? = null, block: () -> Boolean) {
+    assertFalse(block(), message)
+}
+
+fun <T> assertNotSame(illegal: T, actual: T, message: String? = null) {
+    if (illegal === actual) throw AssertionError(formatAssertMessage(message, "Expected not the same instance as <" + actual + ">."))
+}
+
+fun <T : Any> assertNotNull(actual: T?, message: String? = null, block: (T) -> Unit) {
+    if (actual == null) throw AssertionError(formatAssertMessage(message, "Expected value to be not null."))
+    block(actual)
+}
+
+fun <T> expect(expected: T, block: () -> T) {
+    assertEquals(expected, block())
+}
+
+fun <T> expect(expected: T, message: String?, block: () -> T) {
+    assertEquals(expected, block(), message)
+}
+
+inline fun <reified T> assertIs(value: Any?, message: String? = null): T {
+    if (value !is T) throw AssertionError(formatAssertMessage(message, "Expected value to be of the requested type, actual <" + value + ">."))
+    return value
+}
+
+inline fun <reified T> assertIsNot(value: Any?, message: String? = null) {
+    if (value is T) throw AssertionError(formatAssertMessage(message, "Expected value to not be of the requested type."))
+}
+
+fun <T> assertContains(iterable: Iterable<T>, element: T, message: String? = null) {
+    if (!iterable.contains(element)) throw AssertionError(formatAssertMessage(message, "Expected the collection to contain the element.\nCollection <" + iterable + ">, element <" + element + ">."))
+}
+
+fun <K, V> assertContains(map: Map<out K, V>, key: K, message: String? = null) {
+    if (!map.containsKey(key)) throw AssertionError(formatAssertMessage(message, "Expected the map to contain the key.\nMap <" + map + ">, key <" + key + ">."))
+}
+
+fun assertContains(charSequence: String, other: String, ignoreCase: Boolean = false, message: String? = null) {
+    if (!charSequence.contains(other, ignoreCase)) throw AssertionError(formatAssertMessage(message, "Expected the string to contain the substring.\nString <" + charSequence + ">, substring <" + other + ">."))
+}
+
+fun assertContains(range: IntRange, value: Int, message: String? = null) {
+    if (value !in range) throw AssertionError(formatAssertMessage(message, "Expected the range <" + range + "> to contain the value <" + value + ">."))
+}
+
+private fun <T> assertContentEqualsImpl(message: String?, expected: List<T>?, actual: List<T>?) {
+    if (expected == null && actual == null) return
+    if (expected == null) throw AssertionError(formatAssertMessage(message, "Expected null, actual <" + actual + ">."))
+    if (actual == null) throw AssertionError(formatAssertMessage(message, "Expected <" + expected + ">, actual is null."))
+    if (expected.size != actual.size) throw AssertionError(formatAssertMessage(message, "Expected <" + expected + ">, actual <" + actual + ">."))
+    var i = 0
+    while (i < expected.size) {
+        if (expected[i] != actual[i]) {
+            throw AssertionError(formatAssertMessage(message, "Elements differ at index " + i + ". Expected element <" + expected[i] + ">, actual element <" + actual[i] + ">."))
+        }
+        i++
+    }
+}
+
+fun <T> assertContentEquals(expected: Iterable<T>?, actual: Iterable<T>?, message: String? = null) {
+    assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
+}
+
+fun <T> assertContentEquals(expected: Array<out T>?, actual: Array<out T>?, message: String? = null) {
+    assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
+}
+
+fun assertContentEquals(expected: IntArray?, actual: IntArray?, message: String? = null) {
+    assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
+}
+
+fun assertContentEquals(expected: LongArray?, actual: LongArray?, message: String? = null) {
+    assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
+}
+
+fun assertContentEquals(expected: DoubleArray?, actual: DoubleArray?, message: String? = null) {
+    assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
+}
+
+fun assertContentEquals(expected: CharArray?, actual: CharArray?, message: String? = null) {
+    assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
+}
+
+fun assertContentEquals(expected: BooleanArray?, actual: BooleanArray?, message: String? = null) {
+    assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
 }
 
 inline fun <reified T : Throwable> assertFailsWith(message: String? = null, block: () -> Unit): T {
