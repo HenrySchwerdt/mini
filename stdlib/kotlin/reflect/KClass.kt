@@ -46,13 +46,51 @@ public interface KProperty<out V> : KCallable<V>
 
 public interface KMutableProperty<V> : KProperty<V>
 
-public interface KProperty0<out V> : KProperty<V>, () -> V
+public interface KProperty0<out V> : KProperty<V>, () -> V {
+    public fun get(): V
+}
 
-public interface KMutableProperty0<V> : KProperty0<V>, KMutableProperty<V>
+public interface KMutableProperty0<V> : KProperty0<V>, KMutableProperty<V> {
+    public fun set(value: V)
+}
 
-public interface KProperty1<T, out V> : KProperty<V>, (T) -> V
+public interface KProperty1<T, out V> : KProperty<V>, (T) -> V {
+    public fun get(receiver: T): V
+}
 
-public interface KMutableProperty1<T, V> : KProperty1<T, V>, KMutableProperty<V>
+public interface KMutableProperty1<T, V> : KProperty1<T, V>, KMutableProperty<V> {
+    public fun set(receiver: T, value: V)
+}
+
+/*
+ * What `::prop`, `obj::prop` and `Class::prop` evaluate to. The compiler creates them with closures for the getter (and setter)
+ * of the property (Ir2MirClosures.propertyReference).
+ */
+internal class KProperty0Impl<V>(override val name: String, private val getter: () -> V) : KProperty0<V> {
+    override fun get(): V = getter()
+    override fun invoke(): V = getter()
+    override fun toString(): String = "property $name"
+}
+
+internal class KMutableProperty0Impl<V>(override val name: String, private val getter: () -> V, private val setter: (V) -> Unit) : KMutableProperty0<V> {
+    override fun get(): V = getter()
+    override fun set(value: V) { setter(value) }
+    override fun invoke(): V = getter()
+    override fun toString(): String = "property $name"
+}
+
+internal class KProperty1Impl<T, V>(override val name: String, private val getter: (T) -> V) : KProperty1<T, V> {
+    override fun get(receiver: T): V = getter(receiver)
+    override fun invoke(p1: T): V = getter(p1)
+    override fun toString(): String = "property $name"
+}
+
+internal class KMutableProperty1Impl<T, V>(override val name: String, private val getter: (T) -> V, private val setter: (T, V) -> Unit) : KMutableProperty1<T, V> {
+    override fun get(receiver: T): V = getter(receiver)
+    override fun set(receiver: T, value: V) { setter(receiver, value) }
+    override fun invoke(p1: T): V = getter(p1)
+    override fun toString(): String = "property $name"
+}
 
 public interface KProperty2<D, E, out V> : KProperty<V>, (D, E) -> V
 

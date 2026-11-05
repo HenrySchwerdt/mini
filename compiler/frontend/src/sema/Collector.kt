@@ -26,6 +26,16 @@ class Collector(private val sema: Sema) {
                 }
                 is PropertyDecl -> {
                     val p = collectProp(d, null, f, fs)
+                    if (!f.declOnly && d.receiver == null) {
+                        val old = pkg.props[p.name]
+                        if (old != null) for (o in old) {
+                            if (o.file?.declOnly == true) continue
+                            if (o.file === f || (!o.has("private") && !p.has("private"))) {
+                                sema.error(f, d.start, "conflicting declarations: property '" + p.name + "'")
+                                break
+                            }
+                        }
+                    }
                     addTo(pkg.props, p.name, p)
                 }
                 is TypeAliasDecl -> {
@@ -160,6 +170,7 @@ class Collector(private val sema: Sema) {
             }
             is PropertyDecl -> {
                 val p = collectProp(m, c, file, body)
+                if (!file.declOnly && m.receiver == null && c.props[p.name] != null) sema.error(file, m.start, "conflicting declarations: property '" + p.name + "'")
                 addTo(c.props, p.name, p)
             }
             is SecondaryCtor -> {

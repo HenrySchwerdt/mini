@@ -79,7 +79,19 @@ class Ir2Mir {
     /** `KClassImpl` (package kotlin, reflect) of the stdlib sources (what `Foo::class` creates), if present in the module. */
     internal var kclassImpl: IrClass? = null
 
+    /** `kotlin.enums.EnumEntriesImpl` (what `Color.entries` creates), if present in the module. */
+    internal var entriesImpl: IrClass? = null
+
+    /** The hidden name and ordinal parameters of the enum-body constructor being converted. */
+    internal var unitClass: TObject? = null
+
+    /** the loop of the `tailrec` function being converted, if any (Ir2MirTailrec) */
+    internal var tailLoop: TailLoop? = null
+
+    internal var enumHidden: List<MirLocal> = emptyList()
+
     fun convert(module: IrModule, sourceName: String): MirModule {
+        entriesImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == "kotlin.enums.EnumEntriesImpl" }
         kclassImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == REFLECT_PKG + ".KClassImpl" }
         closure.analyze(module)
         // pass 1: classes and top-level declarations
@@ -91,7 +103,7 @@ class Ir2Mir {
                 when (d) {
                     // an inline function with a reified type parameter only exists expanded at its call sites
                     is IrSimpleFunction -> if (!(d.isInline && d.typeParameters.any { it.reified })) tops += file to d
-                    is IrClass -> if (!isRuntimeProvided(d)) collectClass(d, pkg, listOf(d.name), file)
+                    is IrClass -> if (!isRuntimeProvided(d) && d.kind != IrClassKind.ANNOTATION_CLASS) collectClass(d, pkg, listOf(d.name), file)
                     is IrProperty -> {
                         d.getter?.takeIf { !it.isExternal && hasBodyIn(file, it) }?.let { tops += file to it }
                         d.setter?.takeIf { !it.isExternal && hasBodyIn(file, it) }?.let { tops += file to it }
@@ -156,6 +168,7 @@ class Ir2Mir {
         if (wasmExports.isNotEmpty()) wasmInitFunction()?.let { functions += it }
         val classes = ArrayList<MirClass>()
         classes += builtinMirClasses()
+        val builtinCount = classes.size
         val (facadeClasses, facadeFunctions) = buildFacades()
         functions += facadeFunctions
         classes += facadeClasses
@@ -176,8 +189,11 @@ class Ir2Mir {
                 )
             }
         }
+        // function interfaces come first: classes that implement a function type refer to them
         for (c in classInfos.keys.toList()) visit(c)
-        classes += extraClasses
+        val funIfaces = extraClasses.filter { it.isInterface && it.qualifiedName.startsWith("kotlin.Function") }
+        classes.addAll(minOf(classes.size, builtinCount), funIfaces)
+        classes += extraClasses.filter { it !in funIfaces }
         functions += extraFunctions
         return MirModule(sourceName, functions, classes, cExterns, interopFileAnnotations(module, "kotlinx.cinterop.CInclude"), interopFileAnnotations(module, "kotlinx.cinterop.CLink"), wasmExports)
     }
