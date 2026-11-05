@@ -1258,23 +1258,31 @@ store-to-load dependency of the whole recursion (it was half of the overhead on 
 
 Reference: the same benchmark compiled by `origin/main` (no collector), runtime built the same way (-O1, like `libminirt.a`). The
 host is shared and noisy, so the main metric is the instruction count (`valgrind --tool=cachegrind --cache-sim=no`, deterministic);
-CPU time (user+sys, `taskset`, median of 7 interleaved runs) is the check.
+CPU time (user+sys, `taskset`, median of 7-9 interleaved runs) is the check. Two reference points, because main became much faster
+in between (no allocation prefix, inline free of small objects, direct size classes):
 
-| Benchmark | first collector: CPU | stack floor + collector tuning: CPU | final: instructions vs no collector |
-|---|---:|---:|---:|
-| binarytrees | +12.4 % | +3.7 % | 13.83 G vs 15.40 G (-10 %) |
-| json | +14.5 % | +5.8 % | 6.27 G vs 6.38 G (-2 %) |
-| wordcount | +0.2 % | -1.7 % | 32.57 G vs 32.61 G (-0.1 %) |
-| strbuild | +7.7 % | +4.2 % | 13.22 G vs 13.94 G (-5 %) |
+| Benchmark | first collector, CPU | before the hill-climb merge: instructions vs main | after the merge, vs the new main: CPU | instructions |
+|---|---:|---:|---:|---:|
+| binarytrees | +12.4 % | -10 % (13.83 G vs 15.40 G) | +5.1 % | +9.4 % (12.66 G vs 11.57 G) |
+| json | +14.5 % | -2 % | +3.0 % | +3.7 % (4.51 G vs 4.35 G) |
+| wordcount | +0.2 % | -0.1 % | +2.1 % | +1.5 % (23.86 G vs 23.50 G, before the last inlining) |
+| strbuild | +7.7 % | -5 % | -3.5 % (noisy: +-5 %) | -2.4 % (11.12 G vs 11.34 G) |
 
-What each step bought (binarytrees, json instructions): the counter of the release depth was half of the overhead (a store-to-load chain
-through the whole recursion) and became one read-only compare; the collector itself was most of the rest on json (three fruitless
-collections visiting 1.5 M objects: the limits above, one visitor function per phase instead of a switch per child); `StringBuilder`
-stopped being armed; and the compiler-picked allocation entries (`mk_alloc_armed` / `mk_alloc_plain` / `mk_alloc_sized_plain`) skip
-both the run-time arming test and two layers of the generic path. Part of the last gain (shorter entries) would also speed up a
-runtime without the collector; the CPU columns do not contain it. The compiler compiling itself (stage1 without, stage3 with the
-collector): 633 MiB peak RSS both, 27 s both. Programs with garbage cycles get the opposite trade: `stress_cycles` peak RSS 35 MiB ->
-134 MiB at 4x the rounds without the collector, a flat peak with it (bounded by the 32 MiB floor plus the live heap; `stress-rss` checks 4x vs 1x rounds).
+The "-10 %" of the middle column is not the collector being free: the compiler-picked allocation entries are shorter than the old generic
+path and would also have sped up a runtime without the collector. Against the faster main (last two columns) the collector costs what it
+adds per allocated and per dying armed object: the arming flag and the byte counter in `mk_alloc_armed` (about 4 instructions), and in the
+dying path of an armed object the stack-floor compare, the queue test after the dispose chain and the BUFFERED test (about 8). Objects
+of acyclic classes (strings, boxes, StringBuilder, plain data) pay one flag test. What each step bought before the merge (binarytrees,
+json instructions): the release-depth counter was half of the overhead (a store-to-load chain through the whole recursion) and became
+one read-only compare; the collector itself was most of the rest on json (three fruitless collections visiting 1.5 M objects: the limits
+above, one visitor function per phase instead of a switch per child); `StringBuilder` stopped being armed; the allocation entries. The
+compiler compiling itself (stage1 without, stage3 with the collector): 633 MiB peak RSS both, 27 s both. Programs with garbage cycles
+get the opposite trade: `stress_cycles` peak RSS 35 MiB -> 134 MiB at 4x the rounds without the collector, a flat peak with it (bounded by
+the 32 MiB floor plus the live heap; `stress-rss` checks 4x vs 1x rounds).
+
+The cycle bits of the header: `MK_FLAG_ARMED` (bit 6), `MK_FLAG_BUFFERED` (bit 7) and the colour (bits 16..18); bits 4/5/8..15 belong to the
+allocator (prefix, Heap, small-object size class). Where a buffered object sits in the candidate buffer no longer fits in the flag word: a
+small open-addressing table (`slots` in `cycles.c`, touched only when an object is recorded or when a buffered object dies) finds the slot.
 
 ### Tests
 
