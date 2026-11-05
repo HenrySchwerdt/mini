@@ -2,6 +2,18 @@ package mini.backend
 
 import mini.internal.nanoTime
 
+class InlinerStats {
+    var sites = 0
+    var functions = 0
+    var exactDevirt = 0
+    var scalarReplaced = 0
+    var tExact = 0L
+    var tExpand = 0L
+    var tClean = 0L
+    var tSroa = 0L
+    var tOther = 0L
+}
+
 /*
  * MIR-level inlining of small functions (getters, setters, iterator steps, small stdlib helpers), across the library boundary
  * (the whole program is linked MIR). Functions are processed callees first, so the body that is inlined is already optimized.
@@ -18,18 +30,6 @@ import mini.internal.nanoTime
  * The MIR's ownership rules are uniform (arguments borrowed, results owned), so inlining needs no RC reasoning: RcOpt runs after it.
  */
 object Inliner {
-    class Stats {
-        var sites = 0
-        var functions = 0
-        var exactDevirt = 0
-        var scalarReplaced = 0
-        var tExact = 0L
-        var tExpand = 0L
-        var tClean = 0L
-        var tSroa = 0L
-        var tOther = 0L
-    }
-
     /** Always inlined up to this size; up to [SIZE_LIMIT] when an argument is a fresh local object (scalar replacement can remove it). */
     const val SMALL_LIMIT = 40
     const val SIZE_LIMIT = 70
@@ -38,7 +38,7 @@ object Inliner {
     /** Whole-program budget (nodes expanded): small programs are optimized completely, a huge program (the compiler itself) only partly, so compile time stays in check. */
     const val PROGRAM_BUDGET = 60000
 
-    fun run(module: MirModule, stats: Stats, options: MirOptions): MirModule {
+    fun run(module: MirModule, stats: InlinerStats, options: MirOptions): MirModule {
         val st = InlineState(module, stats)
         st.doInline = options.on("inline")
         st.doSroa = options.on("sroa")
@@ -55,7 +55,7 @@ internal class InlineInfo(val fn: MirFunction, val paramAssigned: BooleanArray, 
     val refs: Boolean = fn.returnType.isRef || fn.params.any { it.type.isRef }
 }
 
-internal class InlineState(val module: MirModule, val stats: Inliner.Stats) {
+internal class InlineState(val module: MirModule, val stats: InlinerStats) {
     val byName = HashMap<String, MirFunction>()
     val classes = HashMap<String, MirClass>()
     val done = HashMap<String, MirFunction>()

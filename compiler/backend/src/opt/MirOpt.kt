@@ -29,7 +29,7 @@ object MirOpt {
     fun run(module: MirModule, options: MirOptions, report: (String) -> Unit): MirModule {
         var m = module
         if (options.on("inline") || options.on("sroa") || options.on("exact-devirt")) {
-            val st = Inliner.Stats()
+            val st = InlinerStats()
             m = Inliner.run(m, st, options)
             if (options.stats) report("inline: " + st.sites + " call sites in " + st.functions + " functions, " + st.exactDevirt + " exact-type devirtualizations, " + st.scalarReplaced + " objects scalar-replaced")
             if (options.stats) report("inline timing ms: exact " + st.tExact / 1000000 + ", expand " + st.tExpand / 1000000 + ", cleanup " + st.tClean / 1000000 + ", sroa " + st.tSroa / 1000000)
