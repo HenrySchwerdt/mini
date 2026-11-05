@@ -30,5 +30,19 @@ Start of the work (origin/main 821ef51), 5 runs, mini/rust CPU time:
 
 After merging perf-hillclimb (0a85061) the baseline moved (see `noopt` rows).
 
-## Attempts
-(see the table at the end, filled as the work goes)
+## Attempts (absolute user+sys CPU seconds, median of 5, pinned; "noopt" = same compiler with -Xno-mir-opt, both include the internal-linkage change)
+
+| # | change | result | verdict |
+|---|---|---|---|
+| 1 | own CHA devirtualization (opt/Devirt.kt) | 14/39 virtual, 32/46 interface calls direct on a tiny program; wordcount C 5.86 -> 5.98 s (no gain alone: callees are not inlined, functions external) | dropped: perf-hillclimb landed RTA devirtualization with pruning first; mine removed, theirs is used |
+| 2 | internal linkage (`static` / `internal`) for whole programs | needed for any inlining by the C compiler / LLVM; part of every number below | kept |
+| 3 | MIR inliner + clean-up (opt/Inline.kt, Cleanup.kt) | first version unrolled directly recursive functions (binarytrees RSS 34 -> 67 MB); fixed by excluding self-recursive callees | kept |
+| 4 | exact-type devirtualization + scalar replacement (opt/Sroa.kt) | graph (C) 3.20 -> 2.98 s (-7%), graph (API) 3.25 -> 2.69 s (-17%), wordcount (C) 3.51 -> 3.02 s (-14%), wordcount (API) 3.31 -> 3.28 s; `for (x in list)` iterators and `Pt(...)` temporaries are never allocated | kept |
+| 5 | `declare x; ..; x = v` merge in clean-up | removes the retain/release of the iterator's list field in graph's inner loop; graph C -0%, not measurable in the scorer | kept (smaller code) |
+| 6 | all others flat within noise: nbody 1.20 -> 1.21, fannkuch 2.95 -> 2.97, spectralnorm 1.25 -> 1.30 (C, cv 2-3%), mandelbrot, strbuild, json | no regression above 3% that is outside the run-to-run noise of this shared host; spectralnorm C and API are the ones to watch | |
+
+Rejected / not done (reasons)
+* Bounds-check elimination: the checks in the benchmarks (fannkuch `perm[k - i]`) depend on data; counted loops `0 until a.size` need an unchecked array access in both emitters and the runtime: no measurable target, not started.
+* Guarded (bimorphic) devirtualization: after RTA + exact types no hot virtual call is left in the benchmarks (graph, wordcount, json); not started.
+* Unboxing of `Int` values in `HashMap<String, Int>`: the box escapes into the map node; needs a representation change of the node (runtime/stdlib) or a small-int box cache (perf-hillclimb's area).
+* RC elision across calls with callee summaries: RcOpt (1.1k lines, Strict interplay) - left for later; the scalar replacement removes the RC traffic of the objects it touches.
