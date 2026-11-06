@@ -101,31 +101,6 @@ public fun <T> Sequence<T>.chunked(size: Int): Sequence<List<T>> = windowed(size
 
 public fun <T, R> Sequence<T>.chunked(size: Int, transform: (List<T>) -> R): Sequence<R> = windowed(size, size, true, transform)
 
-public fun CharSequence.chunkedSequence(size: Int): Sequence<String> = windowedSequence(size, size, true)
-
-public fun <R> CharSequence.chunkedSequence(size: Int, transform: (CharSequence) -> R): Sequence<R> = windowedSequence(size, size, true, transform)
-
-public fun CharSequence.windowedSequence(size: Int, step: Int = 1, partialWindows: Boolean = false): Sequence<String> =
-    windowedSequence(size, step, partialWindows) { it.toString() }
-
-public fun <R> CharSequence.windowedSequence(size: Int, step: Int = 1, partialWindows: Boolean = false, transform: (CharSequence) -> R): Sequence<R> {
-    kotlin.collections.checkWindowSizeStep(size, step)
-    val cs = this
-    return Sequence<R> {
-        var index = 0
-        object : Iterator<R> {
-            override fun hasNext(): Boolean = index < cs.length && (partialWindows || index + size <= cs.length)
-            override fun next(): R {
-                if (!hasNext()) throw NoSuchElementException()
-                val end = index + size
-                val r = transform(cs.subSequence(index, if (end > cs.length) cs.length else end))
-                index += step
-                return r
-            }
-        }
-    }
-}
-
 // ---- zipWithNext, running folds --------------------------------------------------------------------------
 
 private class ZipWithNextIterator<T, R>(private val src: Iterator<T>, private val f: (T, T) -> R) : Iterator<R> {

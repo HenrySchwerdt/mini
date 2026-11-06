@@ -54,6 +54,14 @@ public class Char private constructor() : Comparable<Char> {
     public companion object {
         public const val MIN_VALUE: Char = '\u0000'
         public const val MAX_VALUE: Char = '￿'
+        public const val MIN_HIGH_SURROGATE: Char = '\uD800'
+        public const val MAX_HIGH_SURROGATE: Char = '\uDBFF'
+        public const val MIN_LOW_SURROGATE: Char = '\uDC00'
+        public const val MAX_LOW_SURROGATE: Char = '\uDFFF'
+        public const val MIN_SURROGATE: Char = MIN_HIGH_SURROGATE
+        public const val MAX_SURROGATE: Char = MAX_LOW_SURROGATE
+        public const val SIZE_BYTES: Int = 2
+        public const val SIZE_BITS: Int = 16
     }
 
     public override fun compareTo(other: Char): Int

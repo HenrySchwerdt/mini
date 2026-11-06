@@ -334,15 +334,6 @@ public fun Char.titlecase(): String = uppercaseChar().toString()
 
 public fun Char.isTitleCase(): Boolean = false
 
-public fun Char.digitToIntOrNull(): Int? = if (this in '0'..'9') this.code - '0'.code else null
-
-public fun Char.digitToIntOrNull(radix: Int): Int? {
-    val d = if (this in '0'..'9') this.code - '0'.code
-    else if (this in 'a'..'z') this.code - 'a'.code + 10
-    else if (this in 'A'..'Z') this.code - 'A'.code + 10
-    else -1
-    return if (d < 0 || d >= radix) null else d
-}
 
 public fun Char.isISOControl(): Boolean = this.code <= 0x1F || (this.code >= 0x7F && this.code <= 0x9F)
 

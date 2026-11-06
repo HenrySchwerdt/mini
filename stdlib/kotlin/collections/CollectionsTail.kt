@@ -257,12 +257,6 @@ public fun <T> MutableList<T>.addLast(element: T) {
     add(element)
 }
 
-public fun <T> MutableCollection<in T>.addAll(elements: Array<out T>): Boolean {
-    var changed = false
-    for (e in elements) if (add(e)) changed = true
-    return changed
-}
-
 public fun <T> MutableCollection<in T>.addAll(elements: Sequence<T>): Boolean {
     var changed = false
     for (e in elements) if (add(e)) changed = true
