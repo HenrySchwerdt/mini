@@ -501,11 +501,11 @@ fun Ast2Ir.accessorCall(f: IrSimpleFunction, access: Access?, recvClassHint: IrC
 fun Ast2Ir.superExpr(e: SuperExpr): IrExpression {
     var c = ctx
     while (c != null) {
-        // the own class of an inner class comes before its enclosing classes
-        for (i in c.recvs.indices) {
+        for (i in c.recvs.indices.reversed()) {
             val re = c.recvs[i]
-            // `super@Outer.f()`: the label names the class whose `this` is the receiver
-            if (re.cls != null && (e.label == null || re.cls.name == e.label)) return IrGetValue(re.param, re.param.type, null)
+            // `super@A.f()`: the receiver of the labelled class
+            val rc = re.cls
+            if (rc != null && (e.label == null || rc.name == e.label)) return IrGetValue(re.param, re.param.type, null)
         }
         c = c.parent
     }
