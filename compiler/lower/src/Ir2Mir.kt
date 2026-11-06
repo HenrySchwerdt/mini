@@ -59,7 +59,7 @@ class Ir2Mir {
     internal val functionInterfaces = HashMap<Int, TObject>()
     internal val liftedFns = HashMap<IrSimpleFunction, LiftedFn>()
     internal val returnTargets = HashMap<IrFunction, InlineReturn>()
-    internal var finallyStack = ArrayList<IrExpression>()
+    internal var finallyStack = ArrayList<FinCtx>()
     internal val loopFinallyDepth = HashMap<IrLoop, Int>()
     internal var builtinMessageRoot: IrSimpleFunction? = null
     internal val builtinInfos = HashMap<IrClass, ClassInfo>()

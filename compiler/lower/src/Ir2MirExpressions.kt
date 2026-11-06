@@ -66,6 +66,8 @@ internal fun Ir2Mir.value(e: IrExpression, out: MutableList<MirStmt>): MirExpr {
 internal fun Ir2Mir.bindValue(e: IrExpression, to: MirType, out: MutableList<MirStmt>): MirExpr {
     var v = value(e, out)
     if (v.type.isRef && to.isRef) v = consumeOwned(v, out)
+    // a Unit call whose result is needed as a reference (`try { f() } catch (...) { "s" }` has type Any): run it, the value is the Unit object
+    if (v.type == TUnit && to.isRef && v !== MirExpr.UnitValue && v !is MirExpr.Local) return unitAsRef(v, out)
     return convertTo(v, to, e)
 }
 
@@ -149,6 +151,10 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             if (e.typeOperand.classFqName == "kotlin.Number") {
                 val isNum = MirExpr.RuntimeCall("mk_is_number", listOf(asAny(v)), TBoolean)
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isNum else MirExpr.Unary(UnaryOp.Not, isNum)
+            }
+            if (e.typeOperand.classFqName == "kotlin.CharSequence") {
+                val isCs = MirExpr.RuntimeCall("mk_is_char_sequence", listOf(asAny(v), charSequenceInterface()), TBoolean)
+                return if (e.operator == IrTypeOperator.INSTANCEOF) isCs else MirExpr.Unary(UnaryOp.Not, isCs)
             }
             val test: MirExpr = MirExpr.IsInstance(v, if (target.isPrimitive) TBoxed(target) else target.nonNull())
             return if (e.operator == IrTypeOperator.INSTANCEOF) test else MirExpr.Unary(UnaryOp.Not, test)

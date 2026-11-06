@@ -260,6 +260,7 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
         lparams.add(p)
     }
     fn.returnType = retT
+    if (ad.suspendConv) makeSuspend(fn, retT)
     val call: IrFunctionAccessExpression = if (target is IrConstructor) IrConstructorCall(target, retT) else IrCall(target as IrSimpleFunction, retT)
     call.typeArguments = ad.typeArgs.map { irType(it) }
     var recvNext = 0
@@ -293,9 +294,9 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     }
     val stmts = ArrayList<IrStatement>()
     if (isUnit(retT)) stmts.add(coerceToUnit(call)) else stmts.add(IrReturn(fn, call, sema.nothingType))
-    fn.body = IrBlockBody(stmts)
+    fn.body = if (ad.suspendConv) lowerSuspendBody(fn, IrBlockBody(stmts)) else IrBlockBody(stmts)
     fn.startOffset = e.start
-    val ft = FunType(null, ptypes, retT, false, false)
+    val ft = FunType(null, ptypes, retT, false, ad.suspendConv)
     val fe = IrFunctionExpression(fn, ft, "LAMBDA")
     fe.startOffset = e.start
     if (outer.isEmpty()) return fe

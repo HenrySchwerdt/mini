@@ -17,8 +17,9 @@ import mini.internal.sbSetLength
 import mini.internal.sbToString
 
 /**
- * Note (docs/stdlib.md): in Mini v1 StringBuilder is not (yet) a CharSequence/Appendable: interfaces of the
- * builtin package are not usable as types by the backend. Everything else follows kotlin.text.StringBuilder.
+ * A CharSequence: the compiler adds the supertype (Sema.ensureSupertypes), so that this file builds with a compiler that does not
+ * know it; length / get / subSequence implement the interface. Values of that type are a String or an object of a class that
+ * implements the interface (runtime mk_cs_*). Everything else follows kotlin.text.StringBuilder.
  */
 public class StringBuilder {
     private val buf: Any = sbNew()
@@ -31,10 +32,12 @@ public class StringBuilder {
         sbAppendString(buf, content)
     }
 
-    public val length: Int
+    public override val length: Int
         get() = sbLength(buf)
 
-    public operator fun get(index: Int): Char {
+    public override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = substring(startIndex, endIndex)
+
+    public override operator fun get(index: Int): Char {
         if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
         return sbCharAt(buf, index)
     }

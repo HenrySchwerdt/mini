@@ -405,6 +405,18 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         return ErrType("callable reference")
     }
     cs.fixAll()
+    // suspend conversion: a reference to a non-suspend function where a suspend function type is expected becomes a suspend lambda
+    val csym = chosen.sym
+    if (ef != null && ef.suspend && csym is FunSym && !chosen.isProp && csym.mods()?.has("suspend") != true) {
+        if (adapted == null) {
+            val off0 = chosen.params.size - csym.params.size
+            if (off0 in 0..1) {
+                val n0 = csym.params.size
+                adapted = AdaptedRef(AdaptMap(IntArray(n0) { off0 + it }, IntArray(n0) { 1 }), off0)
+            }
+        }
+        if (adapted != null) adapted.suspendConv = true
+    }
     val ps = ArrayList<Type>()
     if (adapted != null && ef != null) {
         for (p in ops.allParams(ef)) ps.add(cs.resolveFixed(p))
@@ -447,6 +459,7 @@ class AdaptMap(val starts: IntArray, val counts: IntArray)
 /** A callable reference that needs an adapter: default arguments, `vararg` and a different number of parameters than the target. */
 class AdaptedRef(val map: AdaptMap, val receiverCount: Int) {
     var typeArgs: List<Type> = emptyList()
+    var suspendConv = false
 }
 
 /**

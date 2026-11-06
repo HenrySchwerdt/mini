@@ -58,11 +58,12 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
     functionArity(t)?.let { return functionInterface(it).let { f -> if (nullable) f.copy(nullable = true) else f } }
     arrayKindOfFq(n)?.let { return arrayType(it, nullable) }
     return when (n) {
-        "kotlin.String", "kotlin.CharSequence" -> if (nullable) TNString else TString
+        "kotlin.String" -> if (nullable) TNString else TString
         "kotlin.Unit" -> if (nullable || at is IrValueParameter) anyNullable else TUnit // a Unit parameter holds null
         "kotlin.Nothing" -> if (nullable) TNull else TNothing
         // Comparable values are boxed primitives, strings or user objects: represented as Any (compareTo: mk_compare_to)
-        "kotlin.Any", "kotlin.Comparable", "kotlin.Number" -> if (nullable) anyNullable else anyType
+        // CharSequence values are a String or an object of a class that implements the interface (mk_cs_*): Any as well
+        "kotlin.Any", "kotlin.Comparable", "kotlin.Number", "kotlin.CharSequence" -> if (nullable) anyNullable else anyType
         else -> {
             val c = t.classOrNull
             val inl = if (c != null && c in classInfos) inlineTypeOf(c) else null
@@ -79,7 +80,7 @@ internal fun Ir2Mir.erasedBound(p: TypeParamSym, nullable: Boolean, at: IrElemen
         val bc = b.classOrNull
         if (bc != null && isPtrClass(bc)) return TPtr(nullable || b.isMarkedNullable())
         val supported = b !is TypeParamType &&
-            bn != "kotlin.Comparable" && (bn == "kotlin.String" || bn == "kotlin.CharSequence" || arrayKindOfFq(bn) != null || (bc != null && (bc in classInfos || builtinOf(bc) != null)) || functionArity(b) != null)
+            bn != "kotlin.Comparable" && bn != "kotlin.CharSequence" && (bn == "kotlin.String" || arrayKindOfFq(bn) != null || (bc != null && (bc in classInfos || builtinOf(bc) != null)) || functionArity(b) != null)
         if (!supported) continue
         val m = mirType(b, at)
         return if (nullable || b.isMarkedNullable()) m.asNullable() else m

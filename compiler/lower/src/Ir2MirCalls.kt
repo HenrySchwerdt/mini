@@ -144,6 +144,12 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     }
     if (parent is IrClass && isEnumSpecial(parent, owner)) return enumSpecialCall(c, parent, owner.name, out)
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Unit") unitMember(c, name, out)?.let { return it }
+    if (parent is IrClass && parent.kotlinFqName == "kotlin.CharSequence" && (name == "toString" || name == "equals" || name == "hashCode")) {
+        // the Any members seen through CharSequence (fake overrides of the interface)
+        val vals = operands(c.arguments.map { it ?: unsupported(c, "omitted argument") }, out)
+        return anyMember(if (name == "toString") 0 else if (name == "equals") 1 else 2, vals, c, out)
+    }
+    if (parent is IrClass && parent.kotlinFqName == "kotlin.CharSequence" && (name == "<get-length>" || name == "get" || name == "subSequence")) return charSequenceMember(c, name, out)
     if (parent is IrClass && (parent in classInfos || isAny(parent) || builtinOf(parent) != null)) return memberCall(c, owner, out)
     // fake overrides of Any members declared in user classes have the user class as parent
     val ownerName = when (parent) {
@@ -167,8 +173,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         ownerName == "kotlin.io" && (name == "println" || name == "print") -> consoleCall(c, name, args, out)
         ownerName == "kotlin.internal.ir" -> irBuiltin(c, name, args, out)
         parent is IrClass && ownerName in RANGES && name == "contains" -> rangeContains(c, args, out)
-        (ownerName == "kotlin.String" || ownerName == "kotlin.CharSequence") && name == "<get-length>" -> MirExpr.StringLength(operands(args, out)[0])
-        parent is IrClass && ownerName == "kotlin.CharSequence" -> primitiveMember(c, "kotlin.String", name, args, out)
+        ownerName == "kotlin.String" && name == "<get-length>" -> MirExpr.StringLength(operands(args, out)[0])
         parent is IrClass && ownerName in PRIMITIVES -> primitiveMember(c, ownerName, name, args, out)
         else -> unsupported(c, "call to '${if (parent is IrClass) "$ownerName.$name" else "$ownerName.$name"}'")
     }
@@ -364,6 +369,8 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
         val v = operands(args, out)
         if (v.size != 1) unsupported(c, "compiler intrinsic '$name'")
         val t = v[0].type
+        // `null!!` has type Nothing: always throws
+        if (t === TNull) { out += MirStmt.Eval(MirExpr.NotNull(v[0])); return MirExpr.Unreachable(TNothing) }
         return if (t is TBoxed && t.prim is TInline) unboxVc(v[0], t.prim, MirExpr.CastMode.Unchecked) else if (t is TBoxed) MirExpr.Unbox(v[0], t.prim) else if (t.isRef || t is TPtr) MirExpr.NotNull(v[0]) else v[0]
     }
     val op = when (name) {
@@ -589,4 +596,31 @@ internal fun Ir2Mir.unitMember(c: IrCall, name: String, out: MutableList<MirStmt
         if (other == null) null else MirExpr.Binary(BinaryOp.IdEq, unitInstance(), asAny(boxIfPrim(other, c, out)))
     }
     else -> null
+}
+
+/** The `CharSequence` interface compiled as a user interface (when some class implements it), or null. */
+internal fun Ir2Mir.charSequenceInterface(): MirExpr {
+    val cs = classInfos.keys.firstOrNull { it.kotlinFqName == "kotlin.CharSequence" }
+    return MirExpr.TypeInfoOf(cs?.let { typeOf(it) })
+}
+
+/** `length`, `get` and `subSequence` of a `CharSequence` receiver (a String, or an object that implements the interface): mk_cs_*. */
+internal fun Ir2Mir.charSequenceMember(c: IrCall, name: String, out: MutableList<MirStmt>): MirExpr {
+    val v = operands(c.arguments.map { it ?: unsupported(c, "omitted argument") }, out)
+    val recv = v[0]
+    if (recv.type == TString) {
+        // a statically known String keeps the direct paths
+        return when (name) {
+            "<get-length>" -> MirExpr.StringLength(recv)
+            "get" -> MirExpr.RuntimeCall("mk_string_char_at", listOf(recv, v[1]), TChar)
+            else -> MirExpr.RuntimeCall("mk_string_substring", listOf(recv, v[1], v[2]), TString)
+        }
+    }
+    val a = asAny(recv)
+    val ti = charSequenceInterface()
+    return when (name) {
+        "<get-length>" -> MirExpr.RuntimeCall("mk_cs_length", listOf(a, ti), TInt)
+        "get" -> MirExpr.RuntimeCall("mk_cs_get", listOf(a, v[1], ti), TChar)
+        else -> MirExpr.RuntimeCall("mk_cs_sub_sequence", listOf(a, v[1], v[2], ti), anyType)
+    }
 }

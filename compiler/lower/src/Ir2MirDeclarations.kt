@@ -148,8 +148,15 @@ internal fun Ir2Mir.returnValue(e: IrExpression, out: MutableList<MirStmt>) {
     if (v.type == TNothing) return
     if (finallyStack.isNotEmpty()) {
         // the value is computed before the finally blocks of the try statements being left run
-        if (v !is MirExpr.IntConst && v !is MirExpr.BooleanConst && v !is MirExpr.StringConst) v = tmpOf(v, out)
-        runFinalizers(0, out)
+        if (v !is MirExpr.IntConst && v !is MirExpr.BooleanConst && v !is MirExpr.StringConst) {
+            val rl = MirLocal(localCounter++, "ret", v.type)
+            finallyStack[0].decls += MirStmt.Declare(rl, null)
+            out += MirStmt.Assign(rl, v)
+            v = MirExpr.Local(rl)
+        }
+        val rv = v
+        leaveThrough(0, out) { it += MirStmt.Return(rv) }
+        return
     }
     out += MirStmt.Return(v)
 }
@@ -177,7 +184,9 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 return
             }
             if (t == TUnit || t == TNothing) unsupported(s, "variable '${s.name}' of type $t")
-            val init = s.initializer?.let { bindValue(it, t, out) }
+            val init0 = s.initializer?.let { bindValue(it, t, out) }
+            // an initializer of type Nothing (`val x: Int = null!!`) never completes: the variable is declared without a value
+            val init = if (init0 != null && init0.type == TNothing) null else init0
             if (s in closure.boxed) {
                 // captured `var`: lives in a heap cell shared with the closures
                 val rc = refClassFor(t)
@@ -198,8 +207,8 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
         is IrWhen -> whenStmt(s, out)
         is IrWhileLoop -> whileLoop(s, out)
         is IrDoWhileLoop -> doWhileLoop(s, out)
-        is IrBreak -> { runFinalizers(loopFinallyDepth[s.loop] ?: 0, out); out += MirStmt.Break(labelOf(s.loop, s)) }
-        is IrContinue -> { runFinalizers(loopFinallyDepth[s.loop] ?: 0, out); out += MirStmt.Continue(labelOf(s.loop, s)) }
+        is IrBreak -> { val l = labelOf(s.loop, s); leaveThrough(loopFinallyDepth[s.loop] ?: 0, out) { it += MirStmt.Break(l) } }
+        is IrContinue -> { val l = labelOf(s.loop, s); leaveThrough(loopFinallyDepth[s.loop] ?: 0, out) { it += MirStmt.Continue(l) } }
         is IrThrow -> throwStmt(s, out)
         is IrTry -> discard(tryValue(s, out, true), out)
         is IrReturn -> returnStmt(s, out)
@@ -255,8 +264,7 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
         val rt = r.result
         if (rt == null) stmt(s.value, out)
         else out += MirStmt.Assign(rt, bindValue(s.value, rt.type, out))
-        runFinalizers(r.finallyDepth, out)
-        out += MirStmt.Break(r.label)
+        leaveThrough(r.finallyDepth, out) { it += MirStmt.Break(r.label) }
         return
     }
     val tl = tailLoop
@@ -267,8 +275,8 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
     if (target !== f) unsupported(s, "return from a lambda or nested function (target ${(target as? IrFunction)?.name}, in ${f.name}, inline stack ${returnTargets.keys.map { it.name }})")
     if (currentReturn == TUnit) {
         stmt(s.value, out)
-        runFinalizers(0, out)
-        out += MirStmt.Return(if (unitAsNull) MirExpr.NullConst(anyNullable) else null)
+        val un = unitAsNull
+        leaveThrough(0, out) { it += MirStmt.Return(if (un) MirExpr.NullConst(anyNullable) else null) }
     } else {
         returnValue(s.value, out)
     }

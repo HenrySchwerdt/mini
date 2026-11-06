@@ -643,6 +643,12 @@ MkObject *mk_any_new(void);
 /* Comparable.compareTo for boxed primitives and strings; for any other object the function
  * table of `comparable` (the Comparable interface type info, may be NULL) is used, method 0. */
 MkInt mk_compare_to(MkObject *left, MkObject *right, const MkTypeInfo *comparable);
+/* CharSequence values are Any references: a String (fast path) or an object whose class implements the CharSequence interface
+   `cs` (itable slots: 0 length, 1 get, 2 subSequence). `cs` is NULL when no class implements the interface. */
+MkInt mk_cs_length(MkObject *value, const MkTypeInfo *cs);
+MkChar mk_cs_get(MkObject *value, MkInt index, const MkTypeInfo *cs);
+MkObject *mk_cs_sub_sequence(MkObject *value, MkInt start, MkInt end, const MkTypeInfo *cs);
+MkBoolean mk_is_char_sequence(const MkObject *value, const MkTypeInfo *cs);
 
 /* Arrays. `Array<T>` holds references (released by dispose); IntArray etc. hold primitives.
  * Constructors raise NegativeArraySizeException for a negative size. Element access raises

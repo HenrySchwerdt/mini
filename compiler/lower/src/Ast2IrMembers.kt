@@ -292,7 +292,8 @@ private fun Ast2Ir.equalsFunction(c: IrClass, sym: ClassSym, fs: FunSym, props: 
             val a = IrGetField(fld, thisOf(f), fld.type)
             val b = IrGetField(fld, getValue(cast), fld.type)
             val name = if (isFloating(fld.type)) "ieee754equals" else "EQEQ"
-            val eq = IrCall(builtinFun(name), sema.booleanType)
+            // Double / Float properties compare with Double.equals (total order: NaN equals NaN, 0.0 differs from -0.0)
+            val eq = if (isFloating(fld.type) && !fld.type.nullable) IrCall(memberFunNamed(fld.type, "equals", 1), sema.booleanType) else IrCall(builtinFun(name), sema.booleanType)
             eq.origin = "EXCLEQ"
             eq.arguments.add(a)
             eq.arguments.add(b)
