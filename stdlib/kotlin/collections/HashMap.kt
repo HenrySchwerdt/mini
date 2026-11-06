@@ -56,6 +56,11 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     internal var tail: HashNode<K, V>? = null
     internal val linked: Boolean
 
+    // The node of the last String key that was found (`map[k]` followed by `map[k] = v`, the counting idiom, hashes and compares the key
+    // once). Both are strong references (the key's identity then means its contents: strings are immutable); cleared where a node is unlinked.
+    private var lastKey: Any? = null
+    private var lastNode: HashNode<K, V>? = null
+
     public constructor() {
         linked = false
     }
@@ -102,12 +107,19 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
 
     @ReturnsBorrowed
     private fun findNode(key: Any?): HashNode<K, V>? {
+        if (key != null && key === lastKey) return lastNode
         val n = refArrayLength(table)
         if (n == 0) return null
         val hash = spread(key)
         var e = slot((n - 1) and hash)
         while (e != null) {
-            if (e.hash == hash && e.key == key) return e
+            if (e.hash == hash && e.key == key) {
+                if (key is String) {
+                    lastKey = key
+                    lastNode = e
+                }
+                return e
+            }
             e = e.next
         }
         return null
@@ -133,6 +145,12 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     }
 
     override fun put(@TakesOwnership key: K, @TakesOwnership value: V): V? {
+        if (key != null && key === lastKey) {
+            val c = lastNode!!
+            val old = c.value
+            c.value = value
+            return old
+        }
         var n = refArrayLength(table)
         if (n == 0) {
             resize()
@@ -237,6 +255,8 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
                 if (prev == null) refArraySet(table, index, e.next) else prev.next = e.next
                 e.next = null
                 if (linked) unlink(e)
+                lastKey = null
+                lastNode = null
                 count--
                 return e
             }
@@ -265,6 +285,8 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         count = 0
         head = null
         tail = null
+        lastKey = null
+        lastNode = null
     }
 
     override fun putAll(from: Map<out K, V>) {

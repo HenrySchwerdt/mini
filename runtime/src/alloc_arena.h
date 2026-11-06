@@ -34,8 +34,13 @@ typedef struct MkArena {
 void *mk_arena_allocate(MkAllocator *self, size_t size, size_t align); /* the `allocate` of every arena */
 void *mk_arena_alloc_zeroed_slow(MkAllocator *arena, size_t size);
 
+/* The arena code is reached from alloc.c only through these two pointers (set by the first mk_arena_create), so a program that
+ * makes no arena does not link it. `mk_arena_marker` is the `allocate` of every arena (NULL until one exists). */
+extern void *(*mk_arena_marker)(MkAllocator *self, size_t size, size_t align);
+extern void *(*mk_arena_zeroed_hook)(MkAllocator *arena, size_t size); /* zeroed block of `size` bytes, MK_MAX_ALIGN aligned */
+
 /* Is `a` (not NULL) an arena? */
-static inline int mk_arena_is_fast(const MkAllocator *a) { return a->allocate == mk_arena_allocate; }
+static inline int mk_arena_is_fast(const MkAllocator *a) { return mk_arena_marker != NULL && a->allocate == mk_arena_marker; }
 
 /* Zeroed block of `size` (> 0) bytes aligned to MK_MAX_ALIGN: bump in the current chunk, else the slow path. The chunk
  * base is MK_MAX_ALIGN-aligned, so aligning the offset aligns the address. */

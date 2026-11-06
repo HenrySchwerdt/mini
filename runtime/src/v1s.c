@@ -428,6 +428,7 @@ MkObject *mk_ref_array_new(MkInt size) {
     size_t count = (size_t)size;
     if (count > (SIZE_MAX - sizeof(MkRefArray)) / sizeof(MkObject *)) mk_panic("out of memory");
     size_t bytes = sizeof(MkRefArray) + count * sizeof(MkObject *);
+    mk_cycles_ensure();
     MkRefArray *a = (MkRefArray *)mk_alloc_sized(NULL, &ref_array_type, bytes);
     if (a == NULL) mk_panic("out of memory");
     a->length = size;
