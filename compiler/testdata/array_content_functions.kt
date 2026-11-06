@@ -1,0 +1,15 @@
+fun main() {
+    println(arrayOf(arrayOf(1, 2), arrayOf(3)).contentDeepToString())
+    println(arrayOf(intArrayOf(1, 2), intArrayOf(3)).contentDeepToString())
+    println(arrayOf(arrayOf(1, 2), intArrayOf(3)).contentDeepEquals(arrayOf(arrayOf(1, 2), intArrayOf(3))))
+    println(arrayOf(arrayOf(1, 2)).contentDeepEquals(arrayOf(arrayOf(1, 3))))
+    println(intArrayOf(1, 2, 3).contentEquals(intArrayOf(1, 2, 3)))
+    println(intArrayOf(1, 2, 3).contentEquals(intArrayOf(1, 2)))
+    println(intArrayOf(1, 2, 3).contentHashCode())
+    println(arrayOf("a", "b").contentEquals(arrayOf("a", "b")))
+    println(arrayOf("a", "b").contentHashCode())
+    println(booleanArrayOf(true, false).contentHashCode())
+    println(charArrayOf('a', 'b').contentEquals(charArrayOf('a', 'b')))
+    println(longArrayOf(1L shl 33).contentHashCode())
+    println(arrayOf(arrayOf(1, 2), intArrayOf(3)).contentDeepHashCode())
+}
