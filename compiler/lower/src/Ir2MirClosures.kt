@@ -575,7 +575,14 @@ internal fun Ir2Mir.propertyReference(e: IrPropertyReference, out: MutableList<M
     val impl = classInfos.keys.firstOrNull { it.kotlinFqName == implFq } ?: unsupported(e, "property reference (the stdlib class $implFq is not available)")
     val ctor = impl.declarations.filterIsInstance<IrConstructor>().firstOrNull()
     val cName = ctor?.let { functionNames[it] } ?: unsupported(e, "property reference ($implFq was pruned)")
-    val bound = e.arguments.firstOrNull { it != null }
+    var bound = e.arguments.firstOrNull { it != null }
+    if (bound != null && mutable && bound !is IrGetValue && bound !is IrConst && bound !is IrGetObjectValue) {
+        // the bound receiver is evaluated once: the getter and the setter of the reference share it
+        val tmp = IrVariable("bound_receiver", bound.type, false)
+        tmp.initializer = bound
+        stmt(tmp, out)
+        bound = IrGetValue(tmp, tmp.type, null)
+    }
     fun accessor(f: IrSimpleFunction): MirExpr {
         val ref = IrFunctionReference(f, e.type)
         for (p in f.parameters) ref.arguments.add(null)

@@ -458,7 +458,8 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     // so does a reference to a suspend function (`O(::id)`), whose closure would not take the continuation like a suspend function value
     val csym = chosen.sym
     // `val f = ::suspendFun`: with no expected type the reference is a value of the suspend function type (calling it passes the continuation)
-    val selfSuspend = ef == null && csym is FunSym && !chosen.isProp && csym.mods()?.has("suspend") == true
+    val selfSuspend = ef == null && csym is FunSym && !chosen.isProp && csym.mods()?.has("suspend") == true &&
+        chosen.params.none { unfixedType(cs.resolveFixed(ops.substitute(it, m))) } && !unfixedType(cs.resolveFixed(ops.substitute(chosen.ret, m)))
     if (selfSuspend && csym is FunSym) {
         val off0 = chosen.params.size - csym.params.size
         if (off0 in 0..1 && adapted == null) {
@@ -519,8 +520,27 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         rr.extra = adapted
     }
     // the lowering reads the arguments of the KFunction type recorded above; the checker sees the suspend function type
-    if (selfSuspend && adapted != null && !chosen.isProp) return FunType(null, ps, ret, false, true)
+    if (selfSuspend && adapted != null && !chosen.isProp && !ps.any { unfixedType(it) } && !unfixedType(ret)) return FunType(null, ps, ret, false, true)
     return t
+}
+
+/** does [t] still have an inference variable or an unresolved part? */
+fun unfixedType(t: Type): Boolean {
+    if (t is ErrType || t is VarType) return true
+    if (t is ClassType) {
+        for (a in t.args) {
+            val x = a.type
+            if (x != null && unfixedType(x)) return true
+        }
+        return false
+    }
+    if (t is FunType) {
+        val r = t.receiver
+        if (r != null && unfixedType(r)) return true
+        for (p in t.params) if (unfixedType(p)) return true
+        return unfixedType(t.ret)
+    }
+    return false
 }
 
 /** How the expected parameters of a function type map onto the parameters of the function a callable reference was adapted to. */
