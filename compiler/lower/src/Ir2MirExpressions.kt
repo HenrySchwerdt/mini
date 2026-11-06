@@ -131,7 +131,8 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrTypeOperatorCall -> typeOperator(e, out)
     is IrGetObjectValue -> {
         val c = e.classOwner
-        if (c.kotlinFqName == "kotlin.Unit" || isPrimitiveCompanion(c.kotlinFqName)) MirExpr.UnitValue
+        if (c.kotlinFqName == "kotlin.Unit") MirExpr.UnitValue
+        else if (isPrimitiveCompanion(c.kotlinFqName)) MirExpr.NullConst(anyNullable)
         else if (c in classInfos) MirExpr.ObjectGet(info(c).cName, typeOf(c))
         else unsupported(e, "object reference '${c.kotlinFqName}'")
     }

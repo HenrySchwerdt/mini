@@ -39,8 +39,8 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         return erasedBound(classifier, nullable, at)
     }
     val n = t.classFqName
-    // the companion objects of the primitive types and String are not classes of the program: a value of such a type is like Unit
-    if (n != null && isPrimitiveCompanion(n)) return if (nullable || at is IrValueParameter) anyNullable else TUnit
+    // the companion objects of the primitive types and String are not classes of the program: such a value is a null reference
+    if (n != null && isPrimitiveCompanion(n)) return anyNullable
     val prim: MirType? = when (n) {
         "kotlin.Int" -> TInt
         "kotlin.Long" -> TLong
