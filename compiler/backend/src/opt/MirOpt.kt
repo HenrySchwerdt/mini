@@ -8,6 +8,7 @@ package mini.backend
 class MirOptions {
     val disabled = HashSet<String>()
     var stats = false
+    var layoutStats = false
 
     fun on(pass: String): Boolean = !disabled.contains("mir-opt") && !disabled.contains(pass)
 
@@ -15,6 +16,10 @@ class MirOptions {
     fun accept(arg: String): Boolean {
         if (arg == "-Xopt-stats") {
             stats = true
+            return true
+        }
+        if (arg == "-Xlayout-stats") {
+            layoutStats = true
             return true
         }
         if (arg.startsWith("-Xno-")) {
