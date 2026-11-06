@@ -295,6 +295,11 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 val nref2 = RecvRef(null, s, false)
                 if (nrt2 !== s.type) nref2.smart = nrt2
                 addReceiverGroups(nrt2, name, groups, nref2)
+                // `with(outer) { Inner() }`: an inner class of the receiver
+                if (nrt2 is ClassType || nrt2 is TypeParamType) for (site in ops.closure(nrt2)) {
+                    val nc = site.cls.nested[name]
+                    if (nc != null && nc.isInner) groups.add(ctorCandidates(nc))
+                }
                 seenRecv = true
             }
             is FileScope -> if (pass == 1) {

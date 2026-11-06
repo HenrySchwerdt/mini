@@ -200,7 +200,7 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val objQ = if (rv != null) objectQualifier(rv, r) else null
         if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
         else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
-        else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
+        else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitMemberReceiver(sym.owner, e) ?: implicitReceiver(RecvRef(sym.owner, null, false), e))
         return ref
     }
     fail(e, "callable reference to " + (sym?.name ?: "?"))
@@ -212,7 +212,8 @@ private fun Ast2Ir.implicitMemberReceiver(owner: ClassSym, at: Ast): IrExpressio
     while (c != null) {
         for (i in c.recvs.indices.reversed()) {
             val r = c.recvs[i]
-            val rc = r.cls ?: continue
+            // a class receiver, or the receiver of a lambda / extension function (`with(a) { map(::foo) }`)
+            val rc = r.cls ?: classOf(r.param.type) ?: continue
             if (rc === owner || ops.closure(rc.thisType()).any { it.cls === owner }) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
         }
         c = c.parent
