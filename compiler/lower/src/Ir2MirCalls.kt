@@ -150,7 +150,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         return anyMember(if (name == "toString") 0 else if (name == "equals") 1 else 2, vals, c, out)
     }
     if (parent is IrClass && parent.kotlinFqName == "kotlin.CharSequence" && (name == "<get-length>" || name == "get" || name == "subSequence")) return charSequenceMember(c, name, out)
-    if (parent is IrClass && (parent in classInfos || isAny(parent) || builtinOf(parent) != null)) return memberCall(c, owner, out)
+    if (parent is IrClass && (parent in classInfos || isAny(parent) || builtinOf(parent) != null || parent.kotlinFqName == "kotlin.Enum")) return memberCall(c, owner, out)
     // fake overrides of Any members declared in user classes have the user class as parent
     val ownerName = when (parent) {
         is IrClass -> parent.kotlinFqName
@@ -197,7 +197,10 @@ internal fun Ir2Mir.memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<
         if (rp.kotlinFqName == "kotlin.Enum" && c.superQualifier == null) {
             val vals = operands(c.arguments.map { it ?: unsupported(c, "enum member") }, out)
             val recv = vals[0]
-            val owner = (recv.type as? TObject)?.cName ?: unsupported(c, "enum member on a non-enum receiver")
+            // a receiver of the static type `Enum<*>` / `T : Enum<T>`: every enum class starts with the same hidden fields, so any one of them gives the layout
+            val rc = (recv.type as? TObject)?.cName
+            val enumNames = classInfos.values.filter { it.ir.kind == IrClassKind.ENUM_CLASS }.map { it.cName }
+            val owner = (if (rc != null && rc in enumNames) rc else enumNames.firstOrNull()) ?: unsupported(c, "enum member on a non-enum receiver")
             return when (real.name) {
                 "<get-name>" -> MirExpr.FieldGet(recv, owner, "\$name", TString)
                 "<get-ordinal>" -> MirExpr.FieldGet(recv, owner, "\$ordinal", TInt)

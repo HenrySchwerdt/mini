@@ -116,6 +116,48 @@ Still open (largest): `coroutineContext` (a `suspend` property: the getter is no
 range operators, builder inference, the `unresolved call` long tail (166), crashes (57), C compiler rejects (40), properIeee754
 comparisons through smart casts, more `CharSequence` extension functions (`CharSequence` receivers for the rest of kotlin.text).
 
+## Fourth round (branch claude/conformance-4)
+
+| | after round 3 | round 4 |
+|---|---:|---:|
+| **pass** | **5182 (86.79%)** | **5243 (87.81%)** |
+| compile-error | 417 | 402 |
+| ice | 125 | 112 |
+| runtime-fail | 188 | 173 |
+| crash | 57 | 39 |
+| timeout | 2 | 2 |
+
+Wrong-code and crash fixes (programs that compiled but crashed or ran wrongly):
+
+* an anonymous object created through its type before its body was converted (`object : A { ... }.f()` in a top-level property getter, a
+  suspend lambda in an interface default method) never got its fake overrides: the vtable / itable slots of the overridden members were
+  `abstract` (`AbstractMethodError`);
+* `list.map(::member)` written in a class body (a reference to the member of the implicit `this`) was not bound: the closure had no receiver
+  (signal 11). It binds `this`, an outer `this` or the object now;
+* `provideDelegate` was never called; it is resolved and evaluated at the initialisation of the delegated property (members, top-level,
+  local, extension receivers);
+* `a == b` where both operands are smart cast to `Double` / `Float` (`a != null && b != null && a == b`, `x is Double && y is Double`) uses
+  IEEE comparison (`-0.0 == 0.0`, `NaN != NaN`) instead of `equals`;
+* `var i: Int? = 5; i++` / `i += 1` and the use of `i` after it: the variable is smart cast to the initializer / assigned type (ICE
+  "inc/dec is not resolved", "arithmetic on Any").
+
+Other fixes: `suspend val` getters are suspend functions and `kotlin.coroutines.coroutineContext` exists (the stdlib declares it through
+`currentContinuationIntrinsic()`, which the compiler replaces by the continuation of the enclosing suspend function, so that the release
+stage0 still builds the sources); `val x by map` / `var x by mutableMap` (`Map.getValue`, `MutableMap.setValue`); `Enum.name` / `ordinal` through
+`T : Enum<T>` receivers; SAM constructors through typealiases of (non-generic) fun interfaces; lazy `CharSequence.withIndex()`.
+
+kotlin.text for `CharSequence` receivers: `stdlib/kotlin/text/CharSequencesMore.kt` has the CharSequence overloads of the rest of kotlin.text
+(`isEmpty`, `isBlank`, `trim*`, `startsWith` / `endsWith` / `contains` / `indexOf` / `lastIndexOf` with `ignoreCase`, `lines`, `split`,
+`take` / `drop*`, `padStart`, `removePrefix`, `filter`, `map`, `fold`, `associate*`, `windowed`, `chunked`, `zip`, `first` / `last` / `single`,
+`regionMatches`, `contentEquals`, `commonPrefixWith`, ...; the String overloads stay the more specific, direct paths; the others go through
+`length` / `get` or `toString()`). Arrays got `contentEquals`, `contentHashCode`, `contentDeepToString` / `Equals` / `HashCode`.
+
+Still open (largest): `tailrec suspend` (9 tests: the self call is a state machine call, the recursion overflows the stack), enum entry
+bodies that refer to their own entry in an initializer (the entries are created inside the holder constructor), the C compiler rejects
+(`Array(42, return "OK")`, `x + break`: Unit / Nothing as values; 35 of the remaining 40), generic value classes (11 of the 15 "arithmetic on
+Any"), generic typealiases of fun interfaces, `::member` inside a lambda with a receiver, builder inference, `unchecked cast` checks of generic
+arrays, Float/Double range operators on `Comparable` ranges, `Double.fromBits`, `Map.withDefault`, unsigned array `forEach` / `reversed`.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

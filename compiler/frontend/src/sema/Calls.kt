@@ -294,7 +294,11 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                         else if (x is ClassSym) l.addAll(ctorCandidates(x))
                         else if (x is TypeAliasSym) {
                             val et = sema.expandAlias(x)
-                            if (et is ClassType) for (k in et.cls.ctors) l.add(Candidate(k, aliasSubst(x, et), null))
+                            if (et is ClassType) {
+                                for (k in et.cls.ctors) l.add(Candidate(k, aliasSubst(x, et), null))
+                                // the SAM constructor of a fun interface behind the alias (`typealias R = KRunnable; R { }`)
+                                if (et.cls.isFunInterface && et.cls.ctors.isEmpty() && et.cls.typeParams.isEmpty()) l.addAll(ctorCandidates(et.cls))
+                            }
                         }
                     }
                     if (l.isNotEmpty()) groups.add(l)
