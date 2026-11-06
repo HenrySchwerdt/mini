@@ -574,6 +574,9 @@ if [ "$debug" = 0 ] && [ "$opt" != "-O0" ]; then
         # them for profilers and debuggers that walk the stack with them)
         Linux)
             native_link_flags="-Wl,--gc-sections"
+            # the symbol table is a fifth of a small executable and only profilers and debuggers read it: optimized builds are linked
+            # without it (--debug keeps it, so does MINIC_KEEP_SYMBOLS=1)
+            [ -n "${MINIC_KEEP_SYMBOLS:-}" ] || native_link_flags="$native_link_flags,--strip-all"   # one word: the LLVM path passes it as one --link-arg
             size_cflags="-ffunction-sections -fdata-sections"
             [ -n "${MINIC_UNWIND_TABLES:-}" ] || size_cflags="$size_cflags -fno-unwind-tables -fno-asynchronous-unwind-tables"
             ;;

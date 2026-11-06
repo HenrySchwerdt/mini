@@ -81,6 +81,29 @@ program MIR, `MirLink.link` merges library MIRs (dependencies first, then the pr
 `MirLink.prune` removes everything `main` cannot reach: functions through calls and addresses, classes through any mention of their type,
 a reachable class keeping its vtable and itable functions. A program without `main` keeps all its own functions.
 
+## Stub cache
+
+Parsing the stubs is most of what `minic check` does with the standard library (130 files). `minic-native --stub-cache <dir>` keeps the
+parsed trees of every `--lib` library in `<dir>` between runs (one file per library name, `stubs-<hash of the name>.txt`: the AST in the
+compact text encoding of `compiler/frontend/src/AstCache.kt`, behind a header line with the key). A run that finds a valid entry skips
+lexing and parsing; the analysis, the IR and the code generator see exactly the trees the parser would have made, so **the output (C,
+MIR, LLVM, diagnostics) does not depend on the cache**; `scripts/test-e2e.sh --suite mlib` checks that, and `E2E_STUB_CACHE=verify` runs
+the whole e2e suite with every use compared against a fresh parse.
+
+* Key: the cache format and AST encoding version, `--stub-cache-id` (the identity of the compiler build: `minic` passes the toolchain
+  version plus the size and modification time of `bin/minic-native`, so a different compiler never reads another one's entries; the AST
+  classes are part of the compiler), the library's compiler id and its content hash. The stub texts are hashed again on every load, so a
+  library file edited behind its header's back misses. A miss parses, then rewrites the entry.
+* The content hash of the library as a whole is only recomputed on a miss and for builds that use the library's MIR; `--check` that hits the
+  cache trusts the header (it needs nothing but the stubs).
+* A damaged, truncated or unwritable entry is a miss, never an error. Entries are written in place (no rename in the stdlib), and the
+  length in the header makes a half-written file a miss for a concurrent reader. Old entries are replaced, not accumulated (one per library
+  name); delete the directory at any time.
+* `minic` turns it on by default in `$MINIC_CACHE_DIR`, else `$XDG_CACHE_HOME/mini`, else `~/.cache/mini`; `MINIC_STUB_CACHE=off` (or `0`,
+  `no`, `false`) disables it, `MINIC_STUB_CACHE=verify` also checks every use. `mini` does the same with `MINI_CACHE_DIR` and
+  `MINI_STUB_CACHE`. Without `--stub-cache` the compiler never touches the file system beyond its inputs and outputs.
+* `minic check` of a hello world on this machine: 0.38 s without, 0.20 s with a warm cache (callgrind: 2.74 to 1.23 billion instructions).
+
 ## Errors
 
 | Situation | Message (exit status 1) |

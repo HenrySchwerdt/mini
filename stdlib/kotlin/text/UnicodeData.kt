@@ -27,15 +27,44 @@ private fun hexAt(s: String, i: Int, n: Int): Int {
     return v
 }
 
+/**
+ * The numbers of a table string of UnicodeTables.kt: 5-bit groups, low group first, one character each ('0' + group, + 32 when another
+ * group follows); a signed number is zigzag coded. Most numbers are distances between neighbouring starts, so most take one or two characters.
+ */
+private class Nums(private val s: String) {
+    private var pos = 0
+
+    fun next(): Int {
+        var v = 0
+        var shift = 0
+        while (true) {
+            val c = s[pos++].code - 48
+            v = v or ((c and 31) shl shift)
+            if (c < 32) return v
+            shift += 5
+        }
+    }
+
+    fun signed(): Int {
+        val v = next()
+        return (v ushr 1) xor -(v and 1)
+    }
+
+    /** a single character, '0' + value */
+    fun char(): Int = s[pos++].code - 48
+}
+
 private fun decodeCategories() {
-    val s = UnicodeTables.CATEGORIES
-    val n = s.length / 5
+    val r = Nums(UnicodeTables.CATEGORIES)
+    val n = r.next()
     val starts = IntArray(n)
     val codes = IntArray(n)
+    var at = 0
     var i = 0
     while (i < n) {
-        starts[i] = hexAt(s, i * 5, 4)
-        codes[i] = s[i * 5 + 4].code - 48
+        at += r.next()
+        starts[i] = at
+        codes[i] = r.char()
         i++
     }
     catStarts = starts
@@ -43,14 +72,16 @@ private fun decodeCategories() {
 }
 
 private fun decodeDeltas(s: String, isUpper: Boolean) {
-    val n = s.length / 8
+    val r = Nums(s)
+    val n = r.next()
     val starts = IntArray(n)
     val deltas = IntArray(n)
+    var at = 0
     var i = 0
     while (i < n) {
-        starts[i] = hexAt(s, i * 8, 4)
-        val d = hexAt(s, i * 8 + 4, 4)
-        deltas[i] = if (d >= 32768) d - 65536 else d
+        at += r.next()
+        starts[i] = at
+        deltas[i] = r.signed()
         i++
     }
     if (isUpper) {
@@ -63,15 +94,20 @@ private fun decodeDeltas(s: String, isUpper: Boolean) {
 }
 
 private fun decodeRanges(s: String): IntArray {
-    val n = s.length / 8
-    val r = IntArray(n * 2)
+    val r = Nums(s)
+    val n = r.next()
+    val out = IntArray(n * 2)
+    var at = 0
     var i = 0
     while (i < n) {
-        r[i * 2] = hexAt(s, i * 8, 4)
-        r[i * 2 + 1] = hexAt(s, i * 8 + 4, 4)
+        val first = at + r.next()
+        val last = first + r.next()
+        out[i * 2] = first
+        out[i * 2 + 1] = last
+        at = last
         i++
     }
-    return r
+    return out
 }
 
 /** the index of the last element of [a] that is <= [c] */
