@@ -152,6 +152,11 @@ internal fun Ir2Mir.newTemp(type: MirType, name: String = "tmp"): MirLocal = Mir
 
 /** Stores [v] (owned or borrowed) in a fresh temporary that lives until the end of the scope. */
 internal fun Ir2Mir.tmpOf(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
+    // a Unit / Nothing value has no storage (`val x = unitCall()`, a Unit component of a data class): it runs for its effect
+    if (v.type == TUnit && v !== MirExpr.UnitValue) {
+        out += MirStmt.Eval(v)
+        return MirExpr.UnitValue
+    }
     val t = newTemp(v.type)
     out += MirStmt.Declare(t, v)
     ownedTemps += t
@@ -359,6 +364,8 @@ internal fun Ir2Mir.delegatingCall(c: IrDelegatingConstructorCall, out: MutableL
     val k = c.callee
     val cls = k.parent as IrClass
     if (isAny(cls)) return
+    // an enum class with secondary constructors only: the call of `Enum()` has nothing to do (name and ordinal are set by the creation code)
+    if (cls.kotlinFqName == "kotlin.Enum" && builtinOf(cls) == null) return
     if (builtinOf(cls) != null) { builtinSuperInit(c, k, out); return }
     val cName = functionNames[k] ?: unsupported(c, "call of constructor of '${cls.kotlinFqName}'")
     val self = MirExpr.Local(locals.values.first { it.name == "this" && it.id == 0 })

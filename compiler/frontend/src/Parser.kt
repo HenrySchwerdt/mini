@@ -162,7 +162,8 @@ class Parser(internal val lex: LexResult) {
 
     internal fun tokText(): String {
         val t = textAt(0)
-        if (unquoteNames && kind() == Tk.IDENT && t.length >= 2 && t[0] == '`' && t[t.length - 1] == '`') return t.substring(1, t.length - 1)
+        // (a quoted underscore stays quoted: it is a name, the unquoted one is the wildcard of destructuring declarations and lambdas)
+        if (unquoteNames && kind() == Tk.IDENT && t.length >= 2 && t[0] == '`' && t[t.length - 1] == '`' && !(t.length == 3 && t[1] == '_')) return t.substring(1, t.length - 1)
         return t
     }
 

@@ -255,7 +255,8 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
                 sup.add(FunType(null, ps, TypeParamType(retTp, false, false), false, false))
             }
         }
-        if (sup.isEmpty() && sym !== sema.anyType.cls) sup.add(sema.anyType)
+        // (a class or interface whose only supertypes are function types, `fun interface F : () -> Int`, still extends Any: `toString` etc. are its members)
+        if ((sup.isEmpty() || sup.all { it is FunType }) && sym !== sema.anyType.cls) sup.add(sema.anyType)
         c.superTypes = sup
         c.fqName = classFqName(sym)
         val outer = sym.outer

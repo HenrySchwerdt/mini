@@ -29,6 +29,8 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     val targets = ArrayList<ReturnTarget>()
     var capturedNames: HashSet<String> = HashSet()
     var lambdaDepth = 0
+    /** the explicit type arguments of the call whose callee candidates are being collected (constructors behind generic typealiases) */
+    var aliasTypeArgs: List<Type>? = null
     var pendingLabel: String? = null
     /** the next lambda is analysed only to learn its result type (overloads by lambda result, see byLambdaResult) */
     var probeLambda = false
