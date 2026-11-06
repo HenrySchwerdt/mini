@@ -10,7 +10,7 @@ import mini.frontend.*
  * (compiler/fir/resolve/.../inference/FirCallCompleter).
  */
 
-class Arg(val expr: Expr?, val name: String?, val spread: Boolean) {
+class Arg(val expr: Expr?, val name: String?, var spread: Boolean) {
     var type: Type? = null
     var trailing = false
     val postponed: Boolean
@@ -40,6 +40,17 @@ fun unwrapPostponed(e0: Expr): Expr {
         else break
     }
     return e
+}
+
+/** the label written on a lambda argument (`build outer@ { ... this@outer ... }`) */
+fun postponedLabel(e0: Expr): String? {
+    var e = e0
+    while (true) {
+        if (e is ParenExpr) e = e.inner
+        else if (e is LabeledExpr) return e.label
+        else if (e is AnnotatedExpr) e = e.expr
+        else return null
+    }
 }
 
 class Candidate(val fn: FunSym, val subst: Map<TypeParamSym, Type>, val extRecv: Type?) {
@@ -132,6 +143,23 @@ fun BodyChecker.extensionGroups(name: String, recv: Type, out: ArrayList<List<Ca
         }
         if (l.isNotEmpty()) out.add(l)
     }
+}
+
+/** the local extension functions named [name] in scope (`fun A.f() {}` written in a function body) */
+fun BodyChecker.localExtensionFuns(name: String): List<FunSym> {
+    val out = ArrayList<FunSym>()
+    var s: Scope? = scope
+    while (s != null) {
+        if (s is LocalScope) {
+            val fs = s.funs[name]
+            if (fs != null) for (f in fs) {
+                sema.ensureSig(f)
+                if (f.receiver != null) out.add(f)
+            }
+        }
+        s = s.parent
+    }
+    return out
 }
 
 /** members and extensions applicable to an explicit receiver value of type [t] */
@@ -275,6 +303,11 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 }
                 val comp = s.cls.companion
                 if (comp != null) addReceiverGroups(comp.thisType(), name, groups, RecvRef(comp, null, true))
+                // the companion objects of the superclasses are in scope too
+                if (s.instance || !s.cls.isObject) for (site in ops.closure(s.cls.thisType())) {
+                    val sc = site.cls.companion
+                    if (sc != null && sc !== comp && site.cls !== s.cls) addReceiverGroups(sc.thisType(), name, groups, RecvRef(sc, null, true))
+                }
                 if (s.cls.isObject && !s.instance) addReceiverGroups(s.cls.thisType(), name, groups, RecvRef(s.cls, null, true))
                 val nc = s.cls.nested[name]
                 if (nc != null) groups.add(ctorCandidates(nc))
@@ -284,6 +317,11 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 val nref2 = RecvRef(null, s, false)
                 if (nrt2 !== s.type) nref2.smart = nrt2
                 addReceiverGroups(nrt2, name, groups, nref2)
+                // `with(outer) { Inner() }`: an inner class of the receiver
+                if (nrt2 is ClassType || nrt2 is TypeParamType) for (site in ops.closure(nrt2)) {
+                    val nc = site.cls.nested[name]
+                    if (nc != null && nc.isInner) groups.add(ctorCandidates(nc))
+                }
                 seenRecv = true
             }
             is FileScope -> if (pass == 1) {
@@ -522,7 +560,14 @@ fun BodyChecker.tryCandidate(c: Candidate, args: List<Arg>, typeArgs: List<Type>
     if (typeArgs != null && typeArgs.isNotEmpty()) {
         if (typeArgs.size != tps.size) return null
         var i = 0
-        for (tp in tps) {
+        if (typeArgs.any { it === INFER_TYPE }) {
+            // `foo<Int, _>(...)`: the others are given, the `_` ones are inferred
+            cs.addVariables(tps, subst)
+            for (tp in tps) {
+                if (typeArgs[i] !== INFER_TYPE && !cs.addEqual(subst[tp] ?: ErrType("type argument"), typeArgs[i])) return null
+                i++
+            }
+        } else for (tp in tps) {
             subst[tp] = typeArgs[i]
             i++
         }
@@ -546,6 +591,13 @@ fun BodyChecker.tryCandidate(c: Candidate, args: List<Arg>, typeArgs: List<Type>
         val p = params[binding.paramOfArg[i]]
         var pt: Type
         val pty = p.type ?: ErrType("param")
+        val at0 = a.type
+        if (p.isVararg && !a.spread && a.name != null && at0 != null && !a.postponed) {
+            // `foo(s = array)`: an array given by name to a vararg parameter is its value (no `*` needed)
+            val el = ops.substitute(p.varargElement ?: pty, subst)
+            val arrT = ops.substitute(pty, subst)
+            if (!cs.hasVars(el) && !cs.hasVars(arrT) && !ops.isSubtype(at0, el) && ops.isSubtype(at0, arrT)) a.spread = true
+        }
         if (p.isVararg && !a.spread) pt = ops.substitute(p.varargElement ?: pty, subst) else pt = ops.substitute(pty, subst)
         att.argParam[i] = pt
         att.cmp[i] = ops.substitute(if (p.isVararg && !a.spread) (p.varargElement ?: pty) else pty, c.subst)
@@ -682,7 +734,7 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
             val cs = ConstraintSystem(sema)
             val m = HashMap<TypeParamSym, Type>()
             m.putAll(single.subst)
-            if (typeArgs != null && typeArgs.isNotEmpty() && typeArgs.size == tps.size) {
+            if (typeArgs != null && typeArgs.isNotEmpty() && typeArgs.size == tps.size && typeArgs.none { it === INFER_TYPE }) {
                 // explicit type arguments (`listOf<ULong>(1u)`): they are the expectation of the arguments
                 var j = 0
                 for (tp in tps) {
@@ -845,7 +897,7 @@ fun BodyChecker.leftoverArgs(args: List<Arg>) {
 fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): CallRes {
     val cs = att.cs
     val fn = att.cand.fn
-    lambdaLabel = fn.name
+    lambdaLabel = if (fn.kind == FunKind.CONSTRUCTOR) fn.owner?.name ?: fn.name else fn.name
     var ret: Type
     val it = att.cand.invokeType
     if (it != null) {
@@ -882,10 +934,12 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     for (v in rv) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) cs.fix(v)
                     val ef = cs.resolveFixed(expectedFun) as FunType
                     inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
+                    pendingLabel = postponedLabel(e)
                     val lt = analyzeLambda(u, ef, cs)
                     cs.addSub(lt, pt)
                     // the lambda is recorded with the final types later
                 } else {
+                    pendingLabel = postponedLabel(e)
                     val lt = analyzeLambda(u, null, cs)
                     cs.addSub(lt, pt)
                 }

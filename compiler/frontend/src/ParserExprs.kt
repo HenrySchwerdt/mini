@@ -367,7 +367,21 @@ private fun Parser.parsePostfix(): Expr {
         } else if (k == Tk.LT && !interrupted()) {
             val ta = tryParseTypeArgsInExpr()
             if (ta == null) break
-            e = parseCallSuffix(m, s, e, ta)
+            if (kind() == Tk.COLONCOLON && !interrupted()) {
+                // `A<Int>::f`: a callable reference to a member of a generic class
+                advance()
+                var name = "<missing>"
+                if (kind() == Tk.IDENT || kind() == Tk.CLASS) {
+                    name = tokText()
+                    advance()
+                } else {
+                    errorPrev("Expecting an identifier or 'class'")
+                }
+                done(m, NodeKind.CALLABLE_REF)
+                val cr = CallableRefExpr(e, name)
+                cr.typeArgs = ta
+                e = fin(cr, s)
+            } else e = parseCallSuffix(m, s, e, ta)
         } else if (k == Tk.DOT || atSafeDot()) {
             val safe = k != Tk.DOT
             if (safe) advance()
@@ -747,6 +761,15 @@ internal fun Parser.parseStatements(into: ArrayList<Stmt>) {
 internal fun Parser.parseStatement(): Stmt? {
     val d = tryParseDeclaration(CTX_LOCAL)
     if (d != null) return d
+    if (kind() == Tk.IDENT && la(1) == Tk.AT && adjacent(0)) {
+        // a label in front of a declaration (`a@ val x = 1`): ignored
+        val sn = snap()
+        advance()
+        advance()
+        val d2 = tryParseDeclaration(CTX_LOCAL)
+        if (d2 != null) return d2
+        restore(sn)
+    }
     if (kind() == Tk.AT) {
         // annotations on their own line apply to the whole following statement (`@Suppress("X")\n a = b`);
         // on the same line they bind to the first operand
@@ -842,7 +865,8 @@ private fun Parser.parseDoWhile(): Expr {
     val m = mark()
     val s = tokStart()
     advance() // do
-    val body = parseBody()
+    // `do while (c);`: no body (the parser of the reference compiler skips it too)
+    val body = if (kind() == Tk.WHILE) null else parseBody()
     var cond: Expr = fin(ErrorExpr(), tokStart())
     if (kind() == Tk.WHILE) {
         advance()

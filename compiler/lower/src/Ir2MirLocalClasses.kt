@@ -41,8 +41,24 @@ internal fun Ir2Mir.enterClassMember(f: IrFunction, cls: IrClass, params: Mutabl
         if (cls.isInner) {
             val outerCls = cls.parent as IrClass
             val outerParam = params.getOrNull(if (cls.kind == IrClassKind.ENUM_CLASS) 3 else 1) ?: return
-            out += MirStmt.SetField(MirExpr.Local(self), info.cName, "\$outer", typeOf(outerCls), MirExpr.Local(outerParam))
+            // a secondary constructor that delegates to another one of the class (`constructor(s: String) : this()`) leaves `$outer` to it:
+            // storing it twice would retain the outer instance twice
+            var delegatesToThis = false
+            val fb = f.body
+            if (fb is IrBlockBody) for (st in fb.statements) if (st is IrDelegatingConstructorCall && st.callee.parent === cls) delegatesToThis = true
+            if (!delegatesToThis) out += MirStmt.SetField(MirExpr.Local(self), info.cName, "\$outer", typeOf(outerCls), MirExpr.Local(outerParam))
             outerCls.thisReceiver?.let { locals[it] = outerParam }
+            // the outer instances further out (`this@A` of `A.B.C`) through the `$outer` fields
+            var cur: MirLocal = outerParam
+            var k = outerCls
+            while (k.isInner) {
+                val oc = k.parent as? IrClass ?: break
+                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
+                oc.thisReceiver?.let { locals[it] = l }
+                cur = l
+                k = oc
+            }
         }
         return
     }

@@ -99,7 +99,8 @@ fun Ast2Ir.addOuterReceivers(bc: BodyCtx, c: IrClass) {
     while (k.isInner) {
         val outer = k.parent as? IrClass ?: break
         val os = outer.sym ?: break
-        bc.recvs.add(RecvEntry(os, null, null, null, outer.thisReceiver!!))
+        // the innermost receiver is the last one: the outer instances go in front of the class itself, the outermost first
+        bc.recvs.add(0, RecvEntry(os, null, null, null, outer.thisReceiver!!))
         k = outer
     }
 }
