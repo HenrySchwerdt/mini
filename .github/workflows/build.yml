@@ -78,7 +78,7 @@ jobs:
         include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"modules"}]') }}
     name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -87,6 +87,33 @@ jobs:
       - name: Toolchain
         if: matrix.shard != 'stage0'
         run: scripts/ci-toolchain.sh
+      - name: LLVM 18 (Linux)
+        # LLVM C API headers and libLLVM for the in-memory backend (and the ORC JIT). The apt install sometimes stalls for
+        # ~30 min on the runners, so it is bounded and retried here instead of eating the test step's budget.
+        if: matrix.shard == 'llvm' && runner.os == 'Linux'
+        timeout-minutes: 15
+        run: |
+          if [ -x /usr/lib/llvm-18/bin/llvm-config ] && [ -f /usr/lib/llvm-18/include/llvm-c/Core.h ]; then
+            echo "llvm-18-dev already installed"
+          else
+            export DEBIAN_FRONTEND=noninteractive
+            ok=
+            for attempt in 1 2 3; do
+              echo "::group::apt attempt $attempt ($(date -u +%T))"
+              if sudo timeout 300 apt-get update -qq -o Acquire::Retries=3 \
+                && sudo timeout 300 apt-get install -y -qq --no-install-recommends -o Acquire::Retries=3 llvm-18-dev; then
+                ok=1
+              fi
+              echo "::endgroup::"
+              echo "attempt $attempt finished at $(date -u +%T)"
+              [ -n "$ok" ] && break
+              # a killed attempt can leave dpkg half-configured
+              sudo dpkg --configure -a || true
+            done
+            [ -n "$ok" ] || { echo "::error::llvm-18-dev install failed after 3 attempts"; exit 1; }
+          fi
+          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+          /usr/lib/llvm-18/bin/llvm-config --version
       - name: Tests (${{ matrix.shard }})
         run: |
           case "${{ matrix.shard }}" in
@@ -98,10 +125,9 @@ jobs:
             e2e)
               scripts/test-e2e.sh ;;
             llvm)
-              # LLVM C API headers and libLLVM for the in-memory backend (and the ORC JIT).
+              # LLVM C API headers and libLLVM come from the "LLVM 18 (Linux)" step above.
               if [ "$RUNNER_OS" = Linux ]; then
-                sudo apt-get install -y -qq llvm-18-dev >/dev/null
-                echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"; export PATH="/usr/lib/llvm-18/bin:$PATH"
+                export PATH="/usr/lib/llvm-18/bin:$PATH"
                 llvm-config --version
               fi
               (cd compiler && ../build/native/bin/mini build -p native-driver)
