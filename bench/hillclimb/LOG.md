@@ -260,3 +260,41 @@ Result: hello 27024 -> 18720 B (the text segment dropped below the page boundari
   a string hash slot in the header (4 B, both emitters and the LLVM lowering hard-code the layout: `Lowering.kt` literal and `stringCharAt`), a fused
   get/put, a String fast path in `mk_equals` are each worth 3-5 %.
 * graph: 128 B per node (Node 32 + ArrayList 32 + 4-slot array 64: the array is 24 B header + 32 B = 56 -> 64 class); the collector is not the RSS (one collection, 1 root).
+
+## Round 4b (`claude/perf-4`, base `claude/perf-3`)
+
+### 2. HashMap remembers the node of the last String key found (KEPT) - stdlib/kotlin/collections/HashMap.kt
+`counts[w]` then `counts[w] = c + 1` hashed and compared the key twice. `findNode` stores `lastKey` / `lastNode` (strong references, only for
+`String` keys: immutable, so identity means contents) and answers `key === lastKey` without hashing; `put` with `key === lastKey` updates the node's value
+directly. Both are cleared where a node leaves the table (`removeNode`, `clear`; iterator removal goes through `removeNode`). Test: testdata/hashmap_lastkey.kt.
+wordcount callgrind (600K words) 594.96M -> 554.64M (-6.8 %); json, graph, binarytrees unchanged (no String-keyed lookups / no maps).
+Wall clock (full size): 2.69 s vs 2.80 s in a first run, 2.74 vs 2.77 s in the A/B below (within the noise of the box, cv 4-13 %).
+Not worth doing after this (measured, callgrind per word):
+* a cached string hash: every word is a fresh substring, so a header slot would be filled and read once; the hash is now computed once per word (41 instr).
+* a String fast path in `mk_equals` / replacing memcmp by a loop for short strings: about 15 instr of 925 per word (< 1.5 %), below what the box can show.
+* a small-Int box cache: exists already (`BOX_CACHE` -128..1023 in classes.c).
+* `mk_sb_append_char` (17 instr per char) is already a tight function; the call is the cost.
+
+### 3. The uncaught-exception report no longer links `mk_to_string` (KEPT) - runtime/src/{v1l,classes}.c
+`mk_report_uncaught` called `mk_to_string`, which reaches every number formatter (`format_fp` 950 B, `mk_string_from_double/long/...`), `mk_any_to_string`
+and `mk_hash_code`: all of it was linked into hello world. It now calls the Throwable's `toString` slot directly (`mk_throwable_virtual_to_string`).
+hello 18720 -> 14576 B (text 4.4 KB; the rest is ELF/page overhead), -46 % since the start of the round.
+
+### 4. Analysed, not done
+* RC ownership transfer / borrowed loop variables: the counting loop of wordcount retains/releases `c` once per word (about 10 instr, 1 %): `put` may
+  drop the node's old value, so the borrow cannot be proven without knowing `put`; graph's BFS already has no RC traffic on loop variables (round 3, 1).
+* itable cache: `mk_itable` is 0.6 % of wordcount, < 1 % of json/graph. LLVM bitcode inlining: the API backend is already level with the C backend
+  (S_c 1.394 vs S_api 1.400 in the same session), so there is little to win.
+* graph (2.4-2.8x): 128 B per node and, in the scaled callgrind run, the collector (visit_mark/restore, ref_array_trace, slots_put: 30 % of the
+  instructions at 100K nodes; one collection at full size). A tuning of the first collection threshold is the next thing to look at.
+
+### Same-session A/B (5 runs, cpu 3, `--no-guard`; base = perf-3 stdlib + runtime, same compiler; `build/r4b-*.json` not committed)
+|  | S | R | Z | score |
+|---|---|---|---|---|
+| base (perf-3) | 1.3678 | 1.1043 | 0.1116 | 0.6930 |
+| head (perf-4) | 1.3971 | 1.1045 | 0.1041 | 0.6884 (-0.7 %) |
+
+S moved +2 % but that is the box: Rust's own time moved by up to 7 % between the two runs (graph 0.66 vs 0.70 s, binarytrees 1.34 vs 1.42) and the programs
+this round did not touch (nbody, fannkuch, mandelbrot, spectralnorm, binarytrees) show the whole S difference; the only speed change of the round is
+wordcount, -6.8 % instructions. Z is deterministic: hello 18720 -> 14576 B and every program -4 KB or more (0.105 C, 0.103 API). Against the start of
+round 4 (origin/main runtime, `r4-base`: score 0.7251) the branch is at 0.6884.
