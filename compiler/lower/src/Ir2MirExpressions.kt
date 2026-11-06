@@ -258,6 +258,8 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (isNumericType(from) && isNumericType(to)) return MirExpr.Convert(e, to)
     // the Unit value in a generic position (`Result.success(Unit)`, a `Continuation<Unit>`) is null, like the result of a Unit lambda
     if (e is MirExpr.Local && from == TUnit && to.isRef) return MirExpr.NullConst(to)
+    // a value class and its representation have the same machine value (the elements of a `UIntArray` are `Int`s)
+    if ((from is TInline && from.repr == to) || (to is TInline && to.repr == from)) return MirExpr.Cast(e, to, MirExpr.CastMode.Unchecked)
     if (from.isPrimitive && to.isPrimitive) unsupported(at, "conversion from $from to $to")
     if (from is TPtr && to is TPtr) return e // the same address: nullability is a Kotlin-level fact
     if (from === TNull && (to.isRef || to is TPtr)) return MirExpr.NullConst(to)
