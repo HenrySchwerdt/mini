@@ -145,6 +145,23 @@ fun BodyChecker.extensionGroups(name: String, recv: Type, out: ArrayList<List<Ca
     }
 }
 
+/** the local extension functions named [name] in scope (`fun A.f() {}` written in a function body) */
+fun BodyChecker.localExtensionFuns(name: String): List<FunSym> {
+    val out = ArrayList<FunSym>()
+    var s: Scope? = scope
+    while (s != null) {
+        if (s is LocalScope) {
+            val fs = s.funs[name]
+            if (fs != null) for (f in fs) {
+                sema.ensureSig(f)
+                if (f.receiver != null) out.add(f)
+            }
+        }
+        s = s.parent
+    }
+    return out
+}
+
 /** members and extensions applicable to an explicit receiver value of type [t] */
 fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boolean): List<List<Candidate>> {
     val groups = ArrayList<List<Candidate>>()

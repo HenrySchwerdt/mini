@@ -305,7 +305,15 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 }
             }
             val nc = ri.cls.nested[name]
-            if (nc != null) for (c in ctorCandidates(nc)) funRefCand(c, false, cands)
+            if (nc != null) for (c in ctorCandidates(nc)) {
+                val before = cands.size
+                funRefCand(c, false, cands)
+                // `Outer::Inner` takes the outer instance first
+                if (nc.isInner) for (k in before until cands.size) {
+                    val rc0 = cands[k]
+                    cands[k] = RefCand(rc0.sym, listOf<Type>(ct) + rc0.params, rc0.ret, rc0.tps, rc0.subst)
+                }
+            }
             for (mp in members.propsNamed(ct, name)) {
                 if (mp.prop.receiver != null) continue
                 val rc = RefCand(mp.prop, if (objBound) emptyList() else listOf(ct), ops.substitute(sema.typeOfProp(mp.prop), mp.subst), emptyList(), mp.subst)
@@ -328,11 +336,17 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, ct, ext)
             for (g in ext) for (c in g) if (extFits(c.fn, ct)) funRefCand(c, false, cands)
+            for (lf in localExtensionFuns(name)) if (extFits(lf, ct)) funRefCand(Candidate(lf, HashMap(), null), false, cands)
         } else if (ri is ValueRecv) {
             val vt = ri.type
             for (m in members.funsNamed(vt, name)) {
                 if (m.fn.decl?.receiver != null) continue
                 funRefCand(Candidate(m.fn, m.subst, null), true, cands)
+            }
+            // `outer::Inner`: the constructor of an inner class, bound to the outer instance
+            for (site in ops.closure(vt)) {
+                val inc = site.cls.nested[name]
+                if (inc != null && inc.isInner) for (c in ctorCandidates(inc)) funRefCand(c, true, cands)
             }
             for (mp in members.propsNamed(vt, name)) {
                 if (mp.prop.receiver != null) continue
@@ -356,6 +370,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             if (cands.isEmpty()) for (g in ext) for (c in g) {
                 if (extFits(c.fn, vt)) funRefCand(Candidate(c.fn, c.subst, null), true, cands)
             }
+            if (cands.isEmpty()) for (lf in localExtensionFuns(name)) if (extFits(lf, vt)) funRefCand(Candidate(lf, HashMap(), null), true, cands)
         }
     }
     if (cands.isEmpty()) {

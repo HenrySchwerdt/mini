@@ -174,7 +174,13 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val rv = e.receiver
         for (p in target.parameters) call.arguments.add(null)
         val objQ = if (rv != null) objectQualifier(rv, r) else null
-        if (rv == null && sym.owner != null && sym.kind != FunKind.CONSTRUCTOR && !sym.isExtension && target.parameters.any { it.kind == IrParameterKind.DispatchReceiver }) {
+        if (rv == null && sym.kind == FunKind.CONSTRUCTOR && sym.owner?.isInner == true && sym.owner?.outer != null) {
+            // `::Inner` of an inner class written where the outer instance is in scope: bound to it
+            val bound = receiverOfClass(sym.owner!!.outer!!)
+            for ((k, p) in target.parameters.withIndex()) {
+                if (p.kind == IrParameterKind.DispatchReceiver) { call.arguments[k] = bound; break }
+            }
+        } else if (rv == null && sym.owner != null && sym.kind != FunKind.CONSTRUCTOR && !sym.isExtension && target.parameters.any { it.kind == IrParameterKind.DispatchReceiver }) {
             // `::f` written in a class body: a reference to the member `this.f` (K2 binds the implicit receiver)
             val bound = implicitMemberReceiver(sym.owner, e)
             if (bound != null) for ((k, p) in target.parameters.withIndex()) {
