@@ -333,7 +333,7 @@ class IrExpressionBody(val expression: IrExpression) : IrBody()
 
 class IrConst(type: Type, val value: Any?) : IrExpression(type)
 
-class IrGetValue(val owner: IrValueDeclaration, type: Type, val origin: String? = null) : IrExpression(type)
+class IrGetValue(var owner: IrValueDeclaration, type: Type, val origin: String? = null) : IrExpression(type)
 
 class IrSetValue(val owner: IrValueDeclaration, var value: IrExpression, type: Type, val origin: String? = null) : IrExpression(type)
 
