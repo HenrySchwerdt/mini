@@ -939,6 +939,27 @@ public inline fun @N@Array.sumByDouble(selector: (@N@) -> Double): Double {
 }
 '''
 
+MORE_SUMOF = '''
+@kotlin.jvm.JvmName("sumOfInt@N@ArraySelector")
+public inline fun @N@Array.sumOf(selector: (@N@) -> Int): Int {
+    var s = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLong@N@ArraySelector")
+public inline fun @N@Array.sumOf(selector: (@N@) -> Long): Long {
+    var s = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDouble@N@ArraySelector")
+public inline fun @N@Array.sumOf(selector: (@N@) -> Double): Double {
+    var s = 0.0
+    for (e in this) s += selector(e)
+    return s
+}
+'''
+
 if len(sys.argv) > 1 and sys.argv[1] == "more":
     out = [MORE_HEADER]
     for (n, zero, numeric, comparable, st, sz) in TYPES:
@@ -947,6 +968,8 @@ if len(sys.argv) > 1 and sys.argv[1] == "more":
             s += MORE_COMPARABLE
         if numeric:
             s += MORE_NUMERIC
+        else:
+            s += MORE_SUMOF
         out.append(s.replace("@N@", n))
     print("".join(out))
     sys.exit(0)

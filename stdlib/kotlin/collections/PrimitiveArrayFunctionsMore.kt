@@ -2766,6 +2766,25 @@ public inline fun <K> CharArray.distinctBy(selector: (Char) -> K): List<Char> {
     return list
 }
 
+@kotlin.jvm.JvmName("sumOfIntCharArraySelector")
+public inline fun CharArray.sumOf(selector: (Char) -> Int): Int {
+    var s = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongCharArraySelector")
+public inline fun CharArray.sumOf(selector: (Char) -> Long): Long {
+    var s = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleCharArraySelector")
+public inline fun CharArray.sumOf(selector: (Char) -> Double): Double {
+    var s = 0.0
+    for (e in this) s += selector(e)
+    return s
+}
+
 // ======================================== BooleanArray ========================================
 
 public fun BooleanArray.asSequence(): Sequence<Boolean> {
@@ -3102,5 +3121,24 @@ public inline fun <R, V> BooleanArray.zip(other: Iterable<R>, transform: (a: Boo
         i++
     }
     return list
+}
+
+@kotlin.jvm.JvmName("sumOfIntBooleanArraySelector")
+public inline fun BooleanArray.sumOf(selector: (Boolean) -> Int): Int {
+    var s = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongBooleanArraySelector")
+public inline fun BooleanArray.sumOf(selector: (Boolean) -> Long): Long {
+    var s = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleBooleanArraySelector")
+public inline fun BooleanArray.sumOf(selector: (Boolean) -> Double): Double {
+    var s = 0.0
+    for (e in this) s += selector(e)
+    return s
 }
 
