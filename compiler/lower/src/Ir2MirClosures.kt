@@ -158,8 +158,12 @@ internal fun Ir2Mir.closureClass(
     capTypes: List<MirType>,
     sam: SamTarget? = null,
     borrowedCaps: List<Boolean> = emptyList(),
+    eqKey: String? = null,
+    at: IrElement? = null,
     makeBody: (self: MirLocal, args: List<MirLocal>, caps: List<MirLocal>, out: MutableList<MirStmt>) -> Unit,
 ): Pair<String, TObject> {
+    // closures of equal callable references: one class, `equals` compares the captured (bound) values
+    if (eqKey != null) closureCache[eqKey]?.let { return it }
     val iface = if (sam == null) functionInterface(arity) else null
     val argTypes: List<MirType> = sam?.argTypes ?: List(arity) { anyNullable }
     val retType: MirType = sam?.ret ?: anyNullable
@@ -196,21 +200,63 @@ internal fun Ir2Mir.closureClass(
         extraFunctions += MirFunction("$qualified.<init>", ctorName, listOf(self) + ps, TUnit, body, cName)
     }
     extraFunctions += fn
+    var vtable: List<String?> = listOf(null, null, null)
+    if (eqKey != null && at != null) {
+        val (eqFn, hcFn) = refEqualsHash(qualified, cName, type, capTypes, eqKey, at)
+        extraFunctions += eqFn
+        extraFunctions += hcFn
+        vtable = listOf(null, eqFn.cName, hcFn.cName)
+    }
     if (iface != null) {
         extraClasses += MirClass(
-            qualified, cName, false, null, fields, listOf(iface.cName), listOf(null, null, null),
+            qualified, cName, false, null, fields, listOf(iface.cName), vtable,
             listOf(MirItable(iface.cName, listOf(invokeName))),
         )
     } else {
         val ifaces = allInterfaces(sam!!.iface) + sam.iface
         extraClasses += MirClass(
-            qualified, cName, false, null, fields, ifaces.map { info(it).cName }, listOf(null, null, null),
+            qualified, cName, false, null, fields, ifaces.map { info(it).cName }, vtable,
             ifaces.map { i ->
                 MirItable(info(i).cName, interfaceMethods(i).map { m -> if (m === sam.method) invokeName else implName(if (hasBody(m)) m else null) })
             },
         )
     }
+    if (eqKey != null) closureCache[eqKey] = ctorName to type
     return ctorName to type
+}
+
+/** `equals` / `hashCode` of the closure class of a callable reference: same class and equal captured values; the hash mixes the key. */
+private fun Ir2Mir.refEqualsHash(qualified: String, cName: String, type: TObject, capTypes: List<MirType>, key: String, at: IrElement): Pair<MirFunction, MirFunction> {
+    val eqName = Mangling.method(cName, "equals", listOf(anyNullable))
+    val hcName = Mangling.method(cName, "hashCode", emptyList())
+    fun capOf(obj: MirExpr, i: Int, out: MutableList<MirStmt>): MirExpr =
+        asAny(boxIfPrim(MirExpr.FieldGet(obj, cName, "c$i", capTypes[i]), at, out))
+    val eq = inFreshFunction {
+        val self = MirLocal(localCounter++, "this", type)
+        val other = MirLocal(localCounter++, "other", anyNullable)
+        val out = ArrayList<MirStmt>()
+        out += MirStmt.If(MirExpr.Unary(UnaryOp.Not, MirExpr.IsInstance(MirExpr.Local(other), type)), listOf(MirStmt.Return(MirExpr.BooleanConst(false))), emptyList())
+        val o = MirLocal(localCounter++, "o", type)
+        out += MirStmt.Declare(o, MirExpr.Cast(MirExpr.Local(other), type, MirExpr.CastMode.Unchecked))
+        for (i in capTypes.indices) {
+            val same = MirExpr.RuntimeCall("mk_equals", listOf(capOf(MirExpr.Local(self), i, out), capOf(MirExpr.Local(o), i, out)), TBoolean)
+            out += MirStmt.If(MirExpr.Unary(UnaryOp.Not, same), listOf(MirStmt.Return(MirExpr.BooleanConst(false))), emptyList())
+        }
+        out += MirStmt.Return(MirExpr.BooleanConst(true))
+        MirFunction("$qualified.equals", eqName, listOf(self, other), TBoolean, out)
+    }
+    val hc = inFreshFunction {
+        val self = MirLocal(localCounter++, "this", type)
+        val out = ArrayList<MirStmt>()
+        var h: MirExpr = MirExpr.IntConst(key.hashCode())
+        for (i in capTypes.indices) {
+            val ch = tmpOfPlain(MirExpr.RuntimeCall("mk_hash_code", listOf(capOf(MirExpr.Local(self), i, out)), TInt), out)
+            h = MirExpr.Binary(BinaryOp.Add, MirExpr.Binary(BinaryOp.Mul, h, MirExpr.IntConst(31)), ch)
+        }
+        out += MirStmt.Return(h)
+        MirFunction("$qualified.hashCode", hcName, listOf(self), TInt, out)
+    }
+    return eq to hc
 }
 
 internal fun Ir2Mir.convertBodyOf(f: IrFunction, ret: MirType, out: MutableList<MirStmt>) {
@@ -233,7 +279,7 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
     val borrowed = caps.map { borrowedCapture(it) }
     val arity = fn.parameters.size
     val ret = mirType(fn.returnType, fn)
-    val (ctor, type) = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam, borrowed) { _, args, capLocals, body ->
+    val (ctor, type) = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam, borrowed, e.refKey?.let { it + "|" + (sam?.iface?.let { i -> info(i).cName } ?: "") + "|" + capTypes.joinToString(",") { t -> t.toString() } }, e) { _, args, capLocals, body ->
         for ((i, v) in caps.withIndex()) locals[v] = capLocals[i]
         currentFunction = fn
         currentReturn = if (sam != null) sam.ret else if (ret == TUnit) TUnit else anyNullable
@@ -386,7 +432,9 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
     val capTypes = boundTypes + liftedCaps.map { capturedType(it) }
     val arity = params.size - boundIdx.size
     val name = target.name
-    val (ctor, type) = closureClass(currentFunctionName() + ".::" + name, arity, capTypes) { _, args, capLocals, body ->
+    val tid = refTargetIds.getOrPut(target) { refTargetIds.size }
+    val refKey = "ref#" + tid + ":" + boundIdx.joinToString(",") + ":" + capTypes.joinToString(",") { it.toString() }
+    val (ctor, type) = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, emptyList(), refKey, e) { _, args, capLocals, body ->
         val actual = ArrayList<MirExpr>()
         var k = 0
         for ((i, p) in params.withIndex()) {
@@ -466,7 +514,7 @@ internal fun Ir2Mir.samValue(e: IrTypeOperatorCall, out: MutableList<MirStmt>): 
     val fv = operands(listOf(arg), out)[0]
     val arity = sam.argTypes.size
     val fType = functionInterface(arity)
-    val (ctor, type) = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam) { _, args, caps, body ->
+    val (ctor, type) = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam, emptyList(), "sam#" + info(iface).cName + ":" + arity, e) { _, args, caps, body ->
         val boxed = args.map { coerceFlexible(MirExpr.Local(it), anyNullable, e, body) }
         val call = tmpOf(MirExpr.ICall(fType.cName, 0, MirExpr.Local(caps[0]), boxed, invokeArgTypes(arity), anyNullable), body)
         body += if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(coerceFlexible(call, sam.ret, e, body))

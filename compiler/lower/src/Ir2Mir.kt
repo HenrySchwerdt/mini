@@ -58,6 +58,9 @@ class Ir2Mir {
     internal val refClasses = HashMap<MirType, RefClass>()
     internal val functionInterfaces = HashMap<Int, TObject>()
     internal val liftedFns = HashMap<IrSimpleFunction, LiftedFn>()
+    /** closure classes of callable references by key (equal references share the class, see closureClass) and the ids of their targets */
+    internal val closureCache = HashMap<String, Pair<String, TObject>>()
+    internal val refTargetIds = HashMap<IrFunction, Int>()
     internal val returnTargets = HashMap<IrFunction, InlineReturn>()
     internal var finallyStack = ArrayList<FinCtx>()
     internal val loopFinallyDepth = HashMap<IrLoop, Int>()

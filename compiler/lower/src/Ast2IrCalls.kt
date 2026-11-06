@@ -255,9 +255,19 @@ fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunct
 
 fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExpression {
     val k = irConstructorOf(info.fn)
+    val d = info.dispatch
+    if (d != null && d.expr != null && d.safe) {
+        // `outer?.Inner(...)`: no construction when the outer instance is null
+        val nonNull = type.withNullable(false)
+        return safeCall(d, node, type) { rv ->
+            val c2 = IrConstructorCall(k, nonNull)
+            c2.typeArguments = info.typeArgs.map { irType(it) }
+            fillCallArgs(c2, k, info, rv, null, info.fn.name)
+            spillForSourceOrder(c2, k, info)
+        }
+    }
     val call = IrConstructorCall(k, type)
     call.typeArguments = info.typeArgs.map { irType(it) }
-    val d = info.dispatch
     val dv: IrExpression? = if (d != null) recvValue(d, node) else null
     // inner class constructor called without an explicit outer instance: the enclosing `this`
     var outer = dv
@@ -381,7 +391,12 @@ private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpres
         else break
     }
     val v = if (u is LambdaExpr) lambdaExpr(u, own ?: label) else convert(ex)
-    if (expected is ClassType && expected.cls.isFunInterface && rec(u)?.type is FunType) return samConversion(v, irType(expected))
+    // a function value (not a lambda or reference literal) of a non-suspend function type where a suspend function type is expected
+    if (expected is FunType && expected.suspend && u !is LambdaExpr && u !is AnonFunExpr && u !is CallableRefExpr) {
+        val vt = rec(u)?.type
+        if (vt is FunType && !vt.suspend && vt.receiver == null == (expected.receiver == null)) return suspendConvertedValue(v, vt, expected)
+    }
+    if (expected is ClassType && expected.cls.isFunInterface && (rec(u)?.type is FunType || u is CallableRefExpr)) return samConversion(v, irType(expected))
     return v
 }
 

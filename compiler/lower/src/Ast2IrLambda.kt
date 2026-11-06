@@ -212,7 +212,8 @@ private fun Ast2Ir.implicitMemberReceiver(owner: ClassSym, at: Ast): IrExpressio
     while (c != null) {
         for (i in c.recvs.indices.reversed()) {
             val r = c.recvs[i]
-            val rc = r.cls ?: continue
+            // the receiver of a lambda with receiver / of an extension function provides the member too
+            val rc = r.cls ?: (r.param.type as? ClassType)?.cls ?: continue
             if (rc === owner || ops.closure(rc.thisType()).any { it.cls === owner }) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
         }
         c = c.parent
@@ -320,9 +321,51 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     val ft = FunType(null, ptypes, retT, false, ad.suspendConv)
     val fe = IrFunctionExpression(fn, ft, "LAMBDA")
     fe.startOffset = e.start
+    val sid = adaptedRefIds.getOrPut(sym) { adaptedRefIds.size }
+    fe.refKey = "adapted#" + sid + ":" + ad.map.starts.joinToString(",") + ":" + ad.map.counts.joinToString(",") + ":" + ad.suspendConv + ":" +
+        (bound != null) + ":" + ad.typeArgs.joinToString(",") { renderType(it) } + ":" + ptypes.joinToString(",") { renderType(it) } + ">" + renderType(retT)
     if (outer.isEmpty()) return fe
     outer.add(fe)
     return IrBlock(outer, ft, null)
+}
+
+/**
+ * Suspend conversion of a function *value* (`runS(lambdaVal)` where `lambdaVal: (String) -> String` and a `suspend (String) -> String` is
+ * expected): a suspend lambda `{ p0 -> fn(p0) }` over the value, which is evaluated once.
+ */
+fun Ast2Ir.suspendConvertedValue(v: IrExpression, src: FunType, dst: FunType): IrExpression {
+    val outer = ArrayList<IrStatement>()
+    val tmp = IrVariable("\$fn", v.type, false)
+    tmp.parent = ctx?.fn
+    tmp.initializer = v
+    outer.add(tmp)
+    val ptypes = ops.allParams(dst)
+    val retT = dst.ret
+    val fn = IrSimpleFunction("<anonymous>")
+    fn.origin = "LOCAL_FUNCTION_FOR_LAMBDA"
+    fn.visibility = "local"
+    fn.modality = IrModality.FINAL
+    fn.parent = enclosingParent()
+    val lparams = ArrayList<IrValueParameter>()
+    for ((i, pt) in ptypes.withIndex()) {
+        val p = IrValueParameter("p" + i, irType(pt), IrParameterKind.Regular, i)
+        p.parent = fn
+        fn.parameters.add(p)
+        lparams.add(p)
+    }
+    val rt = irType(retT)
+    fn.returnType = rt
+    makeSuspend(fn, rt)
+    val call = IrCall(invokeFunction(ptypes.size), rt)
+    call.origin = "INVOKE"
+    call.arguments.add(getValue(tmp))
+    for (lp in lparams) call.arguments.add(IrGetValue(lp, lp.type, null))
+    val stmts = ArrayList<IrStatement>()
+    if (isUnit(rt)) stmts.add(coerceToUnit(call)) else stmts.add(IrReturn(fn, call, sema.nothingType))
+    fn.body = lowerSuspendBody(fn, IrBlockBody(stmts))
+    val fe = IrFunctionExpression(fn, irType(dst), "LAMBDA")
+    outer.add(fe)
+    return IrBlock(outer, irType(dst), null)
 }
 
 /** `Obj::member` of an object (or companion): the object, to which the reference is bound; null for other qualifiers. */

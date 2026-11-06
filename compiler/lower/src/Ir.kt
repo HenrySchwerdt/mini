@@ -370,7 +370,10 @@ class IrSetField(val field: IrField, var receiver: IrExpression?, var value: IrE
 
 class IrStringConcatenation(val arguments: ArrayList<IrExpression>, type: Type) : IrExpression(type)
 
-class IrFunctionExpression(val function: IrSimpleFunction, type: Type, val origin: String) : IrExpression(type)
+class IrFunctionExpression(val function: IrSimpleFunction, type: Type, val origin: String) : IrExpression(type) {
+    /** the lambda of an adapted callable reference: references with the same key are equal (`::f == ::f`) and share one closure class */
+    var refKey: String? = null
+}
 
 class IrFunctionReference(val target: IrFunction, type: Type) : IrFunctionAccessExpression(type)
 
