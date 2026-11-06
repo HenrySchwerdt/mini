@@ -168,6 +168,37 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val n = sym.params.size
         return adaptedRef(e, r, AdaptedRef(AdaptMap(IntArray(n) { it }, IntArray(n) { 1 }), 0), sym)
     }
+    if (sym is FunSym && sym.kind == FunKind.SYNTH && sym.params.size == 1 && (sym.returnType as? ClassType)?.cls?.samCtor === sym) {
+        // `::KRunnable`: the constructor of a fun interface, a lambda `{ f -> KRunnable(f) }`
+        val kt = irType(r.type) as ClassType
+        val argT = kt.args[0].type ?: fail(e, "SAM constructor reference without parameter type")
+        val retT = kt.args[1].type ?: fail(e, "SAM constructor reference without result type")
+        val fn = IrSimpleFunction("<anonymous>")
+        fn.origin = "LOCAL_FUNCTION_FOR_LAMBDA"
+        fn.visibility = "local"
+        fn.modality = IrModality.FINAL
+        fn.parent = enclosingParent()
+        val p = IrValueParameter("p0", argT, IrParameterKind.Regular, 0)
+        p.parent = fn
+        fn.parameters.add(p)
+        fn.returnType = retT
+        val stmts = ArrayList<IrStatement>()
+        stmts.add(IrReturn(fn, samConversion(IrGetValue(p, argT, null), retT), sema.nothingType))
+        fn.body = IrBlockBody(stmts)
+        fn.startOffset = e.start
+        val ft = FunType(null, listOf(argT), retT, false, false)
+        val fe = IrFunctionExpression(fn, ft, "LAMBDA")
+        fe.startOffset = e.start
+        return fe
+    }
+    if (sym is FunSym && sym.kind == FunKind.CONSTRUCTOR && sym.owner != null && sym.owner!!.fqName().let { it == "kotlin.Array" || (it.startsWith("kotlin.") && !it.startsWith("kotlin.U") && it.endsWith("Array") && it.indexOf('.', 7) < 0) }) {
+        // `::IntArray`, `::Array`: the constructors of the array classes are intrinsics, called from an adapter lambda
+        val n = sym.params.size
+        val ad = AdaptedRef(AdaptMap(IntArray(n) { it }, IntArray(n) { 1 }), 0)
+        val rt = (r.type as? ClassType)?.args?.lastOrNull()?.type as? ClassType
+        if (rt != null) ad.typeArgs = rt.args.mapNotNull { it.type }
+        return adaptedRef(e, r, ad, sym)
+    }
     if (sym is FunSym) {
         val target: IrFunction = if (sym.kind == FunKind.CONSTRUCTOR) irConstructorOf(sym) else functionFor(sym, null)
         val call = IrFunctionReference(target, t)
