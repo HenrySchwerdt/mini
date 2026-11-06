@@ -174,7 +174,13 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val rv = e.receiver
         for (p in target.parameters) call.arguments.add(null)
         val objQ = if (rv != null) objectQualifier(rv, r) else null
-        if (rv != null && (objQ != null || !isClassQualifier(rv))) {
+        if (rv == null && sym.owner != null && sym.kind != FunKind.CONSTRUCTOR && !sym.isExtension && target.parameters.any { it.kind == IrParameterKind.DispatchReceiver }) {
+            // `::f` written in a class body: a reference to the member `this.f` (K2 binds the implicit receiver)
+            val bound = implicitMemberReceiver(sym.owner, e)
+            for ((k, p) in target.parameters.withIndex()) {
+                if (p.kind == IrParameterKind.DispatchReceiver) { call.arguments[k] = bound; break }
+            }
+        } else if (rv != null && (objQ != null || !isClassQualifier(rv))) {
             val bound = if (objQ != null) IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)) else convert(rv)
             var k = 0
             for (p in target.parameters) {
@@ -198,6 +204,20 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         return ref
     }
     fail(e, "callable reference to " + (sym?.name ?: "?"))
+}
+
+/** the implicit receiver (`this`, an outer `this`, an object) that provides the member of [owner] (inherited members included) */
+private fun Ast2Ir.implicitMemberReceiver(owner: ClassSym, at: Ast): IrExpression {
+    var c = ctx
+    while (c != null) {
+        for (i in c.recvs.indices.reversed()) {
+            val r = c.recvs[i]
+            val rc = r.cls ?: continue
+            if (rc === owner || ops.closure(rc.thisType()).any { it.cls === owner }) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
+        }
+        c = c.parent
+    }
+    return implicitReceiver(RecvRef(owner, null, owner.isObject), at)
 }
 
 /** `::prop` of a member property written without a receiver in a class body is bound to `this`; the sema type says whether it is bound (KProperty0) or not (KProperty1). */
