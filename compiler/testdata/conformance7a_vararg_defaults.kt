@@ -7,5 +7,5 @@ class A { operator fun component1() = 1; operator fun component2() = 2 }
 fun under() {
     val (_, b) = A()
     val (`_`, c) = A()
-    println("$b $`_` $c")
+    println("$b ${`_`} $c")
 }
