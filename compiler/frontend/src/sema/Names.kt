@@ -489,7 +489,8 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         typeArgs = ArrayList()
         for (ta in e.typeArgs) {
             val t = ta.type
-            typeArgs.add(if (t != null) sema.resolveType(t, scope) else sema.nullableAny)
+            val under = t is UserType && t.segments.size == 1 && t.segments[0].name == "_" && t.segments[0].args.isEmpty()
+            typeArgs.add(if (under) INFER_TYPE else if (t != null) sema.resolveType(t, scope) else sema.nullableAny)
         }
     }
     val groups: List<List<Candidate>>

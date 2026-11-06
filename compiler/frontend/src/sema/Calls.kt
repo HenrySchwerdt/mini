@@ -560,7 +560,14 @@ fun BodyChecker.tryCandidate(c: Candidate, args: List<Arg>, typeArgs: List<Type>
     if (typeArgs != null && typeArgs.isNotEmpty()) {
         if (typeArgs.size != tps.size) return null
         var i = 0
-        for (tp in tps) {
+        if (typeArgs.any { it === INFER_TYPE }) {
+            // `foo<Int, _>(...)`: the others are given, the `_` ones are inferred
+            cs.addVariables(tps, subst)
+            for (tp in tps) {
+                if (typeArgs[i] !== INFER_TYPE && !cs.addEqual(subst[tp] ?: ErrType("type argument"), typeArgs[i])) return null
+                i++
+            }
+        } else for (tp in tps) {
             subst[tp] = typeArgs[i]
             i++
         }
@@ -727,7 +734,7 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
             val cs = ConstraintSystem(sema)
             val m = HashMap<TypeParamSym, Type>()
             m.putAll(single.subst)
-            if (typeArgs != null && typeArgs.isNotEmpty() && typeArgs.size == tps.size) {
+            if (typeArgs != null && typeArgs.isNotEmpty() && typeArgs.size == tps.size && typeArgs.none { it === INFER_TYPE }) {
                 // explicit type arguments (`listOf<ULong>(1u)`): they are the expectation of the arguments
                 var j = 0
                 for (tp in tps) {
