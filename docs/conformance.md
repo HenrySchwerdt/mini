@@ -81,10 +81,10 @@ non-local `break`/`continue`, `field` inside lambdas of accessors, `finally` tha
 
 | | after round 2 | round 3 |
 |---|---:|---:|
-| **pass** | **5058 (84.71%)** | **5172 (86.62%)** |
-| compile-error | 460 | 431 |
+| **pass** | **5058 (84.71%)** | **5182 (86.79%)** |
+| compile-error | 460 | 417 |
 | ice | 133 | 125 |
-| runtime-fail | 245 | 184 |
+| runtime-fail | 245 | 188 |
 | crash | 71 | 57 |
 | timeout | 4 | 2 |
 
@@ -103,10 +103,18 @@ Other fixes: enum `Comparable` at run time (`sorted()`, `maxOf`, `<`; checked), 
 `break` / `continue` from lambdas of inline functions (the IR loop of the enclosing function is the target, the inline expansion in Ir2Mir
 resolves it), `field` inside a lambda in an accessor, `KCallable.name` of callable references (`::f.name`, a constant; a bound receiver is still evaluated).
 
-Still open (largest): `CharSequence` as a real interface (`for (c in cs)`, `withIndex`, `indices`: the builtin is erased to `String`, an extension
-on `CharSequence` crashes at run time, so it needs a proper interface implemented by `String` and `StringBuilder`), `coroutineContext`
-(a `suspend` property: the getter is not treated as suspend), generic value classes, Float/Double range operators, builder inference, the
-`unresolved call` long tail (166), crashes (57), C compiler rejects (40), properIeee754 comparisons through smart casts.
+`CharSequence` is a real interface now: a `CharSequence` value is an `Any` reference (a `String`, or an object of a class that implements the
+interface: `StringBuilder`, user classes). `length` / `get` / `subSequence` go through `mk_cs_length` / `mk_cs_get` / `mk_cs_sub_sequence`
+(runtime, `v1l.c`), which take the String fast path (`mk_string_char_at`, `mk_string_substring`: both string representations) and otherwise
+call the `CharSequence` itable (slots 0, 1, 2); `is CharSequence` is `mk_is_char_sequence`; a statically known `String` keeps the direct
+paths. `StringBuilder` gets the supertype in `Sema.ensureSupertypes` (the standard library sources are built by the release stage0, which does not
+know the rule, so they only say `override`); `Devirt` treats the `CharSequence` itable as reachable from the runtime like `Comparable`'s.
+`CharSequence.iterator()`, `withIndex()`, `indices`, `lastIndex`, `forEach`, `forEachIndexed` are in `stdlib/kotlin/text/CharSequences.kt`
+(`isEmpty`, `isBlank` and the other `String` helpers are still declared on `String` only).
+
+Still open (largest): `coroutineContext` (a `suspend` property: the getter is not treated as suspend), generic value classes, Float/Double
+range operators, builder inference, the `unresolved call` long tail (166), crashes (57), C compiler rejects (40), properIeee754
+comparisons through smart casts, more `CharSequence` extension functions (`CharSequence` receivers for the rest of kotlin.text).
 
 ## Results
 

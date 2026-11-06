@@ -5,14 +5,14 @@
 | total test files | 10070 |
 | skipped (not applicable) | 4099 |
 | **applicable** | **5971** |
-| **pass** | **5172 (86.62%)** |
-| compile-error | 431 |
+| **pass** | **5182 (86.79%)** |
+| compile-error | 417 |
 | ice (compiler crash) | 125 |
-| runtime-fail | 184 |
+| runtime-fail | 188 |
 | crash (signal) | 57 |
 | timeout | 2 |
 
-Wall time: 1080s.
+Wall time: 1060s.
 
 ## Skips
 
@@ -30,16 +30,15 @@ Wall time: 1080s.
 
 | count | status | first diagnostic | example |
 |---:|---|---|---|
-| 166 | compile-error | `unresolved call '_'` | box/argumentOrder/kt17691WithEnabledFeature.kt |
+| 159 | compile-error | `unresolved call '_'` | box/argumentOrder/kt17691WithEnabledFeature.kt |
 | 47 | crash | `signal 11` | box/basics/k42000_1.kt |
-| 44 | compile-error | `unresolved reference '_'` | box/callableReference/function/classMemberFromCompanionObject.kt |
+| 41 | compile-error | `unresolved reference '_'` | box/callableReference/function/classMemberFromCompanionObject.kt |
 | 40 | ice | `internal compiler error: the C compiler (cc) rejected the C code that minic generated` | box/arrays/kt47483.kt |
 | 18 | compile-error | `unresolved callable reference '_'` | box/callableReference/kt47988.kt |
 | 15 | compile-error | `0_test.kt:N:N: error: unsupported construct: arithmetic on TObject(qualifiedName=kotlin.Any, cName=mk_Any, nullable=true, isInterface=false)` | box/inlineClasses/UIntArraySortExampleGeneric.kt |
+| 11 | compile-error | `0_test.kt:N:N: error: unsupported construct: call to '_'` | box/bridges/test24.kt |
 | 10 | compile-error | `unresolved type '_'` | box/annotations/nestedClassesInAnnotations.kt |
 | 10 | crash | `signal 6` | box/coroutines/featureIntersection/interfaceMethodWithBody.kt |
-| 9 | compile-error | `0_test.kt:N:N: error: unsupported construct: call to '_'` | box/bridges/test24.kt |
-| 9 | compile-error | `for-loop range must have an iterator() method` | box/controlStructures/forInCharSequence.kt |
 | 8 | compile-error | `no matching callable for reference '_'` | box/callableReference/adaptedReferences/nestedClassConstructorWithDefault.kt |
 | 8 | compile-error | `0_test.kt: error: unsupported construct: type '_'` | box/callableReference/property/enumNameOrdinal.kt |
 | 8 | compile-error | `0_test.kt: error: unsupported construct: call of constructor of '_'` | box/enum/defaultCtor/noPrimaryConstructor.kt |
@@ -62,11 +61,12 @@ Wall time: 1080s.
 | 4 | compile-error | `0_test.kt:N:N: error: unsupported construct: reference to a variable that is not a local of the current function ('_')` | box/closures/captureInSuperConstructorCall/outerCapturedInLambda2.kt |
 | 4 | runtime-fail | `box() returned: null` | box/contracts/destructuredVariable.kt |
 | 4 | compile-error | `0_test.kt:N:N: error: unsupported construct: string conversion of a value of type Nothing` | box/controlStructures/breakContinueInExpressions/breakFromOuter.kt |
-| 4 | runtime-fail | `Exception in thread "_" java.lang.ArrayIndexOutOfBoundsException: Index N out of bounds for length N` | box/controlStructures/forInArray/forInArrayWithArrayVarUpdatedInLoopBody13.kt |
 | 4 | runtime-fail | `box() returned: fail 3` | box/coroutines/createCoroutinesOnManualInstances.kt |
+| 4 | compile-error | `for-loop range must have an iterator() method` | box/coroutines/kt25912.kt |
 | 4 | runtime-fail | `Exception in thread "_" java.lang.AssertionError: Expected <O;tdf(O);K;tdf(K);OK;get(O);get(K);>, actual <O;K;OK;get(O);get(K);>.` | box/delegatedProperty/provideDelegate/inClass.kt |
 | 4 | runtime-fail | `box() returned: test2 A.bar` | box/super/innerClassLabeledSuper.kt |
 | 3 | compile-error | `0_test.kt:N:N: error: unsupported construct: construction of '_'` | box/annotations/instances/annotationsUnsignedTypes.kt |
 | 3 | compile-error | `unresolved infix function and` | box/binaryOp/bitwiseOp.kt |
 | 3 | compile-error | `type mismatch: expected kotlin.Long but was kotlin.Int` | box/binaryOp/overflowLong.kt |
 | 3 | compile-error | `0_test.kt:N:N: error: unsupported construct: reference to constructor of '_'` | box/callableReference/arrayConstructor.kt |
+| 3 | runtime-fail | `Exception in thread "_" java.lang.ClassCastException: class kotlin.Long cannot be cast to class kotlin.Int` | box/casts/objectToPrimitiveWithAssertion.kt |
