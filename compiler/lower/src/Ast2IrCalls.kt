@@ -573,7 +573,7 @@ fun Ast2Ir.equality(e: BinaryExpr): IrExpression {
     if (!ident && (rec(unparen(e.left))?.smart != null || rec(unparen(e.right))?.smart != null)) {
         val lt = rec(unparen(e.left))?.let { it.smart ?: it.type }
         val rt = rec(unparen(e.right))?.let { it.smart ?: it.type }
-        smartIeee = lt != null && rt != null && !lt.nullable && !rt.nullable && isFloating(lt) && isFloating(rt)
+        smartIeee = lt != null && rt != null && isFloating(lt) && isFloating(rt)
     }
     var l = if (ident) convert(e.left) else if (smartIeee) convert(e.left) else convertEqOperand(e.left)
     var r = if (ident) convert(e.right) else if (smartIeee) convert(e.right) else convertEqOperand(e.right)
