@@ -20,7 +20,7 @@ static MkString *argv_list(MkString *exe) {
 static void outputs(void) {
     MkString *a=mh_exec_stdout(),*b=mh_exec_stderr();
     check(a&&b&&a->length==200000&&b->length==200000,"both captured streams exceed pipe buffers");
-    for(MkInt i=0;i<a->length;i++)check(a->chars[i]=='o'&&b->chars[i]=='e',"captured bytes exact");
+    for(MkInt i=0;i<a->length;i++)check(mk_string_at(a,i)=='o'&&mk_string_at(b,i)=='e',"captured bytes exact");
     release(a);release(b);check(mh_exec_error()==NULL,"no stale start error");
 }
 int wmain(int argc,wchar_t **argv) {

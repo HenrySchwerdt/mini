@@ -35,7 +35,7 @@ static int t_checks = 0;
 /* Compares a MkString with UTF-8 text; releases `s` if `own`. */
 static inline int t_str_is(MkString *s, const char *expected, int own) {
     size_t len;
-    char *u = mk_utf16_to_utf8(s->chars, (size_t)s->length, &len);
+    char *u = mk_string_to_utf8(s, &len);
     int ok = strcmp(u, expected) == 0;
     if (!ok) fprintf(stderr, "  got \"%s\", expected \"%s\"\n", u, expected);
     free(u);

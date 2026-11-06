@@ -10,6 +10,13 @@
 static const MkChar expected_bmp[] = {'c', 'a', 'f', 0x00e9};
 static const MkChar expected_emoji[] = {'e', 'm', 'o', 'j', 'i', 0xd83d, 0xde00};
 
+static int units_equal_n(const MkString *s, const MkChar *e, size_t n) {
+    if ((size_t)s->length != n) return 0;
+    for (size_t i = 0; i < n; i++) if (mk_string_at(s, (MkInt)i) != e[i]) return 0;
+    return 1;
+}
+#define units_equal(s, e) units_equal_n((s), (e), sizeof(e) / sizeof((e)[0]))
+
 static void fail(const char *phase, const char *reason) {
     fprintf(stderr, "test_entry_args: %s: %s\n", phase, reason);
     abort();
@@ -27,11 +34,11 @@ static void check_args(const char *phase) {
     MkString *bmp = (MkString *)bmp_object;
     MkString *emoji = (MkString *)emoji_object;
     if (bmp->length != (MkInt)(sizeof(expected_bmp) / sizeof(expected_bmp[0])) ||
-        memcmp(bmp->chars, expected_bmp, sizeof(expected_bmp)) != 0) {
+        !units_equal(bmp, expected_bmp)) {
         fail(phase, "BMP argument did not preserve its UTF-16 code units");
     }
     if (emoji->length != (MkInt)(sizeof(expected_emoji) / sizeof(expected_emoji[0])) ||
-        memcmp(emoji->chars, expected_emoji, sizeof(expected_emoji)) != 0) {
+        !units_equal(emoji, expected_emoji)) {
         fail(phase, "emoji argument did not preserve its surrogate pair");
     }
 

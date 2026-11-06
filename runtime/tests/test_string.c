@@ -6,7 +6,9 @@ MK_STRING_LITERAL(lit_empty, u"");
 static MkString *U(const char *s) { return mk_string_from_utf8(s, strlen(s)); }
 
 static int units_are(const MkString *s, const MkChar *expected, size_t n) {
-    return (size_t)s->length == n && memcmp(s->chars, expected, n * sizeof(MkChar)) == 0;
+    if ((size_t)s->length != n) return 0;
+    for (size_t i = 0; i < n; i++) if (mk_string_at(s, (MkInt)i) != expected[i]) return 0;
+    return 1;
 }
 
 static void roundtrip(const char *text) {
@@ -18,7 +20,7 @@ int main(void) {
     /* literals */
     const MkString *h = (const MkString *)&lit_hello;
     CHECK_EQ_INT(h->length, 5);
-    CHECK_EQ_INT(h->chars[4], 'o');
+    CHECK_EQ_INT(mk_string_at(h, 4), 'o');
     CHECK(mk_is_instance(&h->header, &mk_type_String));
     CHECK(mk_is_instance(&h->header, &mk_type_Any));
     mk_retain((MkObject *)&lit_hello);
@@ -53,7 +55,7 @@ int main(void) {
         for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
             MkString *s = U(bad[i]);
             CHECK(s->length >= 1);
-            for (MkInt k = 0; k < s->length; k++) CHECK_EQ_INT(s->chars[k], 0xFFFD);
+            for (MkInt k = 0; k < s->length; k++) CHECK_EQ_INT(mk_string_at(s, k), 0xFFFD);
             mk_release(&s->header);
         }
         MkString *s = mk_string_from_utf8("a\xFF" "b\xE2\x82" "c", 6);
@@ -148,6 +150,39 @@ int main(void) {
     CHECK_STR(mk_string_from_int(INT32_MAX), "2147483647");
     CHECK_STR(mk_string_from_long(INT64_MIN), "-9223372036854775808");
     CHECK_STR(mk_string_from_long(INT64_MAX), "9223372036854775807");
+
+    /* two representations of one string: one byte per character (Latin-1) and UTF-16 are the same string */
+    {
+        MkString *narrow = U("caf\xC3\xA9 ab"); /* every character below 256 */
+        CHECK(mk_string_is_latin1(narrow));
+        MkString *wide = mk_string_alloc(narrow->length); /* the same characters, two bytes each */
+        for (MkInt k = 0; k < narrow->length; k++) wide->chars[k] = mk_string_at(narrow, k);
+        CHECK(!mk_string_is_latin1(wide));
+        CHECK(mk_string_equals(narrow, wide));
+        CHECK(mk_string_equals(wide, narrow));
+        CHECK_EQ_INT(mk_string_hash(narrow), mk_string_hash(wide));
+        CHECK_EQ_INT(mk_string_compare(narrow, wide), 0);
+        wide->chars[2] = 0x65E5; /* a character that does not fit one byte */
+        CHECK(!mk_string_equals(narrow, wide));
+        MkString *joined = mk_string_concat(narrow, wide);
+        CHECK(!mk_string_is_latin1(joined));
+        CHECK_EQ_INT(joined->length, 2 * narrow->length);
+        CHECK_EQ_INT(mk_string_at(joined, 3), 0xE9);
+        CHECK_EQ_INT(mk_string_at(joined, narrow->length + 2), 0x65E5);
+        MkString *both = mk_string_concat(narrow, narrow);
+        CHECK(mk_string_is_latin1(both)); /* one-byte parts give a one-byte result */
+        CHECK_EQ_INT(both->length, 2 * narrow->length);
+        MkString *sub = mk_string_substring(narrow, 1, 4);
+        CHECK(mk_string_is_latin1(sub));
+        CHECK_STR(sub, "af\xC3\xA9");
+        MkString *num = mk_string_from_int(-123);
+        CHECK(mk_string_is_latin1(num));
+        CHECK_STR(num, "-123");
+        mk_release(&joined->header);
+        mk_release(&both->header);
+        mk_release(&wide->header);
+        mk_release(&narrow->header);
+    }
 
     /* heap strings have refcount 1 and no user-visible flags */
     s = mk_string_from_int(1);

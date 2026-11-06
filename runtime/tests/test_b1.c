@@ -43,7 +43,7 @@ static char *make_temp_directory(void) {
 }
 
 static MkString *join_path(const MkString *base, const char *suffix) {
-    char *base_utf8 = mk_utf16_to_utf8(base->chars, (size_t)base->length, NULL);
+    char *base_utf8 = mk_string_to_utf8(base, NULL);
     if (base_utf8 == NULL) abort();
     size_t n = strlen(base_utf8), m = strlen(suffix);
     if (m > SIZE_MAX - 2 || n > SIZE_MAX - m - 2) abort();
@@ -61,7 +61,7 @@ static MkString *join_units(const MkString *base, const MkChar *suffix, size_t s
     size_t prefix = (size_t)base->length;
     if (prefix >= (size_t)INT32_MAX || suffix_length > (size_t)INT32_MAX - prefix - 1) abort();
     MkString *result = mk_string_alloc((MkInt)(prefix + 1 + suffix_length));
-    if (prefix > 0) memcpy(result->chars, base->chars, prefix * sizeof(MkChar));
+    if (prefix > 0) mk_string_copy_chars(base, 0, (MkInt)prefix, result->chars);
     result->chars[prefix] = '/';
     if (suffix_length > 0)
         memcpy(result->chars + prefix + 1, suffix, suffix_length * sizeof(MkChar));
@@ -72,7 +72,7 @@ static wchar_t *to_wide_units(const MkString *path) {
     size_t n = (size_t)path->length;
     wchar_t *wide = malloc((n + 1) * sizeof(*wide));
     if (wide == NULL) abort();
-    for (size_t i = 0; i < n; i++) wide[i] = path->chars[i] == '/' ? L'\\' : (wchar_t)path->chars[i];
+    for (size_t i = 0; i < n; i++) wide[i] = mk_string_at(path, (MkInt)i) == '/' ? L'\\' : (wchar_t)mk_string_at(path, (MkInt)i);
     wide[n] = L'\0';
     return wide;
 }
@@ -115,7 +115,7 @@ int main(void) {
     CHECK(back != NULL);
     if (back != NULL) {
         CHECK(back->length == t->length);
-        CHECK(memcmp(back->chars, t->chars, (size_t)t->length * sizeof(MkChar)) == 0);
+        CHECK(mk_string_equals(back, t));
         mk_release(&back->header);
     }
     mk_release(&t->header);
@@ -135,7 +135,7 @@ int main(void) {
     back = mk_b1_read_file(path);
     CHECK(back != NULL && back->length == 100000);
     if (back != NULL) {
-        CHECK(memcmp(back->chars, big->chars, 100000 * sizeof(MkChar)) == 0);
+        CHECK(mk_string_equals(back, big));
         mk_release(&back->header);
     }
     mk_release(&big->header);
@@ -198,16 +198,16 @@ int main(void) {
         const MkChar expected_names[] = {'f', 0xd800, 'x', '\n', 0xe000, '\n', 0xd800, 0xdc00};
         CHECK_EQ_INT(raw_list->length, sizeof expected_names / sizeof *expected_names);
         for (size_t i = 0; i < sizeof expected_names / sizeof *expected_names; i++)
-            CHECK_EQ_INT(raw_list->chars[i], expected_names[i]);
+            CHECK_EQ_INT(mk_string_at(raw_list, (MkInt)i), expected_names[i]);
         mk_release(&raw_list->header);
     }
     back = mk_b1_read_file(raw_path);
     CHECK(back != NULL);
     if (back != NULL) {
         CHECK_EQ_INT(back->length, 3);
-        CHECK_EQ_INT(back->chars[0], 'r');
-        CHECK_EQ_INT(back->chars[1], 'a');
-        CHECK_EQ_INT(back->chars[2], 'w');
+        CHECK_EQ_INT(mk_string_at(back, 0), 'r');
+        CHECK_EQ_INT(mk_string_at(back, 1), 'a');
+        CHECK_EQ_INT(mk_string_at(back, 2), 'w');
         mk_release(&back->header);
     }
     CHECK(mk_b1_delete(raw_path));
@@ -277,11 +277,11 @@ int main(void) {
     if (wide_value != NULL) {
         MkString *wide_string = (MkString *)wide_value;
         CHECK_EQ_INT(wide_string->length, 5);
-        CHECK_EQ_INT(wide_string->chars[0], 'w');
-        CHECK_EQ_INT(wide_string->chars[1], 0xd83d);
-        CHECK_EQ_INT(wide_string->chars[2], 0xde00);
-        CHECK_EQ_INT(wide_string->chars[3], 0xd800); /* unpaired UTF-16 unit survives */
-        CHECK_EQ_INT(wide_string->chars[4], 'z');
+        CHECK_EQ_INT(mk_string_at(wide_string, 0), 'w');
+        CHECK_EQ_INT(mk_string_at(wide_string, 1), 0xd83d);
+        CHECK_EQ_INT(mk_string_at(wide_string, 2), 0xde00);
+        CHECK_EQ_INT(mk_string_at(wide_string, 3), 0xd800); /* unpaired UTF-16 unit survives */
+        CHECK_EQ_INT(mk_string_at(wide_string, 4), 'z');
         mk_release(wide_value);
     }
     mk_release(args);

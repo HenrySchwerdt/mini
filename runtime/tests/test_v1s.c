@@ -90,6 +90,44 @@ int main(void) {
     mk_release(&surrogate_snapshot->header);
     mk_release(zero_fill_sb);
 
+    /* a big narrow builder shares its buffer with the string (mk_sb_to_string) until it is changed */
+    {
+        MkObject *big = mk_sb_new();
+        for (int i = 0; i < 200000; i++) mk_sb_append_char(big, (MkChar)('a' + i % 26));
+        MkString *s1 = mk_sb_to_string(big);
+        CHECK_EQ_INT(s1->length, 200000);
+        CHECK(mk_string_is_latin1(s1));
+        MkString *s2 = mk_sb_to_string(big); /* unchanged: the same string */
+        CHECK(s1 == s2);
+        mk_release(&s2->header);
+        mk_sb_append_char(big, 'Z'); /* a change: the builder gets its own buffer, the string stays as it was */
+        CHECK_EQ_INT(s1->length, 200000);
+        CHECK_EQ_INT(mk_string_at(s1, 199999), 'a' + 199999 % 26);
+        MkString *s3 = mk_sb_to_string(big);
+        CHECK_EQ_INT(s3->length, 200001);
+        CHECK_EQ_INT(mk_string_at(s3, 200000), 'Z');
+        CHECK(s3 != s1);
+        mk_sb_set_char_at(big, 0, 'X'); /* an edit in place copies a shared buffer first */
+        CHECK_EQ_INT(mk_string_at(s3, 0), 'a');
+        CHECK_EQ_INT(mk_sb_char_at(big, 0), 'X');
+        mk_release(&s3->header);
+        MkString *s4 = mk_sb_to_string(big);
+        mk_sb_set_length(big, 5); /* shortening a shared buffer */
+        CHECK_EQ_INT(s4->length, 200001);
+        CHECK_EQ_INT(mk_string_at(s4, 0), 'X');
+        mk_sb_append_char(big, (MkChar)0x65E5); /* widening */
+        CHECK_EQ_INT(mk_string_at(s4, 200000), 'Z');
+        mk_release(&s4->header);
+        mk_release(&s1->header);
+        mk_release(big); /* a builder that dies while it shares a string */
+        MkObject *big2 = mk_sb_new();
+        for (int i = 0; i < 100000; i++) mk_sb_append_char(big2, 'q');
+        MkString *s5 = mk_sb_to_string(big2);
+        mk_release(big2);
+        CHECK_EQ_INT(mk_string_at(s5, 99999), 'q'); /* the string outlives the builder */
+        mk_release(&s5->header);
+    }
+
     /* StringBuilder */
     MkObject *sb = mk_sb_new();
     MkString *part = U("hello");

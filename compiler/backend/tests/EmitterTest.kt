@@ -94,18 +94,42 @@ class EmitterTest {
 
     @Test
     fun stringLiteralsAreUtf16AndDeduplicated() {
-        val s = MirExpr.StringConst("a\"b\\é\n")
-        val main = MirFunction(
+        // every character below 256: one byte per character (MK_STRING_LITERAL8), still one literal for equal strings
+        val narrow = MirFunction(
             "main", "mk_main", emptyList(), TUnit,
             listOf(
-                MirStmt.Eval(MirExpr.RuntimeCall("mk_println_string", listOf(s), TUnit)),
+                MirStmt.Eval(MirExpr.RuntimeCall("mk_println_string", listOf(MirExpr.StringConst("a\"b\\é\n")), TUnit)),
                 MirStmt.Eval(MirExpr.RuntimeCall("mk_println_string", listOf(MirExpr.StringConst("a\"b\\é\n")), TUnit)),
             ),
         )
-        val c = CEmitter.emit(module(main))
-        assertEquals(1, occurrences(c, "MK_STRING_LITERAL("))
-        assertTrue("u\"a\\\"b\\\\\\x00E9\" u\"" in c, c)
-        assertTrue("\\x000A" in c)
+        val cn = CEmitter.emit(module(narrow))
+        assertEquals(1, occurrences(cn, "MK_STRING_LITERAL8("))
+        assertEquals(0, occurrences(cn, "MK_STRING_LITERAL("))
+        assertTrue("{97,34,98,92,233,10,0}" in cn, cn)
+        // a character of 256 or more: UTF-16 (MK_STRING_LITERAL), deduplicated the same way
+        val wide = MirFunction(
+            "main", "mk_main", emptyList(), TUnit,
+            listOf(
+                MirStmt.Eval(MirExpr.RuntimeCall("mk_println_string", listOf(MirExpr.StringConst("a\"b\\\u20ac\n")), TUnit)),
+                MirStmt.Eval(MirExpr.RuntimeCall("mk_println_string", listOf(MirExpr.StringConst("a\"b\\\u20ac\n")), TUnit)),
+            ),
+        )
+        val cw = CEmitter.emit(module(wide))
+        assertEquals(1, occurrences(cw, "MK_STRING_LITERAL("))
+        assertEquals(0, occurrences(cw, "MK_STRING_LITERAL8("))
+        assertTrue("u\"a\\\"b\\\\\\x20AC\" u\"" in cw, cw)
+        assertTrue("\\x000A" in cw)
+        // a narrow and a wide literal side by side keep their own representation
+        val both = MirFunction(
+            "main", "mk_main", emptyList(), TUnit,
+            listOf(
+                MirStmt.Eval(MirExpr.RuntimeCall("mk_println_string", listOf(MirExpr.StringConst("abc")), TUnit)),
+                MirStmt.Eval(MirExpr.RuntimeCall("mk_println_string", listOf(MirExpr.StringConst("\u20ac")), TUnit)),
+            ),
+        )
+        val cb = CEmitter.emit(module(both))
+        assertEquals(1, occurrences(cb, "MK_STRING_LITERAL8("))
+        assertEquals(1, occurrences(cb, "MK_STRING_LITERAL("))
     }
 
     @Test
