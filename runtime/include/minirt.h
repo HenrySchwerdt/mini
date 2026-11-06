@@ -779,6 +779,9 @@ MkLong mk_sys_epoch_millis(void);
 /* IEEE 754 bits of a Double / Float. */
 MkLong mk_sys_double_bits(MkDouble v);
 MkInt mk_sys_float_bits(MkFloat v);
+/* The Double / Float with the given IEEE 754 bits (Double.fromBits, Float.fromBits). */
+MkDouble mk_sys_bits_double(MkLong bits);
+MkFloat mk_sys_bits_float(MkInt bits);
 /* ---- end SYS ---- */
 
 /* ---- D1 ---- */

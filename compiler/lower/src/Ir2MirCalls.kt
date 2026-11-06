@@ -506,6 +506,7 @@ internal fun Ir2Mir.primitiveMember(
             "hashCode" -> MirExpr.RuntimeCall("mk_string_hash", listOf(recv), TInt)
             "equals" -> anyMember(1, v, c, out)
             "get" -> MirExpr.RuntimeCall("mk_string_get_char", listOf(recv, v[1]), TChar)
+            "subSequence" -> MirExpr.RuntimeCall("mk_string_substring", listOf(recv, v[1], v[2]), TString)
             else -> unsupported(c, "call to 'kotlin.String.$name'")
         }
     }

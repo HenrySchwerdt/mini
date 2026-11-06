@@ -226,17 +226,19 @@ internal class CharProgressionIterator(first: Char, last: Char, val step: Int) :
 
 // ---- last element of a progression (kotlin.internal.progressionUtil) -------------------------------------
 
-private fun differenceModulo(a: Int, b: Int, c: Int): Int {
-    val ac = a % c
-    val bc = b % c
-    return if (ac >= bc) ac - bc else ac - bc + c
+private fun mod(a: Int, b: Int): Int {
+    val mod = a % b
+    return if (mod >= 0) mod else mod + b
 }
 
-private fun differenceModulo(a: Long, b: Long, c: Long): Long {
-    val ac = a % c
-    val bc = b % c
-    return if (ac >= bc) ac - bc else ac - bc + c
+private fun mod(a: Long, b: Long): Long {
+    val mod = a % b
+    return if (mod >= 0) mod else mod + b
 }
+
+private fun differenceModulo(a: Int, b: Int, c: Int): Int = mod(mod(a, c) - mod(b, c), c)
+
+private fun differenceModulo(a: Long, b: Long, c: Long): Long = mod(mod(a, c) - mod(b, c), c)
 
 internal fun getProgressionLastElement(start: Int, end: Int, step: Int): Int = when {
     step > 0 -> if (start >= end) end else end - differenceModulo(end, start, step)

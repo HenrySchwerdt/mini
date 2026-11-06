@@ -23,3 +23,9 @@ public external fun doubleToBits(v: Double): Long
 
 @CSymbol("mk_sys_float_bits")
 public external fun floatToBits(v: Float): Int
+
+@CSymbol("mk_sys_bits_double")
+public external fun bitsToDouble(bits: Long): Double
+
+@CSymbol("mk_sys_bits_float")
+public external fun bitsToFloat(bits: Int): Float

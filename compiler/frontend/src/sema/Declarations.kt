@@ -21,6 +21,33 @@ fun Sema.returnTypeOf(f: FunSym): Type {
     return f.returnType ?: ErrType("no return type")
 }
 
+/**
+ * A function of an API stub whose body the stub keeps ([StubRules.keepsBody]: an `inline` function or an expression body). Checking
+ * such a body costs the compile time of every library function that nobody calls, so it is deferred until the function is used:
+ * [BodyChecker.record] checks it when a call (or a reference) resolves to it, and [returnTypeOf] when its signature needs the body.
+ */
+fun Sema.isLazyStubFun(f: FunSym): Boolean {
+    if (f.bodyChecked) return false
+    val d = f.decl ?: return false
+    if (f.file?.declOnly != true || d.body == null) return false
+    return f.kind != FunKind.LOCAL && f.kind != FunKind.ANONYMOUS && StubRules.keepsBody(d)
+}
+
+/** What a declaration needs of a function whose body is deferred ([isLazyStubFun]): its signature and the default values of its parameters. */
+fun Sema.checkStubFunSignature(f: FunSym) {
+    if (f.stubSigChecked) return
+    f.stubSigChecked = true
+    val file = f.file ?: return
+    val d = f.decl ?: return
+    ensureSig(f)
+    val bc = BodyChecker(this, file)
+    for (tp in f.typeParams) ensureBounds(tp)
+    bc.checkAnnotations(d.mods)
+    for (p in d.params) bc.checkAnnotations(p.mods)
+    recordFunSignature(bc, f)
+    bc.checkFunBody(f, 1)
+}
+
 fun Sema.checkFun(f: FunSym) {
     if (f.bodyChecked) return
     f.bodyChecked = true
@@ -30,11 +57,15 @@ fun Sema.checkFun(f: FunSym) {
     val needs = d.returnType == null && d.expressionBody
     if (needs) f.retState = 1
     val bc = BodyChecker(this, file)
-    for (tp in f.typeParams) ensureBounds(tp)
-    bc.checkAnnotations(d.mods)
-    for (p in d.params) bc.checkAnnotations(p.mods)
-    recordFunSignature(bc, f)
-    bc.checkFunBody(f)
+    if (f.stubSigChecked) {
+        bc.checkFunBody(f, 2)
+    } else {
+        for (tp in f.typeParams) ensureBounds(tp)
+        bc.checkAnnotations(d.mods)
+        for (p in d.params) bc.checkAnnotations(p.mods)
+        recordFunSignature(bc, f)
+        bc.checkFunBody(f)
+    }
     if (needs) {
         f.retState = 2
         if (f.returnType == null) f.returnType = ErrType("no return type")
@@ -265,7 +296,7 @@ fun Sema.checkClass(c: ClassSym) {
         when (m) {
             is FunDecl -> {
                 val f = declSyms[m] as? FunSym
-                if (f != null) checkFun(f)
+                if (f != null) { if (isLazyStubFun(f)) checkStubFunSignature(f) else checkFun(f) }
             }
             is PropertyDecl -> {
                 val p = declSyms[m] as? PropSym

@@ -530,7 +530,13 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
         }
         if (pt is ClassType) {
             if (pt.cls === sema.anyType.cls) return true
-            if (pt.cls.isFunInterface) return true
+            if (pt.cls.isFunInterface) {
+                // `compareBy(comparator, selector)` against `compareBy({ it.a }, { it.b })`: a lambda without parameters cannot be a two-argument SAM
+                val sf = samFunType(pt) ?: return true
+                if (u is LambdaExpr) return if (u.hasArrow) u.params.size == sf.params.size else sf.params.size <= 1
+                if (u is AnonFunExpr) return u.fn.params.size == sf.params.size
+                return true
+            }
             return false
         }
         return pt is TypeParamType
@@ -861,6 +867,8 @@ fun BodyChecker.byLambdaResult(ok: List<Attempt>, args: List<Arg>): List<Attempt
     for (a in ok) {
         if (a.cand.fn.name != first.cand.fn.name || a.cand.fn.owner !== first.cand.fn.owner) return ok
         if (a.argParam[li] !is FunType) return ok
+        // `compareBy(selector)` / `compareBy(vararg selectors)`: the overloads differ in the shape of the parameters, not in the lambda's result
+        if (a.params[a.binding.paramOfArg[li]].isVararg) return ok
     }
     val cs = first.cs
     val ft = cs.resolveFixed(first.argParam[li] ?: return ok) as? FunType ?: return ok
@@ -1007,7 +1015,15 @@ fun BodyChecker.samFunType(t: ClassType): FunType? {
             for (f in l) {
                 if (f.isAbstract) {
                     sema.ensureSig(f)
-                    val m = ops.substOf(st)
+                    val m = HashMap<TypeParamSym, Type>(ops.substOf(st))
+                    // `Comparator<in T>`: a lambda converted to it takes `T`s (not captures of the projection)
+                    var ai = 0
+                    for (tp in c.typeParams) {
+                        val pa = if (ai < st.args.size) st.args[ai] else null
+                        val pt0 = pa?.type
+                        if (pa != null && pt0 != null && pa.variance != Variance.INV) m[tp] = pt0
+                        ai++
+                    }
                     val ps = ArrayList<Type>()
                     for (p in f.params) ps.add(ops.substitute(p.type ?: ErrType("sam"), m))
                     return FunType(null, ps, ops.substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)

@@ -16,6 +16,10 @@ public open class HashSet<E> : AbstractMutableSet<E> {
         map = HashMap(initialCapacity)
     }
 
+    public constructor(initialCapacity: Int, loadFactor: Float) : this(initialCapacity) {
+        if (loadFactor <= 0.0f || loadFactor != loadFactor) mini.internal.throwIllegalArgument("Illegal load factor: $loadFactor")
+    }
+
     public constructor(elements: Collection<E>) {
         // java.util.HashSet: new HashMap<>(Math.max((int) (c.size()/.75f) + 1, 16))
         val n = (elements.size.toDouble() / 0.75).toInt() + 1
@@ -53,6 +57,8 @@ public open class LinkedHashSet<E> : HashSet<E> {
     public constructor() : super(LinkedHashMap<E, Any?>())
 
     public constructor(initialCapacity: Int) : super(LinkedHashMap<E, Any?>(initialCapacity))
+
+    public constructor(initialCapacity: Int, loadFactor: Float) : super(LinkedHashMap<E, Any?>(initialCapacity, loadFactor))
 
     public constructor(elements: Collection<E>) : super(LinkedHashMap<E, Any?>()) {
         addAll(elements)

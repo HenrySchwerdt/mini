@@ -98,6 +98,37 @@ public abstract class Random {
 
     public open fun nextFloat(): Float = nextBits(24) / (1 shl 24).toFloat()
 
+    public open fun nextBytes(array: ByteArray, fromIndex: Int = 0, toIndex: Int = array.size): ByteArray {
+        if (fromIndex < 0 || fromIndex > array.size || toIndex < 0 || toIndex > array.size) {
+            throw IllegalArgumentException("fromIndex (" + fromIndex + ") or toIndex (" + toIndex + ") are out of range: 0.." + array.size + ".")
+        }
+        if (fromIndex > toIndex) {
+            throw IllegalArgumentException("fromIndex (" + fromIndex + ") must be not greater than toIndex (" + toIndex + ").")
+        }
+        val steps = (toIndex - fromIndex) / 4
+        var position = fromIndex
+        var step = 0
+        while (step < steps) {
+            val v = nextInt()
+            array[position] = v.toByte()
+            array[position + 1] = (v ushr 8).toByte()
+            array[position + 2] = (v ushr 16).toByte()
+            array[position + 3] = (v ushr 24).toByte()
+            position += 4
+            step++
+        }
+        val remainder = toIndex - position
+        val vr = nextBits(remainder * 8)
+        var i = 0
+        while (i < remainder) {
+            array[position + i] = (vr ushr (i * 8)).toByte()
+            i++
+        }
+        return array
+    }
+
+    public open fun nextBytes(size: Int): ByteArray = nextBytes(ByteArray(size))
+
     public companion object Default : Random() {
         private val defaultRandom: Random = Random(epochMillis())
         override fun nextBits(bitCount: Int): Int = defaultRandom.nextBits(bitCount)

@@ -311,6 +311,8 @@ public interface List<out E> : Collection<E> {
  * @param E the type of elements contained in the list. The mutable list is invariant in its element type.
  */
 public interface MutableList<E> : List<E>, MutableCollection<E> {
+    override fun iterator(): MutableIterator<E>
+
     // Modification Operations
     /**
      * Adds the specified element to the end of this list.
