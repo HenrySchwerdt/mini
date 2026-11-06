@@ -503,7 +503,9 @@ fun Ast2Ir.superExpr(e: SuperExpr): IrExpression {
     while (c != null) {
         for (i in c.recvs.indices.reversed()) {
             val re = c.recvs[i]
-            if (re.cls != null) return IrGetValue(re.param, re.param.type, null)
+            // `super@A.f()`: the receiver of the labelled class
+            val rc = re.cls
+            if (rc != null && (e.label == null || rc.name == e.label)) return IrGetValue(re.param, re.param.type, null)
         }
         c = c.parent
     }

@@ -47,6 +47,27 @@ internal fun Ir2Mir.callArgs(
         val lv: MirExpr = if (v is MirExpr.Local) v else tmpOfPlain(v, out)
         saved += p to locals[p]
         locals[p] = (lv as MirExpr.Local).local
+        // the default value of a parameter of an inner class (its constructor or a member) may read the outer instances (`this@Outer`):
+        // the dispatch argument is the instance of the nearest one (of the class itself for a member), the others are behind `$outer`
+        if (i == 0 && p.kind == IrParameterKind.DispatchReceiver && callee.parent is IrClass) {
+            val owner = callee.parent as IrClass
+            var k: IrClass? = if (callee is IrConstructor) (if (owner.isInner) owner.parent as? IrClass else null) else (if (owner.isInner) owner else null)
+            if (callee is IrConstructor && k != null) {
+                // the dispatch argument is the outer instance
+                val ot = k.thisReceiver
+                if (ot != null) { saved += ot to locals[ot]; locals[ot] = lv.local }
+            }
+            var cur: MirLocal = lv.local
+            while (k != null && k.isInner) {
+                val oc = k.parent as? IrClass ?: break
+                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
+                val ot = oc.thisReceiver
+                if (ot != null) { saved += ot to locals[ot]; locals[ot] = l }
+                cur = l
+                k = oc
+            }
+        }
         // the default of an overridden function reads the parameters of that function
         if (callee is IrSimpleFunction) for (o in allOverridden(callee)) {
             val op = o.parameters.getOrNull(i) ?: continue
