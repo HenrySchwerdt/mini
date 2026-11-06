@@ -5,6 +5,8 @@ import mini.backend.Devirt
 import mini.backend.Mangling
 import mini.backend.WasmGlue
 import mini.backend.MirModule
+import mini.backend.MirOpt
+import mini.backend.MirOptions
 import mini.backend.MirReader
 import mini.backend.MirFunction
 import mini.backend.MirExpr
@@ -138,6 +140,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     var llOut: String? = null
     var cOut: String? = null
     var rcOpt = true
+    val optOptions = MirOptions()
     var noDevirt = false
     var wasm32 = false
     var wasmLib = false
@@ -268,6 +271,8 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         } else if (a == "--no-rc-opt") {
             rcOpt = false
             i += 1
+        } else if (optOptions.accept(a)) {
+            i += 1
         } else if (a == "--check") {
             check = true
             i += 1
@@ -390,7 +395,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         reportMemory(report, name, werror, brief, diag)
         return
     }
-    val module = try {
+    val unoptimized = try {
         if (separateMlibs && ordered.isNotEmpty()) {
             val userModule = lowerToMirAgainstLibs(inputs, ordered, name, lineDirs, { report -> reportMemory(report, name, werror, false, diag) })
             validateMlibFailures(userModule, ordered)
@@ -405,6 +410,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         reportFrontend(e, name, diag)
         throw DriverExit(1)
     }
+    val module = if (separateMlibs || wasmLib) unoptimized else MirOpt.run(unoptimized, optOptions) { line -> errln(line) }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (wasmLib) {
         if (module.functions.any { it.cName == Mangling.MAIN }) {
@@ -459,7 +465,11 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
             val classes = ArrayList<mini.backend.MirClass>()
             classes.addAll(classByName.values)
             for (c in module.classes) if (!classByName.containsKey(c.cName)) classes.add(c)
-            val withLibraryClasses = MirModule(module.sourceName, module.functions, classes, module.externs, module.includes, module.links, module.wasmExports)
+            // generated helpers (the mk.Ref cell of a captured var, ...) have the same stable names in the program and in a
+            // library object: the library's definition is the one that is linked
+            val libraryFunctionNames = allFunctions.mapTo(HashSet()) { it.cName }
+            val userFunctions = module.functions.filter { it.cName !in libraryFunctionNames }
+            val withLibraryClasses = MirModule(module.sourceName, userFunctions, classes, module.externs, module.includes, module.links, module.wasmExports)
             writeTextFile(llOut, LlvmEmitter.emit(
                 withLibraryClasses, rcOpt, target = LlvmTarget.WASM32,
                 externalClassNames = classNames,

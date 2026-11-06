@@ -63,6 +63,12 @@ fun main() {
     val b = counterB()
     println(b())
     println(b())
+    // the program's own mutable capture: its cell class (mk.Ref of Int) also exists in the stdlib object, which provides it
+    var own = 100
+    val bump = { own += 1 }
+    bump()
+    bump()
+    println(own)
     try {
         failNothing()
     } catch (e: IllegalStateException) {
@@ -104,7 +110,7 @@ $Y --mount "$w" clang --target=wasm32-wasip1 -Wl,--fatal-warnings \
 
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/split.wasm" >"$work/split.out"
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/mono.wasm" >"$work/mono.out"
-printf '7\n7\n6\n7\n40\n41\ncaught nothing\ncaught forwarded int\n' >"$work/expected.out"
+printf '7\n7\n6\n7\n40\n41\n102\ncaught nothing\ncaught forwarded int\n' >"$work/expected.out"
 cmp "$work/expected.out" "$work/split.out"
 cmp "$work/expected.out" "$work/mono.out"
 cmp "$work/mono.out" "$work/split.out"

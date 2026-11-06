@@ -241,6 +241,7 @@ esac
 
 out=""; emit=""; opt=""; debug=0; cc_arg=""; backend="$DEFAULT_BACKEND"; werror=0; norc=0; verbose=0; timing=0; brief=0
 limit=""
+XOPTS=""
 SRCLIST=""
 nargs=$#
 while [ "$nargs" -gt 0 ]; do
@@ -249,6 +250,10 @@ while [ "$nargs" -gt 0 ]; do
     case "$a" in
         --*=*) name="${a%%=*}"; val="${a#*=}"; has_val=1 ;;
         -o?*) name="-o"; val="${a#-o}"; has_val=1 ;;
+    esac
+    case "$a" in
+        -Xno-*|-Xopt-stats) XOPTS="$XOPTS$a
+"; continue ;;   # MIR optimization switches (compiler/backend/src/opt/MirOpt.kt): passed to minic-native as they are
     esac
     case "$a" in
         --) break ;;
@@ -369,6 +374,7 @@ frontend() { # <mode: check|build> [<c file>]
 "; fi
     if [ "$norc" = 1 ]; then NATIVE_ARGS="$NATIVE_ARGS--no-rc-opt
 "; fi
+    NATIVE_ARGS="$NATIVE_ARGS$XOPTS"
     # debug builds: #line directives, so the debugger, sanitizers and crash reports point to the .kt file
     if [ "$debug" = 1 ] && [ "$1" = build ]; then NATIVE_ARGS="$NATIVE_ARGS--line-directives
 "; fi
@@ -448,6 +454,7 @@ $native_link_flags
 "; fi
     if [ "$norc" = 1 ]; then NATIVE_ARGS="$NATIVE_ARGS--no-rc-opt
 "; fi
+    NATIVE_ARGS="$NATIVE_ARGS$XOPTS"
     if [ "$debug" = 1 ] && [ -n "$emit" ]; then NATIVE_ARGS="$NATIVE_ARGS--line-directives
 "; fi
     if [ -n "$emit" ]; then NATIVE_ARGS="$NATIVE_ARGS--emit-c

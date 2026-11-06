@@ -140,6 +140,16 @@ private class Lowering<V : Any, B : Any>(
 
     fun isExternalClass(c: MirClass): Boolean = c.external || c.cName in externalClassNames
 
+    /**
+     * Whole-program output (nothing else links against it): the program's functions are internal, so the optimizer can inline
+     * them, drop the inlined ones and treat them as closed-world (not for libraries, separate modules, the REPL and `main`).
+     */
+    val closedWorld: Boolean = !externalClasses && !externalFunctions && externalClassNames.isEmpty() && exportedClassNames.isEmpty() &&
+        !target.wasmLib && module.wasmExports.isEmpty() && externalFunctionSignatures.isEmpty() &&
+        module.functions.any { it.cName == Mangling.MAIN }
+
+    fun fnLinkage(cName: String): IrLinkage = if (closedWorld && cName != Mangling.MAIN) IrLinkage.INTERNAL else IrLinkage.EXTERNAL
+
     // module level
     val literals = HashMap<String, V>() // kotlin value -> global
     val cstrings = HashMap<String, V>() // text -> global
@@ -195,11 +205,11 @@ private class Lowering<V : Any, B : Any>(
     fun predeclare() {
         for (f in module.functions) {
             val name = fname(f.cName)
-            b.declareDefined(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
+            b.declareDefined(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, IrAttrs.STD, fnLinkage(f.cName))
             val cls = f.constructorOf
             if (cls != null) {
                 val ps = f.params.drop(1)
-                b.declareDefined("${f.cName}_new", IrType.PTR, IrExt.NONE, ps.map { ity(it.type) }, ps.map { ext(it.type) }, IrAttrs.STD, IrLinkage.EXTERNAL)
+                b.declareDefined("${f.cName}_new", IrType.PTR, IrExt.NONE, ps.map { ity(it.type) }, ps.map { ext(it.type) }, IrAttrs.STD, fnLinkage(f.cName))
             }
         }
         for (f in externalFunctionSignatures) {
@@ -1021,7 +1031,7 @@ private class Lowering<V : Any, B : Any>(
                 else -> "mk_alloc_plain"
             }
             val alloc = declare(allocName, TString, listOf(TString))
-            beginGenerated(IrSection.CLASSES, "${f.cName}_new", TString, pnames, ptypes, pexts, IrLinkage.EXTERNAL)
+            beginGenerated(IrSection.CLASSES, "${f.cName}_new", TString, pnames, ptypes, pexts, fnLinkage(f.cName))
             val a = call(TString, alloc, listOf(TString), listOf(b.global("${cls}_ti")))
             val argv = ArrayList<V>()
             val argt = ArrayList<MirType>()
@@ -1044,7 +1054,7 @@ private class Lowering<V : Any, B : Any>(
             b.blankLine(IrSection.CLASSES)
             if (f.cName in newaUsed) {
                 // the same through a chosen allocator (Strict code); `al` is the address of the MkAllocator (0: the default one)
-                beginGenerated(IrSection.CLASSES, "${f.cName}_newa", TString, listOf("al") + pnames, listOf(IrType.I64) + ptypes, listOf(IrExt.NONE) + pexts, IrLinkage.EXTERNAL)
+                beginGenerated(IrSection.CLASSES, "${f.cName}_newa", TString, listOf("al") + pnames, listOf(IrType.I64) + ptypes, listOf(IrExt.NONE) + pexts, fnLinkage(f.cName))
                 var alp = b.param(0)
                 if (pb == 4) alp = cvt(IrCast.TRUNC, alp, IrType.I32)
                 val ap = cvt(IrCast.INTTOPTR, alp, IrType.PTR)
@@ -1106,7 +1116,7 @@ private class Lowering<V : Any, B : Any>(
         b.beginFunction(
             IrSection.FUNCTIONS, fname(f.cName), ity(f.returnType), rext(f.returnType),
             f.params.map { "in_" + Mangling.local(it.name, it.id) }, f.params.map { ity(it.type) }, f.params.map { ext(it.type) },
-            IrAttrs.STD, IrLinkage.EXTERNAL,
+            IrAttrs.STD, fnLinkage(f.cName),
         )
         curBlock = b.entryBlock()
         for ((i, p) in f.params.withIndex()) {
