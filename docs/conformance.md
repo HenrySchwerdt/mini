@@ -17,7 +17,7 @@ MINIC=/path/to/other/bin/minic tools/conformance/run.sh             # another to
   `v2.0.21` (commit `284e9b4041bd815b5b1b489070bbb1f1db6de35c`, see `run.sh`). Only the two test directories are checked out.
 * Tests run in parallel (`--jobs`, default: number of CPUs). A binary gets `--timeout` seconds (10), a compilation 90.
 * Output: `tools/conformance/results/results.json` (every test with status, first diagnostic and the failure buckets) and
-  `summary.md` (counts, skip reasons, the largest failure buckets).
+  `summary.md` (counts, the Native-parity number, skip reasons, the largest failure buckets).
 * Statuses: `pass`, `compile-error` (minic exit 1), `ice` (minic crashed or the C compiler rejected the generated code),
   `runtime-fail` (wrong result or non-zero exit), `crash` (the program died from a signal), `timeout`, `skipped`.
 * Failure buckets group the failures by status and the first diagnostic with quoted names, numbers and paths removed.
@@ -188,7 +188,19 @@ arrays, Float/Double range operators on `Comparable` ranges, `Double.fromBits`, 
 
 ## Fifth round (a) (branch claude/conformance-5a)
 
-__TABLE__
+| | after round 4 | round 5 (a) |
+|---|---:|---:|
+| **pass (all applicable tests)** | **5243 (87.81%)** | **5425 (90.86%)** |
+| Native parity (see above) | 5243 (87.81%) | 5425 (90.86%) |
+| compile-error | 402 | 381 |
+| ice | 112 | 42 |
+| runtime-fail | 173 | 93 |
+| crash | 39 | 28 |
+| timeout | 2 | 2 |
+
+182 tests moved to `pass`, none of the earlier passes was lost (`results.json` diff). 8 of the 182 come from the harness fixes below, the rest
+from the compiler and the standard library. Most ICEs became passes (73) or runtime failures; a few runtime failures and crashes that were
+hidden behind ICEs are new entries of those buckets.
 
 Harness fixes (they correct false failures, no skip rule changed): the generated `main` sorts first (`00_main.kt`) and calls
 `kotlin.io.println`, so a test that declares its own `fun main(args: Array<String>)` or its own `println` is run through `box()` (before, the
@@ -226,18 +238,21 @@ Wrong-code and crash fixes (programs that compiled and crashed or ran wrongly):
 * the companion object `init` blocks run when the class is first instantiated (the companion was created lazily and never initialised);
 * IEEE comparison of `Double` / `Double?` operands (`-0.0 == 0.0`, `NaN != NaN`, null only equals null) for statically known types;
   the generated `equals` of a data class keeps the total order;
-* a diamond of inherited outer instances (an inner class of an inner class reads a member of the outermost one in an initializer);
-  property references to inherited / imported members (`::v` of a protected property, `::a` of an imported object member).
+* an inner class of an inner class reads a member of the outermost class in an initializer (the outer instances were bound one level deep
+  in constructors); property references to inherited / imported members (`::v` of a protected property, `::a` of an imported object member).
 
 Other fixes: a `Nothing` value (`break`, `continue`, `return`, `throw`) used as an operand or an argument (`fn(return x)`, `for (j in continue
 downTo 1)`) no longer produces invalid C; `Unit` properties; `f() as Any` where `f` returns Unit; `x is Nothing`.
 
-Still open (largest; counts from the final harness run, `summary.md`): the generic safe casts of Kotlin/Native
-(`-Xbinary=genericSafeCasts=true`, 19 tests: Mini does not check casts to type parameters, cost: a check on every generic result), the
-`default argument that refers to an outer this` of inner classes (9), `set` with default / vararg parameters in indexed assignments (6),
-Float / Double range operators (13, stdlib), `Unit` as a comparison operand (8), enum entry self references and `tailrec suspend` (5c),
-generic value classes (5c), primitive companion objects (`Int.Companion`, 8), the evaluation of a bound receiver in `try` / `finally`
-inline expansions (`returnInFinally`), equality of coercion-to-Unit references (3), arrays in data class `toString` (2).
+Still open (largest, from `tools/conformance/results/summary.md`): the generic safe casts of Kotlin/Native
+(`-Xbinary=genericSafeCasts=true`, 19 tests: Mini does not check casts to type parameters, a check would cost a type test on every generic
+result), default arguments of inner class constructors that refer to an outer `this` (`this@A` in `inner class C(val a: A = this@A)`, 9),
+`set` with default or `vararg` parameters in indexed assignments / increments (6 ICEs), Float / Double range operators and `contains` on
+comparable ranges (13 ICEs, standard library), `Unit` as an operand of `==` (5), primitive companion objects (`Int.Companion`, 8),
+enum entry self references and `tailrec suspend` (5c), generic value classes (5c), the inline expansion of `try` / `finally` with `return`
+in the finally block (`returnInFinally`, signal 11), a SAM conversion to a fun interface with a suspend method (signal 11), equality of
+references with a coercion to Unit (3), arrays in the `toString` of data classes (2), the local classes that capture loop variables of an
+enclosing local class (2), the C compiler rejects of `Unit` / `Nothing` values in a few more positions (8).
 
 ## Results
 

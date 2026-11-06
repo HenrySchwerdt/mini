@@ -86,8 +86,9 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$name", TString, MirExpr.Local(params[1]))
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$ordinal", TInt, MirExpr.Local(params[2]))
     }
-    if (f is IrConstructor && f.parent is IrClass) {
-        // creating an instance initialises the class, which runs the `init` blocks of its companion object (the objects are lazy here)
+    if (f is IrConstructor && f.parent is IrClass && (f.parent as IrClass).kind == IrClassKind.CLASS) {
+        // creating an instance initialises the class, which runs the `init` blocks of its companion object (the objects are lazy here);
+        // not for enums: their companion is initialised after the entries (it may read `values()`)
         val comp = (f.parent as IrClass).declarations.filterIsInstance<IrClass>().firstOrNull { it.isCompanion }
         if (comp != null && comp in classInfos && comp.declarations.any { it is IrAnonymousInitializer }) {
             out += MirStmt.Eval(MirExpr.ObjectGet(info(comp).cName, typeOf(comp)))
