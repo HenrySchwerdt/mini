@@ -549,8 +549,20 @@ fun Ast2Ir.isFloating(t: Type): Boolean {
 
 fun Ast2Ir.equality(e: BinaryExpr): IrExpression {
     val ident = e.op == "===" || e.op == "!=="
-    var l = if (ident) convert(e.left) else convertEqOperand(e.left)
-    var r = if (ident) convert(e.right) else convertEqOperand(e.right)
+    // ProperIeee754Comparisons: operands smart cast to Double / Float (`x is Double && y is Double && x == y`) compare as
+    // numbers (-0.0 == 0.0, NaN != NaN), not with equals()
+    var smartIeee = false
+    if (!ident && (rec(unparen(e.left))?.smart != null || rec(unparen(e.right))?.smart != null)) {
+        val lt = rec(unparen(e.left))?.let { it.smart ?: it.type }
+        val rt = rec(unparen(e.right))?.let { it.smart ?: it.type }
+        smartIeee = lt != null && rt != null && !lt.nullable && !rt.nullable && isFloating(lt) && isFloating(rt)
+    }
+    var l = if (ident) convert(e.left) else if (smartIeee) convert(e.left) else convertEqOperand(e.left)
+    var r = if (ident) convert(e.right) else if (smartIeee) convert(e.right) else convertEqOperand(e.right)
+    if (smartIeee && l.type.classFqName != r.type.classFqName) {
+        l = convertNumber(l, "kotlin.Double")
+        r = convertNumber(r, "kotlin.Double")
+    }
     if (!ident && !l.type.nullable && !r.type.nullable && isSmallNumber(l.type.classFqName) && isSmallNumber(r.type.classFqName)) {
         // Byte and Short are compared as Int (K2 does the same)
         l = convertNumber(l, "kotlin.Int")
