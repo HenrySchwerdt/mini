@@ -226,3 +226,24 @@ Fix (CI): EmitterTest.stringLiteralsAreUtf16AndDeduplicated asserted the UTF-16-
 (MK_STRING_LITERAL8 for all-below-256 strings, MK_STRING_LITERAL otherwise) including deduplication of each and a mixed module. The emitter was correct.
 Full `mini test -p backend -p frontend -p native-driver -p mini-tool`: exit 0 (103 + 33 + 2 + 79 tests). check-purity's "backend: unbound variable"
 is on origin/main too (scripts/check-purity.sh is identical there; `declare -A` does not exist in the macOS bash 3.2).
+
+## Layout (claude/layout): field reordering, subclass tail-padding fill
+
+Tool: `minic build x.kt -Xlayout-stats` prints per class size, padding and field offsets, new layout next to the old one
+(declaration order, padded superclass embedded). Shared function: `compiler/backend/src/Layout.kt` (`ObjectLayouts`), used by the
+C emitter (flat structs in offset order plus `_Static_assert` on sizeof and every own offset) and the LLVM backends.
+
+Rules: header first; runtime-defined exception classes (`MkThrowable` prefix) stay a fixed prefix (embedded as `base`); own fields
+placed after the superclass's unpadded data end, largest alignment then size first, gaps filled by the largest field that fits.
+Deterministic in the class chain alone, so mlibs and wasm objects agree with their users.
+
+Measured (instance size, old -> new):
+* bench programs: no change at all (graph 272/272 B summed over classes, binarytrees 56/56, json 464/464, wordcount 760/760, strbuild 56/56).
+* the compiler itself (851 classes): sum of sizes 38416 -> 37960 B (-1.2%), padding 1885 -> 1429 B; with the allocator's 16 B
+  granules (alloc_small.h) 26 classes drop a granule (41552 -> 41072 B summed). Examples: Ir2Mir 400->368, mini.lower.IrSimpleFunction
+  200->176, mini.backend.memory.AVal 88->72, MFun 176->152, mini.frontend.sema.VarSym 112->96, MirStmt.ForRange 88->80, FnState 80->64.
+* Boolean bit packing (estimate, 247 Boolean fields): only 48 B more over all classes and 3 more classes dropping a granule: not done.
+* self-compile peak RSS (frontend -> C, 3 runs each): base 549032/549388/549252 KiB, head 549588/549628/549404 KiB: no measurable change.
+
+Verdict: the realistic gain is within noise (most padding is the unavoidable 8 B tail round-up, and the allocator rounds to 16 B anyway).
+Recommendation: merge only if the risk is judged acceptable; `-Xlayout-stats` is the durable part.
