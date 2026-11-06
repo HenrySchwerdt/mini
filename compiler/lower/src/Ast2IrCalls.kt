@@ -100,6 +100,7 @@ fun Ast2Ir.propertyGetDot(sym: PropSym, r: ExprRec, t: Type, node: Ast): IrExpre
         val cc = findMember(callee, if (d != null) d else access?.ext)
         val ir = IrCall(cc, inner)
         ir.origin = "GET_PROPERTY"
+        markSuperAccess(ir, d)
         fillAccessorArgs(ir, cc, disp, ext, null)
         ir
     }
@@ -143,6 +144,15 @@ fun Ast2Ir.callWithInfo(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrE
     val dv: IrExpression? = if (d != null) recvValue(d, node) else null
     val xv: IrExpression? = if (x != null) recvValue(x, node) else null
     return buildCall(callee, info, inner, dv, xv, node, label, d)
+}
+
+/** `super.p` / `super<C>.p`: the accessor call is not virtual */
+fun Ast2Ir.markSuperAccess(call: IrCall, use: RecvUse?) {
+    val ux = use?.expr ?: return
+    if (unparen(ux) !is SuperExpr) return
+    val st = recvStaticType(use!!)
+    val sc = if (st != null) classOf(st) else null
+    if (sc != null) call.superQualifier = irClass(sc)
 }
 
 fun Ast2Ir.recvStaticType(u: RecvUse): Type? {

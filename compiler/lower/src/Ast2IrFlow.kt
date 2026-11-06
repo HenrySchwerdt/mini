@@ -53,6 +53,7 @@ fun Ast2Ir.assignExpr(e: BinaryExpr): IrExpression {
             val cc = findMember(callee, access?.dispatch ?: access?.ext)
             val ir = IrCall(cc, unit)
             ir.origin = "EQ"
+            markSuperAccess(ir, access?.dispatch)
             fillAccessorArgs(ir, cc, disp, ext, convert(value))
             ir
         }
