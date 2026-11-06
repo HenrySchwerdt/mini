@@ -236,7 +236,10 @@ class IndexExpr(val receiver: Expr, val indices: List<Expr>) : Expr()
 class DotExpr(val receiver: Expr, val safe: Boolean, val selector: Expr) : Expr()
 
 /** `X::name`, `::name` (receiver null) and `X::class` (name "class") */
-class CallableRefExpr(val receiver: Expr?, val name: String) : Expr()
+class CallableRefExpr(val receiver: Expr?, val name: String) : Expr() {
+    /** `A<Int>::f`: the type arguments written on the receiver class */
+    var typeArgs: List<TypeArg> = emptyList()
+}
 
 class LambdaParam(val mods: Modifiers?, val names: List<DestructEntry>?, val name: String?, val type: TypeRef?) : Ast()
 class LambdaExpr(val params: List<LambdaParam>, val hasArrow: Boolean, val body: List<Stmt>) : Expr() {

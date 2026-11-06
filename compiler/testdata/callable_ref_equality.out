@@ -1,15 +1,18 @@
-top true
-top hash true
-member true
-bound same true
-bound hash true
-bound differs true
-bound vs unbound true
-two members true
-property true
-member property true
-adapted true
-adapted differs true
-adapted bound true
-sam true
-lambda true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+2

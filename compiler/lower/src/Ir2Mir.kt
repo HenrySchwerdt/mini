@@ -55,12 +55,12 @@ class Ir2Mir {
     internal val extraClasses = ArrayList<MirClass>()
     internal val extraFunctions = ArrayList<MirFunction>()
     internal var lambdaCounter = 0
+    /** the closure class of a function reference by its key (target, bound parameters): references to the same function share a class, which compares equal by its captured values */
+    internal val refClassCache = HashMap<String, Pair<String, TObject>>()
+    internal val refTargetIds = HashMap<IrFunction, Int>()
     internal val refClasses = HashMap<MirType, RefClass>()
     internal val functionInterfaces = HashMap<Int, TObject>()
     internal val liftedFns = HashMap<IrSimpleFunction, LiftedFn>()
-    /** closure classes of callable references by key (equal references share the class, see closureClass) and the ids of their targets */
-    internal val closureCache = HashMap<String, Pair<String, TObject>>()
-    internal val refTargetIds = HashMap<IrFunction, Int>()
     internal val returnTargets = HashMap<IrFunction, InlineReturn>()
     internal var finallyStack = ArrayList<FinCtx>()
     internal val loopFinallyDepth = HashMap<IrLoop, Int>()

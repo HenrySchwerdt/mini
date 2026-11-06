@@ -67,6 +67,19 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
         }
     }
     val retExpected: Type? = if (probe) null else if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
+    // a result type variable that has only a proper upper bound (`useW(call { W(42) })`: `T <: W<Int?>`) expects that bound from the last expression
+    var bodyExpected = retExpected
+    if (bodyExpected == null && !probe && ef != null && cs != null) {
+        val rt = cs.resolveFixed(ef.ret)
+        if (rt is VarType && !rt.nullable && rt.v.fixed == null && rt.v.equal.isEmpty()) {
+            for (u in rt.v.upper) {
+                val ur = cs.resolveFixed(u)
+                if (cs.hasVars(ur) || (ur is ClassType && ur.cls === sema.anyType.cls) || ur is ErrType) continue
+                bodyExpected = ur
+                break
+            }
+        }
+    }
     val target = ReturnTarget(label, retExpected, null, true)
     target.isSuspend = ef != null && ef.suspend
     target.inlinable = inlinable && !target.isSuspend
@@ -82,7 +95,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     for (s in stmts) {
         val isLast = i == stmts.size - 1
         if (s is Expr) {
-            last = expr(s, if (isLast) retExpected else null)
+            last = expr(s, if (isLast) bodyExpected else null)
             if (isLast) lastIsExpr = true
             if (!isLast && ops.isNothing(last)) flow.dead = true
         } else {
@@ -203,6 +216,8 @@ class RefCand(val sym: Sym, val params: List<Type>, val ret: Type, val tps: List
     /** `Obj::member` of an object: bound to the object */
     var objBound = false
     var objType: Type? = null
+    /** the scope group the candidate came from (a `::f` without receiver): the innermost group wins */
+    var level = 0
 }
 
 internal fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<RefCand>) {
@@ -232,7 +247,17 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     val cands = ArrayList<RefCand>()
     val rcv = e.receiver
     if (rcv == null) {
-        for (g in unqualifiedGroups(name)) for (c in g) funRefCand(c, false, cands)
+        var gi = 0
+        for (g in unqualifiedGroups(name)) {
+            for (c in g) {
+                val er0 = c.extRecv
+                if (c.extRef != null && er0 != null && !extFits(c.fn, er0)) continue
+                val before = cands.size
+                funRefCand(c, c.extRef != null, cands)
+                for (k in before until cands.size) cands[k].level = gi
+            }
+            gi++
+        }
         val r = resolveSimpleName(name)
         if (r != null && r.sym is PropSym && r.kind == NameRes.VALUE) {
             val p = r.sym
@@ -244,7 +269,16 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     } else {
         val ri = resolveReceiver(rcv, null)
         if (ri is ClassRecv) {
-            val ct = ri.cls.thisType()
+            var ct = ri.cls.thisType()
+            if (e.typeArgs.isNotEmpty() && e.typeArgs.size == ct.args.size) {
+                // `A<Int>::f`: the receiver type has the written arguments
+                val targs = ArrayList<TArg>()
+                for (ta in e.typeArgs) {
+                    val tt = ta.type
+                    targs.add(if (ta.star || tt == null) TArg(null, Variance.INV) else TArg(sema.resolveType(tt, scope), Variance.INV))
+                }
+                ct = ClassType(ct.cls, targs, false)
+            }
             // `Obj::f` of an object (a companion) is bound to the object
             val objBound = ri.cls.isObject
             for (m in members.funsNamed(ct, name)) {
@@ -271,7 +305,15 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 }
             }
             val nc = ri.cls.nested[name]
-            if (nc != null) for (c in ctorCandidates(nc)) funRefCand(c, false, cands)
+            if (nc != null) for (c in ctorCandidates(nc)) {
+                val before = cands.size
+                funRefCand(c, false, cands)
+                // `Outer::Inner` takes the outer instance first
+                if (nc.isInner) for (k in before until cands.size) {
+                    val rc0 = cands[k]
+                    cands[k] = RefCand(rc0.sym, listOf<Type>(ct) + rc0.params, rc0.ret, rc0.tps, rc0.subst)
+                }
+            }
             for (mp in members.propsNamed(ct, name)) {
                 if (mp.prop.receiver != null) continue
                 val rc = RefCand(mp.prop, if (objBound) emptyList() else listOf(ct), ops.substitute(sema.typeOfProp(mp.prop), mp.subst), emptyList(), mp.subst)
@@ -294,11 +336,17 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, ct, ext)
             for (g in ext) for (c in g) if (extFits(c.fn, ct)) funRefCand(c, false, cands)
+            for (lf in localExtensionFuns(name)) if (extFits(lf, ct)) funRefCand(Candidate(lf, HashMap(), null), false, cands)
         } else if (ri is ValueRecv) {
             val vt = ri.type
             for (m in members.funsNamed(vt, name)) {
                 if (m.fn.decl?.receiver != null) continue
                 funRefCand(Candidate(m.fn, m.subst, null), true, cands)
+            }
+            // `outer::Inner`: the constructor of an inner class, bound to the outer instance
+            for (site in ops.closure(vt)) {
+                val inc = site.cls.nested[name]
+                if (inc != null && inc.isInner) for (c in ctorCandidates(inc)) funRefCand(c, true, cands)
             }
             for (mp in members.propsNamed(vt, name)) {
                 if (mp.prop.receiver != null) continue
@@ -322,6 +370,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             if (cands.isEmpty()) for (g in ext) for (c in g) {
                 if (extFits(c.fn, vt)) funRefCand(Candidate(c.fn, c.subst, null), true, cands)
             }
+            if (cands.isEmpty()) for (lf in localExtensionFuns(name)) if (extFits(lf, vt)) funRefCand(Candidate(lf, HashMap(), null), true, cands)
         }
     }
     if (cands.isEmpty()) {
@@ -352,7 +401,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 }
             }
             if (!ok) continue
-        } else if (cands.size > 1) {
+        } else if (cands.any { it !== c && it.level == c.level }) {
             continue
         }
         chosen = c

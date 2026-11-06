@@ -46,8 +46,6 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
     val localClassCtxs = HashMap<IrClass, BodyCtx?>()
     var pendingLocalCtx: BodyCtx? = null
     val lambdaLabels = HashMap<LambdaExpr, String?>()
-    /** ids of the functions that adapted callable references refer to (the key of the closure class, see IrFunctionExpression.refKey) */
-    val adaptedRefIds = HashMap<FunSym, Int>()
     /** `l@ fun(): T { return@l x }`: the label of an anonymous function */
     val anonFunLabels = HashMap<FunSym, String>()
     val delegatedLocals = HashMap<VarSym, IrLocalDelegatedProperty>()

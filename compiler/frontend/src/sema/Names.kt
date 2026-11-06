@@ -125,6 +125,16 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
                         return r
                     }
                 }
+                // the companion objects of the superclasses
+                for (site in ops.closure(s.cls.thisType())) {
+                    val sc = site.cls.companion
+                    if (sc == null || sc === comp || site.cls === s.cls) continue
+                    val r = memberPropRes(sc.thisType(), name)
+                    if (r != null) {
+                        r.dispatch = RecvRef(sc, null, true)
+                        return r
+                    }
+                }
                 if (s.cls.isObject && !s.instance) {
                     val r = memberPropRes(s.cls.thisType(), name)
                     if (r != null) {
@@ -479,7 +489,8 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         typeArgs = ArrayList()
         for (ta in e.typeArgs) {
             val t = ta.type
-            typeArgs.add(if (t != null) sema.resolveType(t, scope) else sema.nullableAny)
+            val under = t is UserType && t.segments.size == 1 && t.segments[0].name == "_" && t.segments[0].args.isEmpty()
+            typeArgs.add(if (under) INFER_TYPE else if (t != null) sema.resolveType(t, scope) else sema.nullableAny)
         }
     }
     val groups: List<List<Candidate>>

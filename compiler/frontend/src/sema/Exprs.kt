@@ -279,6 +279,10 @@ fun BodyChecker.implicitReceivers(narrow: Boolean = true): List<ImplRecv> {
                 }
                 val comp = s.cls.companion
                 if (comp != null) out.add(ImplRecv(comp.thisType(), comp.name, comp, true, null, RecvRef(comp, null, true)))
+                for (site in ops.closure(s.cls.thisType())) {
+                    val sc = site.cls.companion
+                    if (sc != null && sc !== comp && site.cls !== s.cls) out.add(ImplRecv(sc.thisType(), sc.name, sc, true, null, RecvRef(sc, null, true)))
+                }
                 if (s.cls.isObject && !s.instance) {
                     // an object enclosing a nested class: its members are reachable through the object
                     out.add(ImplRecv(s.cls.thisType(), s.cls.name, s.cls, false, null, RecvRef(s.cls, null, true)))
@@ -330,6 +334,16 @@ fun BodyChecker.superExpr(e: SuperExpr): Type {
         if (ta != null) return sema.resolveType(ta, scope)
         sema.ensureSupertypes(c)
         val sc = sema.superclassOf(c)
+        // unqualified `super` of a class with interfaces: the member is looked up in all of its direct supertypes (the superclass first)
+        val ifs = ArrayList<Type>()
+        for (st in c.supertypes) if (st is ClassType && st.cls.isInterface) ifs.add(st)
+        if (ifs.isNotEmpty() && !c.isInterface) {
+            val parts = ArrayList<Type>()
+            if (sc != null && sc.cls !== sema.anyType.cls) parts.add(sc)
+            parts.addAll(ifs)
+            return if (parts.size == 1) parts[0] else IsectType(parts)
+        }
+        if (ifs.size > 1) return IsectType(ifs)
         if (sc != null) return sc
         for (st in c.supertypes) if (st is ClassType) return st
         return sema.anyType

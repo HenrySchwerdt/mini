@@ -1,44 +1,48 @@
-// Callable references to the same function (and equal bound receivers) are equal and have equal hash codes.
-fun topLevelFun(): String = ""
-var topLevelVar: String = ""
+// equality and hash codes of function and property references: the same target and the same bound receiver
 
 class V {
     val memberVal: String = ""
+    var memberVar: Int = 0
     fun memberFun(): String = ""
-    fun target(x: String = "x", y: String = "y"): String = x + y
+    fun other(): String = ""
 }
 
-fun refAgain(): Any = ::topLevelFun
+val topLevelVal: String = ""
+fun topLevelFun(): String = ""
+fun withArgs(a: Int, b: String) = a.toString() + b
 
-private fun captureNoDefaults(f: (V, String, String) -> String): Any = f
-private fun captureOneDefault(f: (V, String) -> String): Any = f
-private fun captureBound(f: (String, String) -> String): Any = f
+fun refTopLevelFun() = ::topLevelFun
+fun refTopLevelVal() = ::topLevelVal
 
-fun interface Runner {
-    fun run(): String
-}
-
-fun check(name: String, ok: Boolean) {
-    println(name + " " + ok)
-}
+fun same(x: Any, y: Any): Boolean = x == y && y == x && x.hashCode() == y.hashCode()
+fun differ(x: Any, y: Any): Boolean = x != y && y != x
 
 fun main() {
     val v0 = V()
     val v1 = V()
-    check("top", ::topLevelFun == refAgain() && refAgain() == ::topLevelFun)
-    check("top hash", ::topLevelFun.hashCode() == refAgain().hashCode())
-    check("member", V::memberFun == V::memberFun)
-    check("bound same", v0::memberFun == v0::memberFun)
-    check("bound hash", v0::memberFun.hashCode() == v0::memberFun.hashCode())
-    check("bound differs", v0::memberFun != v1::memberFun)
-    check("bound vs unbound", v0::memberFun != V::memberFun)
-    check("two members", v0::memberFun != (v0::target as Any))
-    check("property", ::topLevelVar == ::topLevelVar)
-    check("member property", v0::memberVal == v0::memberVal && v0::memberVal != v1::memberVal)
-    check("adapted", captureNoDefaults(V::target) == captureNoDefaults(V::target))
-    check("adapted differs", captureNoDefaults(V::target) != captureOneDefault(V::target))
-    check("adapted bound", captureBound(v0::target) == captureBound(v0::target) && captureBound(v0::target) != captureBound(v1::target))
-    check("sam", Runner(v0::memberFun) == Runner(v0::memberFun) && Runner(v0::memberFun) != Runner(v1::memberFun))
-    val lambda = { "x" }
-    check("lambda", (lambda as Any) == (lambda as Any) && (lambda as Any) != ({ "x" } as Any))
+    println(same(::topLevelFun, ::topLevelFun))
+    println(same(::topLevelFun, refTopLevelFun()))
+    println(same(::topLevelVal, refTopLevelVal()))
+    println(same(V::memberFun, V::memberFun))
+    println(same(v0::memberFun, v0::memberFun))
+    println(same(V::memberVal, V::memberVal))
+    println(same(v0::memberVal, v0::memberVal))
+    println(same(v0::memberVar, v0::memberVar))
+    println(same(::withArgs, ::withArgs))
+    println(differ(v0::memberFun, V::memberFun))
+    println(differ(v0::memberVal, V::memberVal))
+    println(differ(v0::memberFun, v1::memberFun))
+    println(differ(v0::memberFun, v0::other))
+    println(differ(::topLevelFun, ::withArgs))
+    println(differ(v0::memberVar, v1::memberVar))
+    fun bar() {}
+    fun baz() {}
+    println(same(::bar, ::bar))
+    println(differ(::bar, ::baz))
+    val set = HashSet<Any>()
+    set.add(::topLevelFun)
+    set.add(refTopLevelFun())
+    set.add(v0::memberFun)
+    set.add(v0::memberFun)
+    println(set.size)
 }

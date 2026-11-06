@@ -335,7 +335,7 @@ class IrExpressionBody(val expression: IrExpression) : IrBody()
 
 class IrConst(type: Type, val value: Any?) : IrExpression(type)
 
-class IrGetValue(val owner: IrValueDeclaration, type: Type, val origin: String? = null) : IrExpression(type)
+class IrGetValue(var owner: IrValueDeclaration, type: Type, val origin: String? = null) : IrExpression(type)
 
 class IrSetValue(val owner: IrValueDeclaration, var value: IrExpression, type: Type, val origin: String? = null) : IrExpression(type)
 
@@ -373,8 +373,9 @@ class IrSetField(val field: IrField, var receiver: IrExpression?, var value: IrE
 class IrStringConcatenation(val arguments: ArrayList<IrExpression>, type: Type) : IrExpression(type)
 
 class IrFunctionExpression(val function: IrSimpleFunction, type: Type, val origin: String) : IrExpression(type) {
-    /** the lambda of an adapted callable reference: references with the same key are equal (`::f == ::f`) and share one closure class */
-    var refKey: String? = null
+    /** a lambda that adapts a callable reference (`::f` with defaults, `vararg`, coercion to Unit): the target and the shape of the adaptation, for equality */
+    var refTarget: IrFunction? = null
+    var refShape: String? = null
 }
 
 class IrFunctionReference(val target: IrFunction, type: Type) : IrFunctionAccessExpression(type)

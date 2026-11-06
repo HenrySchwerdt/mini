@@ -269,6 +269,9 @@ internal fun Ir2Mir.convertEnumHolder(info: ClassInfo): MirFunction {
         val n = if (k.parent === info.ir) made else MirExpr.Cast(tmpOf(made, out), typeOf(info.ir), MirExpr.CastMode.Unchecked)
         out += MirStmt.SetField(MirExpr.Local(self), holderName(info), "e$i", typeOf(info.ir), n)
     }
+    // the companion object is initialized after the entries
+    val comp = info.ir.declarations.filterIsInstance<IrClass>().firstOrNull { it.isCompanion && it in classInfos }
+    if (comp != null) out += MirStmt.Eval(MirExpr.ObjectGet(info(comp).cName, typeOf(comp)))
     return MirFunction(info.qualified + ".<entries>", holderName(info) + "_C", listOf(self), TUnit, out)
 }
 
@@ -558,6 +561,8 @@ internal fun Ir2Mir.enumValues(info: ClassInfo): MirFunction = inFreshFunction {
 internal fun Ir2Mir.enumValueOf(info: ClassInfo): MirFunction = inFreshFunction {
     val name = MirLocal(localCounter++, "name", TString)
     val out = ArrayList<MirStmt>()
+    // the class is initialized even when no entry has the name
+    out += MirStmt.Eval(MirExpr.ObjectGet(holderName(info), holderType(info)))
     for ((i, e) in enumEntries(info.ir).withIndex()) {
         out += MirStmt.If(
             MirExpr.Binary(BinaryOp.Eq, MirExpr.Local(name), MirExpr.StringConst(e.name)),

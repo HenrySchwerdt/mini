@@ -168,17 +168,62 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val n = sym.params.size
         return adaptedRef(e, r, AdaptedRef(AdaptMap(IntArray(n) { it }, IntArray(n) { 1 }), 0), sym)
     }
+    if (sym is FunSym && sym.kind == FunKind.SYNTH && sym.params.size == 1 && (sym.returnType as? ClassType)?.cls?.samCtor === sym) {
+        // `::KRunnable`: the constructor of a fun interface, a lambda `{ f -> KRunnable(f) }`
+        val kt = irType(r.type) as ClassType
+        val argT = kt.args[0].type ?: fail(e, "SAM constructor reference without parameter type")
+        val retT = kt.args[1].type ?: fail(e, "SAM constructor reference without result type")
+        val fn = IrSimpleFunction("<anonymous>")
+        fn.origin = "LOCAL_FUNCTION_FOR_LAMBDA"
+        fn.visibility = "local"
+        fn.modality = IrModality.FINAL
+        fn.parent = enclosingParent()
+        val p = IrValueParameter("p0", argT, IrParameterKind.Regular, 0)
+        p.parent = fn
+        fn.parameters.add(p)
+        fn.returnType = retT
+        val stmts = ArrayList<IrStatement>()
+        stmts.add(IrReturn(fn, samConversion(IrGetValue(p, argT, null), retT), sema.nothingType))
+        fn.body = IrBlockBody(stmts)
+        fn.startOffset = e.start
+        val ft = FunType(null, listOf(argT), retT, false, false)
+        val fe = IrFunctionExpression(fn, ft, "LAMBDA")
+        fe.startOffset = e.start
+        return fe
+    }
+    if (sym is FunSym && sym.kind == FunKind.CONSTRUCTOR && sym.owner != null && sym.owner!!.fqName().let { it == "kotlin.Array" || (it.startsWith("kotlin.") && !it.startsWith("kotlin.U") && it.endsWith("Array") && it.indexOf('.', 7) < 0) }) {
+        // `::IntArray`, `::Array`: the constructors of the array classes are intrinsics, called from an adapter lambda
+        val n = sym.params.size
+        val ad = AdaptedRef(AdaptMap(IntArray(n) { it }, IntArray(n) { 1 }), 0)
+        val rt = (r.type as? ClassType)?.args?.lastOrNull()?.type as? ClassType
+        if (rt != null) ad.typeArgs = rt.args.mapNotNull { it.type }
+        return adaptedRef(e, r, ad, sym)
+    }
     if (sym is FunSym) {
         val target: IrFunction = if (sym.kind == FunKind.CONSTRUCTOR) irConstructorOf(sym) else functionFor(sym, null)
         val call = IrFunctionReference(target, t)
         val rv = e.receiver
         for (p in target.parameters) call.arguments.add(null)
         val objQ = if (rv != null) objectQualifier(rv, r) else null
-        if (rv == null && sym.owner != null && sym.kind != FunKind.CONSTRUCTOR && !sym.isExtension && target.parameters.any { it.kind == IrParameterKind.DispatchReceiver }) {
+        if (rv == null && sym.kind == FunKind.CONSTRUCTOR && sym.owner?.isInner == true && sym.owner?.outer != null) {
+            // `::Inner` of an inner class written where the outer instance is in scope: bound to it
+            val bound = receiverOfClass(sym.owner!!.outer!!)
+            for ((k, p) in target.parameters.withIndex()) {
+                if (p.kind == IrParameterKind.DispatchReceiver) { call.arguments[k] = bound; break }
+            }
+        } else if (rv == null && sym.owner != null && sym.kind != FunKind.CONSTRUCTOR && !sym.isExtension && target.parameters.any { it.kind == IrParameterKind.DispatchReceiver }) {
             // `::f` written in a class body: a reference to the member `this.f` (K2 binds the implicit receiver)
             val bound = implicitMemberReceiver(sym.owner, e)
             if (bound != null) for ((k, p) in target.parameters.withIndex()) {
                 if (p.kind == IrParameterKind.DispatchReceiver) { call.arguments[k] = bound; break }
+            }
+        } else if (rv == null && sym.isExtension && target.parameters.any { it.kind == IrParameterKind.ExtensionReceiver } && (rec(e)?.type as? ClassType)?.args?.size == sym.params.size + 1) {
+            // `::f` of an extension function `A.f` written where `A` is an implicit receiver: bound to it
+            val rt = sym.receiver
+            val rcls = if (rt != null) classOf(rt) else null
+            val bound = if (rcls != null) implicitMemberReceiver(rcls, e) else null
+            if (bound != null) for ((k, p) in target.parameters.withIndex()) {
+                if (p.kind == IrParameterKind.ExtensionReceiver) { call.arguments[k] = bound; break }
             }
         } else if (rv != null && (objQ != null || !isClassQualifier(rv))) {
             val bound = if (objQ != null) IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)) else convert(rv)
@@ -200,10 +245,14 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val objQ = if (rv != null) objectQualifier(rv, r) else null
         if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
         else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
-        else if (rv == null && sym.owner != null && !isClassRefTarget(e)) {
-            // the implicit receiver (inherited members, an imported member of an object included)
-            ref.arguments.add(implicitMemberReceiver(sym.owner, e) ?: implicitReceiver(RecvRef(sym.owner, null, false), e))
+        else if (rv == null && sym.owner == null && sym.isExtension && !isClassRefTarget(e)) {
+            // `::p` of an extension property `A.p` written where `A` is an implicit receiver: bound to it
+            val rt = sym.receiver
+            val rcls = if (rt != null) classOf(rt) else null
+            val bound = if (rcls != null) implicitMemberReceiver(rcls, e) else null
+            if (bound != null) ref.arguments.add(bound)
         }
+        else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitMemberReceiver(sym.owner, e) ?: implicitReceiver(RecvRef(sym.owner, null, false), e))
         return ref
     }
     fail(e, "callable reference to " + (sym?.name ?: "?"))
@@ -215,8 +264,8 @@ private fun Ast2Ir.implicitMemberReceiver(owner: ClassSym, at: Ast): IrExpressio
     while (c != null) {
         for (i in c.recvs.indices.reversed()) {
             val r = c.recvs[i]
-            // the receiver of a lambda with receiver / of an extension function provides the member too
-            val rc = r.cls ?: (r.param.type as? ClassType)?.cls ?: continue
+            // a class receiver, or the receiver of a lambda / extension function (`with(a) { map(::foo) }`)
+            val rc = r.cls ?: classOf(r.param.type) ?: continue
             if (rc === owner || ops.closure(rc.thisType()).any { it.cls === owner }) return IrGetValue(r.param, r.param.type, "IMPLICIT_ARGUMENT")
         }
         c = c.parent
@@ -324,9 +373,8 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     val ft = FunType(null, ptypes, retT, false, ad.suspendConv)
     val fe = IrFunctionExpression(fn, ft, "LAMBDA")
     fe.startOffset = e.start
-    val sid = adaptedRefIds.getOrPut(sym) { adaptedRefIds.size }
-    fe.refKey = "adapted#" + sid + ":" + ad.map.starts.joinToString(",") + ":" + ad.map.counts.joinToString(",") + ":" + ad.suspendConv + ":" +
-        (bound != null) + ":" + ad.typeArgs.joinToString(",") { renderType(it) } + ":" + ptypes.joinToString(",") { renderType(it) } + ">" + renderType(retT)
+    fe.refTarget = target
+    fe.refShape = ad.map.starts.joinToString(",") + "/" + ad.map.counts.joinToString(",") + "/" + ad.suspendConv + "/" + (retT.classFqName ?: "?") + "/" + (bound != null) + "/" + n
     if (outer.isEmpty()) return fe
     outer.add(fe)
     return IrBlock(outer, ft, null)

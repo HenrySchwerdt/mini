@@ -527,6 +527,20 @@ class TypeOps(private val sema: Sema) {
             }
             parts.add(c)
         }
+        // `x is C<*>` for an `x: C<Int>?`: the cast implies non-null, and the original without null fits the cast, so it is the narrowed type
+        var k = 1
+        while (k < parts.size) {
+            val c = parts[k]
+            if (c is ClassType && !c.nullable) {
+                var j = 0
+                while (j < parts.size) {
+                    val p = parts[j]
+                    if (j != k && p is ClassType && p.nullable && isSubtype(p.withNullable(false), c)) parts[j] = p.withNullable(false)
+                    j++
+                }
+            }
+            k++
+        }
         // drop parts that are supertypes of other parts
         val keep = ArrayList<Type>()
         var i = 0
