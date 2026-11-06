@@ -37,6 +37,7 @@ language. The rules are in `run.py` (`skip_reason`); every skipped test carries 
 | `multi-module` | `// MODULE:` (several compilation units with dependencies) |
 | `compiler-config` | directives that change the compiler configuration (`API_VERSION`, `DIAGNOSTICS`, ...) |
 | `foreign-source` | `// FILE:` of a Java, C or other non-Kotlin file |
+| `non-default-flag` | `// FREE_COMPILER_ARGS: -Xbinary=genericSafeCasts=true` (round 6 b): an opt-in mode of Kotlin/Native, see the sixth round |
 
 Everything else is run, including the tests that use `@JvmStatic` / `@JvmField` / `@JvmName` (Mini accepts them as no-ops).
 
@@ -462,6 +463,187 @@ postponed type variables (`kt53478`, `kt63733`, `pclaRoot*`, `kt47744`, `special
 adapted callable references (`referenceToVarargWithDefaults`, `unitCoercionOverloads`, `conversionCombinations`, `::foo.name` of a value), `do { var y } while (y < 10)` (the condition sees the body's
 variables: needs a lowering change), `super` inside the delegation expression of an object literal (`kt11634*`), imported member extensions of objects (`useImportedMember*`), `Unit` fields of data
 classes (`unitComponent`), closures in local functions with default values (`kt47073_nested`, `nestedInnerClass`, `kt20651_inlineLambda`), unsigned `sumOf` / vararg conversions (`arrays`, `varargsOfUnsignedTypes`).
+
+## Sixth round (b) (branch claude/conformance-6b): runtime-fail and crash
+
+The round owns the two buckets that are wrong code: the program compiles and runs but gives the wrong result (runtime-fail, 84) or dies from a
+signal (crash, 13). Round 6a (compile-error, ice; frontend and stdlib) ran in parallel. One full harness pass of the final tree
+(`results.json`, `summary.md`; 0 tests that passed on `origin/main` fail now):
+
+| | after round 5 | round 6 (b) |
+|---|---:|---:|
+| applicable | 5971 | 5953 |
+| **pass** | **5614 (94.02%)** | **5653 (94.96%)** |
+| compile-error | 226 | 219 |
+| ice | 32 | 31 |
+| runtime-fail | 84 | 41 |
+| crash | 13 | 7 |
+| timeout | 2 | 2 |
+
+42 tests that did not pass before pass now (31 runtime-fail, 4 crash, 6 compile-error, 1 ice); 18 tests left the denominator (see the first item).
+
+**Decision: `-Xbinary=genericSafeCasts=true` is not implemented.** 19 tests set it in `FREE_COMPILER_ARGS`. Kotlin/Native does not check
+`x as T` of a type parameter by default (the unchecked cast is the documented behaviour; the flag is an opt-in mode), and a check at every
+generic result would cost time and code size in ordinary programs for a mode the default build does not have. The harness now skips them with
+the reason `non-default-flag` (`skip_reason` in `run.py`): 18 of the 19 are applicable otherwise and leave the denominator (13 of them failed,
+5 passed because they do not depend on the check). Nothing in the compiler changed for them.
+
+Fixed, by cause (each has a test in `compiler/testdata`, the `conf6b_*` programs):
+
+* **Suspend references and conversions** (`conf6b_suspend_ref`, `conf6b_implicit_ref`, `conf6b_sam_suspend`, `conf6b_recv_invoke`,
+  `conf6b_prop_recv_invoke`): `val f = ::suspendFun` (no expected type) is a value of the suspend function type, so calling it passes the
+  continuation (`simpleSuspendCallableReference`, `longArgs`, `suspendInlineReference`; the sema type is the `FunType`, the lowering still
+  reads the recorded `KFunctionN` type; not done when a type argument is still unresolved, `::yield` in a builder lambda); an adapted
+  reference written in a class body or where an extension receiver is implicit binds that receiver (`bound/emptyLHS`); a plain function value
+  converted to a `fun interface` with a `suspend` method is called without the continuation (`funInterfaceWithSuspendMethod`); `recv.f(a, b)`
+  where `f` is a value of type `Recv.(A, B) -> R` typed the literal arguments one parameter off (`1.c(56L, 55)` boxed 55 as a Long:
+  `suspendFunctionTypeCall/manyParameters*`, also without suspend), and `recv.p(x)` with a member property `p` of such a type took `recv` as the
+  dispatch receiver of the getter (`featureIntersection/funInterface/kt49294`, a crash).
+* **Evaluation order and side effects** (`conf6b_misc1`, `conf6b_misc2`, `conf6b_misc3`, `conf6b_misc4`): `getC().x` of a `const val` still
+  evaluates `getC()`; the default values of an inline function are evaluated after the arguments (`baz(y = bar())`); a spread `vararg` argument
+  with side effects takes part in the source-order spill of named arguments; `foo()::x` evaluates `foo()` once even for a `var` (the getter and
+  the setter shared the expression); `++a[i]` of a user `get` reads the element again for its value like K2 (KT-42077; `index_incdec` expects
+  `reads=4` now); a `for` over a `var` array evaluates the array once (KT-21354).
+* **Equality and members**: `a == b` of two values whose static type is a type parameter (reified `T` substituted by `Double` in an inline
+  expansion) uses `equals`, not IEEE 754 (`ieee754/inline`); a data class does not generate `toString` / `hashCode` / `equals` that a
+  superclass declares `final`; an interface or class whose only supertype is a function type (`fun interface F : () -> Int`) extends `Any`
+  again (its `toString` override was not in the vtable); `x is Unit` (was an internal error); a lambda in a `vararg` of a fun interface is
+  converted to it (`funConversionInVararg`); `super<M>@N.y += 200` calls the accessors of `M`.
+* **Callable references**: a reference coerced to `Unit` (`captureUnit(V::target)`) is an adapted reference of its own class, so it is not
+  equal to the plain one (`equality/coercionToUnit*`); `::A.name` is `<init>`, `E.A.name` is a constant that does not initialise the enum
+  (`intrinsicConst/*`); `$`name`` (a backtick identifier) in a string template, and a quoted `_` stays a name (`multiDecl/*/UnderscoreNames`).
+* **Data classes**: array properties print their content in the generated `toString` (`dataClasses/toString/arrayParams`, `primitiveArrays`).
+* **`infix`**: `a f b` only looks at `infix` functions first, so `5 rem 2` finds an infix extension `Int.rem` although the member `rem` exists
+  (`operatorConventions/infixFunctionOverBuiltinMember`).
+* **Harness**: `box_package` prefers an unindented `fun box` over a member `fun box()` of an earlier file (the 6 `properRecapturingInClass`
+  tests picked the wrong package; all 12 tests of the directory pass now); the verdict of a test is the last line of its output (a
+  test that prints on the way, `println(list)`, was a false failure).
+
+Validation of the final sources: `compiler/bootstrap.sh` (stage2 == stage3), `--backend=llvm-api` (stage2 == stage3) with
+`compiler/llvm-c/tests/repl-session.sh`, the full `mini test` (79 passed), `scripts/test-e2e.sh` (all default suites, 884 passed; `--suite llvm
+--suite llvm-leak`, 442 passed; the leak suites are clean for the new programs), `scripts/strict-corpus.sh --run` and `scripts/ci-stage0.sh`
+with the 0.9.0 release as stage0 (stage2 == stage3). The runtime was not touched, the generated code changes only on the paths above (one
+retain / release pair for a `for` over a `var` array).
+
+Still open in the two buckets (41 + 7):
+
+* lazy initialisation of top-level properties per file (`initializers/object`, `files/globalNotInited*`, `topLevelInitializtion/failInInitializer*`:
+  Kotlin/Native initialises a file on first access, Mini at start), identity of small boxed values (`static_smallIntIdentity`) and of folded
+  constants (`stringTrim`), `fieldInitializerOptimization`;
+* a `return` in a `finally` of an inline function that overrides a pending non-local return crashes (`returnInFinally`, the result of the
+  abandoned return stays unset), reified `T::class` on a primitive in a generic `when` (`k42000_1`, the `if` result is typed `T` in the expansion
+  but the branch is unboxed), inline classes in collections (`kt27705/6`, `inlineCollectionOf*`), local classes whose inner classes read the
+  captured variables of the *outer local class* (`closureOfInnerLocalClass`, `ownClosureOfInnerLocalClass`: the inner class captures at its own
+  creation, K2 reads the outer instance's copy);
+* `as?` / `as` to `Unit` of a non-Unit (`asUnit`), `T & Any` casts (`castToDefinitelyNotNullType`), smart casts of a `when` subject after a
+  negative branch (`ieee754/smartCast*`), equality of adapted references with defaults and of SAM wrappers of local functions
+  (`coercionToUnitWithDefaults`, `funInterface/equality/*`), the special bridges of `Collection` / `Map` implementations over `null`
+  (`specialBuiltins/*`, `bridges/special*`, `overrideAbstractSetMethod`: JVM semantics of the stub bridges), `substitutelambdaExtensionReceiverType`
+  (builder inference), `releaseIntercepted`, `suspendFunctionIsAs`, `unitSafeCall`, `kt44429`, `kt7017`, the context receiver overloads.
+
+## Sixth round combined (6a + 6b)
+
+The two branches of round 6 merged (`claude/conformance-6b` contains origin/main with 6a): one full harness pass over the combined tree (`results.json`, `summary.md`). The 19 `genericSafeCasts` tests are skipped as `non-default-flag` (6b), so the denominator is 5953 (6a alone: 5971). Compared test by test, nothing that passed in 6a or 6b alone fails in the merge; the only three tests that passed in 6a alone and are not counted now (`basics/kt7972`, `basics/unchecked_cast11`, `bridges/test22`) are the `non-default-flag` skips.
+
+| | 6a alone | 6b alone | 6a + 6b |
+|---|---:|---:|---:|
+| applicable | 5971 | 5953 | 5953 |
+| **pass** | **5711 (95.65%)** | **5653 (94.96%)** | **5745 (96.51%)** |
+| compile-error | 130 | 219 | 129 |
+| ice | 27 | 31 | 26 |
+| runtime-fail | 86 | 41 | 42 |
+| crash | 14 | 7 | 8 |
+| timeout | 3 | 2 | 3 |
+
+Per category (first two path components; categories with at least one failure in any of the three runs; pass / applicable):
+
+| category | 6a alone | 6b alone | 6a + 6b |
+|---|---:|---:|---:|
+| box/inlineClasses | 711 / 732 | 709 / 732 | 711 / 732 |
+| box/callableReference | 185 / 202 | 187 / 202 | 187 / 202 |
+| box/coroutines | 425 / 446 | 431 / 446 | 432 / 446 |
+| box/casts | 42 / 52 | 42 / 51 | 42 / 51 |
+| box/specialBuiltins | 11 / 20 | 11 / 20 | 11 / 20 |
+| box/funInterface | 26 / 36 | 24 / 36 | 29 / 36 |
+| box/inference | 39 / 46 | 37 / 46 | 39 / 46 |
+| box/primitiveTypes | 84 / 91 | 84 / 91 | 84 / 91 |
+| box/annotations | 3 / 9 | 3 / 9 | 3 / 9 |
+| box/builderInference | 64 / 70 | 64 / 70 | 64 / 70 |
+| box/involvesIrInterpreter | 26 / 33 | 28 / 33 | 28 / 33 |
+| box/closures | 102 / 106 | 102 / 106 | 102 / 106 |
+| box/controlStructures | 206 / 212 | 204 / 212 | 208 / 212 |
+| box/localClasses | 36 / 40 | 36 / 40 | 36 / 40 |
+| boxInline/callableReference | 44 / 48 | 43 / 48 | 44 / 48 |
+| boxInline/innerClasses | 4 / 8 | 4 / 8 | 4 / 8 |
+| box/basics | 26 / 39 | 25 / 28 | 25 / 28 |
+| box/enum | 78 / 81 | 77 / 81 | 78 / 81 |
+| box/extensionFunctions | 25 / 28 | 22 / 28 | 25 / 28 |
+| box/fir | 9 / 12 | 9 / 12 | 9 / 12 |
+| box/initializers | 17 / 21 | 18 / 21 | 18 / 21 |
+| box/lower | 6 / 9 | 6 / 9 | 6 / 9 |
+| box/objects | 105 / 108 | 98 / 108 | 105 / 108 |
+| box/topLevelInitializtion | 0 / 3 | 0 / 3 | 0 / 3 |
+| box/arrays | 90 / 92 | 89 / 92 | 90 / 92 |
+| box/bridges | 84 / 91 | 83 / 85 | 83 / 85 |
+| box/dataObjects | 1 / 3 | 1 / 3 | 1 / 3 |
+| box/ieee754 | 35 / 38 | 36 / 38 | 36 / 38 |
+| box/inline | 45 / 49 | 46 / 49 | 47 / 49 |
+| box/ranges | 817 / 819 | 817 / 819 | 817 / 819 |
+| box/sam | 6 / 8 | 6 / 8 | 6 / 8 |
+| box/secondaryConstructors | 28 / 30 | 28 / 30 | 28 / 30 |
+| box/strings | 29 / 31 | 29 / 31 | 29 / 31 |
+| box/unsignedTypes | 38 / 40 | 38 / 40 | 38 / 40 |
+| box/volatile | 0 / 2 | 0 / 2 | 0 / 2 |
+| boxInline/annotations | 0 / 2 | 0 / 2 | 0 / 2 |
+| boxInline/complex | 6 / 8 | 6 / 8 | 6 / 8 |
+| boxInline/nonLocalReturns | 81 / 83 | 81 / 83 | 81 / 83 |
+| boxInline/private | 10 / 12 | 10 / 12 | 10 / 12 |
+| box/binaryOp | 19 / 20 | 17 / 20 | 19 / 20 |
+| box/builtinStubMethods | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/collections | 4 / 5 | 4 / 5 | 4 / 5 |
+| box/controlflow | 18 / 19 | 18 / 19 | 18 / 19 |
+| box/dataClasses | 46 / 50 | 48 / 50 | 49 / 50 |
+| box/defaultArguments | 75 / 77 | 67 / 77 | 76 / 77 |
+| box/delegatedProperty | 46 / 48 | 47 / 48 | 47 / 48 |
+| box/diagnostics | 50 / 51 | 41 / 51 | 50 / 51 |
+| box/fieldRename | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/function | 35 / 36 | 32 / 36 | 35 / 36 |
+| box/innerNested | 48 / 49 | 46 / 49 | 48 / 49 |
+| box/nothingValue | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/objectIntrinsics | 0 / 1 | 0 / 1 | 0 / 1 |
+| box/operatorConventions | 31 / 33 | 31 / 33 | 32 / 33 |
+| box/package | 9 / 10 | 9 / 10 | 9 / 10 |
+| box/properties | 86 / 88 | 86 / 88 | 87 / 88 |
+| box/regressions | 62 / 63 | 59 / 63 | 62 / 63 |
+| box/statics | 7 / 8 | 7 / 8 | 7 / 8 |
+| box/stringTrim | 0 / 1 | 0 / 1 | 0 / 1 |
+| box/super | 33 / 35 | 34 / 35 | 34 / 35 |
+| box/suspendConversion | 2 / 3 | 2 / 3 | 2 / 3 |
+| box/vararg | 15 / 17 | 15 / 17 | 16 / 17 |
+| box/when | 91 / 92 | 90 / 92 | 91 / 92 |
+| boxInline/anonymousObject | 93 / 94 | 91 / 94 | 93 / 94 |
+| boxInline/defaultValues | 70 / 71 | 70 / 71 | 70 / 71 |
+| boxInline/noInline | 6 / 7 | 6 / 7 | 6 / 7 |
+| boxInline/reified | 23 / 24 | 23 / 24 | 23 / 24 |
+| boxInline/suspend | 69 / 70 | 69 / 70 | 69 / 70 |
+| box/argumentOrder | 15 / 16 | 16 / 16 | 16 / 16 |
+| box/boxingOptimization | 39 / 39 | 38 / 39 | 39 / 39 |
+| box/classes | 115 / 115 | 113 / 115 | 115 / 115 |
+| box/constants | 12 / 12 | 11 / 12 | 12 / 12 |
+| box/contracts | 16 / 16 | 14 / 16 | 16 / 16 |
+| box/delegation | 12 / 12 | 11 / 12 | 12 / 12 |
+| box/elvis | 9 / 9 | 8 / 9 | 9 / 9 |
+| box/functions | 98 / 98 | 91 / 98 | 98 / 98 |
+| box/increment | 25 / 26 | 24 / 26 | 26 / 26 |
+| box/mixedNamedPosition | 4 / 4 | 2 / 4 | 4 / 4 |
+| box/multiDecl | 62 / 64 | 64 / 64 | 64 / 64 |
+| box/propertyCallableReference | 6 / 7 | 7 / 7 | 7 / 7 |
+| box/smartCasts | 29 / 29 | 27 / 29 | 29 / 29 |
+| box/traits | 33 / 33 | 32 / 33 | 33 / 33 |
+| box/typealias | 21 / 21 | 16 / 21 | 21 / 21 |
+| box/unaryOp | 4 / 4 | 3 / 4 | 4 / 4 |
+| box/unit | 13 / 13 | 12 / 13 | 13 / 13 |
+| boxInline/argumentOrder | 10 / 12 | 12 / 12 | 12 / 12 |
 
 ## Results
 

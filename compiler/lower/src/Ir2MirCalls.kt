@@ -468,6 +468,11 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
             return if (ta is TBoxed && tb is TBoxed) MirExpr.Binary(BinaryOp.OrOr, MirExpr.Binary(BinaryOp.AndAnd, isNull(a), isNull(b)), sameValue) else sameValue
         }
     }
+    // `a == b` of two values whose static type is a type parameter (substituted by Double / Float in an inline expansion): `equals`, not IEEE 754
+    if (op == BinaryOp.Eq && name == "EQEQ" && ta == tb && (ta == TDouble || ta == TFloat) &&
+        args.any { val fq = it.type.classFqName; fq != "kotlin.Double" && fq != "kotlin.Float" }) {
+        return refEquality(op, boxIfPrim(v[0], c, out), boxIfPrim(v[1], c, out), c, out)
+    }
     if (op == BinaryOp.Eq || op == BinaryOp.IdEq) {
         if (ta.isRef || tb.isRef) return refEquality(op, v[0], v[1], c, out)
     }

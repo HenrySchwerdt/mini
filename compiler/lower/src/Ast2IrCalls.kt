@@ -73,8 +73,15 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
         val stmts = ArrayList<IrStatement>()
         stmts.add(coerceToUnit(convert(e.receiver)))
         val str = sema.stringType
-        stmts.add(IrConst(str, cref.name))
+        // the name of a constructor reference is `<init>`
+        val rsym = rec(cref)?.callee
+        stmts.add(IrConst(str, if (rsym is FunSym && rsym.kind == FunKind.CONSTRUCTOR) "<init>" else cref.name))
         return IrBlock(stmts, irType(str), null)
+    }
+    if (sel is NameExpr && sel.name == "name" && r.callee is PropSym) {
+        // `E.A.name` is a constant (K2 evaluates it): the enum class is not initialized for it
+        val entry = rec(cref)?.callee
+        if (entry is EnumEntrySym) return IrConst(sema.stringType, entry.name)
     }
     // property / enum entry / object
     val sym = r.callee
@@ -98,7 +105,17 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
 
 fun Ast2Ir.propertyGetDot(sym: PropSym, r: ExprRec, t: Type, node: Ast): IrExpression {
     val cv = constantOf(sym, t)
-    if (cv != null) return cv
+    if (cv != null) {
+        // `getC().x` with a `const val x`: the receiver expression is still evaluated (its side effects), then the constant
+        val d0 = r.access?.dispatch
+        if (d0 != null && d0.expr != null && unparen(d0.expr) is CallExpr) {
+            val stmts = ArrayList<IrStatement>()
+            stmts.add(recvValue(d0, node))
+            stmts.add(cv)
+            return IrBlock(stmts, cv.type, null)
+        }
+        return cv
+    }
     val access = r.access
     val p = propertyOf(sym)
     val g = p.getter ?: fail(node, "property " + sym.name + " has no getter")
@@ -250,7 +267,8 @@ fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunct
     if (ordered) return call
     fun needsSpill(e: IrExpression): Boolean = when (e) {
         is IrFunctionReference -> e.arguments.any { it != null && needsSpill(it) }   // `receiver::f`: the bound receiver is evaluated here
-        is IrConst, is IrFunctionExpression, is IrPropertyReference, is IrVararg, is IrClassReference -> false
+        is IrVararg -> e.elements.any { el -> val x = if (el is IrSpreadElement) el.expression else el as? IrExpression; x != null && needsSpill(x) }
+        is IrConst, is IrFunctionExpression, is IrPropertyReference, is IrClassReference -> false
         is IrGetValue -> (e.owner as? IrVariable)?.isVar == true
         else -> true
     }
@@ -381,7 +399,8 @@ private fun Ast2Ir.argFor(info: CallInfo, j: Int, p: IrValueParameter, subst: Ma
     var elemType: Type? = null
     for (k in idxs) {
         val a = info.args[k]
-        val ex = convertArg(a, label, null)
+        // (a lambda in a vararg of a fun interface is converted to it: the expected type is the element type)
+        val ex = convertArg(a, label, if (a.spread) null else info.paramTypes.getOrNull(k))
         if (a.spread) elems.add(IrSpreadElement(ex)) else {
             elems.add(ex)
             if (elemType == null) {
@@ -466,12 +485,14 @@ fun Ast2Ir.invokeCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExp
         }
         staticType = irType(v.type ?: sema.nullableAny)
     } else if (p != null) {
-        val access = Access(if (info.recvAsFirstArg) null else d, null)
+        // `recv.p(args)` with a member property `p` of function type with receiver: `p` itself comes from the implicit receiver
+        val po = p.owner
+        val access = Access(if (info.recvAsFirstArg) (if (po != null) RecvUse(null, false, RecvRef(po, null, false), null) else null) else d, null)
         val pr = propertyOf(p)
         val g = pr.getter ?: fail(node, "property without getter")
         val ptype = irType(sema.typeOfProp(p))
-        fv = withReceivers(Access(d, null), node, g, ptype) { callee, c, disp, ext ->
-            val cc = findMember(callee, d)
+        fv = withReceivers(access, node, g, ptype) { callee, c, disp, ext ->
+            val cc = findMember(callee, access.dispatch)
             val ir = IrCall(cc, ptype)
             ir.origin = "GET_PROPERTY"
             fillAccessorArgs(ir, cc, disp, ext, null)

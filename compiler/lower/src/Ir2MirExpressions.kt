@@ -181,7 +181,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isCs else MirExpr.Unary(UnaryOp.Not, isCs)
             }
             val inst = if (target is TBoxed) target else if (target.isPrimitive) TBoxed(target) else target.nonNull()
-            var test: MirExpr = MirExpr.IsInstance(v, inst)
+            var test: MirExpr = if (target == TUnit) MirExpr.Binary(BinaryOp.IdEq, asAny(v), unitInstance()) else MirExpr.IsInstance(v, inst)
             // `x is T?` (also a reified T substituted by a nullable type, `null.foo<A?>()`): null is an instance
             val top = e.typeOperand
             if ((top.isMarkedNullable() || (top is TypeParamType && substitutedNullable(top))) && v.type.isRef) {
@@ -324,7 +324,8 @@ internal fun Ir2Mir.stringConcat(e: IrStringConcatenation, out: MutableList<MirS
     // the pieces as strings; neighbouring constants are joined here
     val parts = ArrayList<MirExpr>()
     for (v in vals) {
-        val s = toStringExpr(v, e, out)
+        val s = if (e.arrayContent && arrayKindOf(v.type) != null) tmpOf(MirExpr.RuntimeCall("mk_array_content_to_string", listOf(v), TString), out)
+        else toStringExpr(v, e, out)
         val last = if (parts.isEmpty()) null else parts[parts.size - 1]
         if (last is MirExpr.StringConst && s is MirExpr.StringConst) parts[parts.size - 1] = MirExpr.StringConst(last.value + s.value)
         else parts.add(s)

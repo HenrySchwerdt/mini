@@ -323,6 +323,20 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
         bound.initializer = bv
         outer.add(bound)
     }
+    if (bound == null && rv == null && ad.receiverCount == 0 && sym.kind != FunKind.CONSTRUCTOR) {
+        // `::f` written in a class body or where an extension receiver is implicit: bound to the implicit receiver
+        val rp = target.parameters.firstOrNull { it.kind == IrParameterKind.DispatchReceiver || it.kind == IrParameterKind.ExtensionReceiver }
+        if (rp != null) {
+            val rcls = if (rp.kind == IrParameterKind.DispatchReceiver) sym.owner else sym.receiver?.let { classOf(it) }
+            val iv = if (rcls != null) implicitMemberReceiver(rcls, e) else null
+            if (iv != null) {
+                bound = IrVariable("\$recv", iv.type, false)
+                bound.parent = ctx?.fn
+                bound.initializer = iv
+                outer.add(bound)
+            }
+        }
+    }
     val ptypes = ArrayList<Type>()
     val lparams = ArrayList<IrValueParameter>()
     for (i in 0 until n) {

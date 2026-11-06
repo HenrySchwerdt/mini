@@ -218,7 +218,9 @@ private fun Ast2Ir.toStringFunction(c: IrClass, sym: ClassSym, fs: FunSym, props
     f.bodyBuilder = {
         withCtx(BodyCtx(null, f, null, false)) {
         val stmts = ArrayList<IrStatement>()
-        stmts.add(ret(f, IrStringConcatenation(parts, sema.stringType)))
+        val cat = IrStringConcatenation(parts, sema.stringType)
+        cat.arrayContent = true
+        stmts.add(ret(f, cat))
         IrBlockBody(stmts)
         }
     }

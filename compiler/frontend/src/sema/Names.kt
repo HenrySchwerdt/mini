@@ -668,7 +668,9 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         if (!cinfo.isInvoke) fillReceivers(cinfo, recv, callee)
         rr.call = cinfo
     }
-    for (i in args.indices) completeLiteralArg2(args[i], res.paramTypes, i)
+    // `recv.f(args)` with a function value `f` of type `Recv.(..) -> R`: the receiver is the first argument of the resolution
+    val argShift = if (cinfo != null && cinfo.recvAsFirstArg) 1 else 0
+    for (i in args.indices) completeLiteralArg2(args[i], res.paramTypes, i + argShift)
     if (node !== e) {
         val er = record(e, t, res.callee)
         er.call = cinfo
