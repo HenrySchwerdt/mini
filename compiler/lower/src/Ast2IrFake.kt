@@ -71,7 +71,7 @@ private fun minimalFuns(group: List<IrSimpleFunction>): List<IrSimpleFunction> {
             val s = HashSet<IrSimpleFunction>()
             allOverriddenOf(b, s)
             if (s.contains(a)) covered = true
-            else if (a.isFakeOverride) {
+            else if (a.isFakeOverride && (a.parent as? IrClass)?.kind != IrClassKind.INTERFACE) {
                 // an inherited fake override whose declarations are all overridden by b (diamond through a class and an interface)
                 val ra = HashSet<IrSimpleFunction>()
                 realFunsOf(a, ra)
@@ -100,7 +100,7 @@ private fun minimalProps(group: List<IrProperty>): List<IrProperty> {
         for (b in group) {
             if (a === b) continue
             if (propOverrides(b, a)) covered = true
-            else if (a.isFakeOverride) {
+            else if (a.isFakeOverride && (a.parent as? IrClass)?.kind != IrClassKind.INTERFACE) {
                 val ra = HashSet<IrProperty>()
                 realPropsOf(a, ra)
                 var all = true
