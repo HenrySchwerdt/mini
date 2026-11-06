@@ -539,14 +539,17 @@ internal fun Ir2Mir.samValue(e: IrTypeOperatorCall, out: MutableList<MirStmt>): 
     // any other function value: a closure that holds it and calls invoke
     val fv = operands(listOf(arg), out)[0]
     val arity = sam.argTypes.size
-    val fType = functionInterface(arity)
+    // a suspend SAM method over a function value that is not a suspend function: the value is called without the continuation
+    val plainForSuspend = sam.method.isSuspend && (arg.type as? FunType)?.suspend == false && arity >= 1
+    val callArity = if (plainForSuspend) arity - 1 else arity
+    val fType = functionInterface(callArity)
     // one wrapper class per fun interface and arity: two wrappers of equal function values are equal (`Runner(::f) == Runner(::f)`)
-    val samKey = "sam#" + info(iface).cName + ":" + arity + (if (currentStrict) "s" else "")
+    val samKey = "sam#" + info(iface).cName + ":" + arity + (if (plainForSuspend) "p" else "") + (if (currentStrict) "s" else "")
     val shared = refClassCache[samKey]
     if (shared != null) return MirExpr.New(shared.first, listOf(MirExpr.Cast(fv, fType, MirExpr.CastMode.Unchecked)), shared.second)
     val made = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam, emptyList(), samKey.hashCode()) { _, args, caps, body ->
-        val boxed = args.map { coerceFlexible(MirExpr.Local(it), anyNullable, e, body) }
-        val call = tmpOf(MirExpr.ICall(fType.cName, 0, MirExpr.Local(caps[0]), boxed, invokeArgTypes(arity), anyNullable), body)
+        val boxed = (if (plainForSuspend) args.dropLast(1) else args).map { coerceFlexible(MirExpr.Local(it), anyNullable, e, body) }
+        val call = tmpOf(MirExpr.ICall(fType.cName, 0, MirExpr.Local(caps[0]), boxed, invokeArgTypes(callArity), anyNullable), body)
         body += if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(coerceFlexible(call, sam.ret, e, body))
     }
     refClassCache[samKey] = made

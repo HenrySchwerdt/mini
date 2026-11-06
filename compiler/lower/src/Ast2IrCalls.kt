@@ -447,12 +447,14 @@ fun Ast2Ir.invokeCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExp
         }
         staticType = irType(v.type ?: sema.nullableAny)
     } else if (p != null) {
-        val access = Access(if (info.recvAsFirstArg) null else d, null)
+        // `recv.p(args)` with a member property `p` of function type with receiver: `p` itself comes from the implicit receiver
+        val po = p.owner
+        val access = Access(if (info.recvAsFirstArg) (if (po != null) RecvUse(null, false, RecvRef(po, null, false), null) else null) else d, null)
         val pr = propertyOf(p)
         val g = pr.getter ?: fail(node, "property without getter")
         val ptype = irType(sema.typeOfProp(p))
-        fv = withReceivers(Access(d, null), node, g, ptype) { callee, c, disp, ext ->
-            val cc = findMember(callee, d)
+        fv = withReceivers(access, node, g, ptype) { callee, c, disp, ext ->
+            val cc = findMember(callee, access.dispatch)
             val ir = IrCall(cc, ptype)
             ir.origin = "GET_PROPERTY"
             fillAccessorArgs(ir, cc, disp, ext, null)
