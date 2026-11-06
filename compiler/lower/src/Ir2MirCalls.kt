@@ -394,6 +394,7 @@ internal fun Ir2Mir.consoleCall(c: IrCall, name: String, args: List<IrExpression
         TChar -> MirExpr.RuntimeCall("mk_println_char", listOf(v), TUnit)
         TFloat -> MirExpr.RuntimeCall("mk_println_float", listOf(v), TUnit)
         TByte, TShort -> MirExpr.RuntimeCall("mk_println_int", listOf(MirExpr.Convert(v, TInt)), TUnit)
+        TNothing -> v // the argument never completes
         else -> if (v.type.isRef || v.type is TInline) MirExpr.RuntimeCall("mk_println_string", listOf(toStringExpr(v, c, out)), TUnit)
         else unsupported(c, "println of a value of type ${v.type}")
     }

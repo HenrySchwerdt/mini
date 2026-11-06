@@ -364,6 +364,8 @@ internal fun Ir2Mir.delegatingCall(c: IrDelegatingConstructorCall, out: MutableL
     val k = c.callee
     val cls = k.parent as IrClass
     if (isAny(cls)) return
+    // an enum class with secondary constructors only: the call of `Enum()` has nothing to do (name and ordinal are set by the creation code)
+    if (cls.kotlinFqName == "kotlin.Enum" && builtinOf(cls) == null) return
     if (builtinOf(cls) != null) { builtinSuperInit(c, k, out); return }
     val cName = functionNames[k] ?: unsupported(c, "call of constructor of '${cls.kotlinFqName}'")
     val self = MirExpr.Local(locals.values.first { it.name == "this" && it.id == 0 })

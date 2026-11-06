@@ -467,10 +467,19 @@ fun BodyChecker.valueInvokeGroups(callee: NameExpr, recv: RecvInfo?): List<List<
         t = found ?: return null
     } else if (recv is ValueRecv) {
         if (recv.type is ErrType) return null
-        val ex = extensionProp(callee.name, recv.type) ?: return null
-        val er = record(callee, ex.type, ex.sym)
-        er.access = Access(null, RecvUse(recv.expr, recv.safe, null, recv.type))
-        t = ex.type
+        val rt0 = if (recv.safe) ops.makeNotNull(recv.type) else recv.type
+        val mp = memberPropRes(rt0, callee.name)
+        if (mp != null) {
+            // a member property whose value has an extension `invoke`
+            val pr = record(callee, mp.type, mp.sym)
+            pr.access = Access(RecvUse(recv.expr, recv.safe, null, recv.type), null)
+            t = mp.type
+        } else {
+            val ex = extensionProp(callee.name, recv.type) ?: return null
+            val er = record(callee, ex.type, ex.sym)
+            er.access = Access(null, RecvUse(recv.expr, recv.safe, null, recv.type))
+            t = ex.type
+        }
     } else return null
     if (t is ErrType) return null
     val groups = ArrayList<List<Candidate>>()
