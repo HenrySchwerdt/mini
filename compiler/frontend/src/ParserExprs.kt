@@ -367,7 +367,21 @@ private fun Parser.parsePostfix(): Expr {
         } else if (k == Tk.LT && !interrupted()) {
             val ta = tryParseTypeArgsInExpr()
             if (ta == null) break
-            e = parseCallSuffix(m, s, e, ta)
+            if (kind() == Tk.COLONCOLON && !interrupted()) {
+                // `A<Int>::f`: a callable reference to a member of a generic class
+                advance()
+                var name = "<missing>"
+                if (kind() == Tk.IDENT || kind() == Tk.CLASS) {
+                    name = tokText()
+                    advance()
+                } else {
+                    errorPrev("Expecting an identifier or 'class'")
+                }
+                done(m, NodeKind.CALLABLE_REF)
+                val cr = CallableRefExpr(e, name)
+                cr.typeArgs = ta
+                e = fin(cr, s)
+            } else e = parseCallSuffix(m, s, e, ta)
         } else if (k == Tk.DOT || atSafeDot()) {
             val safe = k != Tk.DOT
             if (safe) advance()

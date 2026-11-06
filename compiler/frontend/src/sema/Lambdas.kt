@@ -67,6 +67,19 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
         }
     }
     val retExpected: Type? = if (probe) null else if (ef != null && (cs == null || !cs.hasVars(ef.ret))) ef.ret else null
+    // a result type variable that has only a proper upper bound (`useW(call { W(42) })`: `T <: W<Int?>`) expects that bound from the last expression
+    var bodyExpected = retExpected
+    if (bodyExpected == null && !probe && ef != null && cs != null) {
+        val rt = cs.resolveFixed(ef.ret)
+        if (rt is VarType && !rt.nullable && rt.v.fixed == null && rt.v.equal.isEmpty()) {
+            for (u in rt.v.upper) {
+                val ur = cs.resolveFixed(u)
+                if (cs.hasVars(ur) || (ur is ClassType && ur.cls === sema.anyType.cls) || ur is ErrType) continue
+                bodyExpected = ur
+                break
+            }
+        }
+    }
     val target = ReturnTarget(label, retExpected, null, true)
     target.isSuspend = ef != null && ef.suspend
     target.inlinable = inlinable && !target.isSuspend
@@ -82,7 +95,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     for (s in stmts) {
         val isLast = i == stmts.size - 1
         if (s is Expr) {
-            last = expr(s, if (isLast) retExpected else null)
+            last = expr(s, if (isLast) bodyExpected else null)
             if (isLast) lastIsExpr = true
             if (!isLast && ops.isNothing(last)) flow.dead = true
         } else {
@@ -244,7 +257,16 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     } else {
         val ri = resolveReceiver(rcv, null)
         if (ri is ClassRecv) {
-            val ct = ri.cls.thisType()
+            var ct = ri.cls.thisType()
+            if (e.typeArgs.isNotEmpty() && e.typeArgs.size == ct.args.size) {
+                // `A<Int>::f`: the receiver type has the written arguments
+                val targs = ArrayList<TArg>()
+                for (ta in e.typeArgs) {
+                    val tt = ta.type
+                    targs.add(if (ta.star || tt == null) TArg(null, Variance.INV) else TArg(sema.resolveType(tt, scope), Variance.INV))
+                }
+                ct = ClassType(ct.cls, targs, false)
+            }
             // `Obj::f` of an object (a companion) is bound to the object
             val objBound = ri.cls.isObject
             for (m in members.funsNamed(ct, name)) {

@@ -42,6 +42,17 @@ fun unwrapPostponed(e0: Expr): Expr {
     return e
 }
 
+/** the label written on a lambda argument (`build outer@ { ... this@outer ... }`) */
+fun postponedLabel(e0: Expr): String? {
+    var e = e0
+    while (true) {
+        if (e is ParenExpr) e = e.inner
+        else if (e is LabeledExpr) return e.label
+        else if (e is AnnotatedExpr) e = e.expr
+        else return null
+    }
+}
+
 class Candidate(val fn: FunSym, val subst: Map<TypeParamSym, Type>, val extRecv: Type?) {
     /** for the implicit `invoke` of a function-typed value */
     var invokeType: FunType? = null
@@ -882,10 +893,12 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     for (v in rv) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) cs.fix(v)
                     val ef = cs.resolveFixed(expectedFun) as FunType
                     inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
+                    pendingLabel = postponedLabel(e)
                     val lt = analyzeLambda(u, ef, cs)
                     cs.addSub(lt, pt)
                     // the lambda is recorded with the final types later
                 } else {
+                    pendingLabel = postponedLabel(e)
                     val lt = analyzeLambda(u, null, cs)
                     cs.addSub(lt, pt)
                 }

@@ -437,7 +437,13 @@ internal fun Ir2Mir.primitiveMember(
     args: List<IrExpression>,
     out: MutableList<MirStmt>,
 ): MirExpr {
-    val v = operands(args, out)
+    val v0 = operands(args, out)
+    // an operand typed by a type parameter with a primitive bound (`T : Int`) is a boxed value at run time: unbox it
+    val v = if (v0.any { !it.type.isPrimitive && it.type.isRef && it.type !is TInline }) v0.mapIndexed { i, e ->
+        val p = c.callee.parameters.getOrNull(i)
+        val pt = if (p != null && e.type.isRef && e.type !is TInline && e.type != TString) mirType(p.type, p) else null
+        if (pt != null && pt.isPrimitive && pt != TUnit && pt != TString) convertTo(e, pt, c) else e
+    } else v0
     val recv = v[0]
     val resultType = mirType(c.type, c)
 
