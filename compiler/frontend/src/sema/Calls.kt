@@ -286,6 +286,11 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 }
                 val comp = s.cls.companion
                 if (comp != null) addReceiverGroups(comp.thisType(), name, groups, RecvRef(comp, null, true))
+                // the companion objects of the superclasses are in scope too
+                if (s.instance || !s.cls.isObject) for (site in ops.closure(s.cls.thisType())) {
+                    val sc = site.cls.companion
+                    if (sc != null && sc !== comp && site.cls !== s.cls) addReceiverGroups(sc.thisType(), name, groups, RecvRef(sc, null, true))
+                }
                 if (s.cls.isObject && !s.instance) addReceiverGroups(s.cls.thisType(), name, groups, RecvRef(s.cls, null, true))
                 val nc = s.cls.nested[name]
                 if (nc != null) groups.add(ctorCandidates(nc))

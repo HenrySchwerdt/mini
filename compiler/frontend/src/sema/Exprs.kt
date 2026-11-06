@@ -279,6 +279,10 @@ fun BodyChecker.implicitReceivers(narrow: Boolean = true): List<ImplRecv> {
                 }
                 val comp = s.cls.companion
                 if (comp != null) out.add(ImplRecv(comp.thisType(), comp.name, comp, true, null, RecvRef(comp, null, true)))
+                for (site in ops.closure(s.cls.thisType())) {
+                    val sc = site.cls.companion
+                    if (sc != null && sc !== comp && site.cls !== s.cls) out.add(ImplRecv(sc.thisType(), sc.name, sc, true, null, RecvRef(sc, null, true)))
+                }
                 if (s.cls.isObject && !s.instance) {
                     // an object enclosing a nested class: its members are reachable through the object
                     out.add(ImplRecv(s.cls.thisType(), s.cls.name, s.cls, false, null, RecvRef(s.cls, null, true)))

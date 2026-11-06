@@ -125,6 +125,16 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
                         return r
                     }
                 }
+                // the companion objects of the superclasses
+                for (site in ops.closure(s.cls.thisType())) {
+                    val sc = site.cls.companion
+                    if (sc == null || sc === comp || site.cls === s.cls) continue
+                    val r = memberPropRes(sc.thisType(), name)
+                    if (r != null) {
+                        r.dispatch = RecvRef(sc, null, true)
+                        return r
+                    }
+                }
                 if (s.cls.isObject && !s.instance) {
                     val r = memberPropRes(s.cls.thisType(), name)
                     if (r != null) {
