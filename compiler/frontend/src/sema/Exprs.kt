@@ -512,10 +512,12 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
         "!" -> {
             val t = fin(expr(e.expr, sema.booleanType))
             val res = resolveOperator("not", t, emptyList(), e.start, null)
-            val rr = record(e, sema.booleanType, res?.callee)
+            // `operator fun A.not(): A` is allowed: the type of the expression is the result of the operator
+            val nt = if (res != null && !ops.isNothing(res.ret) && res.ret !is ErrType) res.ret else sema.booleanType
+            val rr = record(e, nt, res?.callee)
             if (res != null) rr.calleeText = res.calleeText
             rr.call = res?.info
-            return sema.booleanType
+            return nt
         }
         "-", "+" -> {
             val operand = e.expr

@@ -529,7 +529,8 @@ fun BodyChecker.tryCandidate(c: Candidate, args: List<Arg>, typeArgs: List<Type>
             i++
         }
     } else {
-        cs.addVariables(tps, subst)
+        // the type parameters the candidate already instantiates (`Base<Long>(1)` in a super constructor call) are not inferred
+        cs.addVariables(if (c.subst.isEmpty()) tps else tps.filter { !c.subst.containsKey(it) }, subst)
     }
     val att = Attempt(c, binding, cs, subst, params, arrayOfNulls(args.size), arrayOfNulls(args.size), null, tps)
     // extension receiver
@@ -692,7 +693,7 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
                     j++
                 }
             } else if (tps.isNotEmpty()) {
-                cs.addVariables(tps, m)
+                cs.addVariables(if (single.subst.isEmpty()) tps else tps.filter { !single.subst.containsKey(it) }, m)
                 val fr = single.fn.receiver
                 val er = single.extRecv
                 if (fr != null && er != null) cs.addSub(er, ops.substitute(fr, m))

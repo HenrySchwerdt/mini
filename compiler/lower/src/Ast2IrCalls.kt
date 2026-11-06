@@ -708,7 +708,7 @@ fun Ast2Ir.prefixExpr(e: PrefixExpr): IrExpression {
         "!" -> {
             val info = r.call ?: fail(e, "not is not resolved")
             val v = convert(e.expr)
-            return callOperator(info, v, emptyList(), sema.booleanType, null)
+            return callOperator(info, v, emptyList(), irType(r.type), null)   // (`operator fun A.not(): A`)
         }
         "-", "+" -> {
             val operand = e.expr

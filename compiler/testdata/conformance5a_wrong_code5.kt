@@ -53,7 +53,23 @@ fun unitAsAny(): String {
     return if (x == Unit) "unit" else "other"
 }
 
+// ---- the literal of a super constructor call takes the instantiated type parameter (Long) ----
+open class Base<T>(val value: T)
+class LongBox : Base<Long>(-1)
+
+// ---- `operator fun not` that does not return Boolean ----
+class NA
+var holder = 0
+
+operator fun NA.not(): NA {
+    holder++
+    return this
+}
+
 fun main() {
+    println(LongBox().value == -1L)
+    !!!!!NA()
+    println(holder)
     println(eq1(-0.0, 0.0))
     println(eq1(Double.NaN, Double.NaN))
     println(eq2(null, null))
