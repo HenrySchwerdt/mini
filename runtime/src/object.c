@@ -134,7 +134,7 @@ MK_INLINE void free_dead(MkObject *object, bool buffered, bool watch) {
         if (t->dispose != NULL) t->dispose(object);
     }
     if (watch && MK_UNLIKELY(pending_n != 0)) pending_drain(false);
-    if (MK_UNLIKELY(buffered)) mk_cycles_forget(object); /* (its slot in the candidate buffer) */
+    if (MK_UNLIKELY(buffered)) mk_cycles_hooks.forget(object); /* (its slot in the candidate buffer) */
 #if MK_SMALL_ALLOC
     if (!(object->flags & MK_FLAG_PREFIXED)) {
         mk_small_free_object(object);
@@ -170,14 +170,18 @@ MK_NOINLINE static void pending_drain(bool force) {
 }
 
 /* The end of main and of a thread: nothing stays queued. */
-void mk_release_drain(void) {
+void mk_release_drain_armed(void) {
     if (pending_n != 0) pending_drain(true);
+}
+
+void mk_release_drain(void) {
+    if (mk_cycles_hooks.drain != NULL) mk_cycles_hooks.drain(); /* (nothing is ever queued before the collector is installed) */
 }
 
 /* A buffered object is pointed to by the candidate buffer: its block is freed by the collector, not here; it is DYING
  * from now on, so that a collection that runs before its dispose is done leaves it alone. */
 MK_NOINLINE static void release_buffered(MkObject *object) {
-    mk_cycles_state(object, MK_CYCLES_DYING);
+    mk_cycles_hooks.state(object, MK_CYCLES_DYING);
 #if defined(MK_RELEASE_COUNTER)
     if (MK_DEEP()) { pending_push(object); return; }
     release_depth++;
@@ -188,6 +192,32 @@ MK_NOINLINE static void release_buffered(MkObject *object) {
     free_dead(object, true, true);
 #endif
 }
+
+/* The count of an object of a class that can be part of a cycle (and so of a long chain) reached zero: the stack is watched.
+ * Objects of the other classes (strings, boxes, plain data) cannot nest deeply and skip this (mk_release). */
+void mk_release_armed(MkObject *object, uint32_t flags) {
+    bool watch = false;
+    if (flags & MK_FLAG_BUFFERED) {
+        release_buffered(object);
+        return;
+    }
+#if defined(MK_RELEASE_COUNTER)
+    if (MK_DEEP()) { pending_push(object); return; }
+    release_depth++;
+    free_dead(object, false, false);
+    if (--release_depth == 0 && pending_n != 0) pending_drain(true);
+    return;
+#else
+    if (MK_DEEP() && release_defer(object)) return; /* a long chain (linked list, deep tree): not on the C stack */
+    watch = true;
+#endif
+    free_dead(object, false, watch);
+}
+
+MkCyclesHooks mk_cycles_hooks;
+
+/* (generated code calls this when a release leaves an ARMED object alive) */
+void mk_cycles_candidate(MkObject *object) { mk_cycles_hooks.candidate(object); }
 
 void mk_release(MkObject *object) {
     if (object == NULL) {
@@ -211,29 +241,14 @@ void mk_release(MkObject *object) {
     }
     if (old != 1u) {
         if (old == 0u) mk_panic("reference count underflow");
-        if (flags & MK_FLAG_ARMED) mk_cycles_candidate(object); /* a possible root of a garbage cycle */
+        if (flags & MK_FLAG_ARMED) mk_cycles_hooks.candidate(object); /* a possible root of a garbage cycle */
         return;
     }
-    bool watch = false;
     if (MK_UNLIKELY((flags & (MK_FLAG_ARMED | MK_FLAG_BUFFERED)) != 0)) {
-        /* An object of a class that can be part of a cycle (and so of a long chain): the stack is watched. Objects of the other
-         * classes (strings, boxes, plain data) cannot nest deeply and skip this. */
-        if (flags & MK_FLAG_BUFFERED) {
-            release_buffered(object);
-            return;
-        }
-#if defined(MK_RELEASE_COUNTER)
-        if (MK_DEEP()) { pending_push(object); return; }
-        release_depth++;
-        free_dead(object, false, false);
-        if (--release_depth == 0 && pending_n != 0) pending_drain(true);
+        mk_cycles_hooks.release_armed(object, flags); /* (object.c, below: only linked with the collector) */
         return;
-#else
-        if (MK_DEEP() && release_defer(object)) return; /* a long chain (linked list, deep tree): not on the C stack */
-        watch = true;
-#endif
     }
-    free_dead(object, false, watch);
+    free_dead(object, false, false);
 }
 
 void mk_share(MkObject *object) {

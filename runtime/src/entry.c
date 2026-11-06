@@ -74,7 +74,7 @@ int wmain(int argc, wchar_t **argv) {
     mk_runtime_init();
     mk_main();
     mk_release_drain();
-    mk_cycles_at_exit();
+    if (mk_cycles_hooks.at_exit != NULL) mk_cycles_hooks.at_exit();
     mk_runtime_flush();
     return 0;
 }
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
     mk_runtime_init();
     mk_main();
     mk_release_drain();
-    mk_cycles_at_exit();
+    if (mk_cycles_hooks.at_exit != NULL) mk_cycles_hooks.at_exit();
     mk_runtime_flush();
     return 0;
 }

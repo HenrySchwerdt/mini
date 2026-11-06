@@ -156,7 +156,10 @@ static void test_acyclic_chain_of_candidates(void) {
     CHECK_EQ_INT(mk_cycles_collect(), 0); /* the collection reclaims the blocks of the zombies, no garbage cycle */
 }
 
+void mk_cycles_install(void); /* (internal: the collector is linked in lazily, see runtime/src/internal.h) */
+
 int main(void) {
+    mk_cycles_install();
     test_two_cycle();
     test_self_loop_and_leaf();
     test_live_cycle_survives();

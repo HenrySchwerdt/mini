@@ -30,6 +30,7 @@
 
 /* Once a thread has been started every reference count operation is atomic (object.c reads this). */
 volatile int mk_threads_active = 0;
+volatile int mk_threads_running = 0;
 
 /* ---- clock and sleep ----------------------------------------------------------------------------------------------- */
 
