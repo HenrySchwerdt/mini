@@ -528,6 +528,10 @@ MkObject *mk_atomic_ref_exchange(MkObject *a, MkObject *v);
 bool mk_atomic_ref_cas(MkObject *a, MkObject *expected, MkObject *v);
 /* true once a thread has been started: objects may be reachable from several threads (read-only operations must not write caches then) */
 bool mk_sys_threads_active(void);
+extern volatile int mk_threads_active;
+#if defined(__GNUC__) || defined(__clang__)
+#define mk_sys_threads_active() (__atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0) /* (inline: HashMap.get tests it on every hit) */
+#endif
 
 /* ---- end v1-S ------------------------------------------------------------------- */
 
@@ -619,6 +623,8 @@ void mk_raise_uninitialized(const char *property);
 
 /* Exception-raising variants of the P1-A checks (those abort instead). */
 MkObject *mk_checked_cast(MkObject *object, const MkTypeInfo *target); /* NULL passes */
+MkObject *mk_checked_cast_nn(MkObject *object, const MkTypeInfo *target); /* NULL raises NullPointerException */
+MkObject *mk_checked_nn(MkObject *object);                                   /* NULL raises NullPointerException */
 MkObject *mk_checked_not_null(MkObject *object);
 MkInt mk_checked_unbox_int(const MkObject *box);
 MkLong mk_checked_unbox_long(const MkObject *box);

@@ -70,7 +70,8 @@ internal fun Ir2Mir.unboxVc(e: MirExpr, t: TInline, mode: MirExpr.CastMode): Mir
 
 /** `Unbox(Cast(v, TBoxed(t), mode), t)` for every primitive [t], value classes included. */
 internal fun Ir2Mir.unboxCast(v: MirExpr, t: MirType, mode: MirExpr.CastMode): MirExpr =
-    if (t is TInline) unboxVc(v, t, mode) else MirExpr.Unbox(MirExpr.Cast(v, TBoxed(t), mode), t)
+    // (the unbox of a primitive checks the box type and null itself: a checked cast in front of it would test the same twice)
+    if (t is TInline) unboxVc(v, t, mode) else MirExpr.Unbox(MirExpr.Cast(v, TBoxed(t), MirExpr.CastMode.Unchecked), t)
 
 /** The box and unbox functions and the boxed constructor of an unboxed value class. */
 internal fun Ir2Mir.valueClassFunctions(info: ClassInfo): List<MirFunction> {

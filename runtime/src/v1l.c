@@ -213,6 +213,19 @@ MkObject *mk_checked_cast(MkObject *object, const MkTypeInfo *target) {
     return object;
 }
 
+MkObject *mk_checked_cast_nn(MkObject *object, const MkTypeInfo *target) {
+    if (object == NULL) {
+        mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
+        return NULL;
+    }
+    return mk_checked_cast(object, target);
+}
+
+MkObject *mk_checked_nn(MkObject *object) {
+    if (object == NULL) mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
+    return object;
+}
+
 MkObject *mk_checked_not_null(MkObject *object) {
     if (object == NULL) mk_raise_npe();
     return object;

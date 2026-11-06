@@ -32,7 +32,7 @@
 volatile int mk_threads_active = 0;
 volatile int mk_threads_running = 0;
 
-bool mk_sys_threads_active(void) { return __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0; }
+bool (mk_sys_threads_active)(void) { return __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0; }
 
 /* ---- clock and sleep ----------------------------------------------------------------------------------------------- */
 

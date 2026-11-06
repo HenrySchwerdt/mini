@@ -14,6 +14,12 @@ import mini.frontend.sema.*
  * and the reads of its non-null reference fields get a null check that throws the NullPointerException. Other classes pay nothing.
  */
 
+/** The default accessor of a property with a backing field: it only reads or writes that field (a final one cannot be overridden by code that runs in the subclass). */
+private fun isFieldAccessor(f: IrSimpleFunction): Boolean {
+    val prop = f.correspondingProperty ?: return false
+    return f.origin == "DEFAULT_PROPERTY_ACCESSOR" && f.modality == IrModality.FINAL && !f.isFakeOverride && prop.backingField != null && !prop.isLateinit
+}
+
 private class ThisUse(val owners: Set<IrValueDeclaration>) : IrWalker() {
     var found = false
 
@@ -26,6 +32,10 @@ private class ThisUse(val owners: Set<IrValueDeclaration>) : IrWalker() {
             return
         }
         if (e is IrClass) return
+        if (e is IrCall && isThis(e.arguments.firstOrNull()) && isFieldAccessor(e.callee)) {
+            for (i in 1 until e.arguments.size) { val a = e.arguments[i]; if (a != null) visit(a) }
+            return
+        }
         if (e is IrGetField && isThis(e.receiver)) return
         if (e is IrSetField && isThis(e.receiver)) {
             visit(e.value)
@@ -35,27 +45,48 @@ private class ThisUse(val owners: Set<IrValueDeclaration>) : IrWalker() {
     }
 }
 
-/** True when the initialization of [c] itself (property initializers, `init` blocks, constructor bodies) uses `this` other than to read or write its own fields. */
-private fun classInitUsesThis(c: IrClass): Boolean {
+/**
+ * Where the initialization of [c] itself (property initializers, `init` blocks, constructor bodies) first uses `this` other than to read or
+ * write its own fields: the index in `c.declarations` of the property / initializer, `declarations.size` when only a constructor body does
+ * (those run after every initializer), -1 when none does.
+ */
+private fun classInitLeakIndex(c: IrClass): Int {
     val owners = HashSet<IrValueDeclaration>()
     val tr = c.thisReceiver
     if (tr != null) owners.add(tr)
     for (d in c.declarations) {
         if (d is IrConstructor) for (p in d.parameters) if (p.kind == IrParameterKind.DispatchReceiver) owners.add(p)
     }
-    if (owners.isEmpty()) return false
-    val w = ThisUse(owners)
-    for (d in c.declarations) {
+    if (owners.isEmpty()) return -1
+    for ((i, d) in c.declarations.withIndex()) {
+        val w = ThisUse(owners)
         when (d) {
             is IrAnonymousInitializer -> w.visit(d.body)
             is IrProperty -> { val f = d.backingField; if (f != null) w.visit(f) }
             is IrField -> w.visit(d)
-            is IrConstructor -> { val b = d.body; if (b != null) w.visit(b) }
             else -> {}
         }
-        if (w.found) return true
+        if (w.found) return i
     }
-    return false
+    for (d in c.declarations) {
+        if (d !is IrConstructor) continue
+        val b = d.body ?: continue
+        val w = ThisUse(owners)
+        w.visit(b)
+        if (w.found) return c.declarations.size
+    }
+    return -1
+}
+
+private fun Ir2Mir.initLeakIndex(c: IrClass): Int = initLeakAt.getOrPut(c) { classInitLeakIndex(c) }
+
+/** The index in `c.declarations` of the declaration that assigns [f] by an initializer, or -1 (assigned elsewhere: an `init` block, a constructor). */
+private fun initializedAt(c: IrClass, f: IrField): Int {
+    for ((i, d) in c.declarations.withIndex()) {
+        val b = if (d is IrProperty) d.backingField else if (d is IrField) d else null
+        if (b === f) return if (f.initializer?.expression != null) i else -1
+    }
+    return -1
 }
 
 /** [c] or one of its superclasses lets `this` out of its initialization. */
@@ -63,7 +94,7 @@ internal fun Ir2Mir.initLeaksThis(c: IrClass): Boolean {
     val cached = initLeakCache[c]
     if (cached != null) return cached
     initLeakCache[c] = false // (a cycle of supertypes is an error elsewhere; do not loop)
-    var r = classInitUsesThis(c)
+    var r = initLeakIndex(c) >= 0
     if (!r) {
         for (t in c.superTypes) {
             val s = t.classOrNull ?: continue
@@ -72,6 +103,75 @@ internal fun Ir2Mir.initLeaksThis(c: IrClass): Boolean {
     }
     initLeakCache[c] = r
     return r
+}
+
+private fun isStdlibDecl(d: IrDeclaration): Boolean = Reachability.fileOf(d)?.isStdlib == true
+
+/**
+ * An expression that cannot run user code or read a property of the program: constants, strings built from them and calls of stdlib
+ * functions / constructors on such values (`IntArray(16)`, `ArrayList<Node>()`, `"a" + 1`, `listOf("x")`). A stdlib function that only gets
+ * such values has no way to reach user code.
+ */
+private fun isSimpleInit(e: IrElement?): Boolean {
+    when (e) {
+        null -> return true
+        is IrConst -> return true
+        is IrStringConcatenation -> return e.arguments.all { isSimpleInit(it) }
+        is IrTypeOperatorCall -> return isSimpleInit(e.argument)
+        is IrVararg -> return e.elements.all { isSimpleInit(if (it is IrSpreadElement) it.expression else it as IrElement) }
+        is IrGetObjectValue -> return isStdlibDecl(e.classOwner)
+        is IrCall -> return e.superQualifier == null && isStdlibDecl(e.callee) && e.arguments.all { isSimpleInit(it) }
+        is IrConstructorCall -> return isStdlibDecl(e.callee) && e.arguments.all { isSimpleInit(it) }
+        else -> return false
+    }
+}
+
+/**
+ * The index in `declarations` of the first initializer of a file (its top-level property initializers) or of an `object` that can run user
+ * code or read another property (Int.MAX_VALUE when none does; 0 when the superclass of the object may). A property declared before that
+ * point is assigned before any such code runs, and the object / file is initialized as a whole on first use: nothing can see it unset.
+ */
+private fun Ir2Mir.firstNonSimpleInit(parent: IrDeclarationParent): Int {
+    val cached = simpleInitCache[parent]
+    if (cached != null) return cached
+    simpleInitCache[parent] = 0
+    val decls: List<IrDeclaration> = if (parent is IrFile) parent.declarations else if (parent is IrClass) parent.declarations else emptyList()
+    var r = Int.MAX_VALUE
+    if (parent is IrClass) {
+        for (t in parent.superTypes) {
+            val sc = t.classOrNull ?: continue
+            if (sc.kind != IrClassKind.INTERFACE && !(sc.name == "Any" && isStdlibDecl(sc))) r = 0
+        }
+        for (d in decls) {
+            if (d !is IrConstructor) continue
+            val b = d.body
+            if (b != null && (b !is IrBlockBody || !b.statements.all { st -> st is IrInstanceInitializerCall || (st is IrDelegatingConstructorCall && isStdlibDecl(st.callee)) })) r = 0
+        }
+    }
+    for ((i, d) in decls.withIndex()) {
+        if (i >= r) break
+        val ok = when (d) {
+            is IrProperty -> { val f = d.backingField; f == null || isSimpleInit(f.initializer?.expression) }
+            is IrField -> isSimpleInit(d.initializer?.expression)
+            is IrAnonymousInitializer -> d.body.statements.isEmpty()
+            else -> true
+        }
+        if (!ok) r = i
+    }
+    simpleInitCache[parent] = r
+    return r
+}
+
+/** [f] of [parent] (a file or an object) is assigned before the initialization runs any user code. */
+private fun Ir2Mir.assignedBeforeUserCode(parent: IrDeclarationParent, f: IrField): Boolean {
+    val limit = firstNonSimpleInit(parent)
+    if (limit == Int.MAX_VALUE) return true
+    val decls: List<IrDeclaration> = if (parent is IrFile) parent.declarations else if (parent is IrClass) parent.declarations else return false
+    for ((i, d) in decls.withIndex()) {
+        val b = if (d is IrProperty) d.backingField else if (d is IrField) d else null
+        if (b === f) return i < limit
+    }
+    return false
 }
 
 /**
@@ -90,13 +190,79 @@ internal fun Ir2Mir.guardUnsetField(v: MirExpr, f: IrField): MirExpr {
     val parent = f.parent
     if (parent is IrFile) {
         val init = f.initializer?.expression ?: return v
-        return if (init is IrConst) v else MirExpr.NotNull(v)
+        return if (init is IrConst || assignedBeforeUserCode(parent, f)) v else MirExpr.NotNull(v)
     }
     val owner = parent as? IrClass ?: return v
     if (owner !in classInfos) return v
     if (owner.kind == IrClassKind.OBJECT) {
         val init = f.initializer?.expression
-        if (init != null && init !is IrConst) return MirExpr.NotNull(v)
+        if (init != null && init !is IrConst && !assignedBeforeUserCode(owner, f)) return MirExpr.NotNull(v)
     }
-    return if (initLeaksThis(owner)) MirExpr.NotNull(v) else v
+    if (!initLeaksThis(owner)) return v
+    val need = unsetGuardCache[f] ?: fieldMayBeUnset(owner, f).also { unsetGuardCache[f] = it }
+    return if (need) MirExpr.NotNull(v) else v
+}
+
+/**
+ * A field that an initializer assigns before the first use of `this` by the class's own initialization, or that every constructor
+ * assigns before its first use of `this`, is set whenever other code can see the object - unless a superclass lets `this` out (its
+ * initialization runs before every initializer and constructor body of this class).
+ */
+private fun Ir2Mir.fieldMayBeUnset(owner: IrClass, f: IrField): Boolean {
+    for (t in owner.superTypes) {
+        val sc = t.classOrNull ?: continue
+        if (sc !== owner && sc.kind != IrClassKind.INTERFACE && initLeaksThis(sc)) return true
+    }
+    val leakAt = initLeakIndex(owner)
+    val at = initializedAt(owner, f)
+    if (at >= 0) return at >= leakAt
+    return !(leakAt == owner.declarations.size && everyConstructorAssigns(owner, f, 0))
+}
+
+private fun everyConstructorAssigns(owner: IrClass, f: IrField, depth: Int): Boolean {
+    var any = false
+    for (d in owner.declarations) {
+        if (d !is IrConstructor) continue
+        any = true
+        if (!constructorAssigns(owner, d, f, depth)) return false
+    }
+    return any
+}
+
+/** [ctor] assigns [f] before any statement that uses `this` for more than reading or writing its own fields (or delegates to a constructor of the class that does). */
+private fun constructorAssigns(owner: IrClass, ctor: IrConstructor, f: IrField, depth: Int): Boolean {
+    if (depth > 8) return false
+    val body = ctor.body as? IrBlockBody ?: return false
+    val owners = HashSet<IrValueDeclaration>()
+    val tr = owner.thisReceiver
+    if (tr != null) owners.add(tr)
+    for (p in ctor.parameters) if (p.kind == IrParameterKind.DispatchReceiver) owners.add(p)
+    for (st in body.statements) {
+        if (st is IrDelegatingConstructorCall) {
+            if (st.callee.parent === owner) return constructorAssigns(owner, st.callee, f, depth + 1)
+            continue
+        }
+        if (st is IrInstanceInitializerCall) continue // (no initializer of the class leaks: the caller checked)
+        if (st is IrCall && st.callee.correspondingProperty?.backingField === f && st.arguments.size == 2 && isFieldAccessor(st.callee)) {
+            val r = st.arguments[0]
+            val v = st.arguments[1]
+            if (r is IrGetValue && r.owner in owners && v != null) {
+                val w = ThisUse(owners)
+                w.visit(v)
+                return !w.found
+            }
+        }
+        if (st is IrSetField && st.field === f) {
+            val r = st.receiver
+            if (r is IrGetValue && r.owner in owners) {
+                val w = ThisUse(owners)
+                w.visit(st.value)
+                return !w.found
+            }
+        }
+        val w = ThisUse(owners)
+        w.visit(st)
+        if (w.found) return false
+    }
+    return false
 }

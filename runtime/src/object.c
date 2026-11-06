@@ -269,6 +269,10 @@ void mk_share(MkObject *object) {
 static bool type_is(const MkTypeInfo *t, const MkTypeInfo *target) {
     for (; t != NULL; t = t->super) {
         if (t == target) return true;
+        /* (the interface itself is usually listed directly: no need to search the super-interfaces of the others first) */
+        for (size_t i = 0; i < t->interface_count; i++) {
+            if (t->interfaces[i] == target) return true;
+        }
         for (size_t i = 0; i < t->interface_count; i++) {
             if (t->interfaces[i] != NULL && type_is(t->interfaces[i], target)) return true;
         }

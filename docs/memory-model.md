@@ -1353,6 +1353,33 @@ which run under AddressSanitizer + LeakSanitizer in the `leak` and `llvm-leak` s
 | **Data race on reference counts in threaded programs** (`reference count underflow` aborts, use after free): `mk_release` recorded the cycle candidate **after** it had dropped its reference, when another thread could already have freed the object; and `HashMap.get` wrote its one-entry lookup cache (two reference fields) on every read, so concurrent readers of a read-only map double-released the cached node | see left | the candidate is recorded before the decrement (this reference still keeps the object alive; if the decrement then reaches zero the object is a buffered root that dies, which the zero path already handles); the lookup cache is only written while no thread has been started (`mini.internal.threadsActive`) | `threads_shared_readers` |
 | **Strict: a local function used as a value escaped the checker** (`fun peek() = a.v; val f = ::peek; a.free(); f()`: use after free, accepted) | `MemoryFacts` lowered `::helper` to an opaque value, so the captured owners were not borrowed by `f` | `::helper` of a local function with captures lowers to a closure over the captures (`MExpr.Lambda`), the existing closure rules apply (M0101 on the call after the free, M0112 / M0110 on escape) | `strict-corpus/s100_local_fun_ref_after_free`, `s101_local_fun_ref_before_free` |
 
+### Cost of the checks
+
+Measured with `valgrind --tool=callgrind` (instructions of the whole run, clang -O2, C backend, x86-64) against the compiler and runtime of
+`origin/main`; "size" is the `text` section of the linked program. The checks are emitted inline (`CEmitter.castInline`: null test and
+type-pointer compare of the fast path, the throw is out of line and cold; a leaf class is one compare, an interface remembers the type that
+last passed), the unbox of a box checks type and null itself (no second cast in front of it), `CastElim` (`cast-elim` MIR pass) drops casts
+whose operand type already proves the target, and the null check of an `object` / top-level property is only emitted when user code can run
+before it is assigned (`Ir2MirInitSafety.firstNonSimpleInit`: initializers that are constants, strings, or stdlib calls on such values
+run no user code).
+
+| Program | main | this branch | delta | text size |
+|---|---|---|---|---|
+| bench/binarytrees | 13.14 G | 13.38 G | +1.8 % | +0.6 % |
+| bench/nbody | 16.53 G | 18.90 G | +14.4 % | +2.7 % |
+| bench/fannkuch, spectralnorm, mandelbrot, strbuild | | | 0.0 % | +0.7 % |
+| bench/json | 4.42 G | 4.44 G | +0.5 % | +0.7 % |
+| bench/wordcount | 18.57 G | 17.82 G | -4.0 % | +1.2 % |
+| `ArrayList<String>` iteration and indexing | 1.765 G | 1.745 G | -1.1 % | +0.7 % |
+| `HashMap<String, Int>` lookups | 1.686 G | 1.526 G | -9.5 % | +0.8 % |
+| generic class fields, lambdas over collections | 20.87 G | 18.30 G | -12.3 % | +0.8 % |
+| `object` / top-level property reads in a loop (one top-level `Node` forces the guard) | 4.05 G | 4.20 G | +3.7 % | +0.8 % |
+
+The savings on the collection programs come from the runtime (`HashMap.get`, `type_is`) and the inline checks replacing the call of
+`mk_checked_cast`. The one real cost is a read of an element of an `Array<SomeClass>` in a hot loop (nbody: `bodies[j]` is an erased
+read, and an array does not know its element type, so the cast stays; the JVM verifies this at the store instead): about five instructions per
+read. Copy the element to a local once (`val b = bodies[j]`) to pay it once per use of the element rather than once per field access.
+
 Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-range index as a fatal
 `StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
 catchable. Unsynchronized writes to a *shared mutable* collection from several threads are a data race of the program (as on the JVM)

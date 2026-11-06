@@ -35,6 +35,9 @@ class Ir2Mir {
     internal val classInfos = LinkedHashMap<IrClass, ClassInfo>()
     /** classes whose initialization lets `this` out (Ir2MirInitSafety.kt) */
     internal val initLeakCache = HashMap<IrClass, Boolean>()
+    internal val simpleInitCache = HashMap<IrDeclarationParent, Int>()
+    internal val initLeakAt = HashMap<IrClass, Int>()
+    internal val unsetGuardCache = HashMap<IrField, Boolean>()
 
     /** user functions of the module being converted (top-level, members, constructors): IR function -> C name */
     internal val functionNames = HashMap<IrFunction, String>()
