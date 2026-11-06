@@ -151,7 +151,7 @@ public inline fun <T, K, V> Iterable<T>.groupBy(keySelector: (T) -> K, valueTran
 }
 
 public fun <T> Iterable<T>.windowed(size: Int, step: Int = 1, partialWindows: Boolean = false): List<List<T>> {
-    if (size <= 0 || step <= 0) throw IllegalArgumentException("size $size and step $step must be greater than zero.")
+    checkWindowSizeStep(size, step)
     val list = toList()
     val result = ArrayList<List<T>>()
     var index = 0

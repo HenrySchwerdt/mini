@@ -268,6 +268,7 @@ public inline fun <K, V> buildMap(builderAction: MutableMap<K, V>.() -> Unit): M
 }
 
 public fun <K, V> Map<K, V>.getValue(key: K): V {
+    if (this is MapWithDefault<K, V>) return this.getOrImplicitDefault(key)
     val v = get(key)
     if (v == null && !containsKey(key)) mini.internal.throwNoSuchElement("Key $key is missing in the map.")
     @Suppress("UNCHECKED_CAST")
