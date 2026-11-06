@@ -297,14 +297,7 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                             if (et is ClassType) {
                                 for (k in et.cls.ctors) l.add(Candidate(k, aliasSubst(x, et), null))
                                 // the SAM constructor of a fun interface behind the alias (`typealias R = KRunnable; R { }`)
-                                if (et.cls.isFunInterface && et.cls.ctors.isEmpty()) {
-                                    val cc = ctorCandidates(et.cls)
-                                    if (x.typeParams.isEmpty() && et.cls.typeParams.size == et.args.size) {
-                                        val m = HashMap<TypeParamSym, Type>()
-                                        for ((i, tp) in et.cls.typeParams.withIndex()) { val at = et.args[i].type; if (at != null) m[tp] = at }
-                                        for (c in cc) l.add(Candidate(c.fn, m, null))
-                                    } else l.addAll(cc)
-                                }
+                                if (et.cls.isFunInterface && et.cls.ctors.isEmpty() && et.cls.typeParams.isEmpty()) l.addAll(ctorCandidates(et.cls))
                             }
                         }
                     }

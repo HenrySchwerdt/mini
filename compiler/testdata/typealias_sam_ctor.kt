@@ -2,23 +2,21 @@ fun interface KRunnable {
     fun invoke()
 }
 
-fun interface KConsumer<T> {
-    fun accept(value: T)
+fun interface Mapper {
+    fun map(s: String): Int
 }
 
 typealias KRunnableAlias = KRunnable
 
-typealias StringConsumer = KConsumer<String>
+typealias MapperAlias = Mapper
 
 fun foo(f: KRunnable) = f
 
 fun main() {
     var result = ""
     foo(KRunnableAlias {
-        StringConsumer {
-            result += it
-        }.accept("K")
+        result += "K"
     }).invoke()
-    StringConsumer { result += it.length }.accept("abc")
+    result += MapperAlias { it.length }.map("abc")
     println(result)
 }
