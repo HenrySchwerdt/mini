@@ -17,7 +17,7 @@ public operator fun CharSequence.iterator(): CharIterator = CharSequenceIterator
 private class CharSequenceIterator(private val s: CharSequence) : CharIterator() {
     private var index = 0
 
-    override fun nextChar(): Char = if (index < s.length) s[index++] else throw IndexOutOfBoundsException("$index")
+    override fun nextChar(): Char = s[index++]  // like the JVM: no length() call (a CharSequence with side effects in length)
 
     override fun hasNext(): Boolean = index < s.length
 }

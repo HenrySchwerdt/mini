@@ -237,6 +237,8 @@ abstract class IrValueDeclaration : IrDeclaration() {
 class IrVariable(override var name: String, override var type: Type, var isVar: Boolean) : IrValueDeclaration() {
     var initializer: IrExpression? = null
     var isLateinit = false
+    /** `val x: T` without initializer: assigned later (possibly by a closure) */
+    var deferredInit = false
     var sym: VarSym? = null
     /** annotations written on the type (`val b: @Owned Box = a`) */
     var typeAnnotations: List<IrAnnotation> = emptyList()

@@ -380,6 +380,45 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     return IrBlock(outer, ft, null)
 }
 
+/**
+ * Suspend conversion of a function *value* (`runS(lambdaVal)` where `lambdaVal: (String) -> String` and a `suspend (String) -> String` is
+ * expected): a suspend lambda `{ p0 -> fn(p0) }` over the value, which is evaluated once.
+ */
+fun Ast2Ir.suspendConvertedValue(v: IrExpression, src: FunType, dst: FunType): IrExpression {
+    val outer = ArrayList<IrStatement>()
+    val tmp = IrVariable("\$fn", v.type, false)
+    tmp.parent = ctx?.fn
+    tmp.initializer = v
+    outer.add(tmp)
+    val ptypes = ops.allParams(dst)
+    val retT = dst.ret
+    val fn = IrSimpleFunction("<anonymous>")
+    fn.origin = "LOCAL_FUNCTION_FOR_LAMBDA"
+    fn.visibility = "local"
+    fn.modality = IrModality.FINAL
+    fn.parent = enclosingParent()
+    val lparams = ArrayList<IrValueParameter>()
+    for ((i, pt) in ptypes.withIndex()) {
+        val p = IrValueParameter("p" + i, irType(pt), IrParameterKind.Regular, i)
+        p.parent = fn
+        fn.parameters.add(p)
+        lparams.add(p)
+    }
+    val rt = irType(retT)
+    fn.returnType = rt
+    makeSuspend(fn, rt)
+    val call = IrCall(invokeFunction(ptypes.size), rt)
+    call.origin = "INVOKE"
+    call.arguments.add(getValue(tmp))
+    for (lp in lparams) call.arguments.add(IrGetValue(lp, lp.type, null))
+    val stmts = ArrayList<IrStatement>()
+    if (isUnit(rt)) stmts.add(coerceToUnit(call)) else stmts.add(IrReturn(fn, call, sema.nothingType))
+    fn.body = lowerSuspendBody(fn, IrBlockBody(stmts))
+    val fe = IrFunctionExpression(fn, irType(dst), "LAMBDA")
+    outer.add(fe)
+    return IrBlock(outer, irType(dst), null)
+}
+
 /** `Obj::member` of an object (or companion): the object, to which the reference is bound; null for other qualifiers. */
 private fun Ast2Ir.objectQualifier(e: Expr, r: ExprRec): IrClass? {
     if (r.kind != "objbound") return null

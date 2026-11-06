@@ -88,7 +88,9 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
             val body = ArrayList<MirStmt>()
             val msg = MirExpr.StringConst("lateinit property " + owner.name + " has not been initialized")
             body += MirStmt.Throw(tmpOf(newBuiltin("MkUninitializedPropertyAccessException", msg), body))
-            out += MirStmt.If(MirExpr.Binary(BinaryOp.IdEq, MirExpr.Local(l), MirExpr.NullConst()), body, emptyList())
+            // a captured lateinit var lives in a cell: the test is on its value
+            val cur: MirExpr = if (owner in closure.boxed) refClassFor(declType(owner)).let { rc -> MirExpr.FieldGet(MirExpr.Local(l), rc.cName, "value", rc.valueType) } else MirExpr.Local(l)
+            out += MirStmt.If(MirExpr.Binary(BinaryOp.IdEq, cur, MirExpr.NullConst()), body, emptyList())
         }
         if (owner in closure.boxed) {
             val rc = refClassFor(declType(owner))
@@ -150,6 +152,12 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             var v = value(e.argument, out)
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
             val target = mirType(e.typeOperand, e)
+            if (target == TNothing || target === TNull) {
+                // `x is Nothing` is never true, `x is Nothing?` is `x == null`
+                if (!(target === TNull && v.type.isRef) && v is MirExpr.Call) out += MirStmt.Eval(v)
+                val isNull: MirExpr = if (target === TNull && v.type.isRef) MirExpr.Binary(BinaryOp.IdEq, v, MirExpr.NullConst()) else MirExpr.BooleanConst(false)
+                return if (e.operator == IrTypeOperator.INSTANCEOF) isNull else MirExpr.Unary(UnaryOp.Not, isNull)
+            }
             if (e.typeOperand.classFqName == "kotlin.Number") {
                 val isNum = MirExpr.RuntimeCall("mk_is_number", listOf(asAny(v)), TBoolean)
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isNum else MirExpr.Unary(UnaryOp.Not, isNum)
@@ -158,7 +166,14 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 val isCs = MirExpr.RuntimeCall("mk_is_char_sequence", listOf(asAny(v), charSequenceInterface()), TBoolean)
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isCs else MirExpr.Unary(UnaryOp.Not, isCs)
             }
-            val test: MirExpr = MirExpr.IsInstance(v, if (target.isPrimitive) TBoxed(target) else target.nonNull())
+            val inst = if (target is TBoxed) target else if (target.isPrimitive) TBoxed(target) else target.nonNull()
+            var test: MirExpr = MirExpr.IsInstance(v, inst)
+            // `x is T?` (also a reified T substituted by a nullable type, `null.foo<A?>()`): null is an instance
+            val top = e.typeOperand
+            if ((top.isMarkedNullable() || (top is TypeParamType && substitutedNullable(top))) && v.type.isRef) {
+                val nv = if (v is MirExpr.Local) v else tmpOfPlain(v, out)
+                test = MirExpr.Binary(BinaryOp.OrOr, MirExpr.Binary(BinaryOp.IdEq, nv, MirExpr.NullConst()), MirExpr.IsInstance(nv, inst))
+            }
             return if (e.operator == IrTypeOperator.INSTANCEOF) test else MirExpr.Unary(UnaryOp.Not, test)
         }
         IrTypeOperator.CAST, IrTypeOperator.SAFE_CAST -> {
@@ -170,6 +185,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 if (v is MirExpr.Call) out += MirStmt.Eval(v)
                 return MirExpr.UnitValue
             }
+            if (v.type == TUnit && target.isRef) v = unitAsRef(v, out) // `f() as Any` where f returns Unit
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
             if (target.isPrimitive) {
                 return unboxCast(v, target, MirExpr.CastMode.Checked)
@@ -219,6 +235,8 @@ internal fun isNumericType(t: MirType): Boolean =
     t == TInt || t == TLong || t == TChar || t == TDouble || t == TByte || t == TShort || t == TFloat
 
 internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
+    // the placeholder value of a `break` / `continue` / `return` (already emitted) used as a value of a type (`x + break`, `for (j in continue downTo 1)`)
+    if (e is MirExpr.Unreachable && e.type == TNothing && to != TNothing && to != TUnit) return MirExpr.Unreachable(to)
     if (e.type == to || e.type == TNothing) return e
     val from = e.type
     if (isNumericType(from) && isNumericType(to)) return MirExpr.Convert(e, to)
@@ -346,4 +364,17 @@ internal fun Ir2Mir.getClassValue(e: IrGetClass, out: MutableList<MirStmt>): Mir
     if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
     val name = tmpOf(MirExpr.RuntimeCall("mk_type_name", listOf(asAny(v)), TString), out)
     return newKClass(name, e, mirType(e.type, e), out)
+}
+
+/** Is the type parameter reference [t] nullable itself (`T?`) or substituted (through the inline functions being expanded) by a nullable type? */
+private fun Ir2Mir.substitutedNullable(t: TypeParamType): Boolean {
+    var cur: Type = t
+    var guard = 0
+    while (guard < 32) {
+        guard++
+        if (cur.isMarkedNullable()) return true
+        val tp = if (cur is TypeParamType) cur.tp else return false
+        cur = typeSubst[tp] ?: return false
+    }
+    return false
 }

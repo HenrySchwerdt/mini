@@ -14,7 +14,7 @@ fun BodyChecker.lambdaStandalone(e: LambdaExpr, expected: Type?): Type {
 fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSystem?): Type {
     val savedScope = scope
     val savedFlow = flow
-    val label = pendingLabel ?: lambdaLabel
+    val label = pendingLabel ?: lam.explicitLabel ?: lambdaLabel
     pendingLabel = null
     val probe = probeLambda
     probeLambda = false
@@ -454,9 +454,10 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         return ErrType("callable reference")
     }
     cs.fixAll()
-    // suspend conversion: a reference to a non-suspend function where a suspend function type is expected becomes a suspend lambda
+    // suspend conversion: a reference to a non-suspend function where a suspend function type is expected becomes a suspend lambda;
+    // so does a reference to a suspend function (`O(::id)`), whose closure would not take the continuation like a suspend function value
     val csym = chosen.sym
-    if (ef != null && ef.suspend && csym is FunSym && !chosen.isProp && csym.mods()?.has("suspend") != true) {
+    if (ef != null && ef.suspend && csym is FunSym && !chosen.isProp) {
         if (adapted == null) {
             val off0 = chosen.params.size - csym.params.size
             if (off0 in 0..1) {

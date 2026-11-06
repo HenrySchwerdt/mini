@@ -243,7 +243,9 @@ internal fun Ir2Mir.memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<
         val field = prop.backingField!!
         val args = callArgs(c, f, out)
         if (real.parameters.size == 1) return adaptResult(fieldGet(args[0], field), mirType(c.type, c), c, out)
-        out += MirStmt.SetField(args[0], fieldOwner(field).cName, field.name, mirType(field.type, field), args[1])
+        // the setter of a fake override in `class B : A<Int>()` takes an Int, the field (of `A<T>`) holds an Any
+        val ft = mirType(field.type, field)
+        out += MirStmt.SetField(args[0], fieldOwner(field).cName, field.name, ft, coerceFlexible(args[1], ft, c, out))
         return MirExpr.UnitValue
     }
 
@@ -427,6 +429,23 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
     }
     if (op == BinaryOp.Eq && ta is TInline && ta == tb) {
         valueClassAnyMember(v[0], 1, listOf(coerceOperand(v[1], anyNullable, c, out)), c)?.let { return it }
+    }
+    // ProperIeee754Comparisons: `a == b` with static types Double / Double? (Float): numbers compare as numbers (-0.0 == 0.0, NaN != NaN), null equals only null
+    if (name == "ieee754equals" && (ta is TBoxed || tb is TBoxed)) {
+        fun fp(t: MirType): MirType? = (if (t is TBoxed) t.prim else t).takeIf { it == TDouble || it == TFloat }
+        val pa = fp(ta)
+        val pb = fp(tb)
+        if (pa != null && pa == pb) {
+            val a = if (v[0] is MirExpr.Local || !ta.isRef) v[0] else tmpOfPlain(v[0], out)
+            val b = if (v[1] is MirExpr.Local || !tb.isRef) v[1] else tmpOfPlain(v[1], out)
+            fun isNull(x: MirExpr): MirExpr = MirExpr.Binary(BinaryOp.IdEq, x, MirExpr.NullConst())
+            fun notNull(x: MirExpr): MirExpr = MirExpr.Unary(UnaryOp.Not, isNull(x))
+            fun value(x: MirExpr): MirExpr = if (x.type is TBoxed) MirExpr.Unbox(x, pa) else x
+            val bothNonNull = listOfNotNull(if (ta is TBoxed) notNull(a) else null, if (tb is TBoxed) notNull(b) else null)
+                .reduce { x, y -> MirExpr.Binary(BinaryOp.AndAnd, x, y) }
+            val sameValue = MirExpr.Binary(BinaryOp.AndAnd, bothNonNull, MirExpr.Binary(BinaryOp.Eq, value(a), value(b)))
+            return if (ta is TBoxed && tb is TBoxed) MirExpr.Binary(BinaryOp.OrOr, MirExpr.Binary(BinaryOp.AndAnd, isNull(a), isNull(b)), sameValue) else sameValue
+        }
     }
     if (op == BinaryOp.Eq || op == BinaryOp.IdEq) {
         if (ta.isRef || tb.isRef) return refEquality(op, v[0], v[1], c, out)

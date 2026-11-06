@@ -423,17 +423,17 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         val l = localScopeOf()
         val init = d.initializer
         val it = if (init != null) fin(expr(init, null)) else ErrType("destructuring without initializer")
-        destructure(d.entries, it, l, d.start)
+        destructure(d.entries, it, l, d.start, d.isVar)
         record(d, it, null)
     }
 
-    fun destructure(entries: List<DestructEntry>, source: Type, l: LocalScope, pos: Int) {
+    fun destructure(entries: List<DestructEntry>, source: Type, l: LocalScope, pos: Int, declVar: Boolean = false) {
         var i = 1
         for (e in entries) {
             val r = resolveOperator("component$i", source, emptyList(), e.start, null)
             var t: Type = r?.ret ?: ErrType("component$i")
             if (e.type != null) t = sema.resolveType(e.type, scope)
-            val v = VarSym(e.name, t, e.isVar, false, e.start)
+            val v = VarSym(e.name, t, e.isVar || declVar, false, e.start)
             record(e, t, v)
             declareVar(l, v)
             if (r != null && r.callee != null) rec.get(e)?.calleeText = null

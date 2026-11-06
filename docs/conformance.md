@@ -17,7 +17,7 @@ MINIC=/path/to/other/bin/minic tools/conformance/run.sh             # another to
   `v2.0.21` (commit `284e9b4041bd815b5b1b489070bbb1f1db6de35c`, see `run.sh`). Only the two test directories are checked out.
 * Tests run in parallel (`--jobs`, default: number of CPUs). A binary gets `--timeout` seconds (10), a compilation 90.
 * Output: `tools/conformance/results/results.json` (every test with status, first diagnostic and the failure buckets) and
-  `summary.md` (counts, skip reasons, the largest failure buckets).
+  `summary.md` (counts, the Native-parity number, skip reasons, the largest failure buckets).
 * Statuses: `pass`, `compile-error` (minic exit 1), `ice` (minic crashed or the C compiler rejected the generated code),
   `runtime-fail` (wrong result or non-zero exit), `crash` (the program died from a signal), `timeout`, `skipped`.
 * Failure buckets group the failures by status and the first diagnostic with quoted names, numbers and paths removed.
@@ -47,6 +47,34 @@ What the harness adds around a test:
 * diagnostic markup of the frontend tests (`<!NAME!>...<!>`) is removed, `OPTIONAL_JVM_INLINE_ANNOTATION` becomes `@JvmInline`;
 * tests that use `kotlin.test` get the subset that `mini test` ships (`compiler/mini-tool/src/TestCommand.kt`), tests that use
   `helpers.*` or `WITH_COROUTINES` get `tools/conformance/helpers.kt` (a port of the suite's coroutine helpers).
+
+## Native parity (second report)
+
+The pass rate above is over every test that is applicable to a native compiler of Kotlin. `run.py` also reports a second number,
+**Native parity**: the same denominator without the applicable tests that JetBrains itself documents as failing or not run on
+Kotlin/Native (2.0.21, K2). The main number keeps its definition; the parity report only subtracts (`summary.md`, `results.json`: `summary.native_parity`, and
+`parity` on every test).
+
+Which directives the v2.0.21 `box` / `boxInline` sources use (counted over the 10 070 files), and what each one does here:
+
+| directive | files | treatment |
+|---|---:|---|
+| `// TARGET_BACKEND: JVM`, `JVM_IR`, `JS`, `JS_IR`, `WASM` (no `NATIVE`) | 3 200+ | skipped (`target-backend`), as before |
+| `// TARGET_BACKEND: NATIVE` | 32 | run |
+| `// IGNORE_BACKEND: NATIVE` (62), `IGNORE_BACKEND_K2: NATIVE` (5) and the lists that contain `NATIVE` or `ANY` | about 145 | skipped (`ignored-on-native`), as before |
+| `// DONT_TARGET_EXACT_BACKEND: NATIVE` | 28 | skipped (`ignored-on-native`), as before |
+| `// IGNORE_BACKEND_K1: ... NATIVE` | 18 | **run**: the K1 spelling only applies to the old frontend; Kotlin/Native 2.0.21 compiles with K2 |
+| `// IGNORE_NATIVE_K1: ...` | 3 | run (K1 only) |
+| `// IGNORE_NATIVE: cacheMode=...` / `optimizationMode=...` / `target=...` (also `DISABLE_NATIVE: ...`) | 8 | run (the condition names a Native cache or optimisation mode, a plain build is not affected); all but one are in directories that are skipped anyway |
+| `// DISABLE_NATIVE` without a condition | 1 | parity-excluded (`native-ignored`; the file is also skipped by `ignored-on-native`) |
+| `// NATIVE error: ...`, `// K2/NATIVE fail: ...` (a note of the test's author) | 12 | parity-excluded (`native-known-failure`; every one of them is also skipped by the main rules) |
+| `// NATIVE_STANDALONE` | 2 | run |
+| `// FREE_COMPILER_ARGS: -Xbinary=genericSafeCasts=true` | 19 | run: Kotlin/Native passes them *with* that flag, so they count for parity; Mini does not check casts to type parameters |
+
+Because the main skip rules already contain every directive that marks a test as ignored on Native, the parity report excludes **0** further
+applicable tests with the 2.0.21 sources: both numbers are equal today. The report exists so that the two can diverge when a test is
+ignored on Native for a reason that Mini does share (for example after a bump of the pinned tag) and so that the document records why the
+K1-only spellings are not excluded.
 
 ## Second round (branch claude/conformance-2)
 
@@ -157,6 +185,74 @@ bodies that refer to their own entry in an initializer (the entries are created 
 (`Array(42, return "OK")`, `x + break`: Unit / Nothing as values; 35 of the remaining 40), generic value classes (11 of the 15 "arithmetic on
 Any"), generic typealiases of fun interfaces, `::member` inside a lambda with a receiver, builder inference, `unchecked cast` checks of generic
 arrays, Float/Double range operators on `Comparable` ranges, `Double.fromBits`, `Map.withDefault`, unsigned array `forEach` / `reversed`.
+
+## Fifth round (a) (branch claude/conformance-5a)
+
+| | after round 4 | round 5 (a) |
+|---|---:|---:|
+| **pass (all applicable tests)** | **5243 (87.81%)** | **5425 (90.86%)** |
+| Native parity (see above) | 5243 (87.81%) | 5425 (90.86%) |
+| compile-error | 402 | 381 |
+| ice | 112 | 42 |
+| runtime-fail | 173 | 93 |
+| crash | 39 | 28 |
+| timeout | 2 | 2 |
+
+182 tests moved to `pass`, none of the earlier passes was lost (`results.json` diff). 8 of the 182 come from the harness fixes below, the rest
+from the compiler and the standard library. Most ICEs became passes (73) or runtime failures; a few runtime failures and crashes that were
+hidden behind ICEs are new entries of those buckets.
+
+Harness fixes (they correct false failures, no skip rule changed): the generated `main` sorts first (`00_main.kt`) and calls
+`kotlin.io.println`, so a test that declares its own `fun main(args: Array<String>)` or its own `println` is run through `box()` (before, the
+program printed nothing: 8 tests). The Native-parity report is new (see above). The remaining `kt513`-like failures print to stdout from
+inside `box()`; the harness still compares the whole output with `OK`.
+
+Wrong-code and crash fixes (programs that compiled and crashed or ran wrongly):
+
+* a non-reified type parameter of an `inline` function stays erased in the expansion (`x as T` is unchecked; before, the type argument was
+  substituted and `foo<Int>()` cast a String to Int: `ClassCastException`, 8 `boxInline/dontReify` tests);
+* `x is T?` / `is Int?` / `is Nothing` and reified `is T` with a nullable type argument: null is an instance (the check ignored the `?`;
+  `Int?` crashed the C backend);
+* `super@Outer.f()` and the unqualified `super` of an inner class always used the outer class' `this`;
+* `var (a, b) = ...` captured and assigned by a lambda (the variables were not boxed: the assignment was lost); a captured `val x: T`
+  that is assigned later (`runOnce { x = ... }`) and a captured `lateinit var` that was never assigned (no exception);
+* `assertEquals(1234, someLong)`: an integer literal adapts to the type of the other arguments (T = Long); before the literal stayed an Int
+  and the values compared unequal; `Base<Long>(1)` in a super constructor call (the instantiated type parameters were inferred again);
+* `label@{ ... }` as a call argument, a lambda argument of an infix call and of a constructor (`Array(n) { return@Array x }`): the labels
+  were unknown (`return@label` returned from the wrong function: `Unit` result, ICE);
+* a private member of a superclass is not a member of the subclass (`object : X("inner") { fun f() = n }` read the superclass field instead
+  of the enclosing instance' one); the arguments of a super constructor call do not see the members of the class being constructed
+  (`object : A(b)` inside `A` read the half-built object's `b`);
+* the setter of a fake override in `class B : C, A<Int>()` stored an unboxed Int into the `T` field of `A` (signal 11);
+* named arguments of a super constructor call and of a callable reference with a bound receiver are evaluated in source order;
+* `createCoroutine(...).resumeWithException(e)` on a coroutine that was never started ran the block (the exception was swallowed);
+  `createCoroutine` coroutines can be resumed once (a second resume throws `IllegalStateException`, like `SafeContinuation`);
+* `Iterator` of `CharSequence`: `nextChar` called `length` again (observable through a custom `CharSequence`);
+* callable references: references to suspend functions where a suspend function type is expected (signal 11), a member reference in a lambda
+  with a receiver (`::write` bound to the receiver), a callable reference or a safe `?.Inner()` construction converted to a fun interface
+  (signal 11), suspend conversion of a function value (`runS(lambdaVal)`), equality of callable references (`::f == ::f`, bound receivers
+  compared, `hashCode`; property references too): equal references share one closure class whose `equals` compares the captured values;
+* interface diamonds: `D : B, C` where `C` overrides what `B` inherits from `A` picked the inherited implementation (functions and
+  property accessors); private interface functions are called directly (ICE "interface method not found");
+* `field++` / `++field` in an accessor and `(label@ x)++`; `-2147483648` as an Int; `operator fun A.not(): A`;
+* the companion object `init` blocks run when the class is first instantiated (the companion was created lazily and never initialised);
+* IEEE comparison of `Double` / `Double?` operands (`-0.0 == 0.0`, `NaN != NaN`, null only equals null) for statically known types;
+  the generated `equals` of a data class keeps the total order;
+* an inner class of an inner class reads a member of the outermost class in an initializer (the outer instances were bound one level deep
+  in constructors); property references to inherited / imported members (`::v` of a protected property, `::a` of an imported object member).
+
+Other fixes: a `Nothing` value (`break`, `continue`, `return`, `throw`) used as an operand or an argument (`fn(return x)`, `for (j in continue
+downTo 1)`) no longer produces invalid C; `Unit` properties; `f() as Any` where `f` returns Unit; `x is Nothing`.
+
+Still open (largest, from `tools/conformance/results/summary.md`): the generic safe casts of Kotlin/Native
+(`-Xbinary=genericSafeCasts=true`, 19 tests: Mini does not check casts to type parameters, a check would cost a type test on every generic
+result), default arguments of inner class constructors that refer to an outer `this` (`this@A` in `inner class C(val a: A = this@A)`, 9),
+`set` with default or `vararg` parameters in indexed assignments / increments (6 ICEs), Float / Double range operators and `contains` on
+comparable ranges (13 ICEs, standard library), `Unit` as an operand of `==` (5), primitive companion objects (`Int.Companion`, 8),
+enum entry self references and `tailrec suspend` (5c), generic value classes (5c), the inline expansion of `try` / `finally` with `return`
+in the finally block (`returnInFinally`, signal 11), a SAM conversion to a fun interface with a suspend method (signal 11), equality of
+references with a coercion to Unit (3), arrays in the `toString` of data classes (2), the local classes that capture loop variables of an
+enclosing local class (2), the C compiler rejects of `Unit` / `Nothing` values in a few more positions (8).
 
 ## Fifth round (b) (branch claude/conformance-5b): the standard-library long tail
 
@@ -287,6 +383,24 @@ fun interface behind a typealias, `Flow.map { null }`), function references coer
 (`val a: Long = 2147483647 + 1`: K2 computes in Int and converts), `Unit` as a value in data classes / locals (C compiler rejects), real
 builder inference, `Outer.Inner()` inside lambdas of inline functions that capture the outer instance, multiple-module and
 `// FILE:` tests whose first `fun box()` is a member (`properRecapturingInClass`: the harness picks the wrong package, 6 tests).
+
+## Fifth round combined (5a + 5b + 5c)
+
+The three branches of round 5 merged: one full harness pass over the combined tree (`results.json`, `summary.md`).
+
+| | after round 4 | round 5 (a + b + c) |
+|---|---:|---:|
+| **pass (all applicable tests)** | **5243 (87.81%)** | **5614 (94.02%)** |
+| Native parity | 5243 (87.81%) | 5614 (94.02%) |
+| compile-error | 402 | 226 |
+| ice | 112 | 32 |
+| runtime-fail | 173 | 84 |
+| crash | 39 | 13 |
+| timeout | 2 | 2 |
+
+The per-round tables above were measured on the branches alone (5a: 5425, 5b: 5306 against a different base, 5c: see its section).
+The combined merge also fixed a regression found by CI: a non-reified type argument that is a C pointer (`memScoped { f() }` returning
+`CPointer<..>?`) is substituted in the inline expansion again, so the LLVM C API backend compiles itself.
 
 ## Results
 

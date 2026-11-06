@@ -350,7 +350,9 @@ internal fun Ir2Mir.hasBody(f: IrSimpleFunction) = (f.body != null || (f.stub &&
 
 internal fun Ir2Mir.resolveFake(f: IrSimpleFunction): IrSimpleFunction {
     if (!f.isFakeOverride) return f
-    val cands = overridden(f).map { resolveFake(it) }
+    val all = overridden(f).map { resolveFake(it) }
+    // a diamond (`D : B, C` with `C` overriding what `B` inherits from `A`): the implementation another candidate overrides is not a candidate
+    val cands = all.filter { c -> all.none { o -> o !== c && c in allOverridden(o) } }.ifEmpty { all }
     return cands.firstOrNull { parentClass(it)?.kind != IrClassKind.INTERFACE && hasBody(it) }
         ?: cands.firstOrNull { hasBody(it) }
         ?: cands.firstOrNull()
@@ -469,6 +471,8 @@ internal fun Ir2Mir.dispatchOf(f: IrSimpleFunction): Dispatch {
     val root = interfaceRoot(f)
     val iface = parentClass(root)!!
     val idx = interfaceMethods(iface).indexOf(root)
+    // a private interface function (with a body) is not part of the itable: it is called directly
+    if (idx < 0 && root.visibility == "private" && root.body != null) return Dispatch.Direct(root)
     if (idx < 0) error("interface method ${root.name} not found")
     return Dispatch.Interface(info(iface).cName, idx)
 }

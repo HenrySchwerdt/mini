@@ -216,6 +216,7 @@ fun Ast2Ir.localProperty(d: PropertyDecl): IrStatement {
     val deleg = d.delegate
     if (deleg != null) return localDelegatedProperty(d, v)
     if (init != null) iv.initializer = convertWithExpected(init, t)
+    else if (!d.isVar) iv.deferredInit = true
     varMap[v] = iv
     return iv
 }
@@ -246,7 +247,7 @@ fun Ast2Ir.destructureInto(entries: List<DestructEntry>, tmp: IrVariable, out: A
         val info = r.call ?: fail(e, "no component" + i + " function")
         val call = callOperator(info, getValue(tmp), emptyList(), irType(vs.type ?: sema.nullableAny), "COMPONENT_N(index=" + i + ")")
         val t = irType(vs.type ?: sema.nullableAny)
-        val iv = IrVariable(e.name, t, e.isVar)
+        val iv = IrVariable(e.name, t, e.isVar || vs.isVar)
         iv.parent = ctx?.fn
         iv.sym = vs
         iv.initializer = call

@@ -79,6 +79,28 @@ def skip_reason(path, rel, src):
     return None
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# NATIVE-PARITY RULES. A second, stricter report (the main pass rate is unchanged): it also leaves out the applicable tests
+# that JetBrains itself documents as failing / not run on Kotlin/Native 2.0.21 (K2). The skip rules above already cover
+# `TARGET_BACKEND` without NATIVE, `IGNORE_BACKEND(_K2): NATIVE|ANY` and `DONT_TARGET_EXACT_BACKEND: NATIVE`; the K1-only forms
+# (`IGNORE_BACKEND_K1: NATIVE`, `IGNORE_NATIVE_K1`) do not apply to K2 and are not excluded.
+# ---------------------------------------------------------------------------------------------------------------------
+PARITY_RULES = [
+    # unconditional `// IGNORE_NATIVE` / `// DISABLE_NATIVE` (the conditional forms name a cache / optimisation mode or a target,
+    # e.g. `IGNORE_NATIVE: cacheMode=STATIC_EVERYWHERE`, and do not apply to a plain build)
+    (re.compile(r'^// (IGNORE_NATIVE|DISABLE_NATIVE)\s*$', re.M), 'native-ignored'),
+    # the test's author notes that Kotlin/Native fails the test (`// NATIVE error: ...`, `// K2/NATIVE fail: KT-...`)
+    (re.compile(r'^// (NATIVE error\b|K2/NATIVE fail\b|NATIVE fail\b)', re.M), 'native-known-failure'),
+]
+
+
+def parity_exclusion(src):
+    for rx, why in PARITY_RULES:
+        if rx.search(src):
+            return why
+    return None
+
+
 def split_files(src):
     """-> list of (name, text). Text before the first `// FILE:` is the file `test.kt`."""
     parts = re.split(r'^// FILE: (.+?)\s*$', src, flags=re.M)
@@ -171,9 +193,9 @@ def run_test(a, tc):
                 open(fp, 'w').write(txt)
                 srcs.append(fp)
         call = (pkg + '.box()') if pkg else 'box()'
-        main = os.path.join(work, 'zz_main.kt')
-        open(main, 'w').write('fun main() {\n    println(%s)\n}\n' % call)
-        srcs.append(main)
+        main = os.path.join(work, '00_main.kt')
+        open(main, 'w').write('fun main() {\n    kotlin.io.println(%s)\n}\n' % call)
+        srcs.insert(0, main)  # sorts and comes first: it is the program's entry even when the test declares its own `fun main(args: Array<String>)`
         exe = os.path.join(work, 'a.out')
         t0 = time.time()
         try:
@@ -270,7 +292,20 @@ def main():
     report(a, results, time.time() - t0)
 
 
+def annotate_parity(a, results):
+    """Marks applicable tests that Kotlin/Native itself does not pass or run (`parity` = reason); computed from the sources."""
+    for r in results:
+        if r['status'] == 'skipped' or 'parity' in r:
+            continue
+        try:
+            src = open(os.path.join(a.tests, r['test']), encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        r['parity'] = parity_exclusion(src)
+
+
 def report(a, results, secs):
+    annotate_parity(a, results)
     os.makedirs(a.out, exist_ok=True)
     cnt = collections.Counter(r['status'] for r in results)
     skips = collections.Counter(r.get('reason') for r in results if r['status'] == 'skipped')
@@ -280,7 +315,12 @@ def report(a, results, secs):
     for r in results:
         if r['status'] not in ('pass', 'skipped'):
             buckets[(r['status'], r.get('msg', ''))].append(r['test'])
-    summ = {'total': len(results), 'applicable': applicable, 'pass': passed, 'skipped': cnt['skipped'],
+    par_ex = [r for r in results if r['status'] != 'skipped' and r.get('parity')]
+    par_app = applicable - len(par_ex)
+    par_pass = sum(1 for r in results if r['status'] == 'pass' and not r.get('parity'))
+    par_reasons = collections.Counter(r['parity'] for r in par_ex)
+    summ = {'native_parity': {'applicable': par_app, 'pass': par_pass, 'excluded': len(par_ex), 'excluded_reasons': dict(par_reasons),
+                              'pass_rate': round(100.0 * par_pass / par_app, 2) if par_app else 0}, 'total': len(results), 'applicable': applicable, 'pass': passed, 'skipped': cnt['skipped'],
             'compile-error': cnt['compile-error'], 'ice': cnt['ice'], 'runtime-fail': cnt['runtime-fail'],
             'crash': cnt['crash'], 'timeout': cnt['timeout'], 'pass_rate': round(100.0 * passed / applicable, 2) if applicable else 0,
             'seconds': round(secs), 'skip_reasons': dict(skips)}
@@ -295,8 +335,13 @@ def report(a, results, secs):
           '| **applicable** | **%d** |' % applicable, '| **pass** | **%d (%.2f%%)** |' % (passed, summ['pass_rate']),
           '| compile-error | %d |' % cnt['compile-error'], '| ice (compiler crash) | %d |' % cnt['ice'],
           '| runtime-fail | %d |' % cnt['runtime-fail'], '| crash (signal) | %d |' % cnt['crash'],
-          '| timeout | %d |' % cnt['timeout'], '', 'Wall time: %ds.' % secs, '', '## Skips', '',
-          '| reason | count |', '|---|---:|']
+          '| timeout | %d |' % cnt['timeout'], '',
+          '## Native parity (also excludes tests Kotlin/Native itself does not pass or run)', '',
+          '| | count |', '|---|---:|', '| applicable (above) | %d |' % applicable]
+    md += ['| excluded: %s | %d |' % kv for kv in sorted(par_reasons.items())]
+    md += ['| **native-parity applicable** | **%d** |' % par_app,
+           '| **native-parity pass** | **%d (%.2f%%)** |' % (par_pass, summ['native_parity']['pass_rate']), '',
+           'Wall time: %ds.' % secs, '', '## Skips', '', '| reason | count |', '|---|---:|']
     md += ['| %s | %d |' % kv for kv in skips.most_common()]
     md += ['', '## Failure buckets (top %d)' % a.bucket_top, '', '| count | status | first diagnostic | example |', '|---:|---|---|---|']
     for (st, msg), ts in bl[:a.bucket_top]:
@@ -304,6 +349,7 @@ def report(a, results, secs):
     open(os.path.join(a.out, 'summary%s.md' % tag), 'w').write('\n'.join(md) + '\n')
     print('\n'.join(md[:20]))
     print('pass %d / %d applicable (%.2f%%)' % (passed, applicable, summ['pass_rate']))
+    print('native-parity: pass %d / %d (%.2f%%)' % (par_pass, par_app, summ['native_parity']['pass_rate']))
 
 
 if __name__ == '__main__':

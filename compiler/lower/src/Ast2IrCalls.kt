@@ -245,7 +245,8 @@ fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunct
     }
     if (ordered) return call
     fun needsSpill(e: IrExpression): Boolean = when (e) {
-        is IrConst, is IrFunctionExpression, is IrFunctionReference, is IrPropertyReference, is IrVararg, is IrClassReference -> false
+        is IrFunctionReference -> e.arguments.any { it != null && needsSpill(it) }   // `receiver::f`: the bound receiver is evaluated here
+        is IrConst, is IrFunctionExpression, is IrPropertyReference, is IrVararg, is IrClassReference -> false
         is IrGetValue -> (e.owner as? IrVariable)?.isVar == true
         else -> true
     }
@@ -268,9 +269,19 @@ fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunct
 
 fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExpression {
     val k = irConstructorOf(info.fn)
+    val d = info.dispatch
+    if (d != null && d.expr != null && d.safe) {
+        // `outer?.Inner(...)`: no construction when the outer instance is null
+        val nonNull = type.withNullable(false)
+        return safeCall(d, node, type) { rv ->
+            val c2 = IrConstructorCall(k, nonNull)
+            c2.typeArguments = info.typeArgs.map { irType(it) }
+            fillCallArgs(c2, k, info, rv, null, info.fn.owner?.name ?: info.fn.name)
+            spillForSourceOrder(c2, k, info)
+        }
+    }
     val call = IrConstructorCall(k, type)
     call.typeArguments = info.typeArgs.map { irType(it) }
-    val d = info.dispatch
     val dv: IrExpression? = if (d != null) recvValue(d, node) else null
     // inner class constructor called without an explicit outer instance: the enclosing `this`
     var outer = dv
@@ -295,7 +306,7 @@ fun Ast2Ir.delegatingCall(info: CallInfo, c: IrClass, type: Type, argExprs: List
         if (oc != null) outer = receiverOfClass(oc)
     }
     fillCallArgs(call, k, info, outer, null, null)
-    return call
+    return spillForSourceOrder(call, k, info)   // named arguments are evaluated in source order
 }
 
 /** the argument list of [call] aligned with the parameters of [callee] */
@@ -394,7 +405,12 @@ private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpres
         else break
     }
     val v = if (u is LambdaExpr) lambdaExpr(u, own ?: label) else convert(ex)
-    if (expected is ClassType && expected.cls.isFunInterface && rec(u)?.type is FunType) return samConversion(v, irType(expected))
+    // a function value (not a lambda or reference literal) of a non-suspend function type where a suspend function type is expected
+    if (expected is FunType && expected.suspend && u !is LambdaExpr && u !is AnonFunExpr && u !is CallableRefExpr) {
+        val vt = rec(u)?.type
+        if (vt is FunType && !vt.suspend && vt.receiver == null == (expected.receiver == null)) return suspendConvertedValue(v, vt, expected)
+    }
+    if (expected is ClassType && expected.cls.isFunInterface && (rec(u)?.type is FunType || u is CallableRefExpr)) return samConversion(v, irType(expected))
     return v
 }
 
@@ -569,7 +585,7 @@ fun Ast2Ir.equality(e: BinaryExpr): IrExpression {
     if (!ident && (rec(unparen(e.left))?.smart != null || rec(unparen(e.right))?.smart != null)) {
         val lt = rec(unparen(e.left))?.let { it.smart ?: it.type }
         val rt = rec(unparen(e.right))?.let { it.smart ?: it.type }
-        smartIeee = lt != null && rt != null && !lt.nullable && !rt.nullable && isFloating(lt) && isFloating(rt)
+        smartIeee = lt != null && rt != null && isFloating(lt) && isFloating(rt)
     }
     var l = if (ident) convert(e.left) else if (smartIeee) convert(e.left) else convertEqOperand(e.left)
     var r = if (ident) convert(e.right) else if (smartIeee) convert(e.right) else convertEqOperand(e.right)
@@ -704,7 +720,7 @@ fun Ast2Ir.prefixExpr(e: PrefixExpr): IrExpression {
         "!" -> {
             val info = r.call ?: fail(e, "not is not resolved")
             val v = convert(e.expr)
-            return callOperator(info, v, emptyList(), sema.booleanType, null)
+            return callOperator(info, v, emptyList(), irType(r.type), null)   // (`operator fun A.not(): A`)
         }
         "-", "+" -> {
             val operand = e.expr
@@ -715,7 +731,8 @@ fun Ast2Ir.prefixExpr(e: PrefixExpr): IrExpression {
                 val suffixed = text.endsWith("L")
                 if (suffixed) text = text.substring(0, text.length - 1)
                 val v = parseIntLiteral(text) ?: fail(e, "integer literal")
-                if (v <= 2147483647L) return intConst(t, -v)
+                // (`-2147483648` is the Int MIN_VALUE: the sema types the negation of the literal as an Int that fits)
+                if (v <= 2147483647L || t.classFqName == "kotlin.Long" || -v >= -2147483648L) return intConst(t, -v)
             }
             val info = r.call ?: fail(e, "unary operator is not resolved")
             val v = convert(e.expr)

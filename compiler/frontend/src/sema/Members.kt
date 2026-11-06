@@ -165,11 +165,14 @@ class Members(private val sema: Sema) {
     fun propsNamed(t: Type, name: String): List<MemberProp> {
         val out = ArrayList<MemberProp>()
         val keys = HashSet<String>()
-        for (site in sema.ops.closure(t)) {
+        val sites = sema.ops.closure(t)
+        for (site in sites) {
             ensureSynth(site.cls)
             val l = site.cls.props[name] ?: continue
             val m = sema.ops.substOf(site)
             for (p in l) {
+                // a private member of a superclass is not a member of the subclass (`object : X("inner") { fun f() = n }` reads the outer `n`)
+                if (site !== sites.first() && p.has("private")) continue
                 sema.ensurePropSig(p)
                 val k = if (p.receiver != null) renderType(p.receiver!!) else ""
                 if (keys.contains(k)) continue

@@ -242,7 +242,10 @@ class CallableRefExpr(val receiver: Expr?, val name: String) : Expr() {
 }
 
 class LambdaParam(val mods: Modifiers?, val names: List<DestructEntry>?, val name: String?, val type: TypeRef?) : Ast()
-class LambdaExpr(val params: List<LambdaParam>, val hasArrow: Boolean, val body: List<Stmt>) : Expr()
+class LambdaExpr(val params: List<LambdaParam>, val hasArrow: Boolean, val body: List<Stmt>) : Expr() {
+    /** `f(label@{ ... })`: the label written in front of the lambda (set while the arguments are analysed) */
+    var explicitLabel: String? = null
+}
 class AnonFunExpr(val fn: FunDecl) : Expr()
 class BlockExpr(val stmts: List<Stmt>) : Expr()
 

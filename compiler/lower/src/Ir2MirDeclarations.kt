@@ -107,6 +107,14 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
             out += MirStmt.Eval(MirExpr.ObjectGet(holderName(ei), holderType(ei)))
         }
     }
+    if (f is IrConstructor && f.parent is IrClass && (f.parent as IrClass).kind == IrClassKind.CLASS) {
+        // creating an instance initialises the class, which runs the `init` blocks of its companion object (the objects are lazy here);
+        // not for enums: their companion is initialised after the entries (it may read `values()`)
+        val comp = (f.parent as IrClass).declarations.filterIsInstance<IrClass>().firstOrNull { it.isCompanion }
+        if (comp != null && comp in classInfos && comp.declarations.any { it is IrAnonymousInitializer }) {
+            out += MirStmt.Eval(MirExpr.ObjectGet(info(comp).cName, typeOf(comp)))
+        }
+    }
     val tails = if (f is IrSimpleFunction && f.sym?.has("tailrec") == true && f.parameters.none { it in closure.boxed }) tailCallsOf(f) else emptySet()
     if (tails.isNotEmpty()) {
         // the body runs in a loop over copies of the parameters; a tail call assigns the copies and continues
@@ -283,8 +291,12 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
     returnTargets[target]?.let { r ->
         // return from an inline function / lambda expanded in place: store the result and leave the expansion
         val rt = r.result
-        if (rt == null) stmt(s.value, out)
-        else out += MirStmt.Assign(rt, bindValue(s.value, rt.type, out))
+        if (rt == null || s.value.type.classFqName == "kotlin.Nothing") stmt(s.value, out)
+        else {
+            val bv = bindValue(s.value, rt.type, out)
+            // an erased generic result (`R` of `let`) whose argument is a Nothing lambda (`let { throw ... }`)
+            out += if (bv.type == TNothing) MirStmt.Eval(bv) else MirStmt.Assign(rt, bv)
+        }
         leaveThrough(r.finallyDepth, out) { it += MirStmt.Break(r.label) }
         return
     }

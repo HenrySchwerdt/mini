@@ -198,7 +198,7 @@ internal fun Ir2Mir.closureClass(
     }
     extraFunctions += fn
     var vt: List<String?> = listOf(null, null, null)
-    if (hashSeed != null && sam == null) {
+    if (hashSeed != null) {
         val eh = refEqualsFunctions(type, cName, qualified, capTypes, hashSeed)
         if (eh != null) {
             extraFunctions += eh.first
@@ -214,7 +214,7 @@ internal fun Ir2Mir.closureClass(
     } else {
         val ifaces = allInterfaces(sam!!.iface) + sam.iface
         extraClasses += MirClass(
-            qualified, cName, false, null, fields, ifaces.map { info(it).cName }, listOf(null, null, null),
+            qualified, cName, false, null, fields, ifaces.map { info(it).cName }, vt,
             ifaces.map { i ->
                 MirItable(info(i).cName, interfaceMethods(i).map { m ->
                     if (m === sam.method) invokeName
@@ -540,11 +540,17 @@ internal fun Ir2Mir.samValue(e: IrTypeOperatorCall, out: MutableList<MirStmt>): 
     val fv = operands(listOf(arg), out)[0]
     val arity = sam.argTypes.size
     val fType = functionInterface(arity)
-    val (ctor, type) = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam) { _, args, caps, body ->
+    // one wrapper class per fun interface and arity: two wrappers of equal function values are equal (`Runner(::f) == Runner(::f)`)
+    val samKey = "sam#" + info(iface).cName + ":" + arity + (if (currentStrict) "s" else "")
+    val shared = refClassCache[samKey]
+    if (shared != null) return MirExpr.New(shared.first, listOf(MirExpr.Cast(fv, fType, MirExpr.CastMode.Unchecked)), shared.second)
+    val made = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam, emptyList(), samKey.hashCode()) { _, args, caps, body ->
         val boxed = args.map { coerceFlexible(MirExpr.Local(it), anyNullable, e, body) }
         val call = tmpOf(MirExpr.ICall(fType.cName, 0, MirExpr.Local(caps[0]), boxed, invokeArgTypes(arity), anyNullable), body)
         body += if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(coerceFlexible(call, sam.ret, e, body))
     }
+    refClassCache[samKey] = made
+    val (ctor, type) = made
     return MirExpr.New(ctor, listOf(MirExpr.Cast(fv, fType, MirExpr.CastMode.Unchecked)), type)
 }
 

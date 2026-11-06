@@ -85,8 +85,23 @@ internal class SafeStarter(completion: Continuation<Any?>, private val block: (C
             res.throwOnFailure()
             return res.value
         }
+        // resumeWithException on a coroutine that was never started fails it without running the block
+        (result as Result<Any?>).throwOnFailure()
         started = true
         return block(this)
+    }
+}
+
+/** The continuation `createCoroutine` returns: it can be resumed once (a second resume is an IllegalStateException, like SafeContinuation). */
+internal class OnceContinuation(private val inner: Continuation<Any?>) : Continuation<Any?> {
+    private var used = false
+
+    public override val context: CoroutineContext get() = inner.context
+
+    public override fun resumeWith(result: Result<Any?>) {
+        if (used) throw IllegalStateException("Already resumed")
+        used = true
+        inner.resumeWith(result)
     }
 }
 
