@@ -72,8 +72,6 @@ internal class KProperty0Impl<V>(override val name: String, private val getter: 
     override fun equals(other: Any?): Boolean = other is KProperty0Impl<*> && name == other.name && getter == other.getter
     override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode()
     override fun toString(): String = "property $name"
-    override fun equals(other: Any?): Boolean = other is KProperty0Impl<*> && name == other.name && getter == other.getter
-    override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode()
 }
 
 internal class KMutableProperty0Impl<V>(override val name: String, private val getter: () -> V, private val setter: (V) -> Unit) : KMutableProperty0<V> {
@@ -83,8 +81,6 @@ internal class KMutableProperty0Impl<V>(override val name: String, private val g
     override fun equals(other: Any?): Boolean = other is KMutableProperty0Impl<*> && name == other.name && getter == other.getter && setter == other.setter
     override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode() * 31 + setter.hashCode()
     override fun toString(): String = "property $name"
-    override fun equals(other: Any?): Boolean = other is KMutableProperty0Impl<*> && name == other.name && getter == other.getter && setter == other.setter
-    override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode()
 }
 
 internal class KProperty1Impl<T, V>(override val name: String, private val getter: (T) -> V) : KProperty1<T, V> {
@@ -93,8 +89,6 @@ internal class KProperty1Impl<T, V>(override val name: String, private val gette
     override fun equals(other: Any?): Boolean = other is KProperty1Impl<*, *> && name == other.name && getter == other.getter
     override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode()
     override fun toString(): String = "property $name"
-    override fun equals(other: Any?): Boolean = other is KProperty1Impl<*, *> && name == other.name && getter == other.getter
-    override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode()
 }
 
 internal class KMutableProperty1Impl<T, V>(override val name: String, private val getter: (T) -> V, private val setter: (T, V) -> Unit) : KMutableProperty1<T, V> {
@@ -104,8 +98,6 @@ internal class KMutableProperty1Impl<T, V>(override val name: String, private va
     override fun equals(other: Any?): Boolean = other is KMutableProperty1Impl<*, *> && name == other.name && getter == other.getter && setter == other.setter
     override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode() * 31 + setter.hashCode()
     override fun toString(): String = "property $name"
-    override fun equals(other: Any?): Boolean = other is KMutableProperty1Impl<*, *> && name == other.name && getter == other.getter && setter == other.setter
-    override fun hashCode(): Int = name.hashCode() * 31 + getter.hashCode()
 }
 
 public interface KProperty2<D, E, out V> : KProperty<V>, (D, E) -> V
