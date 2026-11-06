@@ -232,7 +232,8 @@ fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunct
     }
     if (ordered) return call
     fun needsSpill(e: IrExpression): Boolean = when (e) {
-        is IrConst, is IrFunctionExpression, is IrFunctionReference, is IrPropertyReference, is IrVararg, is IrClassReference -> false
+        is IrFunctionReference -> e.arguments.any { it != null && needsSpill(it) }   // `receiver::f`: the bound receiver is evaluated here
+        is IrConst, is IrFunctionExpression, is IrPropertyReference, is IrVararg, is IrClassReference -> false
         is IrGetValue -> (e.owner as? IrVariable)?.isVar == true
         else -> true
     }
@@ -292,7 +293,7 @@ fun Ast2Ir.delegatingCall(info: CallInfo, c: IrClass, type: Type, argExprs: List
         if (oc != null) outer = receiverOfClass(oc)
     }
     fillCallArgs(call, k, info, outer, null, null)
-    return call
+    return spillForSourceOrder(call, k, info)   // named arguments are evaluated in source order
 }
 
 /** the argument list of [call] aligned with the parameters of [callee] */

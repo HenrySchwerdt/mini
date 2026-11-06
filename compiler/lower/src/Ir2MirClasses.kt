@@ -347,7 +347,9 @@ internal fun Ir2Mir.hasBody(f: IrSimpleFunction) = (f.body != null || (f.stub &&
 
 internal fun Ir2Mir.resolveFake(f: IrSimpleFunction): IrSimpleFunction {
     if (!f.isFakeOverride) return f
-    val cands = overridden(f).map { resolveFake(it) }
+    val all = overridden(f).map { resolveFake(it) }
+    // a diamond (`D : B, C` with `C` overriding what `B` inherits from `A`): the implementation another candidate overrides is not a candidate
+    val cands = all.filter { c -> all.none { o -> o !== c && c in allOverridden(o) } }.ifEmpty { all }
     return cands.firstOrNull { parentClass(it)?.kind != IrClassKind.INTERFACE && hasBody(it) }
         ?: cands.firstOrNull { hasBody(it) }
         ?: cands.firstOrNull()
