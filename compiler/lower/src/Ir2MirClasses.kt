@@ -365,10 +365,25 @@ internal fun Ir2Mir.resolveFake(f: IrSimpleFunction): IrSimpleFunction {
         ?: f
 }
 
+/** A function `(enum) -> name / ordinal`: every enum class starts with the same hidden fields, so the layout of any one gives it. */
+internal fun Ir2Mir.enumAccessor(name: Boolean): String {
+    val owner = classInfos.values.first { it.ir.kind == IrClassKind.ENUM_CLASS }
+    val cName = "mkh_enum_" + (if (name) "get_name" else "get_ordinal")
+    if (extraFunctions.none { it.cName == cName }) {
+        val self = MirLocal(0, "this", anyNullable)
+        val t = if (name) TString else TInt
+        val field = MirExpr.FieldGet(MirExpr.Cast(MirExpr.Local(self), typeOf(owner.ir), MirExpr.CastMode.Unchecked), owner.cName, if (name) "\$name" else "\$ordinal", t)
+        extraFunctions += MirFunction("kotlin.Enum." + (if (name) "name" else "ordinal"), cName, listOf(self), t, listOf(MirStmt.Return(field)))
+    }
+    return cName
+}
+
 internal fun Ir2Mir.implName(f: IrSimpleFunction?): String? {
     if (f == null) return null
     val p = parentClass(f)
     if (p != null && (isAny(p) || isRuntimeProvided(p))) return null
+    // `enum class E : Named` where `Named.name` is implemented by Enum.name: the itable entry reads the hidden field
+    if (p != null && p.kotlinFqName == "kotlin.Enum" && (f.name == "<get-name>" || f.name == "<get-ordinal>")) return enumAccessor(f.name == "<get-name>")
     if (!hasBody(f)) return null
     val n = functionNames[f] ?: error("no C name for ${f.name}")
     if (p != null && p.isValue && f.parameters.isNotEmpty() && f.parameters[0].kind == IrParameterKind.DispatchReceiver && inlineRepOf(p) != null) return valueClassWrapper(f, n)
@@ -522,6 +537,7 @@ private fun cKind(t: MirType): String = when {
 internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): String? {
     val name = implName(impl) ?: return null
     impl!!
+    if (name.startsWith("mkh_enum_get_")) return name   // the accessor of the hidden enum fields takes any object
     val rp = root.parameters.map { mirType(it.type, it) }
     val ip = impl.parameters.map { mirType(it.type, it) }
     val rr = mirType(root.returnType, root)

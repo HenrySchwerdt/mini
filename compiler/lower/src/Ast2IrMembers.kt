@@ -67,7 +67,18 @@ fun Ast2Ir.enumBodyConstructor(c: IrClass, sym: ClassSym): IrConstructor? {
 // ---- data classes -------------------------------------------------------------------------------------------------------
 
 fun Ast2Ir.addDataMembers(c: IrClass, sym: ClassSym) {
-    val pc = sym.primaryCtor ?: return
+    val pc = sym.primaryCtor
+    if (pc == null) {
+        // `data object O`: toString is the name, hashCode its hash, equals the type test
+        if (!(sym.isObject && sym.isData)) return
+        val ts = findSynth(sym, "toString", 0)
+        if (ts != null) c.declarations.add(toStringFunction(c, sym, ts, emptyList(), true))
+        val hs = findSynth(sym, "hashCode", 0)
+        if (hs != null) c.declarations.add(hashCodeFunction(c, sym, hs, emptyList()))
+        val es = findSynth(sym, "equals", 1)
+        if (es != null) c.declarations.add(equalsFunction(c, sym, es, emptyList()))
+        return
+    }
     sema.ensureSig(pc)
     val props = ArrayList<IrProperty>()
     for (p in pc.primaryParams) {
@@ -182,9 +193,19 @@ private fun Ast2Ir.findPropByName(c: IrClass, name: String): IrProperty? {
     return null
 }
 
-private fun Ast2Ir.toStringFunction(c: IrClass, sym: ClassSym, fs: FunSym, props: List<IrProperty>): IrSimpleFunction {
+private fun Ast2Ir.toStringFunction(c: IrClass, sym: ClassSym, fs: FunSym, props: List<IrProperty>, dataObject: Boolean = false): IrSimpleFunction {
     val f = synthFunction(c, sym, fs, "toString", sema.stringType, false, true)
     val parts = ArrayList<IrExpression>()
+    if (dataObject) {
+        f.bodyBuilder = {
+            withCtx(BodyCtx(null, f, null, false)) {
+                val stmts = ArrayList<IrStatement>()
+                stmts.add(ret(f, IrConst(sema.stringType, sym.name)))
+                IrBlockBody(stmts)
+            }
+        }
+        return f
+    }
     parts.add(IrConst(sema.stringType, sym.name + "("))
     var first = true
     for (p in props) {
@@ -210,7 +231,9 @@ private fun Ast2Ir.hashCodeFunction(c: IrClass, sym: ClassSym, fs: FunSym, props
         withCtx(BodyCtx(null, f, null, false)) {
             val stmts = ArrayList<IrStatement>()
             if (props.isEmpty()) {
-                stmts.add(ret(f, constInt(0)))
+                var h = 0
+                if (sym.isObject) for (ch in sym.name) h = 31 * h + ch.code   // a data object: the hash of its name
+                stmts.add(ret(f, constInt(h)))
             } else if (props.size == 1) {
                 val p0 = props[0]
                 stmts.add(ret(f, hashOf(f, p0, sym.isAnnotation)))

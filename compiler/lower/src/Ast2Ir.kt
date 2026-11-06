@@ -748,7 +748,9 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         if (sym.receiver != null) needsField = false
         if (hasDelegate) {
             // `val x by delegate`: the delegate lives in a field `x$delegate`
-            val f = IrField(sym.name + "\$delegate", irType(delegateFieldType(sym)))
+            // (the delegates of extension properties of the same name on different receivers are told apart by the receiver class)
+            val recvTag = (sym.receiver as? ClassType)?.cls?.name?.let { "\$" + it } ?: ""
+            val f = IrField(sym.name + recvTag + "\$delegate", irType(delegateFieldType(sym)))
             f.origin = "PROPERTY_DELEGATE"
             f.parent = c
             f.isStatic = c == null

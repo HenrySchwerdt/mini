@@ -358,7 +358,17 @@ fun BodyChecker.superExpr(e: SuperExpr): Type {
         if (r.isCompanion) continue
         if (e.label != null && c.name != e.label) continue // `super@Outer.f()`
         val ta = e.typeArg
-        if (ta != null) return sema.resolveType(ta, scope)
+        if (ta != null) {
+            // `super<B>.f()` for a generic `B` written without arguments: the supertype `B<Int>` of the class
+            if (ta is UserType && ta.segments.size == 1 && ta.segments[0].args.isEmpty()) {
+                val bc = sema.lookupClassifier(scope, ta.segments[0].name) as? ClassSym
+                if (bc != null && bc.typeParams.isNotEmpty()) {
+                    sema.ensureSupertypes(c)
+                    for (st in c.supertypes) if (st is ClassType && st.cls === bc) return st
+                }
+            }
+            return sema.resolveType(ta, scope)
+        }
         sema.ensureSupertypes(c)
         val sc = sema.superclassOf(c)
         // unqualified `super` of a class with interfaces: the member is looked up in all of its direct supertypes (the superclass first)

@@ -380,6 +380,7 @@ internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirSt
     builtinOf(cls)?.let { return builtinNew(c, cls, it, out) }
     if (inlineRepOf(cls) != null) return valueClassNew(c, k, cls, out)
     if (cls.kotlinFqName == "kotlin.Any") return MirExpr.RuntimeCall("mk_any_new", emptyList(), anyType)
+    if (cls.kotlinFqName == "kotlin.String" && c.arguments.none { it != null }) return MirExpr.StringConst("")   // `String()`
     arrayKindOfFq(cls.kotlinFqName)?.let { return arrayConstructor(c, it, out) }
     val cName = functionNames[k] ?: unsupported(c, "construction of '${cls.kotlinFqName}'")
     if (cls.kind != IrClassKind.CLASS) unsupported(c, "construction of ${classKind(cls)} '${cls.name}'")

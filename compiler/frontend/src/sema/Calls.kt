@@ -516,6 +516,8 @@ fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List
     val il = ArrayList<Candidate>()
     for (mp in members.propsNamed(rt, name)) {
         if (mp.prop.receiver != null) continue
+        // a property whose type is being inferred cannot be the callee (`val ok = ok()` calls the function `ok`)
+        if (mp.prop.typeState == 1) continue
         val pt = ops.substitute(sema.typeOfProp(mp.prop), mp.subst)
         for (ic in invokeCandidates(pt)) {
             ic.invokeProp = mp.prop
@@ -840,6 +842,15 @@ fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt 
         val fd = ArrayList<Attempt>()
         for (a in pool) if (a.binding.defaultsUsed == min) fd.add(a)
         pool = fd
+    }
+    if (pool.size > 1 && pool.all { it.tps.isEmpty() }) {
+        // the same member of several bounds / supertypes (`T : A, T : B`): the one with the most specific result type
+        val rets = pool.map { ops.substitute(sema.returnTypeOf(it.cand.fn), it.cand.subst) }
+        for (i in pool.indices) {
+            var most = true
+            for (j in rets.indices) if (j != i && !ops.isSubtype(rets[i], rets[j])) most = false
+            if (most) return pool[i]
+        }
     }
     if (pool.size > 1) {
         // a member of a subclass over the same signature of its supertype was already filtered; prefer non-abstract

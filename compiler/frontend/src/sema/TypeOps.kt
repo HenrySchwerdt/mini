@@ -616,6 +616,8 @@ class TypeOps(private val sema: Sema) {
             i++
         }
         if (keep.isEmpty()) return orig
+        // `b = null; if (b != null) b.length`: the null assigned to a `String?` and the `!= null` check leave Nothing; the members still are those of the declared type
+        if (keep.size == 1 && isNothing(keep[0]) && !isNothing(orig) && orig.nullable) return makeNotNull(orig)
         if (keep.size == 1) return keep[0]
         return IsectType(keep)
     }
