@@ -541,6 +541,110 @@ Still open in the two buckets (41 + 7):
   (`specialBuiltins/*`, `bridges/special*`, `overrideAbstractSetMethod`: JVM semantics of the stub bridges), `substitutelambdaExtensionReceiverType`
   (builder inference), `releaseIntercepted`, `suspendFunctionIsAs`, `unitSafeCall`, `kt44429`, `kt7017`, the context receiver overloads.
 
+## Sixth round combined (6a + 6b)
+
+The two branches of round 6 merged (`claude/conformance-6b` contains origin/main with 6a): one full harness pass over the combined tree (`results.json`, `summary.md`). The 19 `genericSafeCasts` tests are skipped as `non-default-flag` (6b), so the denominator is 5953 (6a alone: 5971). Compared test by test, nothing that passed in 6a or 6b alone fails in the merge; the only three tests that passed in 6a alone and are not counted now (`basics/kt7972`, `basics/unchecked_cast11`, `bridges/test22`) are the `non-default-flag` skips.
+
+| | 6a alone | 6b alone | 6a + 6b |
+|---|---:|---:|---:|
+| applicable | 5971 | 5953 | 5953 |
+| **pass** | **5711 (95.65%)** | **5653 (94.96%)** | **5745 (96.51%)** |
+| compile-error | 130 | 219 | 129 |
+| ice | 27 | 31 | 26 |
+| runtime-fail | 86 | 41 | 42 |
+| crash | 14 | 7 | 8 |
+| timeout | 3 | 2 | 3 |
+
+Per category (first two path components; categories with at least one failure in any of the three runs; pass / applicable):
+
+| category | 6a alone | 6b alone | 6a + 6b |
+|---|---:|---:|---:|
+| box/inlineClasses | 711 / 732 | 709 / 732 | 711 / 732 |
+| box/callableReference | 185 / 202 | 187 / 202 | 187 / 202 |
+| box/coroutines | 425 / 446 | 431 / 446 | 432 / 446 |
+| box/casts | 42 / 52 | 42 / 51 | 42 / 51 |
+| box/specialBuiltins | 11 / 20 | 11 / 20 | 11 / 20 |
+| box/funInterface | 26 / 36 | 24 / 36 | 29 / 36 |
+| box/inference | 39 / 46 | 37 / 46 | 39 / 46 |
+| box/primitiveTypes | 84 / 91 | 84 / 91 | 84 / 91 |
+| box/annotations | 3 / 9 | 3 / 9 | 3 / 9 |
+| box/builderInference | 64 / 70 | 64 / 70 | 64 / 70 |
+| box/involvesIrInterpreter | 26 / 33 | 28 / 33 | 28 / 33 |
+| box/closures | 102 / 106 | 102 / 106 | 102 / 106 |
+| box/controlStructures | 206 / 212 | 204 / 212 | 208 / 212 |
+| box/localClasses | 36 / 40 | 36 / 40 | 36 / 40 |
+| boxInline/callableReference | 44 / 48 | 43 / 48 | 44 / 48 |
+| boxInline/innerClasses | 4 / 8 | 4 / 8 | 4 / 8 |
+| box/basics | 26 / 39 | 25 / 28 | 25 / 28 |
+| box/enum | 78 / 81 | 77 / 81 | 78 / 81 |
+| box/extensionFunctions | 25 / 28 | 22 / 28 | 25 / 28 |
+| box/fir | 9 / 12 | 9 / 12 | 9 / 12 |
+| box/initializers | 17 / 21 | 18 / 21 | 18 / 21 |
+| box/lower | 6 / 9 | 6 / 9 | 6 / 9 |
+| box/objects | 105 / 108 | 98 / 108 | 105 / 108 |
+| box/topLevelInitializtion | 0 / 3 | 0 / 3 | 0 / 3 |
+| box/arrays | 90 / 92 | 89 / 92 | 90 / 92 |
+| box/bridges | 84 / 91 | 83 / 85 | 83 / 85 |
+| box/dataObjects | 1 / 3 | 1 / 3 | 1 / 3 |
+| box/ieee754 | 35 / 38 | 36 / 38 | 36 / 38 |
+| box/inline | 45 / 49 | 46 / 49 | 47 / 49 |
+| box/ranges | 817 / 819 | 817 / 819 | 817 / 819 |
+| box/sam | 6 / 8 | 6 / 8 | 6 / 8 |
+| box/secondaryConstructors | 28 / 30 | 28 / 30 | 28 / 30 |
+| box/strings | 29 / 31 | 29 / 31 | 29 / 31 |
+| box/unsignedTypes | 38 / 40 | 38 / 40 | 38 / 40 |
+| box/volatile | 0 / 2 | 0 / 2 | 0 / 2 |
+| boxInline/annotations | 0 / 2 | 0 / 2 | 0 / 2 |
+| boxInline/complex | 6 / 8 | 6 / 8 | 6 / 8 |
+| boxInline/nonLocalReturns | 81 / 83 | 81 / 83 | 81 / 83 |
+| boxInline/private | 10 / 12 | 10 / 12 | 10 / 12 |
+| box/binaryOp | 19 / 20 | 17 / 20 | 19 / 20 |
+| box/builtinStubMethods | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/collections | 4 / 5 | 4 / 5 | 4 / 5 |
+| box/controlflow | 18 / 19 | 18 / 19 | 18 / 19 |
+| box/dataClasses | 46 / 50 | 48 / 50 | 49 / 50 |
+| box/defaultArguments | 75 / 77 | 67 / 77 | 76 / 77 |
+| box/delegatedProperty | 46 / 48 | 47 / 48 | 47 / 48 |
+| box/diagnostics | 50 / 51 | 41 / 51 | 50 / 51 |
+| box/fieldRename | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/function | 35 / 36 | 32 / 36 | 35 / 36 |
+| box/innerNested | 48 / 49 | 46 / 49 | 48 / 49 |
+| box/nothingValue | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/objectIntrinsics | 0 / 1 | 0 / 1 | 0 / 1 |
+| box/operatorConventions | 31 / 33 | 31 / 33 | 32 / 33 |
+| box/package | 9 / 10 | 9 / 10 | 9 / 10 |
+| box/properties | 86 / 88 | 86 / 88 | 87 / 88 |
+| box/regressions | 62 / 63 | 59 / 63 | 62 / 63 |
+| box/statics | 7 / 8 | 7 / 8 | 7 / 8 |
+| box/stringTrim | 0 / 1 | 0 / 1 | 0 / 1 |
+| box/super | 33 / 35 | 34 / 35 | 34 / 35 |
+| box/suspendConversion | 2 / 3 | 2 / 3 | 2 / 3 |
+| box/vararg | 15 / 17 | 15 / 17 | 16 / 17 |
+| box/when | 91 / 92 | 90 / 92 | 91 / 92 |
+| boxInline/anonymousObject | 93 / 94 | 91 / 94 | 93 / 94 |
+| boxInline/defaultValues | 70 / 71 | 70 / 71 | 70 / 71 |
+| boxInline/noInline | 6 / 7 | 6 / 7 | 6 / 7 |
+| boxInline/reified | 23 / 24 | 23 / 24 | 23 / 24 |
+| boxInline/suspend | 69 / 70 | 69 / 70 | 69 / 70 |
+| box/argumentOrder | 15 / 16 | 16 / 16 | 16 / 16 |
+| box/boxingOptimization | 39 / 39 | 38 / 39 | 39 / 39 |
+| box/classes | 115 / 115 | 113 / 115 | 115 / 115 |
+| box/constants | 12 / 12 | 11 / 12 | 12 / 12 |
+| box/contracts | 16 / 16 | 14 / 16 | 16 / 16 |
+| box/delegation | 12 / 12 | 11 / 12 | 12 / 12 |
+| box/elvis | 9 / 9 | 8 / 9 | 9 / 9 |
+| box/functions | 98 / 98 | 91 / 98 | 98 / 98 |
+| box/increment | 25 / 26 | 24 / 26 | 26 / 26 |
+| box/mixedNamedPosition | 4 / 4 | 2 / 4 | 4 / 4 |
+| box/multiDecl | 62 / 64 | 64 / 64 | 64 / 64 |
+| box/propertyCallableReference | 6 / 7 | 7 / 7 | 7 / 7 |
+| box/smartCasts | 29 / 29 | 27 / 29 | 29 / 29 |
+| box/traits | 33 / 33 | 32 / 33 | 33 / 33 |
+| box/typealias | 21 / 21 | 16 / 21 | 21 / 21 |
+| box/unaryOp | 4 / 4 | 3 / 4 | 4 / 4 |
+| box/unit | 13 / 13 | 12 / 13 | 13 / 13 |
+| boxInline/argumentOrder | 10 / 12 | 12 / 12 | 12 / 12 |
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
