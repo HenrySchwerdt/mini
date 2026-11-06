@@ -465,7 +465,11 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
             val classes = ArrayList<mini.backend.MirClass>()
             classes.addAll(classByName.values)
             for (c in module.classes) if (!classByName.containsKey(c.cName)) classes.add(c)
-            val withLibraryClasses = MirModule(module.sourceName, module.functions, classes, module.externs, module.includes, module.links, module.wasmExports)
+            // generated helpers (the mk.Ref cell of a captured var, ...) have the same stable names in the program and in a
+            // library object: the library's definition is the one that is linked
+            val libraryFunctionNames = allFunctions.mapTo(HashSet()) { it.cName }
+            val userFunctions = module.functions.filter { it.cName !in libraryFunctionNames }
+            val withLibraryClasses = MirModule(module.sourceName, userFunctions, classes, module.externs, module.includes, module.links, module.wasmExports)
             writeTextFile(llOut, LlvmEmitter.emit(
                 withLibraryClasses, rcOpt, target = LlvmTarget.WASM32,
                 externalClassNames = classNames,
