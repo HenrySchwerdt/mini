@@ -215,6 +215,7 @@ fun Ast2Ir.localProperty(d: PropertyDecl): IrStatement {
     val deleg = d.delegate
     if (deleg != null) return localDelegatedProperty(d, v)
     if (init != null) iv.initializer = convertWithExpected(init, t)
+    else if (!d.isVar) iv.deferredInit = true
     varMap[v] = iv
     return iv
 }

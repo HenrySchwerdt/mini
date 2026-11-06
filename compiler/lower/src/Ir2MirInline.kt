@@ -32,6 +32,7 @@ internal fun Ir2Mir.inlineLambdaOf(e: IrExpression?): InlineLambda? = when (e) {
 
 /** Value of [v] converted to the type [t] regardless of erasure (box / unbox / retype). */
 internal fun Ir2Mir.coerceFlexible(v: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
+    if (v is MirExpr.Unreachable && v.type == TNothing && t != TNothing && t != TUnit) return MirExpr.Unreachable(t) // `fn(return x)`
     if (v.type == t || v.type == TNothing) return v
     if (t == TUnit) return v
     // an erased generic result (`fun <T> f(): T` called with T = Nothing) where Nothing is expected: it was evaluated and never returns

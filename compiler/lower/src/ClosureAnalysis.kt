@@ -78,7 +78,7 @@ internal class ClosureInfo {
         for (i in idx + 1 until stack.size) {
             if (captures.getOrPut(stack[i]) { LinkedHashSet() }.add(v)) changed = true
             // a `val x: T` without initializer is assigned later (possibly by a closure, `runOnce { x = ... }`): it needs a shared cell too
-            if (v is IrVariable && (v.isVar || v.initializer == null)) boxed += v
+            if (v is IrVariable && (v.isVar || v.deferredInit)) boxed += v
         }
         return changed
     }

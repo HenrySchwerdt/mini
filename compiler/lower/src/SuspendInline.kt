@@ -106,6 +106,7 @@ private class Copier(val a: Ast2Ir, val subst: Map<TypeParamSym, Type>, var pare
         val n = IrVariable(v.name, type(v.type), v.isVar)
         at(n, v)
         n.isLateinit = v.isLateinit
+        n.deferredInit = v.deferredInit
         n.sym = v.sym
         n.typeAnnotations = v.typeAnnotations
         n.origin = v.origin
