@@ -20,3 +20,12 @@ public fun Float.isFinite(): Boolean = !isInfinite() && !isNaN()
 public fun Char.toByte(): Byte = this.code.toByte()
 
 public fun Char.toShort(): Short = this.code.toShort()
+
+public fun Float.mod(other: Float): Float {
+    val r = this % other
+    return if (r != 0.0f && (r < 0.0f) != (other < 0.0f)) r + other else r
+}
+
+public fun Float.mod(other: Double): Double = this.toDouble().mod(other)
+
+public fun Double.mod(other: Float): Double = this.mod(other.toDouble())

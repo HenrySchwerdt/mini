@@ -71,6 +71,10 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         threshold = tableSizeFor(initialCapacity)
     }
 
+    public constructor(initialCapacity: Int, loadFactor: Float) : this(initialCapacity) {
+        if (loadFactor <= 0.0f || loadFactor != loadFactor) mini.internal.throwIllegalArgument("Illegal load factor: $loadFactor")
+    }
+
     public constructor(original: Map<out K, V>) {
         linked = false
         // java.util.HashMap#putMapEntries sizes the table from the argument
@@ -439,6 +443,10 @@ public open class LinkedHashMap<K, V> : HashMap<K, V> {
     public constructor() : super(true, 16)
 
     public constructor(initialCapacity: Int) : super(true, initialCapacity)
+
+    public constructor(initialCapacity: Int, loadFactor: Float) : super(true, initialCapacity) {
+        if (loadFactor <= 0.0f || loadFactor != loadFactor) mini.internal.throwIllegalArgument("Illegal load factor: $loadFactor")
+    }
 
     public constructor(original: Map<out K, V>) : super(true, 16) {
         putAll(original)

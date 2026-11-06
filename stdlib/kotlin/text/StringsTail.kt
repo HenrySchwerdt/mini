@@ -91,7 +91,7 @@ private fun checkBoundsIndexes(startIndex: Int, endIndex: Int, size: Int) {
     if (startIndex > endIndex) throw IllegalArgumentException("startIndex: " + startIndex + " > endIndex: " + endIndex)
 }
 
-public fun String.toCharArray(startIndex: Int = 0, endIndex: Int = length): CharArray {
+public fun String.toCharArray(startIndex: Int, endIndex: Int = length): CharArray {
     checkBoundsIndexes(startIndex, endIndex, length)
     val r = CharArray(endIndex - startIndex)
     var i = startIndex
@@ -99,7 +99,7 @@ public fun String.toCharArray(startIndex: Int = 0, endIndex: Int = length): Char
     return r
 }
 
-public fun String.encodeToByteArray(startIndex: Int = 0, endIndex: Int = length, throwOnInvalidSequence: Boolean = false): ByteArray {
+public fun String.encodeToByteArray(startIndex: Int, endIndex: Int = length, throwOnInvalidSequence: Boolean = false): ByteArray {
     checkBoundsIndexes(startIndex, endIndex, length)
     return substring(startIndex, endIndex).encodeToByteArray()
 }
@@ -469,3 +469,8 @@ public inline fun CharSequence.sumOf(selector: (Char) -> Double): Double {
     while (i < length) { sum += selector(this[i]); i++ }
     return sum
 }
+
+public val String.Companion.CASE_INSENSITIVE_ORDER: Comparator<String>
+    get() = Comparator { a, b -> a.compareTo(b, true) }
+
+public fun StringBuilder(content: CharSequence): StringBuilder = StringBuilder(content.toString())

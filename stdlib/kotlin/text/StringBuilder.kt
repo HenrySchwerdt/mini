@@ -32,10 +32,6 @@ public class StringBuilder {
         sbAppendString(buf, content)
     }
 
-    public constructor(content: CharSequence) {
-        sbAppendString(buf, content.toString())
-    }
-
     public override val length: Int
         get() = sbLength(buf)
 

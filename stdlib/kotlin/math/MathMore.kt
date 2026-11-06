@@ -21,9 +21,6 @@ public val Long.absoluteValue: Long
 public val Double.absoluteValue: Double
     get() = abs(this)
 
-public val Float.absoluteValue: Float
-    get() = abs(this)
-
 public val Float.sign: Float
     get() = if (this != this) this else if (this > 0.0f) 1.0f else if (this < 0.0f) -1.0f else this
 

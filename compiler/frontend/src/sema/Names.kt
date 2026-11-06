@@ -388,6 +388,15 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
                     res = NameRes(p, sema.typeOfProp(p), null, NameRes.VALUE)
                 }
             }
+            if (res == null && comp != null) {
+                // an extension property of the companion object: `String.CASE_INSENSITIVE_ORDER`
+                val ex = extensionProp(name, comp.thisType())
+                if (ex != null) {
+                    val er = record(node, ex.type, ex.sym)
+                    er.access = Access(null, RecvUse(null, false, RecvRef(comp, null, true), null))
+                    return ex.type
+                }
+            }
             if (res == null) {
                 err(sel.start, "unresolved reference '" + name + "'")
                 return ErrType("unresolved " + name)
