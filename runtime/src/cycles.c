@@ -308,8 +308,8 @@ size_t mk_cycles_collect(void) {
     garbage.n = 0;
     /* adaptive trigger: the next collection comes after as many new candidates as a quarter of the work of this one, so the
      * cost per candidate stays bounded however large the live graph is */
-    /* collections that free next to nothing (a big live graph that is only retained and released) are made rarer, up to 32 times */
-    backoff = freed * 8 < work ? (backoff < 64 ? backoff * 4 : backoff) : 1;
+    /* collections that free next to nothing (a big live graph that is only retained and released) are made rarer, up to 64 times */
+    backoff = freed * 8 < work ? (backoff < 64 ? backoff * 8 : backoff) : 1;
     size_t live = (size_t)(work > freed ? work - freed : 0);
     size_t t = live / 4;
     threshold = (t > MAX_THRESHOLD ? MAX_THRESHOLD : t > MIN_THRESHOLD ? t : MIN_THRESHOLD) * backoff;
@@ -352,7 +352,7 @@ void mk_cycles_candidate(MkObject *o) {
         }
     }
     if (threaded) roots_lock_release();
-    if ((roots_n >= threshold || mk_cycles_alloc_bytes >= alloc_limit) && mk_threads_running == 0) mk_cycles_collect();
+    if (((roots_n >= threshold && backoff == 1) || mk_cycles_alloc_bytes >= alloc_limit) && mk_threads_running == 0) mk_cycles_collect();
 }
 
 /* Called by mk_release when the count of a BUFFERED object reached zero: it is DYING while its dispose runs (a collection that

@@ -196,3 +196,28 @@ flag. Runtime tests updated (+ a mixed representation test).
 allocator prefix and the string header in front of the characters) is shrunk to the text and becomes the string; the builder shares it
 (`backing`, one reference) and copies the characters before it is changed (append, set, shorten).
 wordcount RSS 252 -> 93 MB (2.87x -> 1.1x Rust), json 96 -> 87 MB, strbuild unchanged (105 MB); speed flat (wordcount 2.8 -> 2.7 s).
+
+### 5. Comparison head (50fbbcb) vs origin/main (8526f22), same session (5 runs, cpu 3; `r3-head.json`, `r3-main.json`)
+|            | S | R | Z | score |
+|---|---|---|---|---|
+| main 8526f22 | 1.475 | 1.281 | 0.1254 | 0.769 |
+| perf-2 50fbbcb | 1.427 | 1.113 | 0.1254 | 0.730 |
+
+Per benchmark (C speed x Rust / RSS x Rust), main -> perf-2: wordcount 2.50 -> 2.58 / 2.86 -> 1.06, json 1.41 -> 1.30 / 1.25 -> 1.14, graph 3.88 -> 3.27 / 2.56 -> 2.15,
+strbuild 1.29 -> 1.31, binarytrees 0.90 -> 0.87, others within noise (cv 3-10 %, Rust's own time moves +-10 % between runs). Stripped sizes are identical
+in both trees (hello 27024 B). So the perf-2 commits are a net gain; the apparent S/Z rise against `final.json` (1.395 / 0.1025) is not from them:
+* Z: hello grew 22.8K -> 27.0K when the cycle collector (mk_cycles_collect 2 KiB, slot table, ...) arrived from the memory-safety branch; every program links it.
+  Idea (not done): keep the collector out of programs without a candidate class (needs mk_release / mk_cycles_candidate to be weak or the
+  compiler to pick a "no cycles" runtime flavour).
+* S: Rust's own cpu time differed by up to 20 % between the sessions (binarytrees 1.66 s then, 1.37 s now), so ratios of different sessions are not
+  comparable; same-session A/B above is. spectralnorm C 1.01 -> 1.37: absolute C time 1.26 -> 1.71 s. The generated C is the same shape as before; everything is
+  inlined into main and clang's loop/vectorisation choices decide. Rewriting the step-1 loops in the canonical `i++ < n` form (hand edited C) gave 1.50 -> 1.40..1.52 s:
+  noise, not adopted. API build 1.47 s (LLVM's loop form is canonical already).
+* wasm toolchain (scripts/build-wasm-toolchain.sh incl. test-programs, mlib inheritance, minic.wasm tests): passes on 50fbbcb.
+
+### 6. Cycle collector: no root-count trigger after a collection that freed nothing (KEPT) - runtime/src/cycles.c
+graph ran two collections: one at 32 MB (nothing to free: `visited=1`) and one at 262144 roots (the `roots >= threshold` trigger, threshold x4 backoff) when
+the 1M node graph was complete: 2.9M objects visited, 0.5 s of 2.1 s, nothing freed. Now a useless collection backs off by 8 (was 4) and, while backed off,
+only the allocation volume trigger (>= 3 x live bytes x backoff, at least 256 MB) starts a collection; the roots trigger applies again after the first collection that frees something.
+graph 3.27x -> 2.45x (C), 3.23x -> 2.31x (API), RSS 2.15x -> 2.00x; json, binarytrees, wordcount unchanged (wordcount 2.58 -> 2.30 was noise: no collection runs there beyond the first).
+Cost: a program that starts to create cyclic garbage after a useless collection can grow to 256 MB before the next one (stress-rss/stress-leak suites pass).
