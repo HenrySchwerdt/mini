@@ -1238,6 +1238,14 @@ private fun BodyChecker.whenBody(e: WhenExpr, expected: Type?, top: Boolean): Ty
                             // `when (x) { Obj -> }`: equal to a non-null value
                             val ctt = rec.get(c.expr)?.type
                             if (subjKey != null && ctt != null && !ops.mayBeNull(ctt)) one.onTrue.add(FactAdd(subjKey.key, subjKey.root, sema.anyType))
+                            // the subject after the smart casts of the failed earlier conditions (`!is Float -> ...; 0.0F -> ...`): the comparison is IEEE
+                            if (subjKey != null && subjType != null) {
+                                val sf = flow.facts[subjKey.key]
+                                if (sf != null) {
+                                    val sn = ops.narrow(subjType, sf.types)
+                                    if (sn !== subjType && sn is ClassType) record(c, sema.booleanType, null).target = sn
+                                }
+                            }
                         }
                     } else {
                         expr(c.expr, sema.booleanType)

@@ -942,7 +942,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     // result variables that the other arguments determine exactly (`getOrPut(k) { HashSet() }`) are known too
                     val rv = ArrayList<TypeVariable>()
                     cs.unfixedVars(cs.resolveFixed(expectedFun.ret), rv)
-                    for (v in rv) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) cs.fix(v)
+                    for (v in rv) if (v.equal.isNotEmpty() || v.lower.any { !ops.isNothing(it) }) cs.fix(v) // a lower bound of Nothing (the first lambda returns non-locally) determines nothing
                     val ef = cs.resolveFixed(expectedFun) as FunType
                     inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
                     pendingLabel = postponedLabel(e)

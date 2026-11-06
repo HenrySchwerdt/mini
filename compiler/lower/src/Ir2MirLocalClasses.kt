@@ -23,6 +23,16 @@ internal fun Ir2Mir.captureTypesFor(c: IrClass): List<MirType> = classCaptures(c
 internal fun Ir2Mir.captureArgsFor(cls: IrClass, at: IrElement): List<MirExpr> =
     classCaptures(cls).map { MirExpr.Local(localOf(it, at)) }
 
+/** The values an enclosing local class captured, read through its instance [inst]: an inner class does not capture them again. */
+private fun Ir2Mir.bindOuterCaptures(oc: IrClass, inst: MirLocal, out: MutableList<MirStmt>) {
+    for ((j, v) in classCaptures(oc).withIndex()) {
+        if (locals[v] != null) continue
+        val l = MirLocal(localCounter++, "cap$j", capturedType(v))
+        out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(inst), info(oc).cName, "cap$j", l.type))
+        locals[v] = l
+    }
+}
+
 /**
  * Called at the start of the conversion of member [f] of the user class [cls]: binds captured outer
  * values and the outer instance as locals, and (in constructors) stores them into the hidden fields.
@@ -46,16 +56,18 @@ internal fun Ir2Mir.enterClassMember(f: IrFunction, cls: IrClass, params: Mutabl
             var delegatesToThis = false
             val fb = f.body
             if (fb is IrBlockBody) for (st in fb.statements) if (st is IrDelegatingConstructorCall && st.callee.parent === cls) delegatesToThis = true
-            if (!delegatesToThis) out += MirStmt.SetField(MirExpr.Local(self), info.cName, "\$outer", typeOf(outerCls), MirExpr.Local(outerParam))
+            if (!delegatesToThis) out += MirStmt.SetField(MirExpr.Local(self), info.cName, "\$outer", outerType(outerCls), MirExpr.Local(outerParam))
             outerCls.thisReceiver?.let { locals[it] = outerParam }
+            bindOuterCaptures(outerCls, outerParam, out)
             // the outer instances further out (`this@A` of `A.B.C`) through the `$outer` fields
             var cur: MirLocal = outerParam
             var k = outerCls
             while (k.isInner) {
                 val oc = k.parent as? IrClass ?: break
-                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                val l = MirLocal(localCounter++, "outer", outerType(oc))
                 out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
                 oc.thisReceiver?.let { locals[it] = l }
+                bindOuterCaptures(oc, l, out)
                 cur = l
                 k = oc
             }
@@ -73,9 +85,10 @@ internal fun Ir2Mir.enterClassMember(f: IrFunction, cls: IrClass, params: Mutabl
     var k = cls
     while (k.isInner) {
         val outerCls = k.parent as? IrClass ?: break
-        val l = MirLocal(localCounter++, "outer", typeOf(outerCls))
+        val l = MirLocal(localCounter++, "outer", outerType(outerCls))
         out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
         outerCls.thisReceiver?.let { locals[it] = l }
+        bindOuterCaptures(outerCls, l, out)
         cur = l
         k = outerCls
     }

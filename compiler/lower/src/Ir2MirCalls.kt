@@ -60,7 +60,7 @@ internal fun Ir2Mir.callArgs(
             var cur: MirLocal = lv.local
             while (k != null && k.isInner) {
                 val oc = k.parent as? IrClass ?: break
-                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                val l = MirLocal(localCounter++, "outer", outerType(oc))
                 out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
                 val ot = oc.thisReceiver
                 if (ot != null) { saved += ot to locals[ot]; locals[ot] = l }
@@ -159,7 +159,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
             else -> null
         }
         if (kind != null) {
-            val recv = operands(listOf(c.arguments[0]!!), out)[0]
+            // a receiver of type T (reified, substituted by Long in an inline expansion) is a primitive here
+            val recv = boxIfPrim(operands(listOf(c.arguments[0]!!), out)[0], c, out)
             return MirExpr.RuntimeCall("mk_checked_number_to_" + kind.displayName.lowercase(), listOf(asAny(recv)), kind)
         }
     }

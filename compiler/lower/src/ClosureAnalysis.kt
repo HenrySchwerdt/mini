@@ -76,6 +76,10 @@ internal class ClosureInfo {
         if (idx < 0) return false
         var changed = false
         for (i in idx + 1 until stack.size) {
+            val s = stack[i]
+            // an inner class of a local class does not capture again what its outer class captured: it reads the outer instance's copy
+            // (the variable may have another value when the inner class is created later, `for (t in ..) { class C { inner class D } }`)
+            if (s is IrClass && s.isInner && i > 0 && stack[i - 1] === s.parent && stack[i - 1] is IrClass && captures[stack[i - 1]]?.contains(v) == true) continue
             if (captures.getOrPut(stack[i]) { LinkedHashSet() }.add(v)) changed = true
             // a `val x: T` without initializer is assigned later (possibly by a closure, `runOnce { x = ... }`): it needs a shared cell too
             if (v is IrVariable && (v.isVar || v.deferredInit)) boxed += v

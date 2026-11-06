@@ -461,10 +461,21 @@ private fun Ast2Ir.whenCondition(c: WhenCond, subj: IrVariable?): IrExpression {
     when (c) {
         is WhenExprCond -> {
             if (subj == null) return convert(c.expr)
-            val ve = convert(c.expr)
-            val eq = IrCall(builtinFun(if (isFloating(subj.type) && isFloating(ve.type)) "ieee754equals" else "EQEQ"), sema.booleanType)
+            var ve = convert(c.expr)
+            var sv: IrExpression = getValue(subj)
+            // the subject smart cast to Double / Float by an earlier branch compares as a number
+            val sm = rec(c)?.target
+            if (sm != null && isFloating(sm) && !isFloating(subj.type) && isFloating(ve.type)) {
+                val st = irType(sm)
+                sv = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, sv, st)
+            }
+            if (isFloating(sv.type) && isFloating(ve.type) && sv.type.classFqName != ve.type.classFqName) {
+                sv = convertNumber(sv, "kotlin.Double")
+                ve = convertNumber(ve, "kotlin.Double")
+            }
+            val eq = IrCall(builtinFun(if (isFloating(sv.type) && isFloating(ve.type)) "ieee754equals" else "EQEQ"), sema.booleanType)
             eq.origin = "EQEQ"
-            eq.arguments.add(getValue(subj))
+            eq.arguments.add(sv)
             eq.arguments.add(ve)
             return eq
         }

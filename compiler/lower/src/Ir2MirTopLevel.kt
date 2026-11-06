@@ -29,6 +29,41 @@ internal fun Ir2Mir.facadeFor(file: IrFile): Facade = facades.getOrPut(file) {
     Facade(cName, (if (pkg.isEmpty()) "" else "$pkg.") + base, file, fields, Mangling.constructor(cName, emptyList()))
 }
 
+/**
+ * Does a top-level property initialiser of [file] call code of the program (a function or constructor that is not of the standard library)?
+ * Kotlin/Native runs the initialisers of a file when one of its functions is first called, so a function of such a file starts the
+ * initialisation (the other files initialise on the first read of one of their properties).
+ */
+internal fun Ir2Mir.initializesWithEffects(file: IrFile): Boolean = effectfulInit.getOrPut(file) {
+    var found = false
+    val w = object : IrWalker() {
+        override fun visit(e: IrElement) {
+            if (found) return
+            val callee: IrDeclaration? = when (e) {
+                is IrCall -> e.callee
+                is IrConstructorCall -> e.callee
+                else -> null
+            }
+            if (callee != null) {
+                var p: IrDeclarationParent? = callee.parent
+                while (p is IrDeclaration) p = p.parent
+                if (p is IrFile && !p.isStdlib && !p.isLib && !p.isBuiltin) found = true
+            }
+            visitChildren(e)
+        }
+    }
+    for (d in file.declarations) {
+        val f = when (d) {
+            is IrProperty -> d.backingField
+            is IrField -> d
+            else -> null
+        }
+        val init = f?.initializer?.expression ?: continue
+        w.visit(init)
+    }
+    found
+}
+
 internal fun Ir2Mir.facadeOfField(f: IrField, at: IrElement): Facade {
     val file = f.parent as? IrFile ?: unsupported(at, "static field '${f.name}'")
     return facadeFor(file)
