@@ -761,6 +761,15 @@ internal fun Parser.parseStatements(into: ArrayList<Stmt>) {
 internal fun Parser.parseStatement(): Stmt? {
     val d = tryParseDeclaration(CTX_LOCAL)
     if (d != null) return d
+    if (kind() == Tk.IDENT && la(1) == Tk.AT && adjacent(0)) {
+        // a label in front of a declaration (`a@ val x = 1`): ignored
+        val sn = snap()
+        advance()
+        advance()
+        val d2 = tryParseDeclaration(CTX_LOCAL)
+        if (d2 != null) return d2
+        restore(sn)
+    }
     if (kind() == Tk.AT) {
         // annotations on their own line apply to the whole following statement (`@Suppress("X")\n a = b`);
         // on the same line they bind to the first operand
@@ -856,7 +865,8 @@ private fun Parser.parseDoWhile(): Expr {
     val m = mark()
     val s = tokStart()
     advance() // do
-    val body = parseBody()
+    // `do while (c);`: no body (the parser of the reference compiler skips it too)
+    val body = if (kind() == Tk.WHILE) null else parseBody()
     var cond: Expr = fin(ErrorExpr(), tokStart())
     if (kind() == Tk.WHILE) {
         advance()
