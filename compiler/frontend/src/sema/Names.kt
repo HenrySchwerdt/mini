@@ -510,6 +510,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         }
     }
     val groups: List<List<Candidate>>
+    aliasTypeArgs = typeArgs
     var preRes: CallRes? = null
     var safe = false
     var name: String? = null
@@ -582,6 +583,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         extensionGroups("invoke", ct, ig)
         groups = ig
     }
+    aliasTypeArgs = null
     var res = preRes ?: resolveCallGroups(node, groups, args, typeArgs, expected, false)
     if (res == null && recv is ValueRecv && name != null) {
         // `recv.f(args)` where `f` is a variable of type `Recv.(args) -> R`
@@ -654,7 +656,65 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         val er = record(e, t, res.callee)
         er.call = cinfo
     }
+    val cfn = res.callee
+    if (cinfo != null && cfn is FunSym && cfn.kind == FunKind.NORMAL) contractFacts(cfn, cinfo)
     return t
+}
+
+/** the argument expression bound to the parameter named [name] */
+fun argForParam(fn: FunSym, info: CallInfo, name: String): Expr? {
+    var i = 0
+    while (i < info.args.size && i < info.paramOfArg.size) {
+        val j = info.paramOfArg[i]
+        if (j >= 0 && j < fn.params.size && fn.params[j].name == name) return info.args[i].expr
+        i++
+    }
+    return null
+}
+
+/**
+ * Smart casts after a call that returns normally: `require(x is T)` / `check(c)` / `requireNotNull(x)` of the standard library, and the
+ * simple forms `contract { returns() implies p }` / `contract { returns() implies (p != null) }` declared by the user.
+ */
+fun BodyChecker.contractFacts(fn: FunSym, info: CallInfo) {
+    if (fn.owner == null && fn.file != null && fn.file!!.pkg == "kotlin") {
+        val n = fn.name
+        if (n == "require" || n == "check") {
+            val a = argForParam(fn, info, "value")
+            if (a != null) flow.addAll(condFacts(a).onTrue)
+        } else if (n == "requireNotNull" || n == "checkNotNull") {
+            val a = argForParam(fn, info, "value")
+            if (a != null) flow.addAll(nonNullFacts(a))
+        }
+        return
+    }
+    val d = fn.decl ?: return
+    val b = d.body
+    if (b !is BlockExpr || b.stmts.isEmpty()) return
+    val s0 = b.stmts[0]
+    if (s0 !is CallExpr) return
+    val cn = s0.callee
+    if (cn !is NameExpr || cn.name != "contract" || s0.lambdas.size != 1) return
+    val lam = s0.lambdas[0]
+    if (lam !is LambdaExpr) return
+    for (st in lam.body) {
+        if (st !is BinaryExpr || st.op != "implies") continue
+        val l = st.left
+        if (l !is CallExpr) continue
+        val lc = l.callee
+        if (lc !is NameExpr || lc.name != "returns" || (l.args != null && l.args!!.isNotEmpty())) continue
+        val r = AstWalk.unparen(st.right)
+        var pn: String? = null
+        var nn = false
+        if (r is NameExpr) pn = r.name
+        else if (r is BinaryExpr && r.op == "!=" && r.left is NameExpr && isNullLiteral(r.right)) {
+            pn = (r.left as NameExpr).name
+            nn = true
+        }
+        if (pn == null) continue
+        val ae = argForParam(fn, info, pn) ?: continue
+        if (nn) flow.addAll(nonNullFacts(ae)) else flow.addAll(condFacts(ae).onTrue)
+    }
 }
 
 fun BodyChecker.completeLiteralArg2(a: Arg, pts: List<Type?>, i: Int) {

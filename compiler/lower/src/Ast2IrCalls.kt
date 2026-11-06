@@ -410,7 +410,24 @@ private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpres
         val vt = rec(u)?.type
         if (vt is FunType && !vt.suspend && vt.receiver == null == (expected.receiver == null)) return suspendConvertedValue(v, vt, expected)
     }
-    if (expected is ClassType && expected.cls.isFunInterface && (rec(u)?.type is FunType || u is CallableRefExpr)) return samConversion(v, irType(expected))
+    if (expected is ClassType && expected.cls.isFunInterface && (rec(u)?.type is FunType || u is CallableRefExpr)) {
+        val vt = rec(u)?.type
+        if (vt is FunType && vt.nullable) {
+            // a nullable function value: null stays null
+            val tmp = newTemp("sam_value", v.type, v)
+            val nn = irType(ops.makeNotNull(vt))
+            val nonNull: IrExpression = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, nn, getValue(tmp), nn)
+            val rt = irType(ops.makeNullable(expected))
+            val branches = ArrayList<IrBranch>()
+            branches.add(IrBranch(eqNull(getValue(tmp)), nullConst()))
+            branches.add(IrBranch(constBool(true), samConversion(nonNull, irType(ops.makeNotNull(expected)))))
+            val stmts = ArrayList<IrStatement>()
+            stmts.add(tmp)
+            stmts.add(IrWhen(branches, rt, null))
+            return IrBlock(stmts, rt, "SAFE_CALL")
+        }
+        return samConversion(v, irType(expected))
+    }
     return v
 }
 

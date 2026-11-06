@@ -516,7 +516,28 @@ class Sema {
                     m[tp] = t ?: nullableAny
                     k++
                 }
-                return ops.substitute(e, m)
+                val sub = ops.substitute(e, m)
+                // `typealias AddLastDesc<T> = AddLastDesc2<T>` used as `AddLastDesc<*>`: the star stays a star of the class (not `Any?`)
+                if (e is ClassType && sub is ClassType && e.args.size == sub.args.size) {
+                    var anyStar = false
+                    for (a in args) if (a.type == null) anyStar = true
+                    if (anyStar) {
+                        val nargs = ArrayList<TArg>()
+                        var q = 0
+                        while (q < e.args.size) {
+                            val ety = e.args[q].type
+                            var star = false
+                            if (ety is TypeParamType) {
+                                val ix = c.typeParams.indexOf(ety.tp)
+                                if (ix >= 0 && args[ix].type == null) star = true
+                            }
+                            nargs.add(if (star) TArg(null, e.args[q].variance) else sub.args[q])
+                            q++
+                        }
+                        return ClassType(sub.cls, nargs, sub.nullable)
+                    }
+                }
+                return sub
             }
             else -> return ErrType("classifier")
         }

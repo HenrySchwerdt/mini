@@ -249,7 +249,13 @@ class TypeOps(private val sema: Sema) {
                 if (a is FunType) {
                     if (b.cls === sema.anyType.cls) return true
                     val fn = sema.classNamed("kotlin.Function")
-                    return fn != null && b.cls === fn
+                    if (fn != null && b.cls === fn) return true
+                    // a function value where a fun interface is expected (SAM conversion)
+                    if (b.cls.isFunInterface) {
+                        val sf = samFunType(b)
+                        if (sf != null && sf.suspend == a.suspend) return funSub(a, sf, depth + 1)
+                    }
+                    return false
                 }
                 if (a is ClassType) {
                     val s = asSuper(a, b.cls) ?: return false
@@ -308,6 +314,34 @@ class TypeOps(private val sema: Sema) {
             i++
         }
         return sub(a.ret, b.ret, depth + 1)
+    }
+
+    fun samFunType(t: ClassType): FunType? {
+        // the single abstract method of a fun interface (of the interface itself, or inherited from `fun interface C : G<Char>`)
+        for (st in closure(t)) {
+            val c = st.cls
+            if (c === sema.anyType.cls) continue
+            for ((_, l) in c.funs) {
+                for (f in l) {
+                    if (f.isAbstract) {
+                        sema.ensureSig(f)
+                        val m = HashMap<TypeParamSym, Type>(substOf(st))
+                        // `Comparator<in T>`: a lambda converted to it takes `T`s (not captures of the projection)
+                        var ai = 0
+                        for (tp in c.typeParams) {
+                            val pa = if (ai < st.args.size) st.args[ai] else null
+                            val pt0 = pa?.type
+                            if (pa != null && pt0 != null && pa.variance != Variance.INV) m[tp] = pt0
+                            ai++
+                        }
+                        val ps = ArrayList<Type>()
+                        for (p in f.params) ps.add(substitute(p.type ?: ErrType("sam"), m))
+                        return FunType(null, ps, substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
+                    }
+                }
+            }
+        }
+        return null
     }
 
     /** the function type a KFunctionN / KPropertyN class type stands for */
