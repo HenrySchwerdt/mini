@@ -58,6 +58,7 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
     for (p in f.parameters) {
         val l = MirLocal(localCounter++, if (p.kind == IrParameterKind.DispatchReceiver) "this" else p.name, mirType(p.type, p))
         locals[p] = l
+        if (p.type.classFqName == "kotlin.Unit" && !p.type.isMarkedNullable()) unitVars += p
         params += l
     }
     val ret = if (f is IrConstructor) TUnit else mirType(f.returnType, f)
@@ -168,8 +169,9 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
     when (s) {
         is IrVariable -> {
             val t = mirType(s.type, s)
-            if (t == TUnit && s !in closure.boxed) {
-                // a variable of type Unit has no storage: the initializer runs for its effect, reads are the Unit value
+            if ((t == TUnit || t == TNothing) && s !in closure.boxed) {
+                // a variable of type Unit (or Nothing: the initializer never completes) has no storage: the initializer runs
+                // for its effect, reads are the Unit value
                 s.initializer?.let { stmt(it, out) }
                 unitVars += s
                 return
@@ -181,7 +183,8 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 val rc = refClassFor(t)
                 val l = MirLocal(localCounter++, s.name, rc.type)
                 locals[s] = l
-                out += MirStmt.Declare(l, MirExpr.New(rc.ctor, listOf(init ?: zeroOf(t)), rc.type))
+                val cell = if (init != null && init.isOwned()) tmpOf(init, out) else init
+                out += MirStmt.Declare(l, MirExpr.New(rc.ctor, listOf(cell ?: zeroOf(t)), rc.type))
             } else {
                 val l = MirLocal(localCounter++, s.name, t)
                 locals[s] = l
@@ -275,7 +278,7 @@ internal fun Ir2Mir.labelOf(loop: IrLoop, at: IrElement): MirLabel =
     loopLabels[loop] ?: unsupported(at, "jump to a loop outside the current function")
 
 internal fun Ir2Mir.localOf(owner: Any, at: IrElement): MirLocal =
-    locals[owner] ?: unsupported(at, "reference to a variable that is not a local of the current function")
+    locals[owner] ?: unsupported(at, "reference to a variable that is not a local of the current function" + ((owner as? IrValueDeclaration)?.let { " ('${it.name}')" } ?: ""))
 
 // ---- classes: constructors and fields -------------------------------------------------------
 

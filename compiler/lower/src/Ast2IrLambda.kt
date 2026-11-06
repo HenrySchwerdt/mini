@@ -88,6 +88,7 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
             j++
         }
         val lb = IrBlockBody(stmts)
+        if (fn.isSuspend && bc.shareTmp) fn.suspendInlineTemplate = snapshotBody(fn, lb)
         fn.body = if (fn.isSuspend) lowerSuspendBody(fn, lb) else lb
     }
     fn.startOffset = lam.start
@@ -160,13 +161,21 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         return IrGetClass(convert(rv), t)
     }
     val sym = r.callee
+    val adapted = r.extra as? AdaptedRef
+    if (sym is FunSym && adapted != null) return adaptedRef(e, r, adapted, sym)
+    if (sym is FunSym && sym.kind == FunKind.SYNTH && sym.owner?.isEnum == true && (sym.name == "valueOf" || sym.name == "values")) {
+        // `E::valueOf` / `E::values`: the synthesized static functions are called from a lambda
+        val n = sym.params.size
+        return adaptedRef(e, r, AdaptedRef(AdaptMap(IntArray(n) { it }, IntArray(n) { 1 }), 0), sym)
+    }
     if (sym is FunSym) {
         val target: IrFunction = if (sym.kind == FunKind.CONSTRUCTOR) irConstructorOf(sym) else functionFor(sym, null)
         val call = IrFunctionReference(target, t)
         val rv = e.receiver
         for (p in target.parameters) call.arguments.add(null)
-        if (rv != null && !isClassQualifier(rv)) {
-            val bound = convert(rv)
+        val objQ = if (rv != null) objectQualifier(rv, r) else null
+        if (rv != null && (objQ != null || !isClassQualifier(rv))) {
+            val bound = if (objQ != null) IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)) else convert(rv)
             var k = 0
             for (p in target.parameters) {
                 if (p.kind == IrParameterKind.DispatchReceiver || p.kind == IrParameterKind.ExtensionReceiver) {
@@ -182,7 +191,9 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val p = propertyOf(sym)
         val ref = IrPropertyReference(p, t)
         val rv = e.receiver
-        if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
+        val objQ = if (rv != null) objectQualifier(rv, r) else null
+        if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
+        else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
         else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
         return ref
     }
@@ -212,4 +223,89 @@ private fun Ast2Ir.contextParamName(t: Type): String {
     val fq = irType(t).classFqName ?: return "\$context"
     val i = fq.lastIndexOf('.')
     return "\$context-" + (if (i < 0) fq else fq.substring(i + 1))
+}
+
+/**
+ * `::f` where `f` has default arguments or a `vararg`, or is called with fewer arguments than it has parameters (the expected
+ * function type decides): the reference becomes a lambda `{ p0, p1 -> f(p0, p1) }` with the omitted arguments left to the call.
+ */
+private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sym: FunSym): IrExpression {
+    val target: IrFunction = if (sym.kind == FunKind.CONSTRUCTOR) irConstructorOf(sym) else functionFor(sym, null)
+    val kt = irType(r.type) as ClassType
+    val n = kt.args.size - 1
+    val retT = kt.args[n].type ?: fail(e, "adapted reference without result type")
+    val fn = IrSimpleFunction("<anonymous>")
+    fn.origin = "LOCAL_FUNCTION_FOR_LAMBDA"
+    fn.visibility = "local"
+    fn.modality = IrModality.FINAL
+    fn.parent = enclosingParent()
+    val outer = ArrayList<IrStatement>()
+    var bound: IrVariable? = null
+    val rv = e.receiver
+    if (rv != null && !isClassQualifier(rv)) {
+        val bv = convert(rv)
+        bound = IrVariable("\$recv", bv.type, false)
+        bound.parent = ctx?.fn
+        bound.initializer = bv
+        outer.add(bound)
+    }
+    val ptypes = ArrayList<Type>()
+    val lparams = ArrayList<IrValueParameter>()
+    for (i in 0 until n) {
+        val pt = kt.args[i].type ?: fail(e, "adapted reference without parameter type")
+        ptypes.add(pt)
+        val p = IrValueParameter("p" + i, pt, IrParameterKind.Regular, i)
+        p.parent = fn
+        fn.parameters.add(p)
+        lparams.add(p)
+    }
+    fn.returnType = retT
+    val call: IrFunctionAccessExpression = if (target is IrConstructor) IrConstructorCall(target, retT) else IrCall(target as IrSimpleFunction, retT)
+    call.typeArguments = ad.typeArgs.map { irType(it) }
+    var recvNext = 0
+    var regular = 0
+    for (p in target.parameters) {
+        when (p.kind) {
+            IrParameterKind.DispatchReceiver, IrParameterKind.ExtensionReceiver -> {
+                if (bound != null) call.arguments.add(IrGetValue(bound, bound.type, null))
+                else if (recvNext < lparams.size) {
+                    val lp = lparams[recvNext++]
+                    call.arguments.add(IrGetValue(lp, lp.type, null))
+                } else call.arguments.add(null)
+            }
+            IrParameterKind.Context -> call.arguments.add(null)
+            IrParameterKind.Regular -> {
+                val j = regular++
+                val start = ad.map.starts[j]
+                val count = ad.map.counts[j]
+                val vet = p.varargElementType
+                if (vet != null) {
+                    if (count == 0) call.arguments.add(null)
+                    else {
+                        val els = ArrayList<IrVarargElement>()
+                        for (k in 0 until count) els.add(IrGetValue(lparams[start + k], lparams[start + k].type, null))
+                        call.arguments.add(IrVararg(vet, els, p.type))
+                    }
+                } else if (count == 1) call.arguments.add(IrGetValue(lparams[start], lparams[start].type, null))
+                else call.arguments.add(null)
+            }
+        }
+    }
+    val stmts = ArrayList<IrStatement>()
+    if (isUnit(retT)) stmts.add(coerceToUnit(call)) else stmts.add(IrReturn(fn, call, sema.nothingType))
+    fn.body = IrBlockBody(stmts)
+    fn.startOffset = e.start
+    val ft = FunType(null, ptypes, retT, false, false)
+    val fe = IrFunctionExpression(fn, ft, "LAMBDA")
+    fe.startOffset = e.start
+    if (outer.isEmpty()) return fe
+    outer.add(fe)
+    return IrBlock(outer, ft, null)
+}
+
+/** `Obj::member` of an object (or companion): the object, to which the reference is bound; null for other qualifiers. */
+private fun Ast2Ir.objectQualifier(e: Expr, r: ExprRec): IrClass? {
+    if (r.kind != "objbound") return null
+    val c = (r.target as? ClassType)?.cls ?: return null
+    return irClass(c)
 }

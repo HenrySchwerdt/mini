@@ -111,5 +111,6 @@ public open class UninitializedPropertyAccessException : RuntimeException {
 
 public open class AssertionError : Error {
     public constructor() : super()
-    public constructor(message: String?) : super(message)
+    public constructor(message: Any?) : super(message?.toString())
+    public constructor(message: String?, cause: Throwable?) : super(message, cause)
 }

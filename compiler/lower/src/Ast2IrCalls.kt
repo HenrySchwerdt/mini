@@ -167,7 +167,7 @@ fun Ast2Ir.buildCall(
     dispatchUse: RecvUse?,
 ): IrExpression {
     val call = IrCall(callee, type)
-    call.origin = null
+    call.origin = if (info.fn.kind == FunKind.FUNCTION_INVOKE && info.fn.invokeSuspend) "SUSPEND_INVOKE" else null
     // `super.f()`
     val dux = dispatchUse?.expr
     if (dispatchUse != null && dux != null && unparen(dux) is SuperExpr) {

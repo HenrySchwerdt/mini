@@ -14,7 +14,6 @@ public class ByteArray(size: Int) {
     public operator fun get(index: Int): Byte
     public operator fun set(index: Int, value: Byte): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.ByteIterator
 }
 
 public class ShortArray(size: Int) {
@@ -22,7 +21,6 @@ public class ShortArray(size: Int) {
     public operator fun get(index: Int): Short
     public operator fun set(index: Int, value: Short): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.ShortIterator
 }
 
 public class IntArray(size: Int) {
@@ -30,7 +28,6 @@ public class IntArray(size: Int) {
     public operator fun get(index: Int): Int
     public operator fun set(index: Int, value: Int): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.IntIterator
 }
 
 public class LongArray(size: Int) {
@@ -38,7 +35,6 @@ public class LongArray(size: Int) {
     public operator fun get(index: Int): Long
     public operator fun set(index: Int, value: Long): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.LongIterator
 }
 
 public class FloatArray(size: Int) {
@@ -46,7 +42,6 @@ public class FloatArray(size: Int) {
     public operator fun get(index: Int): Float
     public operator fun set(index: Int, value: Float): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.FloatIterator
 }
 
 public class ByteArray(size: Int) {
@@ -54,7 +49,6 @@ public class ByteArray(size: Int) {
     public operator fun get(index: Int): Byte
     public operator fun set(index: Int, value: Byte): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.ByteIterator
 }
 
 public class ShortArray(size: Int) {
@@ -62,7 +56,6 @@ public class ShortArray(size: Int) {
     public operator fun get(index: Int): Short
     public operator fun set(index: Int, value: Short): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.ShortIterator
 }
 
 public class DoubleArray(size: Int) {
@@ -70,7 +63,6 @@ public class DoubleArray(size: Int) {
     public operator fun get(index: Int): Double
     public operator fun set(index: Int, value: Double): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.DoubleIterator
 }
 
 public class CharArray(size: Int) {
@@ -78,7 +70,6 @@ public class CharArray(size: Int) {
     public operator fun get(index: Int): Char
     public operator fun set(index: Int, value: Char): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.CharIterator
 }
 
 public class BooleanArray(size: Int) {
@@ -86,5 +77,4 @@ public class BooleanArray(size: Int) {
     public operator fun get(index: Int): Boolean
     public operator fun set(index: Int, value: Boolean): Unit
     public val size: Int
-    public operator fun iterator(): kotlin.collections.BooleanIterator
 }

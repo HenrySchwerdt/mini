@@ -137,6 +137,8 @@ internal class ClosureInfo {
             val cls = declaration.parent as? IrClass
             var pk: IrConstructor? = null
             if (cls != null) for (d in cls.declarations) if (d is IrConstructor && d.isPrimary) pk = d
+            // a class without a primary constructor: the initializers run in its secondary constructors
+            if (pk == null && cls != null) for (d in cls.declarations) if (d is IrConstructor && pk == null) pk = d
             if (pk == null) {
                 visitChildren(declaration)
                 return

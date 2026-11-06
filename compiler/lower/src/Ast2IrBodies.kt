@@ -132,7 +132,10 @@ fun Ast2Ir.buildFunctionBody(fn: IrSimpleFunction, sym: FunSym): IrBody? {
     }
     return withCtx(bc) {
         val fb = functionBody(fn, body, d.expressionBody)
-        if (fn.isSuspend && fb is IrBlockBody) lowerSuspendBody(fn, fb) else fb
+        if (fn.isSuspend && fb is IrBlockBody) {
+            if (fn.isInline) fn.suspendInlineTemplate = snapshotBody(fn, fb)
+            lowerSuspendBody(fn, fb)
+        } else fb
     }
 }
 

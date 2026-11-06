@@ -67,8 +67,10 @@ class StateMachineCheckerClass {
             proceed()
         }
         if (counter != numberOfSuspensions)
-            error("Wrong state-machine generated: expected " + numberOfSuspensions + " suspensions, got " + counter)
-        if (finished != checkFinished) error("Wrong state-machine generated: finished " + finished)
+            error("Wrong state-machine generated: wrong number of overall suspensions. Expected " + numberOfSuspensions + ", got " + counter)
+        if (finished) error("Wrong state-machine generated: it is finished early")
+        proceed()
+        if (checkFinished && !finished) error("Wrong state-machine generated: it is not finished yet")
     }
 }
 
