@@ -12,7 +12,9 @@ private var loStarts: IntArray? = null
 private var loDeltas: IntArray? = null
 private var otherUpper: IntArray? = null
 private var otherLower: IntArray? = null
-private var fullUpperMap: HashMap<Int, String>? = null
+private var fullUpperCodes: IntArray? = null
+private var fullUpperOffsets: IntArray? = null
+private var fullUpperCount: Int = 0
 
 private fun hexAt(s: String, i: Int, n: Int): Int {
     var v = 0
@@ -131,24 +133,45 @@ internal fun isOtherLowerCase(c: Int): Boolean {
 
 /** The full upper case mapping of [c] when it has more than one character (`ß` -> `SS`), else null. */
 internal fun fullUpperCase(c: Int): String? {
-    var m = fullUpperMap
-    if (m == null) {
-        m = HashMap<Int, String>()
+    if (fullUpperCodes == null) {
         val s = UnicodeTables.FULL_UPPER
+        var n = 0
+        var j = 0
+        while (j < s.length) {
+            if (s[j] == ';') n++
+            j++
+        }
+        val codes = IntArray(n + 1)
+        val offs = IntArray(n + 1)
+        var k = 0
         var i = 0
         while (i < s.length) {
-            val code = hexAt(s, i, 4)
+            codes[k] = hexAt(s, i, 4)
             i += 5
+            offs[k] = i
+            while (i < s.length && s[i] != ';') i++
+            k++
+            if (i < s.length) i++
+        }
+        fullUpperOffsets = offs
+        fullUpperCount = k
+        fullUpperCodes = codes
+    }
+    val codes = fullUpperCodes!!
+    var k = 0
+    while (k < fullUpperCount) {
+        if (codes[k] == c) {
+            val s = UnicodeTables.FULL_UPPER
+            var i = fullUpperOffsets!![k]
             val sb = StringBuilder()
             while (i < s.length && s[i] != ';') {
                 sb.append(hexAt(s, i, 4).toChar())
                 i += 4
                 if (i < s.length && s[i] == ' ') i++
             }
-            m.put(code, sb.toString())
-            if (i < s.length) i++
+            return sb.toString()
         }
-        fullUpperMap = m
+        k++
     }
-    return m.get(c)
+    return null
 }
