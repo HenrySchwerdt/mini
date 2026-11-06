@@ -266,7 +266,7 @@ fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): 
         val oc = cs.outer
         if (oc != null) outer = receiverOfClass(oc)
     }
-    fillCallArgs(call, k, info, outer, null, info.fn.name)
+    fillCallArgs(call, k, info, outer, null, cs?.name ?: info.fn.name)
     return spillForSourceOrder(call, k, info)
 }
 
@@ -524,7 +524,8 @@ fun Ast2Ir.binaryExpr(e: BinaryExpr): IrExpression {
         else -> null
     }
     val l = convert(e.left)
-    val rr = convert(e.right)
+    // `x myMap { return@myMap }`: a lambda argument of an infix call is labelled with the name of the function
+    val rr = if (unwrapPostponed(e.right) is LambdaExpr) convertArg(Arg(e.right, null, false), info.fn.name, info.paramTypes.getOrNull(0)) else convert(e.right)
     return callOperator(info, l, listOf(rr), t, origin)
 }
 

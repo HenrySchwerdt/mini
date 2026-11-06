@@ -897,7 +897,7 @@ fun BodyChecker.leftoverArgs(args: List<Arg>) {
 fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): CallRes {
     val cs = att.cs
     val fn = att.cand.fn
-    lambdaLabel = fn.name
+    lambdaLabel = if (fn.kind == FunKind.CONSTRUCTOR) fn.owner?.name ?: fn.name else fn.name
     var ret: Type
     val it = att.cand.invokeType
     if (it != null) {
