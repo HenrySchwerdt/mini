@@ -1203,7 +1203,8 @@ source libraries; a version-1 library is rejected with the usual "rebuild the li
 * Strict values in Kotlin collections (`List<Box>`): still M0110 by 5.4; the design note there says what is needed (statement-scoped
   release of temporaries, then a temporary collection of loans; or an owning `OwnedList<T>`).
 * Local functions (`fun helper()` inside a function) that capture owners are lifted and called directly: a call reads the captures
-  (a call after the owner's `free()` is M0101), but a local function used as a value (`::helper`) is not tracked as a closure.
+  (a call after the owner's `free()` is M0101), and a local function used as a value (`::helper`) is a closure over the same captures
+  (it was not tracked before: `val f = ::peek; a.free(); f()` was a use after free that the checker accepted; corpus `s100`, `s101`).
 * Overriders that live in code outside the compilation are invisible to the union rule of virtual calls.
 * No test opts out of the leak suites any more (`*.noleakcheck` is gone): the four Strict programs that leaked were a caught exception of a
   Strict class never released, and a Strict object passed into a generic container (`Cell(Item(5))`) whose owner count was never taken
@@ -1350,6 +1351,7 @@ which run under AddressSanitizer + LeakSanitizer in the `leak` and `llvm-leak` s
 | **`list.addAll(list)` never ended** (the loop re-read the size of the list it was growing and ran until the storage was exhausted) | `ArrayList.addAll` iterated with the live size | the element count is taken once before the copy | `list_addall_self` |
 | **Leaks at the end of an uncaught exception**: the exception object and its text were not released before `exit(1)`, so a leak checker flagged every program that ends with an uncaught exception | `mk_report_uncaught` | released | (visible with LeakSanitizer on any `.err` program) |
 | **Data race on reference counts in threaded programs** (`reference count underflow` aborts, use after free): `mk_release` recorded the cycle candidate **after** it had dropped its reference, when another thread could already have freed the object; and `HashMap.get` wrote its one-entry lookup cache (two reference fields) on every read, so concurrent readers of a read-only map double-released the cached node | see left | the candidate is recorded before the decrement (this reference still keeps the object alive; if the decrement then reaches zero the object is a buffered root that dies, which the zero path already handles); the lookup cache is only written while no thread has been started (`mini.internal.threadsActive`) | `threads_shared_readers` |
+| **Strict: a local function used as a value escaped the checker** (`fun peek() = a.v; val f = ::peek; a.free(); f()`: use after free, accepted) | `MemoryFacts` lowered `::helper` to an opaque value, so the captured owners were not borrowed by `f` | `::helper` of a local function with captures lowers to a closure over the captures (`MExpr.Lambda`), the existing closure rules apply (M0101 on the call after the free, M0112 / M0110 on escape) | `strict-corpus/s100_local_fun_ref_after_free`, `s101_local_fun_ref_before_free` |
 
 Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-range index as a fatal
 `StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
