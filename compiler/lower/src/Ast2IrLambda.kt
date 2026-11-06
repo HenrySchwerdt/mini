@@ -100,7 +100,7 @@ fun Ast2Ir.lambdaExpr(lam: LambdaExpr, label: String?): IrExpression {
 private fun Ast2Ir.destructureParam(names: List<DestructEntry>, p: IrValueParameter, out: ArrayList<IrStatement>) {
     var i = 1
     for (e in names) {
-        if (e.name == "_") {
+        if (e.name == "_" && rec(e) == null) {
             i++
             continue
         }
