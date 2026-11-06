@@ -214,7 +214,7 @@ internal fun Ir2Mir.closureClass(
     } else {
         val ifaces = allInterfaces(sam!!.iface) + sam.iface
         extraClasses += MirClass(
-            qualified, cName, false, null, fields, ifaces.map { info(it).cName }, vtable,
+            qualified, cName, false, null, fields, ifaces.map { info(it).cName }, listOf(null, null, null),
             ifaces.map { i ->
                 MirItable(info(i).cName, interfaceMethods(i).map { m ->
                     if (m === sam.method) invokeName
@@ -540,7 +540,7 @@ internal fun Ir2Mir.samValue(e: IrTypeOperatorCall, out: MutableList<MirStmt>): 
     val fv = operands(listOf(arg), out)[0]
     val arity = sam.argTypes.size
     val fType = functionInterface(arity)
-    val (ctor, type) = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam, emptyList(), "sam#" + info(iface).cName + ":" + arity, e) { _, args, caps, body ->
+    val (ctor, type) = closureClass(currentFunctionName() + ".<sam>", arity, listOf(fType), sam, emptyList()) { _, args, caps, body ->
         val boxed = args.map { coerceFlexible(MirExpr.Local(it), anyNullable, e, body) }
         val call = tmpOf(MirExpr.ICall(fType.cName, 0, MirExpr.Local(caps[0]), boxed, invokeArgTypes(arity), anyNullable), body)
         body += if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(coerceFlexible(call, sam.ret, e, body))
