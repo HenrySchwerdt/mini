@@ -717,7 +717,8 @@ fun Ast2Ir.prefixExpr(e: PrefixExpr): IrExpression {
                 val suffixed = text.endsWith("L")
                 if (suffixed) text = text.substring(0, text.length - 1)
                 val v = parseIntLiteral(text) ?: fail(e, "integer literal")
-                if (v <= 2147483647L) return intConst(t, -v)
+                // (`-2147483648` is the Int MIN_VALUE: the sema types the negation of the literal as an Int that fits)
+                if (v <= 2147483647L || t.classFqName == "kotlin.Long" || -v >= -2147483648L) return intConst(t, -v)
             }
             val info = r.call ?: fail(e, "unary operator is not resolved")
             val v = convert(e.expr)

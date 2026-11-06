@@ -200,7 +200,10 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val objQ = if (rv != null) objectQualifier(rv, r) else null
         if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
         else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
-        else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitReceiver(RecvRef(sym.owner, null, false), e))
+        else if (rv == null && sym.owner != null && !isClassRefTarget(e)) {
+            // the implicit receiver (inherited members, an imported member of an object included)
+            ref.arguments.add(implicitMemberReceiver(sym.owner, e) ?: implicitReceiver(RecvRef(sym.owner, null, false), e))
+        }
         return ref
     }
     fail(e, "callable reference to " + (sym?.name ?: "?"))
