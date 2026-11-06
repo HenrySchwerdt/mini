@@ -177,7 +177,55 @@ fun Ast2Ir.buildCall(
     }
     fillCallArgs(call, callee, info, dispatch, ext, label)
     call.typeArguments = info.typeArgs.map { irType(it) }
-    return call
+    return spillForSourceOrder(call, callee, info)
+}
+
+/**
+ * Named arguments are evaluated in the order they are written, not in the order of the parameters
+ * (`f(b = g(), a = h())` calls `g` first). When the two orders differ, the arguments with effects (and the receivers, which come
+ * first) are evaluated into temporaries in source order before the call.
+ */
+fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunction, info: CallInfo): IrExpression {
+    var any = false
+    for (a in info.args) if (a.name != null) any = true
+    if (!any) return call
+    val srcOf = HashMap<Int, Int>()   // index in call.arguments -> position in the source
+    var regular = 0
+    for ((idx, p) in callee.parameters.withIndex()) {
+        if (p.kind != IrParameterKind.Regular) continue
+        var first = -1
+        for ((i, a) in info.args.withIndex()) if (info.paramOfArg[i] == regular && a.expr != null) { first = i; break }
+        if (first >= 0 && call.arguments.getOrNull(idx) != null) srcOf[idx] = first
+        regular++
+    }
+    var last = -1
+    var ordered = true
+    for (idx in callee.parameters.indices) {
+        val sp = srcOf[idx] ?: continue
+        if (sp < last) ordered = false
+        last = sp
+    }
+    if (ordered) return call
+    fun needsSpill(e: IrExpression): Boolean = when (e) {
+        is IrConst, is IrFunctionExpression, is IrFunctionReference, is IrPropertyReference, is IrVararg, is IrClassReference -> false
+        is IrGetValue -> (e.owner as? IrVariable)?.isVar == true
+        else -> true
+    }
+    val order = ArrayList<Int>()
+    for ((idx, p) in callee.parameters.withIndex()) if (p.kind != IrParameterKind.Regular && call.arguments.getOrNull(idx) != null) order.add(idx)
+    val regs = srcOf.keys.sortedBy { srcOf[it]!! }
+    order.addAll(regs)
+    val stmts = ArrayList<IrStatement>()
+    for (idx in order) {
+        val a = call.arguments[idx] ?: continue
+        if (!needsSpill(a)) continue
+        val t = newTemp("arg", a.type, a)
+        stmts.add(t)
+        call.arguments[idx] = getValue(t)
+    }
+    if (stmts.isEmpty()) return call
+    stmts.add(call)
+    return IrBlock(stmts, call.type, "ARG_ORDER")
 }
 
 fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExpression {
@@ -194,7 +242,7 @@ fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): 
         if (oc != null) outer = receiverOfClass(oc)
     }
     fillCallArgs(call, k, info, outer, null, info.fn.name)
-    return call
+    return spillForSourceOrder(call, k, info)
 }
 
 /** a delegating constructor call (`super(...)`, `this(...)`) with the arguments [argExprs] of the declaration */
