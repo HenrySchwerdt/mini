@@ -494,6 +494,14 @@ fun BodyChecker.valueInvokeGroups(callee: NameExpr, recv: RecvInfo?): List<List<
 /** the type arguments of a class behind a typealias without own type parameters (`typealias SC = KConsumer<String>`) */
 fun BodyChecker.aliasSubst(a: TypeAliasSym, et: ClassType): Map<TypeParamSym, Type> = if (a.typeParams.isEmpty()) ops.substOf(et) else HashMap()
 
+fun BodyChecker.localReceiverFunVar(name: String): Boolean {
+    val vr = resolveSimpleName(name) ?: return false
+    if (vr.sym !is VarSym) return false
+    val vt = vr.type
+    val ft = ops.asFunType(vt) ?: vt
+    return ft is FunType && ft.receiver != null
+}
+
 /** members of an implicit receiver, then top-level extensions applicable to it */
 fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List<Candidate>>, ref: RecvRef? = null) {
     val mem = ArrayList<Candidate>()
@@ -519,11 +527,14 @@ fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List
     // member extensions of the receiver applied to an implicit receiver: `fun NoiseMaker.playWith()` declared in `Doggy`, called as `playWith()` in a lambda with receiver
     if (ref != null) {
         var any = false
-        for (m in members.funsNamed(rt, name)) if (m.fn.decl?.receiver != null) any = true
+        // (a member extension whose result type is being inferred is not a candidate of a call in its own body: `override fun A.f() = f(x)` calls the parameter `f`)
+        for (m in members.funsNamed(rt, name)) if (m.fn.decl?.receiver != null && m.fn.retState != 1) any = true
+        // a local variable of type `Recv.() -> R` of the same name is closer than the member extension (`encode(value)` calls the parameter)
+        if (any && localReceiverFunVar(name)) any = false
         if (any) for (r in implicitReceivers()) {
             val l = ArrayList<Candidate>()
             for (m in members.funsNamed(rt, name)) {
-                if (m.fn.decl?.receiver == null) continue
+                if (m.fn.decl?.receiver == null || m.fn.retState == 1) continue
                 val c = Candidate(m.fn, m.subst, r.type)
                 c.dispatchRef = ref
                 c.extRef = r.ref
