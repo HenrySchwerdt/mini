@@ -244,7 +244,19 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val rv = e.receiver
         val objQ = if (rv != null) objectQualifier(rv, r) else null
         if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
-        else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
+        else if (rv != null && !isClassQualifier(rv)) {
+            val bv = convert(rv)
+            // the bound receiver is evaluated once (the getter and the setter of the reference share it)
+            if (bv is IrGetValue || bv is IrConst || bv is IrGetObjectValue) ref.arguments.add(bv)
+            else {
+                val tmp = newTemp("bound_receiver", bv.type, bv)
+                ref.arguments.add(getValue(tmp))
+                val stmts = ArrayList<IrStatement>()
+                stmts.add(tmp)
+                stmts.add(ref)
+                return IrBlock(stmts, t, null)
+            }
+        }
         else if (rv == null && sym.owner == null && sym.isExtension && !isClassRefTarget(e)) {
             // `::p` of an extension property `A.p` written where `A` is an implicit receiver: bound to it
             val rt = sym.receiver

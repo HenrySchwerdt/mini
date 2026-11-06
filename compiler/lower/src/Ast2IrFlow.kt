@@ -226,7 +226,14 @@ fun Ast2Ir.incDec(target0: Expr, inc: Boolean, prefix: Boolean, node: Expr, r: E
         for (iv in idxVars) setArgs.add(getValue(iv))
         setArgs.add(if (prefix) getValue(result) else op)
         stmts.add(callOperator(setInfo, getValue(arr), setArgs, unit, origin))
-        stmts.add(getValue(result))
+        val gf = getInfo.fn
+        val libraryGet = (gf.owner?.fqName() ?: gf.file?.pkg ?: "kotlin").startsWith("kotlin")
+        if (prefix && !libraryGet) {
+            // K2 reads the element again for the value of `++a[i]` of a user defined `get` (KT-42077)
+            val getArgs2 = ArrayList<IrExpression>()
+            for (iv in idxVars) getArgs2.add(getValue(iv))
+            stmts.add(callOperator(getInfo, getValue(arr), getArgs2, t, origin))
+        } else stmts.add(getValue(result))
         return IrBlock(stmts, t, origin)
     }
     if (sym is VarSym && sym.isField) {
