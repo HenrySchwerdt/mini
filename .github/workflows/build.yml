@@ -78,7 +78,7 @@ jobs:
         include: ${{ fromJSON(github.ref == 'refs/heads/main' && '[]' || '[{"os":"macos-latest","shard":"e2e"},{"os":"macos-latest","shard":"modules"}]') }}
     name: compiler (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -87,30 +87,73 @@ jobs:
       - name: Toolchain
         if: matrix.shard != 'stage0'
         run: scripts/ci-toolchain.sh
-      - name: LLVM 18 (Linux)
-        # LLVM C API headers and libLLVM for the in-memory backend (and the ORC JIT). The apt install sometimes stalls for
-        # ~30 min on the runners, so it is bounded and retried here instead of eating the test step's budget.
+      - name: LLVM 18 .deb cache (Linux)
         if: matrix.shard == 'llvm' && runner.os == 'Linux'
-        timeout-minutes: 15
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/llvm-debs
+          key: llvm18-debs-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
+          restore-keys: |
+            llvm18-debs-${{ runner.os }}-${{ env.ImageOS }}-
+      - name: LLVM 18 (Linux)
+        # LLVM C API headers and libLLVM for the in-memory backend (and the ORC JIT). The Ubuntu mirror is sometimes extremely
+        # slow (35 s .. 34 min), so the .debs are cached (see the cache step above): a hit installs offline in seconds. A miss
+        # downloads once with a generous timeout (plus one retry) and visible progress, and the result is saved to the cache.
+        if: matrix.shard == 'llvm' && runner.os == 'Linux'
+        timeout-minutes: 30
+        env:
+          DEB_DIR: ${{ runner.temp }}/llvm-debs
         run: |
+          set -o pipefail
+          stamp() { while IFS= read -r l; do printf '%s %s\n' "$(date -u +%T)" "$l"; done; }
+          export DEBIAN_FRONTEND=noninteractive
+          APT_OPTS=(-y -q --no-install-recommends -o Dpkg::Progress-Fancy=0 -o Acquire::Retries=3)
           if [ -x /usr/lib/llvm-18/bin/llvm-config ] && [ -f /usr/lib/llvm-18/include/llvm-c/Core.h ]; then
             echo "llvm-18-dev already installed"
           else
-            export DEBIAN_FRONTEND=noninteractive
-            ok=
-            for attempt in 1 2 3; do
-              echo "::group::apt attempt $attempt ($(date -u +%T))"
-              if sudo timeout 300 apt-get update -qq -o Acquire::Retries=3 \
-                && sudo timeout 300 apt-get install -y -qq --no-install-recommends -o Acquire::Retries=3 llvm-18-dev; then
-                ok=1
+            mkdir -p "$DEB_DIR"
+            installed=
+            # 1. cache hit: install from the cached .debs only (no mirror access when the closure is complete)
+            if ls "$DEB_DIR"/*.deb >/dev/null 2>&1; then
+              echo "installing from cached .debs ($(ls "$DEB_DIR"/*.deb | wc -l) files)"
+              if sudo timeout 300 apt-get install "${APT_OPTS[@]}" -o Acquire::Retries=0 "$DEB_DIR"/*.deb 2>&1 | stamp; then
+                installed=1
+              else
+                echo "::warning::install from cached .debs failed; falling back to download"
+                sudo dpkg --configure -a || true
               fi
-              echo "::endgroup::"
-              echo "attempt $attempt finished at $(date -u +%T)"
-              [ -n "$ok" ] && break
-              # a killed attempt can leave dpkg half-configured
-              sudo dpkg --configure -a || true
-            done
-            [ -n "$ok" ] || { echo "::error::llvm-18-dev install failed after 3 attempts"; exit 1; }
+            fi
+            # 2. cache miss: download (no apt-get update first, the image index is usually fresh enough), one retry after
+            #    an update restricted to the official Ubuntu sources
+            if [ -z "$installed" ]; then
+              for attempt in 1 2; do
+                echo "::group::download llvm-18-dev, attempt $attempt ($(date -u +%T))"
+                if [ "$attempt" = 2 ]; then
+                  if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+                    sudo timeout 300 apt-get update -q -o Acquire::Retries=3 \
+                      -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=- \
+                      -o APT::Get::List-Cleanup=0 2>&1 | stamp \
+                      || sudo timeout 300 apt-get update -q -o Acquire::Retries=3 2>&1 | stamp || true
+                  else
+                    sudo timeout 300 apt-get update -q -o Acquire::Retries=3 2>&1 | stamp || true
+                  fi
+                fi
+                if sudo timeout 1200 apt-get install --download-only "${APT_OPTS[@]}" \
+                     -o Dir::Cache::archives="$DEB_DIR" llvm-18-dev 2>&1 | stamp; then
+                  installed=dl
+                fi
+                echo "::endgroup::"
+                echo "attempt $attempt finished at $(date -u +%T)"
+                [ -n "$installed" ] && break
+                sudo dpkg --configure -a || true
+              done
+              [ -n "$installed" ] || { echo "::error::llvm-18-dev download failed after 2 attempts"; exit 1; }
+              # make the cache dir readable/saveable by the cache action (apt ran as root)
+              sudo rm -f "$DEB_DIR/lock"
+              sudo rm -rf "$DEB_DIR/partial"
+              sudo chown -R "$(id -u):$(id -g)" "$DEB_DIR"
+              sudo timeout 600 apt-get install "${APT_OPTS[@]}" -o Acquire::Retries=0 "$DEB_DIR"/*.deb 2>&1 | stamp
+            fi
           fi
           echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
           /usr/lib/llvm-18/bin/llvm-config --version

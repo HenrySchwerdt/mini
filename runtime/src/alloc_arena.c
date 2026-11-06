@@ -166,7 +166,11 @@ void *mk_arena_alloc_zeroed_slow(MkAllocator *arena, size_t size) {
     return arena_alloc_slow((MkArena *)arena, size, MK_MAX_ALIGN, 1);
 }
 
+static void *arena_zeroed(MkAllocator *arena, size_t size) { return mk_arena_alloc_zeroed(arena, size); }
+
 MkAllocator *mk_arena_create(size_t initial) {
+    mk_arena_zeroed_hook = arena_zeroed;
+    mk_arena_marker = mk_arena_allocate;
     if (initial == 0) initial = DEFAULT_INITIAL;
     if (initial < MIN_INITIAL) initial = MIN_INITIAL;
     MkArena *a = calloc(1, sizeof *a);

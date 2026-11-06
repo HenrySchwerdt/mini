@@ -28,6 +28,8 @@
 #include <string.h>
 
 MK_TLS MkAllocCtx mk_tls_ctx;
+void *(*mk_arena_marker)(MkAllocator *self, size_t size, size_t align);
+void *(*mk_arena_zeroed_hook)(MkAllocator *arena, size_t size);
 size_t mk_cycles_alloc_bytes; /* (defined here, next to its only writer: a direct access) */
 
 /* malloc/free underneath both the Rc and the Heap allocator. Stateless, so
@@ -129,9 +131,9 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
         object->type = type;
         object->refcount = 1;
         object->flags = ((uint32_t)cls << SMALL_CLASS_SHIFT) | (allocator == &heap_allocator ? MK_FLAG_HEAP : 0u);
-        if (allocator == &default_allocator && type->trace != NULL) { /* a candidate for the cycle collector (cycles.c) */
+        if (allocator == &default_allocator && MK_ARMABLE(type)) { /* a candidate for the cycle collector (cycles.c) */
             object->flags |= MK_FLAG_ARMED;
-            mk_cycles_alloc_bytes += cls * MK_SMALL_GRAN;
+            mk_cycles_alloc_bytes += cls * MK_SMALL_GRAN; /* (not atomic: only a heuristic) */
         }
         return object;
     }
@@ -147,7 +149,7 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
 #endif
     if (mk_arena_is_fast(allocator)) {
         MK_STAT_SMALL(MK_SMALL_STAT_ARENA_ALLOC, 0);
-        block = mk_arena_alloc_zeroed(allocator, total);
+        block = mk_arena_zeroed_hook(allocator, total);
         zeroed = true;
     } else {
         mk_tls_ctx.type = type;
@@ -169,7 +171,7 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
     object->type = type;
     object->refcount = 1;
     object->flags = MK_FLAG_PREFIXED;
-    if (allocator == &default_allocator && type->trace != NULL) { /* a large candidate for the cycle collector */
+    if (allocator == &default_allocator && MK_ARMABLE(type)) { /* a large candidate for the cycle collector */
         object->flags |= MK_FLAG_ARMED;
         mk_cycles_alloc_bytes += total;
     }
@@ -179,7 +181,7 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
 MkObject *mk_alloc_sized(MkAllocator *allocator, const MkTypeInfo *type, size_t size) {
 #if MK_SMALL_ALLOC
     if ((allocator == NULL || allocator == &default_allocator) && type != NULL && size >= sizeof(MkObject) && size <= MK_SMALL_MAX) {
-        MkObject *object = alloc_small_rc(type, size, type->trace != NULL);
+        MkObject *object = alloc_small_rc(type, size, MK_ARMABLE(type));
         if (object != NULL) return object;
     }
 #endif
@@ -222,12 +224,15 @@ MK_ALWAYS_INLINE MkObject *alloc_class(const MkTypeInfo *type, bool arm) {
     return object;
 }
 
-MkObject *mk_alloc_armed(const MkTypeInfo *type) { return alloc_class(type, true); }
+MkObject *mk_alloc_armed(const MkTypeInfo *type) {
+    mk_cycles_ensure();
+    return alloc_class(type, true);
+}
 MkObject *mk_alloc_plain(const MkTypeInfo *type) { return alloc_class(type, false); }
 
 MkObject *mk_alloc(const MkTypeInfo *type) {
     if (type == NULL) mk_panic("out of memory");
-    return alloc_class(type, type->trace != NULL);
+    return alloc_class(type, MK_ARMABLE(type));
 }
 
 void mk_free_object_memory(MkObject *object) {

@@ -34,7 +34,6 @@ enum { BLACK = 0, GRAY = 1, WHITE = 2, PURPLE = 3, DEAD = 4 /* = MK_CYCLES_ZOMBI
 #define MAX_THREADED_ROOTS (1u << 20)
 #define MAX_SLOTS ((1u << 21) - 4096)
 
-volatile int mk_threads_running = 0;
 
 static MkObject **roots;
 static size_t roots_n, roots_cap;
@@ -245,6 +244,7 @@ static void run_dispose(MkObject *o) {
 }
 
 size_t mk_cycles_collect(void) {
+    mk_cycles_ensure(); /* (an explicit collection of a program that allocates traced types through mk_alloc) */
     if (in_collect || mk_threads_running != 0 || roots_n == 0) return 0;
     in_collect = true;
     MkObject **list = roots;
@@ -331,7 +331,7 @@ static inline void roots_lock_acquire(void) {
 }
 static inline void roots_lock_release(void) { __atomic_store_n(&roots_lock, 0, __ATOMIC_RELEASE); }
 
-void mk_cycles_candidate(MkObject *o) {
+static void cycles_candidate(MkObject *o) {
     bool threaded = __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0;
     if (threaded) roots_lock_acquire();
     if (o->flags & MK_FLAG_ARMED) { /* (re-checked under the lock) */
@@ -357,7 +357,7 @@ void mk_cycles_candidate(MkObject *o) {
 
 /* Called by mk_release when the count of a BUFFERED object reached zero: it is DYING while its dispose runs (a collection that
  * its dispose triggers leaves it alone); mk_cycles_forget then clears its slot in the buffer and the caller frees the block. */
-void mk_cycles_state(MkObject *o, unsigned state) {
+static void cycles_state(MkObject *o, unsigned state) {
     if (__atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
         __atomic_fetch_and(&o->flags, ~COLOR_MASK, __ATOMIC_ACQ_REL);
         __atomic_fetch_or(&o->flags, (uint32_t)state << MK_COLOR_SHIFT, __ATOMIC_ACQ_REL);
@@ -366,7 +366,7 @@ void mk_cycles_state(MkObject *o, unsigned state) {
     }
 }
 
-void mk_cycles_forget(MkObject *o) {
+static void cycles_forget(MkObject *o) {
     bool threaded = __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0;
     if (threaded) roots_lock_acquire();
     uint32_t idx;
@@ -377,7 +377,7 @@ void mk_cycles_forget(MkObject *o) {
 /* Frees the garbage cycles that remain at the end of main (freeing a cycle can make another one garbage: repeat). The process
  * is about to end and the system takes everything back, so this only runs where somebody looks for leaks: in sanitizer builds
  * (LeakSanitizer must not see garbage cycles) and with MINI_GC_AT_EXIT=1 (valgrind and friends). */
-size_t mk_cycles_at_exit(void) {
+static size_t cycles_at_exit(void) {
     size_t total = 0, n;
     if (mk_threads_running != 0) return 0;
 #if defined(__SANITIZE_ADDRESS__)
@@ -398,4 +398,13 @@ size_t mk_cycles_at_exit(void) {
     if (!wanted) return 0;
     while ((n = mk_cycles_collect()) > 0) total += n;
     return total;
+}
+
+void mk_cycles_install(void) {
+    mk_cycles_hooks.forget = cycles_forget;
+    mk_cycles_hooks.state = cycles_state;
+    mk_cycles_hooks.at_exit = cycles_at_exit;
+    mk_cycles_hooks.release_armed = mk_release_armed;
+    mk_cycles_hooks.drain = mk_release_drain_armed;
+    mk_cycles_hooks.candidate = cycles_candidate; /* (last: it is the test of mk_cycles_armed_alloc) */
 }
