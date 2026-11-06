@@ -28,14 +28,15 @@ MkInt mk_identity_hash(MkObject *object) {
 MkChar mk_string_char_at(const MkString *s, MkInt index) {
     if (s == NULL) mk_panic("NullPointerException");
     if (index < 0 || index >= s->length) mk_panic("StringIndexOutOfBoundsException: index out of range");
-    return s->chars[index];
+    return mk_string_at(s, index);
 }
 
 MkInt mk_string_compare(const MkString *a, const MkString *b) {
     if (a == NULL || b == NULL) mk_panic("NullPointerException");
     MkInt n = a->length < b->length ? a->length : b->length;
     for (MkInt i = 0; i < n; i++) {
-        if (a->chars[i] != b->chars[i]) return (MkInt)a->chars[i] - (MkInt)b->chars[i];
+        MkChar x = mk_string_at(a, i), y = mk_string_at(b, i);
+        if (x != y) return (MkInt)x - (MkInt)y;
     }
     return a->length - b->length;
 }
@@ -43,6 +44,11 @@ MkInt mk_string_compare(const MkString *a, const MkString *b) {
 MkString *mk_string_substring(const MkString *s, MkInt start, MkInt end) {
     if (s == NULL) mk_panic("NullPointerException");
     if (start < 0 || end > s->length || start > end) mk_panic("StringIndexOutOfBoundsException: bad range");
+    if (mk_string_is_latin1(s)) {
+        MkString *r = mk_string_alloc8(end - start);
+        if (end > start) memcpy((uint8_t *)(void *)r->chars, mk_string_bytes(s) + start, (size_t)(end - start));
+        return r;
+    }
     MkString *r = mk_string_alloc(end - start);
     if (end > start) memcpy(r->chars, s->chars + start, (size_t)(end - start) * sizeof(MkChar));
     return r;
@@ -52,13 +58,14 @@ MkString *mk_string_substring(const MkString *s, MkInt start, MkInt end) {
  * Copies the cleaned ASCII text into `out` (capacity n+1). */
 static int clean_double(const MkString *s, char *out, size_t cap) {
     MkInt b = 0, e = s->length;
-    while (b < e && s->chars[b] <= ' ') b++;
-    while (e > b && s->chars[e - 1] <= ' ') e--;
+    while (b < e && mk_string_at(s, b) <= ' ') b++;
+    while (e > b && mk_string_at(s, e - 1) <= ' ') e--;
     if (b == e || (size_t)(e - b) + 1 > cap) return 0;
     size_t n = 0;
     for (MkInt i = b; i < e; i++) {
-        if (s->chars[i] > 126) return 0;
-        out[n++] = (char)s->chars[i];
+        MkChar ch = mk_string_at(s, i);
+        if (ch > 126) return 0;
+        out[n++] = (char)ch;
     }
     out[n] = '\0';
     size_t i = 0;
@@ -108,7 +115,7 @@ MkDouble mk_string_parse_double(const MkString *s) {
 /* ---- StringBuilder storage ------------------------------------------------------------
  * The buffer is "narrow" (one byte per character) while every character appended so far is below 256, and becomes "wide" (UTF-16)
  * with the first one that is not: texts of ASCII/Latin-1 characters take half the memory and half the bandwidth while they are built.
- * `mk_sb_to_string` always makes an ordinary UTF-16 MkString. */
+ * `mk_sb_to_string` makes a one-byte (Latin-1) MkString from a narrow buffer, a UTF-16 one from a wide buffer. */
 
 typedef struct MkSb {
     MkObject header;
@@ -116,17 +123,57 @@ typedef struct MkSb {
     MkInt length;
     MkInt capacity;  /* in characters */
     MkInt wide;
+    MkString *backing; /* NULL, or the string whose characters `data` is (see mk_sb_to_string); the builder owns one reference */
     MkChar inline_chars[];
 } MkSb;
 
+#define SB_STEAL_MIN 65536 /* characters: from here on mk_sb_to_string shares the buffer instead of copying it */
 #define MK_SB_INLINE_BYTES 32 /* the inline storage: 32 narrow or 16 wide characters */
 
 static inline int sb_is_inline(const MkSb *sb) { return sb->data == (const void *)sb->inline_chars; }
 
+/* A heap buffer has room in front of its characters for the block prefix and the MkString header: a big narrow buffer can then
+ * become the Latin-1 string of mk_sb_to_string in place (no copy of 100 MB of text, no second copy in the peak memory). */
+#define SB_FRONT (MK_PREFIX_SIZE + offsetof(MkString, chars))
+
+static void *sb_buf_new(size_t bytes) {
+    if (bytes > SIZE_MAX - SB_FRONT) mk_panic("out of memory");
+    char *base = malloc(SB_FRONT + bytes);
+    if (base == NULL) mk_panic("out of memory");
+    return base + SB_FRONT;
+}
+
+static void *sb_buf_resize(void *data, size_t bytes) {
+    if (bytes > SIZE_MAX - SB_FRONT) mk_panic("out of memory");
+    char *base = realloc((char *)data - SB_FRONT, SB_FRONT + bytes);
+    if (base == NULL) mk_panic("out of memory");
+    return base + SB_FRONT;
+}
+
+static void sb_buf_free(void *data) { free((char *)data - SB_FRONT); }
+
 static void sb_dispose(MkObject *self) {
     MkSb *sb = (MkSb *)self;
-    if (!sb_is_inline(sb)) free(sb->data);
+    if (sb->backing != NULL) {
+        mk_release(&sb->backing->header);
+        sb->backing = NULL;
+    } else if (!sb_is_inline(sb)) {
+        sb_buf_free(sb->data);
+    }
     sb->data = NULL;
+}
+
+/* The characters of the builder are those of a string it shares (mk_sb_to_string): copy them before anything is changed. */
+static void sb_unshare(MkSb *sb) {
+    MkString *b = sb->backing;
+    if (b == NULL) return;
+    size_t n = (size_t)sb->length;
+    void *d = sb_buf_new(n > 0 ? n : 1);
+    if (n > 0) memcpy(d, sb->data, n);
+    sb->data = d;
+    sb->capacity = (MkInt)n;
+    sb->backing = NULL;
+    mk_release(&b->header);
 }
 
 static const MkTypeInfo sb_type = {
@@ -152,10 +199,14 @@ static void sb_widen(MkSb *sb) {
     }
     MkInt cap = sb->capacity > len ? sb->capacity : len;
     if (cap < MK_SB_INLINE_BYTES / 2) cap = MK_SB_INLINE_BYTES / 2;
-    MkChar *n = malloc((size_t)cap * sizeof(MkChar));
-    if (n == NULL) mk_panic("out of memory");
+    MkChar *n = sb_buf_new((size_t)cap * sizeof(MkChar));
     for (MkInt i = 0; i < len; i++) n[i] = src[i];
-    if (!sb_is_inline(sb)) free(sb->data);
+    if (sb->backing != NULL) {
+        mk_release(&sb->backing->header);
+        sb->backing = NULL;
+    } else if (!sb_is_inline(sb)) {
+        sb_buf_free(sb->data);
+    }
     sb->data = n;
     sb->capacity = cap;
     sb->wide = 1;
@@ -169,13 +220,18 @@ static void sb_grow(MkSb *sb, MkInt need) {
     }
     size_t esz = sb->wide ? sizeof(MkChar) : 1;
     void *n;
-    if (sb_is_inline(sb)) {
-        n = malloc((size_t)cap * esz);
-        if (n != NULL && sb->length > 0) memcpy(n, sb->data, (size_t)sb->length * esz);
+    if (sb->backing != NULL) { /* the characters are a string's: the new buffer is made and filled in one step */
+        MkString *old = sb->backing;
+        n = sb_buf_new((size_t)cap * esz);
+        if (sb->length > 0) memcpy(n, sb->data, (size_t)sb->length * esz);
+        sb->backing = NULL;
+        mk_release(&old->header);
+    } else if (sb_is_inline(sb)) {
+        n = sb_buf_new((size_t)cap * esz);
+        if (sb->length > 0) memcpy(n, sb->data, (size_t)sb->length * esz);
     } else {
-        n = realloc(sb->data, (size_t)cap * esz);
+        n = sb_buf_resize(sb->data, (size_t)cap * esz);
     }
-    if (n == NULL) mk_panic("out of memory");
     sb->data = n;
     sb->capacity = cap;
 }
@@ -202,6 +258,17 @@ void mk_sb_append_string(MkObject *o, const MkString *s) {
     MkInt n = s->length;
     if (n == 0) return;
     sb_reserve(sb, n);
+    if (mk_string_is_latin1(s)) {
+        if (!sb->wide) {
+            memcpy((uint8_t *)sb->data + sb->length, mk_string_bytes(s), (size_t)n);
+        } else {
+            const uint8_t *src = mk_string_bytes(s);
+            MkChar *d = (MkChar *)sb->data + sb->length;
+            for (MkInt i = 0; i < n; i++) d[i] = src[i];
+        }
+        sb->length += n;
+        return;
+    }
     if (!sb->wide) {
         uint8_t *d = (uint8_t *)sb->data + sb->length;
         MkChar all = 0;
@@ -265,6 +332,7 @@ MkChar mk_sb_char_at(MkObject *o, MkInt index) {
 void mk_sb_set_char_at(MkObject *o, MkInt index, MkChar c) {
     MkSb *sb = sb_of(o);
     if (index < 0 || index >= sb->length) mk_panic("IndexOutOfBoundsException");
+    sb_unshare(sb);
     if (!sb->wide && c >= 256) sb_widen(sb);
     if (sb->wide) ((MkChar *)sb->data)[index] = c;
     else ((uint8_t *)sb->data)[index] = (uint8_t)c;
@@ -273,6 +341,7 @@ void mk_sb_set_char_at(MkObject *o, MkInt index, MkChar c) {
 void mk_sb_set_length(MkObject *o, MkInt length) {
     MkSb *sb = sb_of(o);
     if (length < 0) mk_panic("IndexOutOfBoundsException");
+    if (length != sb->length) sb_unshare(sb);
     if (length > sb->length) {
         sb_reserve(sb, length - sb->length);
         size_t esz = sb->wide ? sizeof(MkChar) : 1;
@@ -283,16 +352,40 @@ void mk_sb_set_length(MkObject *o, MkInt length) {
 
 MkString *mk_sb_to_string(MkObject *o) {
     MkSb *sb = sb_of(o);
-    MkString *r = mk_string_alloc(sb->length);
     MkInt n = sb->length;
-    if (n > 0) {
-        if (sb->wide) {
-            memcpy(r->chars, sb->data, (size_t)n * sizeof(MkChar));
-        } else {
-            const uint8_t *src = (const uint8_t *)sb->data;
-            for (MkInt i = 0; i < n; i++) r->chars[i] = src[i];
-        }
+    if (sb->backing != NULL) { /* nothing changed since the last toString: strings are immutable, share it */
+        mk_retain(&sb->backing->header);
+        return sb->backing;
     }
+    if (!sb->wide) { /* one byte per character: so is the string */
+#ifndef MK_STATS
+        if (n >= SB_STEAL_MIN && !sb_is_inline(sb)) {
+            /* A big buffer becomes the string itself: the block is shrunk to the text, given the block prefix and the string header
+             * (room was left in front of the characters), and shared with the builder, which copies the text only if it is changed
+             * (sb_unshare). The builder of a text that is built and then turned into a string once no longer needs a second copy. */
+            size_t total = SB_FRONT + (size_t)n;
+            char *base = realloc((char *)sb->data - SB_FRONT, total);
+            if (base != NULL) {
+                *(MkAllocator **)(void *)base = mk_rc_allocator();
+                *(size_t *)(void *)(base + sizeof(void *)) = total;
+                MkString *r = (MkString *)(void *)(base + MK_PREFIX_SIZE);
+                r->header.type = &mk_type_String;
+                r->header.refcount = 2; /* the caller and the builder */
+                r->header.flags = MK_FLAG_PREFIXED | MK_FLAG_LATIN1;
+                r->length = n;
+                sb->data = (void *)r->chars;
+                sb->capacity = n;
+                sb->backing = r;
+                return r;
+            }
+        }
+#endif
+        MkString *r = mk_string_alloc8(n);
+        if (n > 0) memcpy((uint8_t *)(void *)r->chars, sb->data, (size_t)n);
+        return r;
+    }
+    MkString *r = mk_string_alloc(n);
+    if (n > 0) memcpy(r->chars, sb->data, (size_t)n * sizeof(MkChar));
     return r;
 }
 

@@ -147,8 +147,11 @@ object CEmitter {
             out.append(PRELUDE)
             if (usesMemory) out.append(MEMORY_PRELUDE)
             if (literals.isNotEmpty()) {
-                out.append("\n/* string literals (UTF-16) */\n")
-                for ((value, name) in literals) out.append("MK_STRING_LITERAL($name, ${utf16Literal(value)});\n")
+                out.append("\n/* string literals (one byte per character when every character is below 256, else UTF-16) */\n")
+                for ((value, name) in literals) {
+                    if (value.all { it.code < 256 }) out.append("MK_STRING_LITERAL8($name, ${value.length}, {${latin1Bytes(value)}});\n")
+                    else out.append("MK_STRING_LITERAL($name, ${utf16Literal(value)});\n")
+                }
             }
             out.append("\n/* prototypes */\n")
             for (f in module.functions) out.append(prototype(f)).append(";\n")
@@ -1214,6 +1217,14 @@ object CEmitter {
             return sb.append('"').toString()
         }
 
+        /** The characters of a Latin-1 literal as a C initializer list (with the terminating 0). */
+        fun latin1Bytes(value: String): String {
+            val sb = StringBuilder()
+            for (ch in value) sb.append(ch.code).append(',')
+            sb.append('0')
+            return sb.toString()
+        }
+
         fun utf16Literal(value: String): String {
             // Printable ASCII is written directly; every other UTF-16 unit as a hex escape,
             // after which the literal is closed and reopened (hex escapes are greedy).
@@ -1309,7 +1320,7 @@ MKH_FN MkInt mkh_ra_length(MkObject *a) {
 MKH_FN MkInt mkh_str_length(const MkString *s) { return s != NULL ? s->length : 0; }
 MKH_FN MkChar mkh_str_char_at(const MkString *s, MkInt i) {
     if (__builtin_expect(s == NULL || (uint32_t)i >= (uint32_t)s->length, 0)) return (mk_string_char_at)(s, i);
-    return s->chars[i];
+    return mk_string_at(s, i);
 }
 #define mk_string_length(s) mkh_str_length((s))
 #define mk_string_char_at(s, i) mkh_str_char_at((s), (i))

@@ -42,7 +42,7 @@ void mk_runtime_flush(void);
 /* The Mini string as a NUL-terminated UTF-8 buffer (malloc'ed); NULL for a null string. */
 static char *c_str(const MkString *s) {
     if (s == NULL) return NULL;
-    return mk_utf16_to_utf8(s->chars, (size_t)s->length, NULL);
+    return mk_string_to_utf8(s, NULL);
 }
 
 static MkString *mk_str(const char *s) { return s == NULL ? NULL : mk_string_from_utf8(s, strlen(s)); }
@@ -238,7 +238,7 @@ MkString *mh_realpath(const MkString *path) {
 /* Writes the text to a file descriptor (1 or 2); 0 on success, 1 when the reader is gone (EPIPE), 2 on another error. */
 MkInt mh_write(MkInt fd, const MkString *text) {
     size_t len = 0;
-    char *u = mk_utf16_to_utf8(text->chars, (size_t)text->length, &len);
+    char *u = mk_string_to_utf8(text, &len);
     size_t at = 0;
     int result = 0;
     while (at < len) {

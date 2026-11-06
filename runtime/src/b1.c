@@ -35,7 +35,7 @@ static wchar_t *path_to_wide(const MkString *path) {
     wchar_t *wide = malloc((n + 1) * sizeof(*wide));
     if (wide == NULL) mk_panic("OutOfMemoryError");
     for (size_t i = 0; i < n; i++) {
-        MkChar c = path->chars[i];
+        MkChar c = mk_string_at(path, (MkInt)i);
         wide[i] = c == '/' ? L'\\' : (wchar_t)c;
     }
     wide[n] = L'\0';
@@ -171,7 +171,7 @@ static MkString *win_list_dir(const MkString *path) {
 /* The path as a NUL-terminated UTF-8 buffer (malloc'ed). */
 static char *path_to_c(const MkString *path) {
     if (path == NULL) mk_panic("NullPointerException");
-    return mk_utf16_to_utf8(path->chars, (size_t)path->length, NULL);
+    return mk_string_to_utf8(path, NULL);
 }
 #endif
 
@@ -222,7 +222,7 @@ MkBoolean mk_b1_write_file(const MkString *path, const MkString *text) {
     free(p);
     if (f == NULL) return 0;
     size_t len = 0;
-    char *u = mk_utf16_to_utf8(text->chars, (size_t)text->length, &len);
+    char *u = mk_string_to_utf8(text, &len);
     size_t written = len == 0 ? 0 : fwrite(u, 1, len, f);
     free(u);
     int ok = written == len;
@@ -400,7 +400,7 @@ MkObject *mk_b1_args(void) {
 void mk_b1_eprint(const MkString *text) {
     if (text == NULL) mk_panic("NullPointerException");
     mk_runtime_flush();
-    char *u = mk_utf16_to_utf8(text->chars, (size_t)text->length, NULL);
+    char *u = mk_string_to_utf8(text, NULL);
     fputs(u, stderr);
     free(u);
     fflush(stderr);

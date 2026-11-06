@@ -43,7 +43,7 @@ bool mk_wasm_failed(void) {
     error_text = NULL;
     if (text != NULL) {
         size_t len;
-        error_text = mk_utf16_to_utf8(text->chars, (size_t)text->length, &len);
+        error_text = mk_string_to_utf8(text, &len);
         mk_release((MkObject *)text);
     }
     if (error_text == NULL) {
@@ -58,7 +58,7 @@ bool mk_wasm_failed(void) {
 /* A string result: consumes [s]; returns a malloc'ed UTF-8 buffer, its length in mini_result_len(). */
 char *mk_wasm_string_out(MkString *s) {
     size_t len = 0;
-    char *u = mk_utf16_to_utf8(s->chars, (size_t)s->length, &len);
+    char *u = mk_string_to_utf8(s, &len);
     mk_release((MkObject *)s);
     result_len = len;
     return u;

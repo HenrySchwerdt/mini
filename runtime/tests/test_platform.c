@@ -56,12 +56,12 @@ static MkString *make_argv(const MkString *exe, const char *const *args, size_t 
     }
     MkString *joined = mk_string_alloc((MkInt)length);
     size_t at = 0;
-    memcpy(joined->chars, exe->chars, (size_t)exe->length * sizeof(MkChar));
+    mk_string_copy_chars(exe, 0, exe->length, joined->chars);
     at = (size_t)exe->length;
     for (size_t i = 0; i < count; i++) {
         joined->chars[at++] = 1;
         MkString *arg = U(args[i]);
-        memcpy(joined->chars + at, arg->chars, (size_t)arg->length * sizeof(MkChar));
+        mk_string_copy_chars(arg, 0, arg->length, joined->chars + at);
         at += (size_t)arg->length;
         mk_release(&arg->header);
     }

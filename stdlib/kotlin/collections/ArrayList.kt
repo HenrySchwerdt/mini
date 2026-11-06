@@ -53,6 +53,9 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         return old
     }
 
+    // NoHeapEffects: appending only fills the first free (NULL) slot, and growing moves every element into the new storage, so
+    // no reference that an element read (a borrowed alias of an element, of the list) depends on is ever dropped.
+    @kotlin.internal.NoHeapEffects
     override fun add(@TakesOwnership element: E): Boolean {
         ensureCapacity(length + 1)
         refArraySetOwned(array, length, element)
@@ -126,6 +129,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
 
     public fun trimToSize() {}
 
+    @kotlin.internal.NoHeapEffects
     public fun ensureCapacity(minCapacity: Int) {
         val cap = refArrayLength(array)
         if (minCapacity <= cap) return
