@@ -623,3 +623,14 @@ public fun <T> List<T>.single(): T {
     if (size != 1) throw IllegalArgumentException("List has more than one element.")
     return this[0]
 }
+
+// ---- Map operations with a key of a supertype of the key type (`map[nullableKey]`) --------------------------------
+
+@Suppress("UNCHECKED_CAST")
+public inline operator fun <@kotlin.internal.OnlyInputTypes K, V> Map<out K, V>.get(key: K): V? = (this as Map<K, V>).get(key)
+
+@Suppress("UNCHECKED_CAST")
+public fun <@kotlin.internal.OnlyInputTypes K> Map<out K, *>.containsKey(key: K): Boolean = (this as Map<K, *>).containsKey(key)
+
+@Suppress("UNCHECKED_CAST")
+public fun <@kotlin.internal.OnlyInputTypes K, V> MutableMap<out K, V>.remove(key: K): V? = (this as MutableMap<K, V>).remove(key)

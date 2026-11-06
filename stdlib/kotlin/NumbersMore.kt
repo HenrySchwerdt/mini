@@ -39,3 +39,5 @@ public infix fun Short.and(other: Short): Short = (this.toInt() and other.toInt(
 public infix fun Short.or(other: Short): Short = (this.toInt() or other.toInt()).toShort()
 public infix fun Short.xor(other: Short): Short = (this.toInt() xor other.toInt()).toShort()
 public fun Short.inv(): Short = this.toInt().inv().toShort()
+
+public fun Char.toFloat(): Float = this.code.toFloat()
