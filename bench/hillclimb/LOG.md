@@ -143,3 +143,56 @@ Validated at this state: runtime/run_tests.sh, test-e2e (default suites + llvm +
 Compact (Latin-1) strings (wordcount/json RSS), HashMap node layout (before/after links only in LinkedHashMap), a cache for `mk_itable`,
 runtime bitcode inlining for the LLVM backend (`mk_alloc`, `mk_sb_append_char`), per-function sections in LLVM objects.
 Devirt.kt and RcOpt `early` overlap with the `claude/mir-opt` agent's scope (CHA devirtualization, RC elision): merge carefully.
+
+# Round 3 (`claude/perf-2`, base `claude/mir-opt`)
+
+Measuring: `bench/hillclimb/score.py` (5 runs, pinned cpu 3) plus wall-clock phase timers and valgrind callgrind / cachegrind
+(`bench/hillclimb/icount.sh`). The runtime library of these builds is `-O1` (build-mini.sh default); a `-O2` runtime (as in the
+release) was tried: wordcount 2.77 -> 2.77 s, json 1.00 -> 0.99 s, graph 2.0 -> 2.0 s (no change, not pursued).
+Note: the 0.9.0 stage0 (CI) cannot resolve a nested class constructor (`Inliner.Stats()`): `Inline.kt` has a top-level `InlinerStats`.
+
+## Where the time goes (before)
+
+* graph (C 3.2x): 6 BFS x 0.23 s plus 0.35 s to build; the BFS is memory bound (1M `Node`s of 32 B interleaved with a 32 B `ArrayList`
+  and a 64 B storage array: 128 MB where Rust's index based version touches a 32 MB `Vec<Node>`). Removing the retain/release of the
+  loop variables (hand edited C, no RC on `m`, `n`, the list) took the run from 2.1 s to 1.7 s: the counts are *writes* to cache lines
+  that the loop only reads (`m.dist < 0` is false for 3 of 4 edges), so they add misses, dirty lines and candidate buffering for the
+  cycle collector. One collection of the live graph costs 0.55 s (2.9M objects, mark and restore, about 100 ns per object and phase:
+  random pointer chasing), the candidate buffer + slot table 50-70 MB of the RSS.
+* wordcount (C 2.4x): 112 ns per word in the counting loop = about 1000 instructions: `HashMap.put` 113, string hash 72 (twice per
+  word: `get` then `put`), `findNode` 55, release 63, alloc 47, equals 60 (+memcmp 36), `substring` 33, sb append 137 per word. RSS: the
+  text is built in a one byte per character buffer (85 MB) and then copied into a UTF-16 string (170 MB): 246 MB peak.
+* json (C 1.4x): allocation / free of the tree (12 % alloc, 18 % `mk_release`), the walk is 90 ns per node (cache misses).
+
+## Attempts
+
+### 1. RC elision across `ArrayList.add` (KEPT) - `@NoHeapEffects` on `ArrayList.add` / `ensureCapacity`, `Inliner` skips such functions
+RcOpt borrows a loop variable / element read only while no event in its window can overwrite a heap reference it depends on;
+`queue.add(m)` (a slot store plus the `array` field store of `ensureCapacity`) counted as such an event, so `m`, `n` and `n.out` of the
+BFS were retained and released. `add` only fills the first free slot and `ensureCapacity` moves every element to the new storage, so no
+reference that an element read depends on is dropped: both are `@kotlin.internal.NoHeapEffects` now (the storage array object itself is
+only read inside `ArrayList`, never held across a call). The MIR inliner does not expand `noHeapEffects` functions (the promise is about
+the call as a whole). graph: callgrind 283M -> 181M instructions (-36 %), C run 2.2 -> 1.95 s, RSS 225 -> 198 MB.
+
+### 2. Cycle collector: 8 byte slot table entries (KEPT) - runtime/src/cycles.c
+The table that finds the root buffer slot of a dying candidate stored 8 + 4 bytes per entry at a load of at most 1/2. Now one 64 bit
+word (low 32 bits of the address, index + 1; a hit is confirmed against `roots[index]`) at a load of at most 3/4. graph RSS 198 -> 188 MB,
+no change in speed.
+
+### 3. Rejected: huge pages for big heaps; per-class allocation spans; prefetching in the collector; one collector stack
+* `madvise(MADV_HUGEPAGE)` on 2 MiB aligned chunks after 8 MB of heap: the kernel here hands out no huge pages (AnonHugePages 0), graph unchanged.
+* per-size-class bump spans (objects of a class contiguous instead of interleaved in allocation order): graph +10 % (the Node, its list and
+  its array are adjacent in the interleaved layout, one DRAM miss serves the three).
+* prefetching the children in `ref_array_trace`: collection 522 -> 540 ms (no change); a single stack for mark and restore: RSS -3 MB only.
+
+### 4. Latin-1 strings (KEPT) - MK_FLAG_LATIN1, runtime string functions, both emitters
+A `String` is now either UTF-16 or one byte per character (`MK_FLAG_LATIN1` in the object header, the bytes start where the UTF-16
+units did). Everything that creates strings picks the narrow form when it can (`StringBuilder` narrow buffer, literals whose characters are
+all < 256 in both emitters, `substring`, `+` / templates of narrow parts, number formatting, UTF-8 decoding of ASCII/Latin-1 text); all
+readers go through `mk_string_at` / `mk_string_to_utf8` / `mk_string_copy_chars` (equality and hash are representation independent: a
+narrow and a wide string with the same characters are equal). The inline `charAt` of the C prelude and of the LLVM lowering test the
+flag. Runtime tests updated (+ a mixed representation test).
+`StringBuilder.toString()` of a big narrow buffer (>= 64K characters) no longer copies: the block of the buffer (it has room for the
+allocator prefix and the string header in front of the characters) is shrunk to the text and becomes the string; the builder shares it
+(`backing`, one reference) and copies the characters before it is changed (append, set, shorten).
+wordcount RSS 252 -> 93 MB (2.87x -> 1.1x Rust), json 96 -> 87 MB, strbuild unchanged (105 MB); speed flat (wordcount 2.8 -> 2.7 s).
