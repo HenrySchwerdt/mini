@@ -384,6 +384,24 @@ fun interface behind a typealias, `Flow.map { null }`), function references coer
 builder inference, `Outer.Inner()` inside lambdas of inline functions that capture the outer instance, multiple-module and
 `// FILE:` tests whose first `fun box()` is a member (`properRecapturingInClass`: the harness picks the wrong package, 6 tests).
 
+## Fifth round combined (5a + 5b + 5c)
+
+The three branches of round 5 merged: one full harness pass over the combined tree (`results.json`, `summary.md`).
+
+| | after round 4 | round 5 (a + b + c) |
+|---|---:|---:|
+| **pass (all applicable tests)** | **5243 (87.81%)** | **5614 (94.02%)** |
+| Native parity | 5243 (87.81%) | 5614 (94.02%) |
+| compile-error | 402 | 226 |
+| ice | 112 | 32 |
+| runtime-fail | 173 | 84 |
+| crash | 39 | 13 |
+| timeout | 2 | 2 |
+
+The per-round tables above were measured on the branches alone (5a: 5425, 5b: 5306 against a different base, 5c: see its section).
+The combined merge also fixed a regression found by CI: a non-reified type argument that is a C pointer (`memScoped { f() }` returning
+`CPointer<..>?`) is substituted in the inline expansion again, so the LLVM C API backend compiles itself.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
