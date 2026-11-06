@@ -198,6 +198,13 @@ MkString *mk_to_string(MkObject *o) {
     return (MkString *)(f ? ((ToStringFn)f)(o) : mk_any_to_string(o));
 }
 
+/* The toString of a Throwable (its class always has one): the uncaught-exception report uses this and not mk_to_string, which would
+ * link the number formatting and mk_any_to_string into every program. */
+const MkString *mk_throwable_virtual_to_string(MkObject *o) {
+    void *f = slot(o, MK_VSLOT_TO_STRING);
+    return f ? ((ToStringFn)f)(o) : NULL;
+}
+
 static MkInt double_bits_hash(MkDouble d) {
     uint64_t bits;
     if (d != d) bits = UINT64_C(0x7ff8000000000000);
