@@ -10,7 +10,7 @@ import mini.frontend.*
  * (compiler/fir/resolve/.../inference/FirCallCompleter).
  */
 
-class Arg(val expr: Expr?, val name: String?, val spread: Boolean) {
+class Arg(val expr: Expr?, val name: String?, var spread: Boolean) {
     var type: Type? = null
     var trailing = false
     val postponed: Boolean
@@ -567,6 +567,13 @@ fun BodyChecker.tryCandidate(c: Candidate, args: List<Arg>, typeArgs: List<Type>
         val p = params[binding.paramOfArg[i]]
         var pt: Type
         val pty = p.type ?: ErrType("param")
+        val at0 = a.type
+        if (p.isVararg && !a.spread && a.name != null && at0 != null && !a.postponed) {
+            // `foo(s = array)`: an array given by name to a vararg parameter is its value (no `*` needed)
+            val el = ops.substitute(p.varargElement ?: pty, subst)
+            val arrT = ops.substitute(pty, subst)
+            if (!cs.hasVars(el) && !cs.hasVars(arrT) && !ops.isSubtype(at0, el) && ops.isSubtype(at0, arrT)) a.spread = true
+        }
         if (p.isVararg && !a.spread) pt = ops.substitute(p.varargElement ?: pty, subst) else pt = ops.substitute(pty, subst)
         att.argParam[i] = pt
         att.cmp[i] = ops.substitute(if (p.isVararg && !a.spread) (p.varargElement ?: pty) else pty, c.subst)
