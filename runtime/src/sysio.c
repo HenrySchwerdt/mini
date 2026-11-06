@@ -83,3 +83,17 @@ MkInt mk_sys_float_bits(MkFloat v) {
     memcpy(&u, &v, sizeof u);
     return (MkInt)u;
 }
+
+MkDouble mk_sys_bits_double(MkLong bits) {
+    uint64_t u = (uint64_t)bits;
+    MkDouble v;
+    memcpy(&v, &u, sizeof v);
+    return v;
+}
+
+MkFloat mk_sys_bits_float(MkInt bits) {
+    uint32_t u = (uint32_t)bits;
+    MkFloat v;
+    memcpy(&v, &u, sizeof v);
+    return v;
+}
