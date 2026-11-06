@@ -62,4 +62,10 @@ fun main() {
     println('ß'.titlecase())
     println('ǆ'.titlecase())
     println("ǆ".uppercase())
+    println('a'.category)
+    println('5'.category)
+    println('€'.category)
+    println('日'.category)
+    println('a' in CharCategory.LOWERCASE_LETTER)
+    println(CharCategory.DECIMAL_DIGIT_NUMBER.code)
 }
