@@ -286,6 +286,14 @@ fun Ast2Ir.irLocalClass(sym: ClassSym): IrClass {
             localClassCtxs[ex] = ctx
             ex.parent = enclosingParent()
         }
+        // created through its type before (`object : T { ... }.f()`): its fake overrides and the `overridden` links of its
+        // declared members may still be missing
+        var j = 0
+        val m = allClasses.size
+        while (j < m) {
+            ensureFakeOverrides(allClasses[j])
+            j++
+        }
         return ex
     }
     val saved = pendingLocalCtx
