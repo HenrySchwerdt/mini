@@ -5,7 +5,7 @@
 package kotlin.text
 
 private var catStarts: IntArray? = null
-private var catCodes: ByteArray? = null
+private var catCodes: IntArray? = null
 private var upStarts: IntArray? = null
 private var upDeltas: IntArray? = null
 private var loStarts: IntArray? = null
@@ -29,11 +29,11 @@ private fun decodeCategories() {
     val s = UnicodeTables.CATEGORIES
     val n = s.length / 5
     val starts = IntArray(n)
-    val codes = ByteArray(n)
+    val codes = IntArray(n)
     var i = 0
     while (i < n) {
         starts[i] = hexAt(s, i * 5, 4)
-        codes[i] = (s[i * 5 + 4].code - 48).toByte()
+        codes[i] = s[i * 5 + 4].code - 48
         i++
     }
     catStarts = starts
@@ -98,7 +98,7 @@ private fun inRanges(r: IntArray, c: Int): Boolean {
 /** The general category of the character as java.lang.Character.getType numbers it (Lu = 1, Ll = 2, Nd = 9, Zs = 12, ...). */
 internal fun charType(c: Int): Int {
     if (catStarts == null) decodeCategories()
-    return catCodes!![lastAtMost(catStarts!!, c)].toInt()
+    return catCodes!![lastAtMost(catStarts!!, c)]
 }
 
 /** The value of a decimal digit (Nd) of any script: 0..9. */
