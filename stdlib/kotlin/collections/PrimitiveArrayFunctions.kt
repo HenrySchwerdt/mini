@@ -5,6 +5,980 @@
 package kotlin.collections
 
 
+// ======================================== ByteArray ========================================
+
+public fun ByteArray.isEmpty(): Boolean = size == 0
+public fun ByteArray.isNotEmpty(): Boolean = size != 0
+
+public fun ByteArray.copyOf(): ByteArray {
+    val r = ByteArray(size)
+    var i = 0
+    while (i < size) { r[i] = this[i]; i++ }
+    return r
+}
+
+public fun ByteArray.copyOf(newSize: Int): ByteArray {
+    if (newSize < 0) throw IllegalArgumentException("Invalid new array size: " + newSize + ".")
+    val r = ByteArray(newSize)
+    var i = 0
+    val n = if (newSize < size) newSize else size
+    while (i < n) { r[i] = this[i]; i++ }
+    return r
+}
+
+public fun ByteArray.copyOfRange(fromIndex: Int, toIndex: Int): ByteArray {
+    if (fromIndex > toIndex) throw IllegalArgumentException("fromIndex (" + fromIndex + ") > toIndex (" + toIndex + ")")
+    if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: " + fromIndex + ", toIndex: " + toIndex + ", size: " + size)
+    val r = ByteArray(toIndex - fromIndex)
+    var i = fromIndex
+    while (i < toIndex) { r[i - fromIndex] = this[i]; i++ }
+    return r
+}
+
+public fun ByteArray.copyInto(destination: ByteArray, destinationOffset: Int = 0, startIndex: Int = 0, endIndex: Int = size): ByteArray {
+    if (startIndex < 0 || endIndex > size || startIndex > endIndex) throw IndexOutOfBoundsException("startIndex: " + startIndex + ", endIndex: " + endIndex + ", size: " + size)
+    if (destinationOffset < 0 || destinationOffset + (endIndex - startIndex) > destination.size) throw IndexOutOfBoundsException("The destination array is too small")
+    if (this === destination && destinationOffset > startIndex) {
+        var i = endIndex - 1
+        while (i >= startIndex) { destination[destinationOffset + i - startIndex] = this[i]; i-- }
+    } else {
+        var i = startIndex
+        while (i < endIndex) { destination[destinationOffset + i - startIndex] = this[i]; i++ }
+    }
+    return destination
+}
+
+public fun ByteArray.fill(element: Byte, fromIndex: Int = 0, toIndex: Int = size) {
+    if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: " + fromIndex + ", toIndex: " + toIndex + ", size: " + size)
+    var i = fromIndex
+    while (i < toIndex) { this[i] = element; i++ }
+}
+
+public infix fun ByteArray?.contentEquals(other: ByteArray?): Boolean {
+    if (this === other) return true
+    if (this == null || other == null) return false
+    if (size != other.size) return false
+    var i = 0
+    while (i < size) { if (this[i] != other[i]) return false; i++ }
+    return true
+}
+
+public fun ByteArray?.contentHashCode(): Int {
+    if (this == null) return 0
+    var h = 1
+    var i = 0
+    while (i < size) { h = 31 * h + this[i].hashCode(); i++ }
+    return h
+}
+
+public operator fun ByteArray.plus(element: Byte): ByteArray {
+    val r = copyOf(size + 1)
+    r[size] = element
+    return r
+}
+
+public operator fun ByteArray.plus(elements: ByteArray): ByteArray {
+    val r = copyOf(size + elements.size)
+    var i = 0
+    while (i < elements.size) { r[size + i] = elements[i]; i++ }
+    return r
+}
+
+public fun ByteArray.reverse() {
+    var i = 0
+    var j = size - 1
+    while (i < j) { val t = this[i]; this[i] = this[j]; this[j] = t; i++; j-- }
+}
+
+public fun ByteArray.reversedArray(): ByteArray {
+    val r = ByteArray(size)
+    var i = 0
+    while (i < size) { r[size - 1 - i] = this[i]; i++ }
+    return r
+}
+
+public fun ByteArray.reversed(): List<Byte> {
+    val r = ArrayList<Byte>(size)
+    var i = size - 1
+    while (i >= 0) { r.add(this[i]); i-- }
+    return r
+}
+
+public fun ByteArray.toList(): List<Byte> {
+    val r = ArrayList<Byte>(size)
+    var i = 0
+    while (i < size) { r.add(this[i]); i++ }
+    return r
+}
+
+public fun ByteArray.asList(): List<Byte> = toList()
+public fun ByteArray.asIterable(): Iterable<Byte> = toList()
+public fun ByteArray.toMutableList(): MutableList<Byte> {
+    val r = ArrayList<Byte>(size)
+    var i = 0
+    while (i < size) { r.add(this[i]); i++ }
+    return r
+}
+public fun ByteArray.toSet(): Set<Byte> = toMutableList().toSet()
+public fun ByteArray.toMutableSet(): MutableSet<Byte> = toMutableList().toMutableSet()
+public fun ByteArray.toHashSet(): HashSet<Byte> = HashSet<Byte>(toList())
+
+public fun ByteArray.toTypedArray(): Array<Byte> {
+    val r = arrayOfNulls<Byte>(size)
+    var i = 0
+    while (i < size) { r[i] = this[i]; i++ }
+    return r as Array<Byte>
+}
+
+public fun ByteArray.first(): Byte {
+    if (isEmpty()) throw NoSuchElementException("Array is empty.")
+    return this[0]
+}
+public fun ByteArray.last(): Byte {
+    if (isEmpty()) throw NoSuchElementException("Array is empty.")
+    return this[size - 1]
+}
+public fun ByteArray.firstOrNull(): Byte? = if (isEmpty()) null else this[0]
+public fun ByteArray.lastOrNull(): Byte? = if (isEmpty()) null else this[size - 1]
+public fun ByteArray.getOrNull(index: Int): Byte? = if (index >= 0 && index < size) this[index] else null
+public inline fun ByteArray.getOrElse(index: Int, defaultValue: (Int) -> Byte): Byte = if (index >= 0 && index < size) this[index] else defaultValue(index)
+public fun ByteArray.single(): Byte {
+    if (size == 0) throw NoSuchElementException("Array is empty.")
+    if (size != 1) throw IllegalArgumentException("Array has more than one element.")
+    return this[0]
+}
+public fun ByteArray.singleOrNull(): Byte? = if (size == 1) this[0] else null
+public inline fun ByteArray.first(predicate: (Byte) -> Boolean): Byte {
+    for (e in this) if (predicate(e)) return e
+    throw NoSuchElementException("Array contains no element matching the predicate.")
+}
+public inline fun ByteArray.firstOrNull(predicate: (Byte) -> Boolean): Byte? {
+    for (e in this) if (predicate(e)) return e
+    return null
+}
+public inline fun ByteArray.find(predicate: (Byte) -> Boolean): Byte? = firstOrNull(predicate)
+public inline fun ByteArray.lastOrNull(predicate: (Byte) -> Boolean): Byte? {
+    var i = size - 1
+    while (i >= 0) { val e = this[i]; if (predicate(e)) return e; i-- }
+    return null
+}
+public inline fun ByteArray.findLast(predicate: (Byte) -> Boolean): Byte? = lastOrNull(predicate)
+
+public fun ByteArray.indexOf(element: Byte): Int {
+    var i = 0
+    while (i < size) { if (this[i] == element) return i; i++ }
+    return -1
+}
+public fun ByteArray.lastIndexOf(element: Byte): Int {
+    var i = size - 1
+    while (i >= 0) { if (this[i] == element) return i; i-- }
+    return -1
+}
+public operator fun ByteArray.contains(element: Byte): Boolean = indexOf(element) >= 0
+public inline fun ByteArray.indexOfFirst(predicate: (Byte) -> Boolean): Int {
+    var i = 0
+    while (i < size) { if (predicate(this[i])) return i; i++ }
+    return -1
+}
+public inline fun ByteArray.indexOfLast(predicate: (Byte) -> Boolean): Int {
+    var i = size - 1
+    while (i >= 0) { if (predicate(this[i])) return i; i-- }
+    return -1
+}
+
+public inline fun ByteArray.forEach(action: (Byte) -> Unit) { for (e in this) action(e) }
+public inline fun ByteArray.forEachIndexed(action: (index: Int, Byte) -> Unit) {
+    var i = 0
+    while (i < size) { action(i, this[i]); i++ }
+}
+public inline fun <R> ByteArray.map(transform: (Byte) -> R): List<R> {
+    val r = ArrayList<R>(size)
+    for (e in this) r.add(transform(e))
+    return r
+}
+public inline fun <R> ByteArray.mapIndexed(transform: (index: Int, Byte) -> R): List<R> {
+    val r = ArrayList<R>(size)
+    var i = 0
+    while (i < size) { r.add(transform(i, this[i])); i++ }
+    return r
+}
+public inline fun <R : Any> ByteArray.mapNotNull(transform: (Byte) -> R?): List<R> {
+    val r = ArrayList<R>()
+    for (e in this) { val v = transform(e); if (v != null) r.add(v) }
+    return r
+}
+public inline fun <R> ByteArray.flatMap(transform: (Byte) -> Iterable<R>): List<R> {
+    val r = ArrayList<R>()
+    for (e in this) r.addAll(transform(e))
+    return r
+}
+public inline fun ByteArray.filter(predicate: (Byte) -> Boolean): List<Byte> {
+    val r = ArrayList<Byte>()
+    for (e in this) if (predicate(e)) r.add(e)
+    return r
+}
+public inline fun ByteArray.filterIndexed(predicate: (index: Int, Byte) -> Boolean): List<Byte> {
+    val r = ArrayList<Byte>()
+    var i = 0
+    while (i < size) { if (predicate(i, this[i])) r.add(this[i]); i++ }
+    return r
+}
+public inline fun ByteArray.filterNot(predicate: (Byte) -> Boolean): List<Byte> {
+    val r = ArrayList<Byte>()
+    for (e in this) if (!predicate(e)) r.add(e)
+    return r
+}
+public inline fun ByteArray.partition(predicate: (Byte) -> Boolean): Pair<List<Byte>, List<Byte>> {
+    val a = ArrayList<Byte>()
+    val b = ArrayList<Byte>()
+    for (e in this) if (predicate(e)) a.add(e) else b.add(e)
+    return Pair(a, b)
+}
+public inline fun ByteArray.any(predicate: (Byte) -> Boolean): Boolean {
+    for (e in this) if (predicate(e)) return true
+    return false
+}
+public fun ByteArray.any(): Boolean = size != 0
+public inline fun ByteArray.all(predicate: (Byte) -> Boolean): Boolean {
+    for (e in this) if (!predicate(e)) return false
+    return true
+}
+public inline fun ByteArray.none(predicate: (Byte) -> Boolean): Boolean {
+    for (e in this) if (predicate(e)) return false
+    return true
+}
+public fun ByteArray.none(): Boolean = size == 0
+public fun ByteArray.count(): Int = size
+public inline fun ByteArray.count(predicate: (Byte) -> Boolean): Int {
+    var n = 0
+    for (e in this) if (predicate(e)) n++
+    return n
+}
+public inline fun <R> ByteArray.fold(initial: R, operation: (acc: R, Byte) -> R): R {
+    var acc = initial
+    for (e in this) acc = operation(acc, e)
+    return acc
+}
+public inline fun <R> ByteArray.foldIndexed(initial: R, operation: (index: Int, acc: R, Byte) -> R): R {
+    var acc = initial
+    var i = 0
+    while (i < size) { acc = operation(i, acc, this[i]); i++ }
+    return acc
+}
+public inline fun ByteArray.reduce(operation: (acc: Byte, Byte) -> Byte): Byte {
+    if (isEmpty()) throw UnsupportedOperationException("Empty array can't be reduced.")
+    var acc = this[0]
+    var i = 1
+    while (i < size) { acc = operation(acc, this[i]); i++ }
+    return acc
+}
+public inline fun ByteArray.reduceOrNull(operation: (acc: Byte, Byte) -> Byte): Byte? {
+    if (isEmpty()) return null
+    var acc = this[0]
+    var i = 1
+    while (i < size) { acc = operation(acc, this[i]); i++ }
+    return acc
+}
+public inline fun <K, V> ByteArray.associate(transform: (Byte) -> Pair<K, V>): Map<K, V> {
+    val m = LinkedHashMap<K, V>()
+    for (e in this) { val p = transform(e); m[p.first] = p.second }
+    return m
+}
+public inline fun <K> ByteArray.associateBy(keySelector: (Byte) -> K): Map<K, Byte> {
+    val m = LinkedHashMap<K, Byte>()
+    for (e in this) m[keySelector(e)] = e
+    return m
+}
+public inline fun <V> ByteArray.associateWith(valueSelector: (Byte) -> V): Map<Byte, V> {
+    val m = LinkedHashMap<Byte, V>()
+    for (e in this) m[e] = valueSelector(e)
+    return m
+}
+public inline fun <K> ByteArray.groupBy(keySelector: (Byte) -> K): Map<K, List<Byte>> {
+    val m = LinkedHashMap<K, MutableList<Byte>>()
+    for (e in this) {
+        val k = keySelector(e)
+        var l = m[k]
+        if (l == null) { l = ArrayList<Byte>(); m[k] = l }
+        l.add(e)
+    }
+    return m
+}
+public fun ByteArray.withIndex(): Iterable<IndexedValue<Byte>> = toList().withIndex()
+public fun ByteArray.distinct(): List<Byte> = toList().distinct()
+public fun ByteArray.take(n: Int): List<Byte> = toList().take(n)
+public fun ByteArray.drop(n: Int): List<Byte> = toList().drop(n)
+public fun ByteArray.takeLast(n: Int): List<Byte> = toList().takeLast(n)
+public fun ByteArray.dropLast(n: Int): List<Byte> = toList().dropLast(n)
+public inline fun ByteArray.takeWhile(predicate: (Byte) -> Boolean): List<Byte> = toList().takeWhile(predicate)
+public inline fun ByteArray.dropWhile(predicate: (Byte) -> Boolean): List<Byte> = toList().dropWhile(predicate)
+public fun ByteArray.slice(indices: Iterable<Int>): List<Byte> {
+    val r = ArrayList<Byte>()
+    for (i in indices) r.add(this[i])
+    return r
+}
+public fun ByteArray.sliceArray(indices: IntRange): ByteArray = if (indices.isEmpty()) ByteArray(0) else copyOfRange(indices.start, indices.endInclusive + 1)
+public infix fun <R> ByteArray.zip(other: Array<out R>): List<Pair<Byte, R>> {
+    val n = if (size < other.size) size else other.size
+    val r = ArrayList<Pair<Byte, R>>(n)
+    var i = 0
+    while (i < n) { r.add(Pair(this[i], other[i])); i++ }
+    return r
+}
+public infix fun ByteArray.zip(other: ByteArray): List<Pair<Byte, Byte>> {
+    val n = if (size < other.size) size else other.size
+    val r = ArrayList<Pair<Byte, Byte>>(n)
+    var i = 0
+    while (i < n) { r.add(Pair(this[i], other[i])); i++ }
+    return r
+}
+public fun ByteArray.joinToString(
+    separator: CharSequence = ", ",
+    prefix: CharSequence = "",
+    postfix: CharSequence = "",
+    limit: Int = -1,
+    truncated: CharSequence = "...",
+    transform: ((Byte) -> CharSequence)? = null,
+): String = toList().joinToString(separator, prefix, postfix, limit, truncated, transform)
+
+public fun ByteArray.sum(): Int {
+    var s: Int = 0
+    for (e in this) s += e
+    return s
+}
+public fun ByteArray.average(): Double {
+    if (isEmpty()) return Double.NaN
+    var s = 0.0
+    for (e in this) s += e.toDouble()
+    return s / size
+}
+@kotlin.jvm.JvmName("sumOfIntByteArraySelector")
+public inline fun ByteArray.sumOf(selector: (Byte) -> Int): Int {
+    var s = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongByteArraySelector")
+public inline fun ByteArray.sumOf(selector: (Byte) -> Long): Long {
+    var s = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleByteArraySelector")
+public inline fun ByteArray.sumOf(selector: (Byte) -> Double): Double {
+    var s = 0.0
+    for (e in this) s += selector(e)
+    return s
+}
+
+public fun ByteArray.max(): Byte = maxOrNull() ?: throw NoSuchElementException()
+public fun ByteArray.min(): Byte = minOrNull() ?: throw NoSuchElementException()
+public fun ByteArray.maxOrNull(): Byte? {
+    if (isEmpty()) return null
+    var m = this[0]
+    var i = 1
+    while (i < size) { if (this[i] > m) m = this[i]; i++ }
+    return m
+}
+public fun ByteArray.minOrNull(): Byte? {
+    if (isEmpty()) return null
+    var m = this[0]
+    var i = 1
+    while (i < size) { if (this[i] < m) m = this[i]; i++ }
+    return m
+}
+public inline fun <R : Comparable<R>> ByteArray.maxOf(selector: (Byte) -> R): R {
+    if (isEmpty()) throw NoSuchElementException()
+    var m = selector(this[0])
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v > m) m = v; i++ }
+    return m
+}
+public inline fun <R : Comparable<R>> ByteArray.minOf(selector: (Byte) -> R): R {
+    if (isEmpty()) throw NoSuchElementException()
+    var m = selector(this[0])
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v < m) m = v; i++ }
+    return m
+}
+public inline fun <R : Comparable<R>> ByteArray.maxByOrNull(selector: (Byte) -> R): Byte? {
+    if (isEmpty()) return null
+    var best = this[0]
+    var bv = selector(best)
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v > bv) { best = this[i]; bv = v }; i++ }
+    return best
+}
+public inline fun <R : Comparable<R>> ByteArray.minByOrNull(selector: (Byte) -> R): Byte? {
+    if (isEmpty()) return null
+    var best = this[0]
+    var bv = selector(best)
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v < bv) { best = this[i]; bv = v }; i++ }
+    return best
+}
+public inline fun <R : Comparable<R>> ByteArray.maxBy(selector: (Byte) -> R): Byte = maxByOrNull(selector) ?: throw NoSuchElementException()
+public inline fun <R : Comparable<R>> ByteArray.minBy(selector: (Byte) -> R): Byte = minByOrNull(selector) ?: throw NoSuchElementException()
+
+public fun ByteArray.sort() { sortRange(0, size) }
+
+public fun ByteArray.sort(fromIndex: Int, toIndex: Int) {
+    if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: " + fromIndex + ", toIndex: " + toIndex + ", size: " + size)
+    if (fromIndex > toIndex) throw IllegalArgumentException("fromIndex(" + fromIndex + ") > toIndex(" + toIndex + ")")
+    sortRange(fromIndex, toIndex)
+}
+
+private fun ByteArray.sortRange(from: Int, to: Int) {
+    if (to - from < 2) return
+    val tmp = ByteArray(size)
+    mergeSortByte(this, tmp, from, to)
+}
+
+private fun mergeSortByte(a: ByteArray, tmp: ByteArray, from: Int, to: Int) {
+    if (to - from < 2) return
+    if (to - from <= 7) {
+        var i = from + 1
+        while (i < to) {
+            val x = a[i]
+            var j = i - 1
+            while (j >= from && a[j] > x) { a[j + 1] = a[j]; j-- }
+            a[j + 1] = x
+            i++
+        }
+        return
+    }
+    val mid = (from + to) ushr 1
+    mergeSortByte(a, tmp, from, mid)
+    mergeSortByte(a, tmp, mid, to)
+    var i = from
+    var j = mid
+    var k = from
+    while (i < mid && j < to) {
+        if (a[j] < a[i]) { tmp[k++] = a[j++] } else { tmp[k++] = a[i++] }
+    }
+    while (i < mid) tmp[k++] = a[i++]
+    while (j < to) tmp[k++] = a[j++]
+    k = from
+    while (k < to) { a[k] = tmp[k]; k++ }
+}
+
+public fun ByteArray.sortDescending() {
+    sort()
+    reverse()
+}
+public fun ByteArray.sortedArray(): ByteArray {
+    val r = copyOf()
+    r.sort()
+    return r
+}
+public fun ByteArray.sortedArrayDescending(): ByteArray {
+    val r = copyOf()
+    r.sortDescending()
+    return r
+}
+public fun ByteArray.sorted(): List<Byte> = sortedArray().toList()
+public fun ByteArray.sortedDescending(): List<Byte> = sortedArrayDescending().toList()
+public inline fun <R : Comparable<R>> ByteArray.sortedBy(selector: (Byte) -> R): List<Byte> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> ByteArray.sortedByDescending(selector: (Byte) -> R): List<Byte> = toList().sortedByDescending(selector)
+public fun ByteArray.sortedWith(comparator: Comparator<in Byte>): List<Byte> = toList().sortedWith(comparator)
+public fun ByteArray.binarySearch(element: Byte, fromIndex: Int = 0, toIndex: Int = size): Int {
+    var low = fromIndex
+    var high = toIndex - 1
+    while (low <= high) {
+        val mid = (low + high) ushr 1
+        val v = this[mid]
+        if (v < element) low = mid + 1 else if (v > element) high = mid - 1 else return mid
+    }
+    return -(low + 1)
+}
+
+// ======================================== ShortArray ========================================
+
+public fun ShortArray.isEmpty(): Boolean = size == 0
+public fun ShortArray.isNotEmpty(): Boolean = size != 0
+
+public fun ShortArray.copyOf(): ShortArray {
+    val r = ShortArray(size)
+    var i = 0
+    while (i < size) { r[i] = this[i]; i++ }
+    return r
+}
+
+public fun ShortArray.copyOf(newSize: Int): ShortArray {
+    if (newSize < 0) throw IllegalArgumentException("Invalid new array size: " + newSize + ".")
+    val r = ShortArray(newSize)
+    var i = 0
+    val n = if (newSize < size) newSize else size
+    while (i < n) { r[i] = this[i]; i++ }
+    return r
+}
+
+public fun ShortArray.copyOfRange(fromIndex: Int, toIndex: Int): ShortArray {
+    if (fromIndex > toIndex) throw IllegalArgumentException("fromIndex (" + fromIndex + ") > toIndex (" + toIndex + ")")
+    if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: " + fromIndex + ", toIndex: " + toIndex + ", size: " + size)
+    val r = ShortArray(toIndex - fromIndex)
+    var i = fromIndex
+    while (i < toIndex) { r[i - fromIndex] = this[i]; i++ }
+    return r
+}
+
+public fun ShortArray.copyInto(destination: ShortArray, destinationOffset: Int = 0, startIndex: Int = 0, endIndex: Int = size): ShortArray {
+    if (startIndex < 0 || endIndex > size || startIndex > endIndex) throw IndexOutOfBoundsException("startIndex: " + startIndex + ", endIndex: " + endIndex + ", size: " + size)
+    if (destinationOffset < 0 || destinationOffset + (endIndex - startIndex) > destination.size) throw IndexOutOfBoundsException("The destination array is too small")
+    if (this === destination && destinationOffset > startIndex) {
+        var i = endIndex - 1
+        while (i >= startIndex) { destination[destinationOffset + i - startIndex] = this[i]; i-- }
+    } else {
+        var i = startIndex
+        while (i < endIndex) { destination[destinationOffset + i - startIndex] = this[i]; i++ }
+    }
+    return destination
+}
+
+public fun ShortArray.fill(element: Short, fromIndex: Int = 0, toIndex: Int = size) {
+    if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: " + fromIndex + ", toIndex: " + toIndex + ", size: " + size)
+    var i = fromIndex
+    while (i < toIndex) { this[i] = element; i++ }
+}
+
+public infix fun ShortArray?.contentEquals(other: ShortArray?): Boolean {
+    if (this === other) return true
+    if (this == null || other == null) return false
+    if (size != other.size) return false
+    var i = 0
+    while (i < size) { if (this[i] != other[i]) return false; i++ }
+    return true
+}
+
+public fun ShortArray?.contentHashCode(): Int {
+    if (this == null) return 0
+    var h = 1
+    var i = 0
+    while (i < size) { h = 31 * h + this[i].hashCode(); i++ }
+    return h
+}
+
+public operator fun ShortArray.plus(element: Short): ShortArray {
+    val r = copyOf(size + 1)
+    r[size] = element
+    return r
+}
+
+public operator fun ShortArray.plus(elements: ShortArray): ShortArray {
+    val r = copyOf(size + elements.size)
+    var i = 0
+    while (i < elements.size) { r[size + i] = elements[i]; i++ }
+    return r
+}
+
+public fun ShortArray.reverse() {
+    var i = 0
+    var j = size - 1
+    while (i < j) { val t = this[i]; this[i] = this[j]; this[j] = t; i++; j-- }
+}
+
+public fun ShortArray.reversedArray(): ShortArray {
+    val r = ShortArray(size)
+    var i = 0
+    while (i < size) { r[size - 1 - i] = this[i]; i++ }
+    return r
+}
+
+public fun ShortArray.reversed(): List<Short> {
+    val r = ArrayList<Short>(size)
+    var i = size - 1
+    while (i >= 0) { r.add(this[i]); i-- }
+    return r
+}
+
+public fun ShortArray.toList(): List<Short> {
+    val r = ArrayList<Short>(size)
+    var i = 0
+    while (i < size) { r.add(this[i]); i++ }
+    return r
+}
+
+public fun ShortArray.asList(): List<Short> = toList()
+public fun ShortArray.asIterable(): Iterable<Short> = toList()
+public fun ShortArray.toMutableList(): MutableList<Short> {
+    val r = ArrayList<Short>(size)
+    var i = 0
+    while (i < size) { r.add(this[i]); i++ }
+    return r
+}
+public fun ShortArray.toSet(): Set<Short> = toMutableList().toSet()
+public fun ShortArray.toMutableSet(): MutableSet<Short> = toMutableList().toMutableSet()
+public fun ShortArray.toHashSet(): HashSet<Short> = HashSet<Short>(toList())
+
+public fun ShortArray.toTypedArray(): Array<Short> {
+    val r = arrayOfNulls<Short>(size)
+    var i = 0
+    while (i < size) { r[i] = this[i]; i++ }
+    return r as Array<Short>
+}
+
+public fun ShortArray.first(): Short {
+    if (isEmpty()) throw NoSuchElementException("Array is empty.")
+    return this[0]
+}
+public fun ShortArray.last(): Short {
+    if (isEmpty()) throw NoSuchElementException("Array is empty.")
+    return this[size - 1]
+}
+public fun ShortArray.firstOrNull(): Short? = if (isEmpty()) null else this[0]
+public fun ShortArray.lastOrNull(): Short? = if (isEmpty()) null else this[size - 1]
+public fun ShortArray.getOrNull(index: Int): Short? = if (index >= 0 && index < size) this[index] else null
+public inline fun ShortArray.getOrElse(index: Int, defaultValue: (Int) -> Short): Short = if (index >= 0 && index < size) this[index] else defaultValue(index)
+public fun ShortArray.single(): Short {
+    if (size == 0) throw NoSuchElementException("Array is empty.")
+    if (size != 1) throw IllegalArgumentException("Array has more than one element.")
+    return this[0]
+}
+public fun ShortArray.singleOrNull(): Short? = if (size == 1) this[0] else null
+public inline fun ShortArray.first(predicate: (Short) -> Boolean): Short {
+    for (e in this) if (predicate(e)) return e
+    throw NoSuchElementException("Array contains no element matching the predicate.")
+}
+public inline fun ShortArray.firstOrNull(predicate: (Short) -> Boolean): Short? {
+    for (e in this) if (predicate(e)) return e
+    return null
+}
+public inline fun ShortArray.find(predicate: (Short) -> Boolean): Short? = firstOrNull(predicate)
+public inline fun ShortArray.lastOrNull(predicate: (Short) -> Boolean): Short? {
+    var i = size - 1
+    while (i >= 0) { val e = this[i]; if (predicate(e)) return e; i-- }
+    return null
+}
+public inline fun ShortArray.findLast(predicate: (Short) -> Boolean): Short? = lastOrNull(predicate)
+
+public fun ShortArray.indexOf(element: Short): Int {
+    var i = 0
+    while (i < size) { if (this[i] == element) return i; i++ }
+    return -1
+}
+public fun ShortArray.lastIndexOf(element: Short): Int {
+    var i = size - 1
+    while (i >= 0) { if (this[i] == element) return i; i-- }
+    return -1
+}
+public operator fun ShortArray.contains(element: Short): Boolean = indexOf(element) >= 0
+public inline fun ShortArray.indexOfFirst(predicate: (Short) -> Boolean): Int {
+    var i = 0
+    while (i < size) { if (predicate(this[i])) return i; i++ }
+    return -1
+}
+public inline fun ShortArray.indexOfLast(predicate: (Short) -> Boolean): Int {
+    var i = size - 1
+    while (i >= 0) { if (predicate(this[i])) return i; i-- }
+    return -1
+}
+
+public inline fun ShortArray.forEach(action: (Short) -> Unit) { for (e in this) action(e) }
+public inline fun ShortArray.forEachIndexed(action: (index: Int, Short) -> Unit) {
+    var i = 0
+    while (i < size) { action(i, this[i]); i++ }
+}
+public inline fun <R> ShortArray.map(transform: (Short) -> R): List<R> {
+    val r = ArrayList<R>(size)
+    for (e in this) r.add(transform(e))
+    return r
+}
+public inline fun <R> ShortArray.mapIndexed(transform: (index: Int, Short) -> R): List<R> {
+    val r = ArrayList<R>(size)
+    var i = 0
+    while (i < size) { r.add(transform(i, this[i])); i++ }
+    return r
+}
+public inline fun <R : Any> ShortArray.mapNotNull(transform: (Short) -> R?): List<R> {
+    val r = ArrayList<R>()
+    for (e in this) { val v = transform(e); if (v != null) r.add(v) }
+    return r
+}
+public inline fun <R> ShortArray.flatMap(transform: (Short) -> Iterable<R>): List<R> {
+    val r = ArrayList<R>()
+    for (e in this) r.addAll(transform(e))
+    return r
+}
+public inline fun ShortArray.filter(predicate: (Short) -> Boolean): List<Short> {
+    val r = ArrayList<Short>()
+    for (e in this) if (predicate(e)) r.add(e)
+    return r
+}
+public inline fun ShortArray.filterIndexed(predicate: (index: Int, Short) -> Boolean): List<Short> {
+    val r = ArrayList<Short>()
+    var i = 0
+    while (i < size) { if (predicate(i, this[i])) r.add(this[i]); i++ }
+    return r
+}
+public inline fun ShortArray.filterNot(predicate: (Short) -> Boolean): List<Short> {
+    val r = ArrayList<Short>()
+    for (e in this) if (!predicate(e)) r.add(e)
+    return r
+}
+public inline fun ShortArray.partition(predicate: (Short) -> Boolean): Pair<List<Short>, List<Short>> {
+    val a = ArrayList<Short>()
+    val b = ArrayList<Short>()
+    for (e in this) if (predicate(e)) a.add(e) else b.add(e)
+    return Pair(a, b)
+}
+public inline fun ShortArray.any(predicate: (Short) -> Boolean): Boolean {
+    for (e in this) if (predicate(e)) return true
+    return false
+}
+public fun ShortArray.any(): Boolean = size != 0
+public inline fun ShortArray.all(predicate: (Short) -> Boolean): Boolean {
+    for (e in this) if (!predicate(e)) return false
+    return true
+}
+public inline fun ShortArray.none(predicate: (Short) -> Boolean): Boolean {
+    for (e in this) if (predicate(e)) return false
+    return true
+}
+public fun ShortArray.none(): Boolean = size == 0
+public fun ShortArray.count(): Int = size
+public inline fun ShortArray.count(predicate: (Short) -> Boolean): Int {
+    var n = 0
+    for (e in this) if (predicate(e)) n++
+    return n
+}
+public inline fun <R> ShortArray.fold(initial: R, operation: (acc: R, Short) -> R): R {
+    var acc = initial
+    for (e in this) acc = operation(acc, e)
+    return acc
+}
+public inline fun <R> ShortArray.foldIndexed(initial: R, operation: (index: Int, acc: R, Short) -> R): R {
+    var acc = initial
+    var i = 0
+    while (i < size) { acc = operation(i, acc, this[i]); i++ }
+    return acc
+}
+public inline fun ShortArray.reduce(operation: (acc: Short, Short) -> Short): Short {
+    if (isEmpty()) throw UnsupportedOperationException("Empty array can't be reduced.")
+    var acc = this[0]
+    var i = 1
+    while (i < size) { acc = operation(acc, this[i]); i++ }
+    return acc
+}
+public inline fun ShortArray.reduceOrNull(operation: (acc: Short, Short) -> Short): Short? {
+    if (isEmpty()) return null
+    var acc = this[0]
+    var i = 1
+    while (i < size) { acc = operation(acc, this[i]); i++ }
+    return acc
+}
+public inline fun <K, V> ShortArray.associate(transform: (Short) -> Pair<K, V>): Map<K, V> {
+    val m = LinkedHashMap<K, V>()
+    for (e in this) { val p = transform(e); m[p.first] = p.second }
+    return m
+}
+public inline fun <K> ShortArray.associateBy(keySelector: (Short) -> K): Map<K, Short> {
+    val m = LinkedHashMap<K, Short>()
+    for (e in this) m[keySelector(e)] = e
+    return m
+}
+public inline fun <V> ShortArray.associateWith(valueSelector: (Short) -> V): Map<Short, V> {
+    val m = LinkedHashMap<Short, V>()
+    for (e in this) m[e] = valueSelector(e)
+    return m
+}
+public inline fun <K> ShortArray.groupBy(keySelector: (Short) -> K): Map<K, List<Short>> {
+    val m = LinkedHashMap<K, MutableList<Short>>()
+    for (e in this) {
+        val k = keySelector(e)
+        var l = m[k]
+        if (l == null) { l = ArrayList<Short>(); m[k] = l }
+        l.add(e)
+    }
+    return m
+}
+public fun ShortArray.withIndex(): Iterable<IndexedValue<Short>> = toList().withIndex()
+public fun ShortArray.distinct(): List<Short> = toList().distinct()
+public fun ShortArray.take(n: Int): List<Short> = toList().take(n)
+public fun ShortArray.drop(n: Int): List<Short> = toList().drop(n)
+public fun ShortArray.takeLast(n: Int): List<Short> = toList().takeLast(n)
+public fun ShortArray.dropLast(n: Int): List<Short> = toList().dropLast(n)
+public inline fun ShortArray.takeWhile(predicate: (Short) -> Boolean): List<Short> = toList().takeWhile(predicate)
+public inline fun ShortArray.dropWhile(predicate: (Short) -> Boolean): List<Short> = toList().dropWhile(predicate)
+public fun ShortArray.slice(indices: Iterable<Int>): List<Short> {
+    val r = ArrayList<Short>()
+    for (i in indices) r.add(this[i])
+    return r
+}
+public fun ShortArray.sliceArray(indices: IntRange): ShortArray = if (indices.isEmpty()) ShortArray(0) else copyOfRange(indices.start, indices.endInclusive + 1)
+public infix fun <R> ShortArray.zip(other: Array<out R>): List<Pair<Short, R>> {
+    val n = if (size < other.size) size else other.size
+    val r = ArrayList<Pair<Short, R>>(n)
+    var i = 0
+    while (i < n) { r.add(Pair(this[i], other[i])); i++ }
+    return r
+}
+public infix fun ShortArray.zip(other: ShortArray): List<Pair<Short, Short>> {
+    val n = if (size < other.size) size else other.size
+    val r = ArrayList<Pair<Short, Short>>(n)
+    var i = 0
+    while (i < n) { r.add(Pair(this[i], other[i])); i++ }
+    return r
+}
+public fun ShortArray.joinToString(
+    separator: CharSequence = ", ",
+    prefix: CharSequence = "",
+    postfix: CharSequence = "",
+    limit: Int = -1,
+    truncated: CharSequence = "...",
+    transform: ((Short) -> CharSequence)? = null,
+): String = toList().joinToString(separator, prefix, postfix, limit, truncated, transform)
+
+public fun ShortArray.sum(): Int {
+    var s: Int = 0
+    for (e in this) s += e
+    return s
+}
+public fun ShortArray.average(): Double {
+    if (isEmpty()) return Double.NaN
+    var s = 0.0
+    for (e in this) s += e.toDouble()
+    return s / size
+}
+@kotlin.jvm.JvmName("sumOfIntShortArraySelector")
+public inline fun ShortArray.sumOf(selector: (Short) -> Int): Int {
+    var s = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongShortArraySelector")
+public inline fun ShortArray.sumOf(selector: (Short) -> Long): Long {
+    var s = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleShortArraySelector")
+public inline fun ShortArray.sumOf(selector: (Short) -> Double): Double {
+    var s = 0.0
+    for (e in this) s += selector(e)
+    return s
+}
+
+public fun ShortArray.max(): Short = maxOrNull() ?: throw NoSuchElementException()
+public fun ShortArray.min(): Short = minOrNull() ?: throw NoSuchElementException()
+public fun ShortArray.maxOrNull(): Short? {
+    if (isEmpty()) return null
+    var m = this[0]
+    var i = 1
+    while (i < size) { if (this[i] > m) m = this[i]; i++ }
+    return m
+}
+public fun ShortArray.minOrNull(): Short? {
+    if (isEmpty()) return null
+    var m = this[0]
+    var i = 1
+    while (i < size) { if (this[i] < m) m = this[i]; i++ }
+    return m
+}
+public inline fun <R : Comparable<R>> ShortArray.maxOf(selector: (Short) -> R): R {
+    if (isEmpty()) throw NoSuchElementException()
+    var m = selector(this[0])
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v > m) m = v; i++ }
+    return m
+}
+public inline fun <R : Comparable<R>> ShortArray.minOf(selector: (Short) -> R): R {
+    if (isEmpty()) throw NoSuchElementException()
+    var m = selector(this[0])
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v < m) m = v; i++ }
+    return m
+}
+public inline fun <R : Comparable<R>> ShortArray.maxByOrNull(selector: (Short) -> R): Short? {
+    if (isEmpty()) return null
+    var best = this[0]
+    var bv = selector(best)
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v > bv) { best = this[i]; bv = v }; i++ }
+    return best
+}
+public inline fun <R : Comparable<R>> ShortArray.minByOrNull(selector: (Short) -> R): Short? {
+    if (isEmpty()) return null
+    var best = this[0]
+    var bv = selector(best)
+    var i = 1
+    while (i < size) { val v = selector(this[i]); if (v < bv) { best = this[i]; bv = v }; i++ }
+    return best
+}
+public inline fun <R : Comparable<R>> ShortArray.maxBy(selector: (Short) -> R): Short = maxByOrNull(selector) ?: throw NoSuchElementException()
+public inline fun <R : Comparable<R>> ShortArray.minBy(selector: (Short) -> R): Short = minByOrNull(selector) ?: throw NoSuchElementException()
+
+public fun ShortArray.sort() { sortRange(0, size) }
+
+public fun ShortArray.sort(fromIndex: Int, toIndex: Int) {
+    if (fromIndex < 0 || toIndex > size) throw IndexOutOfBoundsException("fromIndex: " + fromIndex + ", toIndex: " + toIndex + ", size: " + size)
+    if (fromIndex > toIndex) throw IllegalArgumentException("fromIndex(" + fromIndex + ") > toIndex(" + toIndex + ")")
+    sortRange(fromIndex, toIndex)
+}
+
+private fun ShortArray.sortRange(from: Int, to: Int) {
+    if (to - from < 2) return
+    val tmp = ShortArray(size)
+    mergeSortShort(this, tmp, from, to)
+}
+
+private fun mergeSortShort(a: ShortArray, tmp: ShortArray, from: Int, to: Int) {
+    if (to - from < 2) return
+    if (to - from <= 7) {
+        var i = from + 1
+        while (i < to) {
+            val x = a[i]
+            var j = i - 1
+            while (j >= from && a[j] > x) { a[j + 1] = a[j]; j-- }
+            a[j + 1] = x
+            i++
+        }
+        return
+    }
+    val mid = (from + to) ushr 1
+    mergeSortShort(a, tmp, from, mid)
+    mergeSortShort(a, tmp, mid, to)
+    var i = from
+    var j = mid
+    var k = from
+    while (i < mid && j < to) {
+        if (a[j] < a[i]) { tmp[k++] = a[j++] } else { tmp[k++] = a[i++] }
+    }
+    while (i < mid) tmp[k++] = a[i++]
+    while (j < to) tmp[k++] = a[j++]
+    k = from
+    while (k < to) { a[k] = tmp[k]; k++ }
+}
+
+public fun ShortArray.sortDescending() {
+    sort()
+    reverse()
+}
+public fun ShortArray.sortedArray(): ShortArray {
+    val r = copyOf()
+    r.sort()
+    return r
+}
+public fun ShortArray.sortedArrayDescending(): ShortArray {
+    val r = copyOf()
+    r.sortDescending()
+    return r
+}
+public fun ShortArray.sorted(): List<Short> = sortedArray().toList()
+public fun ShortArray.sortedDescending(): List<Short> = sortedArrayDescending().toList()
+public inline fun <R : Comparable<R>> ShortArray.sortedBy(selector: (Short) -> R): List<Short> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> ShortArray.sortedByDescending(selector: (Short) -> R): List<Short> = toList().sortedByDescending(selector)
+public fun ShortArray.sortedWith(comparator: Comparator<in Short>): List<Short> = toList().sortedWith(comparator)
+public fun ShortArray.binarySearch(element: Short, fromIndex: Int = 0, toIndex: Int = size): Int {
+    var low = fromIndex
+    var high = toIndex - 1
+    while (low <= high) {
+        val mid = (low + high) ushr 1
+        val v = this[mid]
+        if (v < element) low = mid + 1 else if (v > element) high = mid - 1 else return mid
+    }
+    return -(low + 1)
+}
+
 // ======================================== IntArray ========================================
 
 public fun IntArray.isEmpty(): Boolean = size == 0

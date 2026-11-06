@@ -110,3 +110,5 @@ public interface MutableListIterator<T> : ListIterator<T>, MutableIterator<T> {
      */
     public fun add(element: T): Unit
 }
+
+public operator fun <T> Iterator<T>.iterator(): Iterator<T> = this

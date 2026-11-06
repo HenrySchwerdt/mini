@@ -5,6 +5,7 @@ import mini.backend.Devirt
 import mini.backend.LayoutStats
 import mini.backend.Mangling
 import mini.backend.WasmGlue
+import mini.backend.MirLink
 import mini.backend.MirModule
 import mini.backend.MirOpt
 import mini.backend.MirOptions
@@ -506,8 +507,12 @@ private fun runRepl(
     var nextEntry = 0
     val program = "<repl>"
     try {
+        // The MIR of the libraries is read once and kept here; the JIT session only gets what an input reaches (see [replLink]):
+        // handing it a whole standard library makes ORC compile, link and track the symbols of the entire library at the first
+        // reference to any of them, which grows quadratically with the number of functions.
+        val pool = ArrayList<MirModule>()
         for (lib in initialLibs) {
-            session.add(MirReader.read(lib.mir), rcOpt, null)
+            pool.add(MirReader.read(lib.mir))
             libraries.add(lib)
         }
         if (stdlibSources.isNotEmpty()) {
@@ -517,7 +522,7 @@ private fun runRepl(
                 reportFrontend(e, "<stdlib>", diag)
                 return
             }
-            session.add(MirReader.read(stdlib.mir), rcOpt, null)
+            pool.add(MirReader.read(stdlib.mir))
             libraries.add(stdlib)
         }
         println("Mini native REPL. Enter `val`/`var`/`fun` declarations or expressions; `:do <statement>`, `:help`, `:quit`.")
@@ -571,9 +576,9 @@ private fun runRepl(
                             listOf(MirStmt.Eval(MirExpr.ObjectGet(facade.cName, TObject(facade.qualifiedName, facade.cName, false)))),
                         )
                         val initialized = MirModule(module.sourceName, module.functions + forceFacade, module.classes, module.externs, module.includes, module.links)
-                        session.run(initialized, rcOpt, "mini_repl_entry_${nextEntry++}")
+                        session.run(replLink(pool, initialized), rcOpt, "mini_repl_entry_${nextEntry++}")
                     } else {
-                        session.add(module, rcOpt, null)
+                        session.add(replLink(pool, module), rcOpt, null)
                     }
                     libraries.add(cell)
                     declaredNames.add(name)
@@ -600,7 +605,7 @@ private fun runRepl(
                     listOf(LowerInput(path, programSource, false)), libraries, path, false,
                     { reportMemory(it, path, werror, false, diag) }, "repl_$cellNo",
                 )
-                session.run(module, rcOpt, "mini_repl_entry_${nextEntry++}")
+                session.run(replLink(pool, module), rcOpt, "mini_repl_entry_${nextEntry++}")
             } catch (e: LowerDiagnostics) {
                 reportFrontend(e, path, diag)
             } catch (e: UnsupportedConstruct) {
@@ -612,6 +617,16 @@ private fun runRepl(
     } finally {
         session.close()
     }
+}
+
+/**
+ * [module] together with the part of [pool] (the MIR of the libraries) that its functions reach. The session already knows the
+ * functions an earlier input added and takes them as external, so only what is new is compiled.
+ */
+private fun replLink(pool: List<MirModule>, module: MirModule): MirModule {
+    val roots = ArrayList<String>()
+    for (f in module.functions) roots.add(f.cName)   // everything an input defines stays: later inputs call it
+    return MirLink.prune(MirLink.link(pool, module), roots)
 }
 
 private fun declarationName(source: String): String? {

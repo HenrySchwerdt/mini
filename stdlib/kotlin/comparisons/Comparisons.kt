@@ -66,7 +66,7 @@ public infix fun <T> Comparator<T>.then(comparator: Comparator<in T>): Comparato
 
 public fun maxOf(a: Int, b: Int): Int = if (a >= b) a else b
 public fun maxOf(a: Long, b: Long): Long = if (a >= b) a else b
-public fun maxOf(a: Double, b: Double): Double = if (a >= b) a else b
+public fun maxOf(a: Double, b: Double): Double = kotlin.math.max(a, b)
 public fun maxOf(a: Char, b: Char): Char = if (a >= b) a else b
 public fun maxOf(a: Int, b: Int, c: Int): Int = maxOf(a, maxOf(b, c))
 public fun maxOf(a: Long, b: Long, c: Long): Long = maxOf(a, maxOf(b, c))
@@ -74,7 +74,7 @@ public fun <T : Comparable<T>> maxOf(a: T, b: T): T = if (a >= b) a else b
 
 public fun minOf(a: Int, b: Int): Int = if (a <= b) a else b
 public fun minOf(a: Long, b: Long): Long = if (a <= b) a else b
-public fun minOf(a: Double, b: Double): Double = if (a <= b) a else b
+public fun minOf(a: Double, b: Double): Double = kotlin.math.min(a, b)
 public fun minOf(a: Char, b: Char): Char = if (a <= b) a else b
 public fun minOf(a: Int, b: Int, c: Int): Int = minOf(a, minOf(b, c))
 public fun minOf(a: Long, b: Long, c: Long): Long = minOf(a, minOf(b, c))

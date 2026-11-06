@@ -73,3 +73,23 @@ public fun Collection<Boolean>.toBooleanArray(): BooleanArray {
     }
     return r
 }
+
+public fun Collection<Byte>.toByteArray(): ByteArray {
+    val r = ByteArray(size)
+    var i = 0
+    for (e in this) {
+        r[i] = e
+        i++
+    }
+    return r
+}
+
+public fun Collection<Short>.toShortArray(): ShortArray {
+    val r = ShortArray(size)
+    var i = 0
+    for (e in this) {
+        r[i] = e
+        i++
+    }
+    return r
+}

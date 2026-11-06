@@ -227,17 +227,39 @@ public fun String.lowercase(): String {
     val sb = StringBuilder(length)
     var i = 0
     while (i < length) {
-        sb.append(this[i].lowercaseChar())
+        val ch = this[i]
+        val c = ch.code
+        if (c < 0x80) {
+            sb.append(if (c >= 65 && c <= 90) (c + 32).toChar() else ch)
+        } else if (c == 0x130) {
+            sb.append("i\u0307")
+        } else if (c == 0x3A3) {
+            // final sigma: preceded by a cased letter and not followed by one
+            val before = i > 0 && this[i - 1].isCasedLetter()
+            val after = i + 1 < length && this[i + 1].isCasedLetter()
+            sb.append(if (before && !after) '\u03C2' else '\u03C3')
+        } else {
+            sb.append(ch.lowercaseChar())
+        }
         i++
     }
     return sb.toString()
 }
 
+private fun Char.isCasedLetter(): Boolean = isUpperCase() || isLowerCase() || isTitleCase()
+
 public fun String.uppercase(): String {
     val sb = StringBuilder(length)
     var i = 0
     while (i < length) {
-        sb.append(this[i].uppercaseChar())
+        val ch = this[i]
+        val c = ch.code
+        if (c < 0x80) {
+            sb.append(if (c >= 97 && c <= 122) (c - 32).toChar() else ch)
+        } else {
+            val f = fullUpperCase(c)
+            if (f != null) sb.append(f) else sb.append(ch.uppercaseChar())
+        }
         i++
     }
     return sb.toString()

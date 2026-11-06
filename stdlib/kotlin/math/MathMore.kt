@@ -21,17 +21,8 @@ public val Long.absoluteValue: Long
 public val Double.absoluteValue: Double
     get() = abs(this)
 
-public fun abs(x: Float): Float = if (x < 0.0f) -x else if (x == 0.0f) 0.0f else x
-
-public val Float.absoluteValue: Float
-    get() = abs(this)
-
 public val Float.sign: Float
     get() = if (this != this) this else if (this > 0.0f) 1.0f else if (this < 0.0f) -1.0f else this
-
-public fun max(a: Float, b: Float): Float = if (a != a) a else if (b != b) b else if (a > b) a else b
-
-public fun min(a: Float, b: Float): Float = if (a != a) a else if (b != b) b else if (a < b) a else b
 
 public fun sqrt(x: Float): Float = sqrt(x.toDouble()).toFloat()
 
@@ -54,10 +45,6 @@ public fun cos(x: Float): Float = cos(x.toDouble()).toFloat()
 public fun exp(x: Float): Float = exp(x.toDouble()).toFloat()
 
 public fun ln(x: Float): Float = ln(x.toDouble()).toFloat()
-
-public fun Float.roundToInt(): Int = this.toDouble().roundToInt()
-
-public fun Float.roundToLong(): Long = this.toDouble().roundToLong()
 
 @CName("fmod")
 private external fun fmod(x: Double, y: Double): Double

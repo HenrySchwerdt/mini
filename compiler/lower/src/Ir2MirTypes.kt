@@ -39,6 +39,8 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         return erasedBound(classifier, nullable, at)
     }
     val n = t.classFqName
+    // the companion objects of the primitive types and String are not classes of the program: such a value is a null reference
+    if (n != null && isPrimitiveCompanion(n)) return anyNullable
     val prim: MirType? = when (n) {
         "kotlin.Int" -> TInt
         "kotlin.Long" -> TLong
@@ -87,3 +89,8 @@ internal fun Ir2Mir.erasedBound(p: TypeParamSym, nullable: Boolean, at: IrElemen
     }
     return anyNullable
 }
+
+private val primitiveCompanionNames = setOf("Int", "Long", "Short", "Byte", "Char", "Boolean", "Double", "Float", "String").map { "kotlin.$it.Companion" }.toSet()
+
+/** `kotlin.Int.Companion` and the like: declared in the built-in sources, never translated. */
+internal fun isPrimitiveCompanion(fq: String): Boolean = fq in primitiveCompanionNames

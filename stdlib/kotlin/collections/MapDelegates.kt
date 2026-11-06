@@ -11,6 +11,7 @@ import kotlin.reflect.KProperty
 public operator fun <V, V1 : V> Map<in String, V>.getValue(thisRef: Any?, property: KProperty<*>): V1 {
     val m = this as Map<String, V>
     val key = property.name
+    if (m is MapWithDefault<*, *>) return (m as MapWithDefault<String, V>).getOrImplicitDefault(key) as V1
     val v = m[key]
     if (v == null && !m.containsKey(key)) throw NoSuchElementException("Key " + key + " is missing in the map.")
     return v as V1

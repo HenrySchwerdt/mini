@@ -1,0 +1,108 @@
+// The long tail of the primitive array functions, including ByteArray and ShortArray.
+import kotlin.random.Random
+
+fun main() {
+    val b = byteArrayOf(3, 1, 2)
+    println(b.toList())
+    println(b.sum())
+    println(b.sorted())
+    println(b.max())
+    println(b.map { it * 2 })
+    println(b.copyOf(5).contentToString())
+    println(b.copyOfRange(1, 3).contentToString())
+    println(b.reversedArray().contentToString())
+    println(b.average())
+    println(b.joinToString("-"))
+    println(b.asList().size)
+    println(b.indexOf(2))
+    println(b.contains(1))
+    b.sort()
+    println(b.contentToString())
+    b.reverse()
+    println(b.contentToString())
+    println((b + 9.toByte()).contentToString())
+
+    val s = shortArrayOf(300, 100, 200)
+    println(s.sum())
+    println(s.sortedDescending())
+    println(s.min())
+    println(s.filter { it > 100 })
+    println(s.withIndex().map { it.index * it.value })
+    println(s.contentToString())
+
+    val a = intArrayOf(5, 3, 8, 1)
+    println(a.asSequence().map { it * 2 }.toList())
+    println(a.runningFold(0) { x, y -> x + y })
+    println(a.scan(10) { x, y -> x - y })
+    println(a.runningReduce { x, y -> x + y })
+    println(a.reduceIndexed { i, x, y -> x + y * i })
+    println(a.reduceRight { x, acc -> acc - x })
+    println(a.foldRight("") { x, acc -> acc + x })
+    println(a.foldRightIndexed(0) { i, x, acc -> acc + i * x })
+    println(a.elementAt(2))
+    println(a.elementAtOrNull(9))
+    println(a.elementAtOrElse(9) { -it })
+    println(a.last { it > 3 })
+    println(a.single { it == 8 })
+    println(a.singleOrNull { it > 1 })
+    println(a.takeLastWhile { it < 8 })
+    println(a.dropLastWhile { it < 8 })
+    println(a.mapIndexedNotNull { i, x -> if (i % 2 == 0) x else null })
+    println(a.flatMapIndexed { i, x -> listOf(i, x) })
+    println(a.mapTo(ArrayList()) { it + 1 })
+    println(a.filterTo(ArrayList()) { it > 3 })
+    println(a.filterNotTo(ArrayList()) { it > 3 })
+    println(a.associateTo(HashMap()) { it to it * it }.toSortedMap())
+    println(a.groupBy({ it % 2 }, { it * 10 }))
+    println(a.toCollection(ArrayList()))
+    println(a.toSortedSet())
+    println(a.distinctBy { it % 2 })
+    println(a.sumBy { it * 2 })
+    println(a.maxOfOrNull { -it })
+    println(a.minWith(compareBy<Int> { -it }))
+    println(a.maxWithOrNull(compareBy<Int> { it % 5 }))
+    val (p, q, r) = a
+    println("$p $q $r ${a.component4()}")
+    println(a.slice(1..2))
+    println(a.sliceArray(listOf(3, 0)).contentToString())
+    println((a + listOf(7, 7)).contentToString())
+    println(a.zip(listOf("a", "b")))
+    println(a.zip(intArrayOf(1, 1, 1, 1)) { x, y -> x * y })
+    val sb = StringBuilder()
+    a.joinTo(sb, "|", "<", ">")
+    println(sb)
+    var e = 0
+    a.onEach { e += it }
+    println(e)
+    a.reverse(1, 3)
+    println(a.contentToString())
+    a.sortDescending(0, 3)
+    println(a.contentToString())
+    val c = intArrayOf(1, 2, 3, 4, 5, 6)
+    c.shuffle(Random(42))
+    println(c.sorted())
+    println(c.random(Random(7)) in 1..6)
+    println(intArrayOf().randomOrNull())
+    try {
+        intArrayOf().random()
+    } catch (ex: NoSuchElementException) {
+        println(ex.message)
+    }
+    try {
+        intArrayOf().reduceIndexed { _, x, y -> x + y }
+    } catch (ex: UnsupportedOperationException) {
+        println(ex.message)
+    }
+    try {
+        a.reverse(2, 9)
+    } catch (ex: IndexOutOfBoundsException) {
+        println(ex.message)
+    }
+    println(listOf(1L, 2L).toLongArray().contentToString())
+    println(listOf<Byte>(1, 2).toByteArray().contentToString())
+    println(listOf<Short>(1, 2).toShortArray().contentToString())
+    println(doubleArrayOf(1.5, 2.5).runningFold(0.0) { x, y -> x + y })
+    println(charArrayOf('b', 'a').toSortedSet())
+    println(booleanArrayOf(true, false).onEach { }.toList())
+    println(longArrayOf(4, 5).foldIndexed(0L) { i, acc, x -> acc + i * x })
+}

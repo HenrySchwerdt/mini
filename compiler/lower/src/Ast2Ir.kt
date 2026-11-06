@@ -619,7 +619,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         val d = sym.decl
         if (d != null && d.body != null) {
             fn.bodyBuilder = { buildFunctionBody(fn, sym) }
-            if (inLib(sym.file) && sym.kind != FunKind.LOCAL && sym.kind != FunKind.ANONYMOUS && !StubRules.keepsBody(d)) fn.stub = true
+            if (inLib(sym.file) && sym.kind != FunKind.LOCAL && sym.kind != FunKind.ANONYMOUS && (!StubRules.keepsBody(d) || !sym.bodyChecked)) fn.stub = true
         }
         return fn
     }

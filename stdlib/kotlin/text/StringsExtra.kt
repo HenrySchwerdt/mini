@@ -328,25 +328,27 @@ public inline fun String.replaceFirstChar(transform: (Char) -> Char): String =
 public inline fun String.replaceFirstChar(transform: (Char) -> String): String =
     if (length > 0) transform(this[0]) + substring(1) else this
 
-public fun Char.titlecaseChar(): Char = uppercaseChar()
-
-public fun Char.titlecase(): String = uppercaseChar().toString()
-
-public fun Char.isTitleCase(): Boolean = false
-
-public fun Char.digitToIntOrNull(): Int? = if (this in '0'..'9') this.code - '0'.code else null
-
-public fun Char.digitToIntOrNull(radix: Int): Int? {
-    val d = if (this in '0'..'9') this.code - '0'.code
-    else if (this in 'a'..'z') this.code - 'a'.code + 10
-    else if (this in 'A'..'Z') this.code - 'A'.code + 10
-    else -1
-    return if (d < 0 || d >= radix) null else d
+public fun Char.titlecaseChar(): Char {
+    val c = this.code
+    if (c in 0x1C4..0x1CC) return (if (c < 0x1C7) 0x1C5 else if (c < 0x1CA) 0x1C8 else 0x1CB).toChar()
+    if (c in 0x1F1..0x1F3) return '\u01F2'
+    return uppercaseChar()
 }
+
+public fun Char.titlecase(): String {
+    val upper = uppercase()
+    if (upper.length > 1) {
+        return if (this == '\u0149') upper else upper[0].toString() + upper.substring(1).lowercase()
+    }
+    return titlecaseChar().toString()
+}
+
+public fun Char.isTitleCase(): Boolean = this.code >= 0x80 && charType(this.code) == 3
+
 
 public fun Char.isISOControl(): Boolean = this.code <= 0x1F || (this.code >= 0x7F && this.code <= 0x9F)
 
-public fun Char.isDefined(): Boolean = true
+public fun Char.isDefined(): Boolean = this.code < 0x80 || charType(this.code) != 0
 
 public fun Char.isSurrogate(): Boolean = this.code in 0xD800..0xDFFF
 
