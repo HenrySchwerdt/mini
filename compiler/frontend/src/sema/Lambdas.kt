@@ -457,6 +457,16 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     // suspend conversion: a reference to a non-suspend function where a suspend function type is expected becomes a suspend lambda;
     // so does a reference to a suspend function (`O(::id)`), whose closure would not take the continuation like a suspend function value
     val csym = chosen.sym
+    // `val f = ::suspendFun`: with no expected type the reference is a value of the suspend function type (calling it passes the continuation)
+    val selfSuspend = ef == null && csym is FunSym && !chosen.isProp && csym.mods()?.has("suspend") == true
+    if (selfSuspend && csym is FunSym) {
+        val off0 = chosen.params.size - csym.params.size
+        if (off0 in 0..1 && adapted == null) {
+            val n0 = csym.params.size
+            adapted = AdaptedRef(AdaptMap(IntArray(n0) { off0 + it }, IntArray(n0) { 1 }), off0)
+        }
+        if (adapted != null) adapted.suspendConv = true
+    }
     if (ef != null && ef.suspend && csym is FunSym && !chosen.isProp) {
         if (adapted == null) {
             val off0 = chosen.params.size - csym.params.size
@@ -500,6 +510,8 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         adapted.typeArgs = targs
         rr.extra = adapted
     }
+    // the lowering reads the arguments of the KFunction type recorded above; the checker sees the suspend function type
+    if (selfSuspend && adapted != null && !chosen.isProp) return FunType(null, ps, ret, false, true)
     return t
 }
 
