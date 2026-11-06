@@ -115,6 +115,12 @@ public operator fun <T : Comparable<T>> T.rangeUntil(that: T): OpenEndRange<T> =
 
 public operator fun ClosedRange<Double>.contains(value: Float): Boolean = contains(value.toDouble())
 
+public operator fun ClosedRange<Float>.contains(value: Double): Boolean = contains(value.toFloat())
+
+public operator fun OpenEndRange<Double>.contains(value: Float): Boolean = contains(value.toDouble())
+
+public operator fun OpenEndRange<Float>.contains(value: Double): Boolean = contains(value.toFloat())
+
 // ---- coerceIn with ranges ------------------------------------------------------------------------------
 
 public fun Int.coerceIn(range: ClosedRange<Int>): Int {
