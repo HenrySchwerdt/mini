@@ -27,8 +27,8 @@ static wchar_t *mh_wide(const MkString *s) {
     if (!s) return NULL;
     wchar_t *r = mh_alloc(((size_t)s->length + 1) * sizeof *r);
     for (MkInt i = 0; i < s->length; i++) {
-        if (!s->chars[i]) { free(r); return NULL; }
-        r[i] = (wchar_t)s->chars[i];
+        if (!mk_string_at(s, i)) { free(r); return NULL; }
+        r[i] = (wchar_t)mk_string_at(s, i);
     }
     r[s->length] = 0; return r;
 }
@@ -103,7 +103,8 @@ MkLong mh_mtime_millis(const MkString *p) {
 MkString *mh_list(const MkString *p) {
     MkString *s = mk_b1_list_dir(p);
     /* Windows forbids newline/control characters in directory entry names. */
-    if (s) for (MkInt i = 0; i < s->length; i++) if (s->chars[i] == '\n') s->chars[i] = 1;
+    if (s && mk_string_is_latin1(s)) { uint8_t *b = (uint8_t *)(void *)s->chars; for (MkInt i = 0; i < s->length; i++) if (b[i] == '\n') b[i] = 1; }
+    else if (s) for (MkInt i = 0; i < s->length; i++) if (s->chars[i] == '\n') s->chars[i] = 1;
     return s;
 }
 MkBoolean mh_mkdirs(const MkString *p) { return mk_b1_mkdirs(p); }
@@ -161,8 +162,8 @@ MkInt mh_write(MkInt fd, const MkString *s) {
         wchar_t *w = mh_alloc(((size_t)s->length * 2 + 1)*sizeof *w);
         DWORD length = 0;
         for (MkInt i=0;i<s->length;i++) {
-            if (s->chars[i] == '\n' && (i == 0 || s->chars[i-1] != '\r')) w[length++] = L'\r';
-            w[length++] = (wchar_t)s->chars[i];
+            if (mk_string_at(s, i) == '\n' && (i == 0 || mk_string_at(s, i-1) != '\r')) w[length++] = L'\r';
+            w[length++] = (wchar_t)mk_string_at(s, i);
         }
         DWORD at=0, n=0; int ok=1;
         while (at < length) {
@@ -171,7 +172,7 @@ MkInt mh_write(MkInt fd, const MkString *s) {
         }
         free(w); return ok ? 0 : 2;
     }
-    size_t len=0, at=0; char *u=mk_utf16_to_utf8(s->chars,(size_t)s->length,&len);
+    size_t len=0, at=0; char *u=mk_string_to_utf8(s,&len);
     MkInt r=0;
     while(at<len) {
         DWORD n=0, chunk=(DWORD)((len-at)>MAXDWORD ? MAXDWORD : (len-at));

@@ -21,7 +21,7 @@ void mk_print_string(const MkString *s) {
         return;
     }
     size_t len;
-    char *utf8 = mk_utf16_to_utf8(s->chars, (size_t)s->length, &len);
+    char *utf8 = mk_string_to_utf8(s, &len);
     fwrite(utf8, 1, len, stdout);
     free(utf8);
 }
@@ -104,6 +104,6 @@ _Noreturn void mk_panic(const char *message) {
 
 _Noreturn void mk_panic_string(const MkString *message) {
     if (message == NULL) mk_panic("null");
-    char *utf8 = mk_utf16_to_utf8(message->chars, (size_t)message->length, NULL);
+    char *utf8 = mk_string_to_utf8(message, NULL);
     mk_panic(utf8); /* aborts; the buffer is intentionally not freed */
 }

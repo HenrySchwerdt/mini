@@ -278,20 +278,23 @@ private class Lowering<V : Any, B : Any>(
         return g
     }
 
-    /** A pooled Mini string literal: a static `MkString` object with UTF-16 chars. */
+    /** A pooled Mini string literal: a static `MkString` object with one-byte (Latin-1) or UTF-16 chars. */
     fun literal(value: String): V {
         val known = literals[value]
         if (known != null) return known
+        val latin1 = value.all { it.code < 256 }
         val items = ArrayList<V>()
-        for (ch in value) items.add(b.constInt(IrType.I16, ch.code.toLong()))
-        items.add(b.constInt(IrType.I16, 0L))
+        val unit = if (latin1) IrType.I8 else IrType.I16
+        for (ch in value) items.add(b.constInt(unit, ch.code.toLong()))
+        items.add(b.constInt(unit, 0L))
+        // flags: MK_FLAG_STATIC, and MK_FLAG_LATIN1 (1 shl 20) when the characters are one byte each
         val init = b.constPackedStruct(
             listOf(
                 b.externTypeInfo("mk_type_String"),
                 b.constInt(IrType.I32, 0L),
-                b.constInt(IrType.I32, 1L),
+                b.constInt(IrType.I32, if (latin1) (1L or (1L shl 20)) else 1L),
                 b.constInt(IrType.I32, value.length.toLong()),
-                b.constArray(IrType.I16, items),
+                b.constArray(unit, items),
             ),
         )
         val g = b.defineGlobal(IrSection.LITERALS, "kstr_${literals.size}", init, true, IrLinkage.INTERNAL, 8, false)
@@ -1959,8 +1962,30 @@ private class Lowering<V : Any, B : Any>(
 
         startBlock(fast)
         val charOffset = layouts.headerSize + 4
+        // one byte per character (MK_FLAG_LATIN1 in the flags word, the last four bytes of the header) or UTF-16
+        val flags = load(TInt, gep(string, layouts.headerSize - 4))
+        val isLatin1 = icmp(IrCmp.INE, binop(IrOp.AND, flags, c32(1 shl 20)), c32(0))
+        val narrow = newLabel("strchar_narrow")
+        val wide = newLabel("strchar_wide")
+        val joinChar = newLabel("strchar_join")
+        condBr(isLatin1, narrow, wide)
+
+        startBlock(narrow)
+        val narrowOffset = binop(IrOp.ADD, cvt(IrCast.SEXT, index, IrType.I64), c64(charOffset))
+        val narrowByte = b.load(IrType.I8, b.gep(string, narrowOffset, true, ""), 0, "")
+        val narrowValue = cvt(IrCast.ZEXT, narrowByte, IrType.I16)
+        val narrowEnd = curBlock
+        br(joinChar)
+
+        startBlock(wide)
         val byteOffset = binop(IrOp.ADD, binop(IrOp.MUL, cvt(IrCast.SEXT, index, IrType.I64), c64(2)), c64(charOffset))
-        val value = load(TChar, b.gep(string, byteOffset, true, ""))
+        val wideValue = load(TChar, b.gep(string, byteOffset, true, ""))
+        val wideEnd = curBlock
+        br(joinChar)
+
+        startBlock(joinChar)
+        openBlock()
+        val value = b.phi(IrType.I16, narrowValue, narrowEnd, wideValue, wideEnd)
         val fastEnd = curBlock
         br(merge)
 

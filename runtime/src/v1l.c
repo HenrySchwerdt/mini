@@ -46,7 +46,7 @@ _Noreturn void mk_report_uncaught(void) {
     fputs("Exception in thread \"main\" ", stderr);
     if (text != NULL) {
         size_t len;
-        char *u = mk_utf16_to_utf8(text->chars, (size_t)text->length, &len);
+        char *u = mk_string_to_utf8(text, &len);
         if (u != NULL) {
             fwrite(u, 1, len, stderr);
             free(u);
@@ -156,7 +156,7 @@ void mk_throwable_print_stack_trace(MkObject *self) {
     mk_runtime_flush();
     const MkString *s = mk_to_string(self);
     size_t len;
-    char *u = mk_utf16_to_utf8(s->chars, (size_t)s->length, &len);
+    char *u = mk_string_to_utf8(s, &len);
     if (u != NULL) {
         fwrite(u, 1, len, stderr);
         free(u);
@@ -359,7 +359,8 @@ MkInt mk_compare_to(MkObject *a, MkObject *b, const MkTypeInfo *comparable) {
         const MkString *x = (const MkString *)a, *y = (const MkString *)b;
         MkInt n = x->length < y->length ? x->length : y->length;
         for (MkInt i = 0; i < n; i++) {
-            if (x->chars[i] != y->chars[i]) return (MkInt)x->chars[i] - (MkInt)y->chars[i];
+            MkChar cx = mk_string_at(x, i), cy = mk_string_at(y, i);
+            if (cx != cy) return (MkInt)cx - (MkInt)cy;
         }
         return x->length - y->length;
     }
@@ -481,7 +482,12 @@ const MkString *mk_array_content_to_string(const MkObject *array) {
         else if (array->type == &MkShortArray_ti) e = mk_string_from_short(ELEMS(MkShort, a)[i]);
         else if (array->type == &MkBooleanArray_ti) e = mk_string_from_boolean(ELEMS(MkBoolean, a)[i]);
         else e = mk_string_from_char(ELEMS(MkChar, a)[i]);
-        buf_append(&b, e->chars, (size_t)e->length);
+        if (mk_string_is_latin1(e)) {
+            const uint8_t *eb = mk_string_bytes(e);
+            for (MkInt k = 0; k < e->length; k++) { MkChar ch = eb[k]; buf_append(&b, &ch, 1); }
+        } else {
+            buf_append(&b, e->chars, (size_t)e->length);
+        }
         mk_release((MkObject *)e);
     }
     buf_append(&b, &close, 1);
@@ -498,5 +504,5 @@ MkChar mk_string_get_char(const MkString *string, MkInt index) {
         mk_raise(&MkStringIndexOutOfBoundsException_ti, buf);
         return 0;
     }
-    return string->chars[index];
+    return mk_string_at(string, index);
 }

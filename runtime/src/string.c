@@ -2,6 +2,7 @@
 #include "internal.h"
 
 #include <inttypes.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -19,9 +20,48 @@ static MkString *string_alloc(size_t length) {
     return s;
 }
 
+/* A Latin-1 string: one byte per character (the characters start at the same offset as the UTF-16 ones). */
+static MkString *string_alloc8(size_t length) {
+    if (length > (size_t)INT32_MAX) mk_panic("string too long");
+    size_t size = offsetof(MkString, chars) + length;
+    if (size < sizeof(MkObject)) size = sizeof(MkObject);
+    MkObject *o = mk_alloc_sized_plain(&mk_type_String, size);
+    if (o == NULL) mk_panic("out of memory");
+    o->flags |= MK_FLAG_LATIN1;
+    MkString *s = (MkString *)o;
+    s->length = (MkInt)length;
+    return s;
+}
+
 MkString *mk_string_alloc(MkInt length) {
     if (length < 0) mk_panic("negative string length");
     return string_alloc((size_t)length);
+}
+
+MkString *mk_string_alloc8(MkInt length) {
+    if (length < 0) mk_panic("negative string length");
+    return string_alloc8((size_t)length);
+}
+
+char *mk_string_to_utf8(const MkString *s, size_t *out_length) {
+    if (!mk_string_is_latin1(s)) return mk_utf16_to_utf8(s->chars, (size_t)s->length, out_length);
+    size_t n = (size_t)s->length;
+    const uint8_t *b = mk_string_bytes(s);
+    char *out = malloc(n * 2 + 1);
+    if (out == NULL) mk_panic("out of memory");
+    size_t o = 0;
+    for (size_t i = 0; i < n; i++) {
+        uint8_t c = b[i];
+        if (c < 0x80) {
+            out[o++] = (char)c;
+        } else {
+            out[o++] = (char)(0xC0 | (c >> 6));
+            out[o++] = (char)(0x80 | (c & 0x3F));
+        }
+    }
+    out[o] = '\0';
+    if (out_length) *out_length = o;
+    return out;
 }
 
 MkInt mk_string_length(const MkString *s) { return s ? s->length : 0; }
@@ -31,10 +71,21 @@ MkString *mk_string_from_utf8(const char *utf8, size_t length) {
     const uint8_t *begin = utf8 ? (const uint8_t *)utf8 : &empty_utf8;
     const uint8_t *end = begin + (utf8 ? length : 0);
     size_t units = 0;
-    uint32_t cp;
+    uint32_t cp, widest = 0;
     for (const uint8_t *p = begin; p < end;) {
         p += mk_utf8_decode(p, end, &cp);
         units += cp >= 0x10000 ? 2 : 1;
+        if (cp > widest) widest = cp;
+    }
+    if (widest < 256) {
+        MkString *s = string_alloc8(units);
+        uint8_t *out = (uint8_t *)(void *)s->chars;
+        size_t i = 0;
+        for (const uint8_t *p = begin; p < end;) {
+            p += mk_utf8_decode(p, end, &cp);
+            out[i++] = (uint8_t)cp;
+        }
+        return s;
     }
     MkString *s = string_alloc(units);
     size_t i = 0;
@@ -51,32 +102,46 @@ MkString *mk_string_from_utf8(const char *utf8, size_t length) {
     return s;
 }
 
-static const MkChar null_chars[4] = {'n', 'u', 'l', 'l'};
+static const uint8_t null_bytes[4] = {'n', 'u', 'l', 'l'};
 
-MkString *mk_string_concat(const MkString *left, const MkString *right) {
-    /* NULL behaves like Kotlin's "null" in string templates. */
-    const MkChar *lc = left ? left->chars : null_chars;
-    const MkChar *rc = right ? right->chars : null_chars;
-    size_t ln = left ? (size_t)left->length : 4;
-    size_t rn = right ? (size_t)right->length : 4;
-    MkString *s = string_alloc(ln + rn);
-    memcpy(s->chars, lc, ln * sizeof(MkChar));
-    memcpy(s->chars + ln, rc, rn * sizeof(MkChar));
-    return s;
+/* Appends the characters of `p` (NULL is "null") at `out`, widening one-byte characters. */
+static inline MkChar *put_wide(MkChar *out, const MkString *p) {
+    if (p == NULL) {
+        for (int i = 0; i < 4; i++) out[i] = null_bytes[i];
+        return out + 4;
+    }
+    mk_string_copy_chars(p, 0, p->length, out);
+    return out + p->length;
 }
 
 static MkString *concat_n(size_t n, const MkString *const *parts) {
     size_t total = 0;
-    for (size_t i = 0; i < n; i++) total += parts[i] ? (size_t)parts[i]->length : 4;
+    bool narrow = true;
+    for (size_t i = 0; i < n; i++) {
+        total += parts[i] ? (size_t)parts[i]->length : 4;
+        if (parts[i] != NULL && !mk_string_is_latin1(parts[i])) narrow = false;
+    }
+    if (narrow) { /* every part one byte per character: so is the result */
+        MkString *s = string_alloc8(total);
+        uint8_t *out = (uint8_t *)(void *)s->chars;
+        for (size_t i = 0; i < n; i++) {
+            const uint8_t *c = parts[i] ? mk_string_bytes(parts[i]) : null_bytes;
+            size_t len = parts[i] ? (size_t)parts[i]->length : 4;
+            memcpy(out, c, len);
+            out += len;
+        }
+        return s;
+    }
     MkString *s = string_alloc(total);
     MkChar *out = s->chars;
-    for (size_t i = 0; i < n; i++) {
-        const MkChar *c = parts[i] ? parts[i]->chars : null_chars;
-        size_t len = parts[i] ? (size_t)parts[i]->length : 4;
-        memcpy(out, c, len * sizeof(MkChar));
-        out += len;
-    }
+    for (size_t i = 0; i < n; i++) out = put_wide(out, parts[i]);
     return s;
+}
+
+MkString *mk_string_concat(const MkString *left, const MkString *right) {
+    /* NULL behaves like Kotlin's "null" in string templates. */
+    const MkString *const p[2] = {left, right};
+    return concat_n(2, p);
 }
 
 MkString *mk_string_concat3(const MkString *a, const MkString *b, const MkString *c) {
@@ -98,8 +163,8 @@ MkString *mk_string_concat6(const MkString *a, const MkString *b, const MkString
 }
 
 static MkString *from_ascii(const char *text, size_t n) {
-    MkString *s = string_alloc(n);
-    for (size_t i = 0; i < n; i++) s->chars[i] = (MkChar)(unsigned char)text[i];
+    MkString *s = string_alloc8(n);
+    memcpy((uint8_t *)(void *)s->chars, text, n);
     return s;
 }
 
@@ -179,8 +244,8 @@ void mk_i64_write8(int64_t value, uint8_t *out, size_t n) {
 
 MkString *mk_string_from_long(MkLong value) {
     size_t n = mk_i64_length(value);
-    MkString *s = string_alloc(n);
-    mk_i64_write(value, s->chars, n);
+    MkString *s = string_alloc8(n);
+    mk_i64_write8(value, (uint8_t *)(void *)s->chars, n);
     return s;
 }
 
@@ -204,6 +269,11 @@ MkString *mk_string_from_boolean(MkBoolean value) {
 }
 
 MkString *mk_string_from_char(MkChar value) {
+    if (value < 256) {
+        MkString *s = string_alloc8(1);
+        ((uint8_t *)(void *)s->chars)[0] = (uint8_t)value;
+        return s;
+    }
     MkString *s = string_alloc(1);
     s->chars[0] = value;
     return s;
@@ -212,13 +282,25 @@ MkString *mk_string_from_char(MkChar value) {
 bool mk_string_equals(const MkString *a, const MkString *b) {
     if (a == b) return true;
     if (a == NULL || b == NULL) return false;
-    return a->length == b->length &&
-           memcmp(a->chars, b->chars, (size_t)a->length * sizeof(MkChar)) == 0;
+    if (a->length != b->length) return false;
+    size_t n = (size_t)a->length;
+    bool la = mk_string_is_latin1(a), lb = mk_string_is_latin1(b);
+    if (la == lb) return memcmp(a->chars, b->chars, n * (la ? 1 : sizeof(MkChar))) == 0;
+    const MkString *w = la ? b : a, *l = la ? a : b; /* one of each: compare the characters */
+    const uint8_t *lbytes = mk_string_bytes(l);
+    for (size_t i = 0; i < n; i++) if (w->chars[i] != lbytes[i]) return false;
+    return true;
 }
 
 MkInt mk_string_hash(const MkString *s) {
     uint32_t h = 0;
-    if (s != NULL)
-        for (MkInt i = 0; i < s->length; i++) h = h * 31u + s->chars[i];
+    if (s != NULL) {
+        if (mk_string_is_latin1(s)) {
+            const uint8_t *b = mk_string_bytes(s);
+            for (MkInt i = 0; i < s->length; i++) h = h * 31u + b[i];
+        } else {
+            for (MkInt i = 0; i < s->length; i++) h = h * 31u + s->chars[i];
+        }
+    }
     return (MkInt)h; /* two's-complement wraparound, like the JVM */
 }

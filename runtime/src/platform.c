@@ -31,8 +31,8 @@ MkInt mk_platform_spawn(const MkString *argv) {
     size_t count = 1;
     args[0] = text;
     for (MkInt i = 0; i < argv->length; i++) {
-        if (!argv->chars[i]) { free(text); free(args); return -1; }
-        text[i] = (wchar_t)argv->chars[i];
+        if (!mk_string_at(argv, i)) { free(text); free(args); return -1; }
+        text[i] = (wchar_t)mk_string_at(argv, i);
         if (text[i] == 1) { text[i] = 0; args[count++] = text+i+1; }
     }
     text[argv->length] = 0;
@@ -116,8 +116,8 @@ MkInt mk_platform_spawn(const MkString *argv) {
     return -1;
 #else
     if (!argv || !argv->length) return -1;
-    for (MkInt i=0; i<argv->length; i++) if (!argv->chars[i]) return -1;
-    char *text = mk_utf16_to_utf8(argv->chars, (size_t)argv->length, NULL);
+    for (MkInt i=0; i<argv->length; i++) if (!mk_string_at(argv, i)) return -1;
+    char *text = mk_string_to_utf8(argv, NULL);
     size_t count = 1;
     for (char *p=text; *p; p++) if (*p==1) count++;
     char **args = calloc(count+1, sizeof *args);

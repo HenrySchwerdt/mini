@@ -63,7 +63,7 @@ int main(void) {
     CHECK(mk_hash_code(d) == mk_hash_code(d));
     MkString *s = mk_to_string(d);
     size_t n;
-    char *u = mk_utf16_to_utf8(s->chars, (size_t)s->length, &n);
+    char *u = mk_string_to_utf8(s, &n);
     CHECK(strncmp(u, "Derived@", 8) == 0);
     free(u);
     mk_release(&s->header);

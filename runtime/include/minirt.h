@@ -77,6 +77,7 @@ enum {
     MK_FLAG_BUFFERED = 1u << 7, /* cycle collection: in the candidate buffer (runtime only) */
     /* bits 8..15 are runtime-private too: the small-object size class of an unprefixed block */
     MK_COLOR_SHIFT = 16,        /* cycle collection: colour of the object during a collection (bits 16..18, runtime only) */
+    MK_FLAG_LATIN1 = 1u << 20,  /* kotlin.String only: the characters are one byte each (all below 256), see MkString */
 };
 
 /* Initialiser for an MkObject header in static storage. */
@@ -255,12 +256,33 @@ size_t mk_debug_report_leaks(MkAllocator *debug);
 
 /* ---- kotlin.String ----------------------------------------------------------- */
 
-/* Immutable UTF-16 string. `chars` is not NUL-terminated. */
+/* Immutable string. Two representations, told apart by MK_FLAG_LATIN1 in the header: UTF-16 (`chars`, two bytes per unit) and
+ * "Latin-1" (every character below 256, one byte each: the same storage read as `uint8_t`). Both mean the same Kotlin string
+ * (equal characters are equal strings whatever the representation); read it through mk_string_at / mk_string_to_utf8 / the
+ * helpers below, never through `chars` alone. `chars` is not NUL-terminated. */
 typedef struct MkString {
     MkObject header;
     MkInt length;
     MkChar chars[];
 } MkString;
+
+static inline int mk_string_is_latin1(const MkString *s) { return (s->header.flags & MK_FLAG_LATIN1) != 0; }
+static inline const uint8_t *mk_string_bytes(const MkString *s) { return (const uint8_t *)(const void *)s->chars; }
+/* The character at `index` (no checks). */
+static inline MkChar mk_string_at(const MkString *s, MkInt index) {
+    return mk_string_is_latin1(s) ? (MkChar)mk_string_bytes(s)[index] : s->chars[index];
+}
+/* Copies `count` characters starting at `start` as UTF-16 into `dst`. */
+static inline void mk_string_copy_chars(const MkString *s, MkInt start, MkInt count, MkChar *dst) {
+    if (mk_string_is_latin1(s)) {
+        const uint8_t *b = mk_string_bytes(s) + start;
+        for (MkInt i = 0; i < count; i++) dst[i] = b[i];
+    } else {
+        for (MkInt i = 0; i < count; i++) dst[i] = s->chars[start + i];
+    }
+}
+/* The text as UTF-8 (malloc'ed, NUL-terminated); `*out_length` gets the length in bytes. */
+char *mk_string_to_utf8(const MkString *s, size_t *out_length);
 
 /* Static string literal: MK_STRING_LITERAL(name, u"text") declares
  * `static const` storage named `name` with the header and the characters. */
@@ -272,7 +294,17 @@ typedef struct MkString {
     } name = {MK_STATIC_HEADER(&mk_type_String),                                       \
               (MkInt)(sizeof(utf16_literal) / sizeof(MkChar) - 1), utf16_literal}
 
+/* Static Latin-1 literal: MK_STRING_LITERAL8(name, len, {b0, b1, ..., 0}) (len bytes plus a terminating 0). */
+#define MK_STRING_LITERAL8(name, len, ...)                                                       \
+    static const struct {                                                                        \
+        MkObject header;                                                                         \
+        MkInt length;                                                                            \
+        uint8_t chars[(len) + 1];                                                                \
+    } name = {{&mk_type_String, 0u, MK_FLAG_STATIC | MK_FLAG_LATIN1}, (MkInt)(len), __VA_ARGS__}
+
 MkString *mk_string_from_utf8(const char *utf8, size_t length); /* refcount 1 */
+/* A string of `length` one-byte characters (refcount 1; MK_FLAG_LATIN1) whose bytes the caller must fill in. */
+MkString *mk_string_alloc8(MkInt length);
 /* A string of `length` UTF-16 units (refcount 1) whose characters the caller must
  * fill in: their contents are unspecified. Panics when length < 0 or on
  * out-of-memory. */
