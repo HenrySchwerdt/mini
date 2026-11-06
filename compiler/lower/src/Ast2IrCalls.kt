@@ -395,7 +395,8 @@ private fun Ast2Ir.argFor(info: CallInfo, j: Int, p: IrValueParameter, subst: Ma
     var elemType: Type? = null
     for (k in idxs) {
         val a = info.args[k]
-        val ex = convertArg(a, label, null)
+        // (a lambda in a vararg of a fun interface is converted to it: the expected type is the element type)
+        val ex = convertArg(a, label, if (a.spread) null else info.paramTypes.getOrNull(k))
         if (a.spread) elems.add(IrSpreadElement(ex)) else {
             elems.add(ex)
             if (elemType == null) {

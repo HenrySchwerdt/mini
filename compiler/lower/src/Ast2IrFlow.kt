@@ -163,11 +163,13 @@ private fun Ast2Ir.compoundOnProperty(e: BinaryExpr, left: Expr, lr: ExprRec, in
     val gc = findMember(getter, d ?: x)
     val got = IrCall(gc, t)
     got.origin = origin
+    markSuperAccess(got, d)
     fillAccessorArgs(got, gc, disp(), ext, null)
     val op = callOperator(info, got, listOf(convert(e.right)), irType(info.ret ?: lr.type), origin)
     val sc = findMember(setter, d ?: x)
     val set = IrCall(sc, unit)
     set.origin = origin
+    markSuperAccess(set, d)
     fillAccessorArgs(set, sc, disp(), if (x != null) recvValue(x, left) else null, op)
     if (!explicit) return set
     stmts.add(set)

@@ -167,7 +167,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isCs else MirExpr.Unary(UnaryOp.Not, isCs)
             }
             val inst = if (target is TBoxed) target else if (target.isPrimitive) TBoxed(target) else target.nonNull()
-            var test: MirExpr = MirExpr.IsInstance(v, inst)
+            var test: MirExpr = if (target == TUnit) MirExpr.Binary(BinaryOp.IdEq, asAny(v), unitInstance()) else MirExpr.IsInstance(v, inst)
             // `x is T?` (also a reified T substituted by a nullable type, `null.foo<A?>()`): null is an instance
             val top = e.typeOperand
             if ((top.isMarkedNullable() || (top is TypeParamType && substitutedNullable(top))) && v.type.isRef) {
