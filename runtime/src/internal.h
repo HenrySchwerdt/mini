@@ -41,9 +41,28 @@ extern volatile int mk_threads_running;
 /* cycles.c */
 extern size_t mk_cycles_alloc_bytes; /* bytes of candidate-capable objects allocated since the last collection (allocation volume trigger) */
 enum { MK_CYCLES_DYING = 5 };
-void mk_cycles_forget(MkObject *object);
-void mk_cycles_state(MkObject *object, unsigned state); /* the colour of a buffered object that died */
-size_t mk_cycles_at_exit(void);
+/* The collector is reached through this table (defined in object.c, filled in by mk_cycles_install in cycles.c): the code of
+ * cycles.c is only reachable from the allocation of a candidate-capable object (alloc.c), so a program that never makes one
+ * does not link it (the linker's section garbage collection drops it). An object can only be ARMED / BUFFERED after the
+ * install, so the entries are never NULL where they are called. */
+typedef struct MkCyclesHooks {
+    void (*candidate)(MkObject *object);
+    void (*forget)(MkObject *object);
+    void (*state)(MkObject *object, unsigned state); /* the colour of a buffered object that died */
+    size_t (*at_exit)(void);
+    void (*release_armed)(MkObject *object, uint32_t flags); /* the last reference of an ARMED / BUFFERED object is gone (object.c) */
+    void (*drain)(void);                                     /* works off the queue of deferred releases (object.c) */
+} MkCyclesHooks;
+void mk_release_armed(MkObject *object, uint32_t flags);
+void mk_release_drain_armed(void);
+extern MkCyclesHooks mk_cycles_hooks;
+void mk_cycles_install(void); /* cycles.c */
+/* Called before a candidate-capable object is made (mk_alloc_armed, the arrays of references): the one place that links the collector.
+ * The generic allocation paths (mk_alloc, mk_alloc_sized, ...) arm a traced type only when the collector is installed. */
+static inline void mk_cycles_ensure(void) {
+    if (__builtin_expect(mk_cycles_hooks.candidate == NULL, 0)) mk_cycles_install();
+}
+#define MK_ARMABLE(type) ((type)->trace != NULL && mk_cycles_hooks.candidate != NULL)
 MkObject *mk_alloc_sized_plain(const MkTypeInfo *type, size_t size); /* alloc.c: default allocator, never armed */
 void mk_release_drain(void); /* object.c: disposes what mk_release queued because the stack was deep (end of main, end of a thread) */
 

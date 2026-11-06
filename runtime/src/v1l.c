@@ -443,6 +443,7 @@ static MkObject *array_new(const MkTypeInfo *type, MkInt length, size_t elem) {
         return NULL;
     }
     size_t bytes = sizeof(MkArray) + elem * (size_t)length;
+    if (type == &MkObjectArray_ti) mk_cycles_ensure();
     MkObject *o = type == &MkObjectArray_ti ? mk_alloc_sized(NULL, type, bytes) : mk_alloc_sized_plain(type, bytes); /* (primitive arrays are never candidates) */
     ((MkArray *)o)->length = length;
     return o;
