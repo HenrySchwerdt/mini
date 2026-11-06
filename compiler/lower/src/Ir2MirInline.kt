@@ -42,8 +42,8 @@ internal fun Ir2Mir.coerceFlexible(v: MirExpr, t: MirType, at: IrElement, out: M
     return when {
         x.type.isPrimitive && t.isPrimitive -> coerceOperand(x, t, at, out)
         x.type.isPrimitive && t.isRef -> coerceOperand(x, t, at, out)
-        x.type.isRef && t.isPrimitive -> unboxCast(x, t, MirExpr.CastMode.Unchecked)
-        x.type.isRef && t.isRef -> MirExpr.Cast(x, t, MirExpr.CastMode.Unchecked)
+        x.type.isRef && t.isPrimitive -> unboxCast(x, t, MirExpr.CastMode.Checked)
+        x.type.isRef && t.isRef -> if (x.type == t) x else MirExpr.Cast(x, t, erasedCastMode(t))
         else -> convertTo(x, t, at)
     }
 }

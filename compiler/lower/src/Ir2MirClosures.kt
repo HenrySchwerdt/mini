@@ -333,11 +333,20 @@ internal fun Ir2Mir.borrowedCapture(d: IrValueDeclaration): Boolean {
 
 internal fun Ir2Mir.currentFunctionName(): String = currentFunction?.name ?: "<module>"
 
-/** Converts an erased value (`Any?`) to the type [t] of a typed local (unboxing / unchecked cast). */
+/**
+ * The mode of the cast of an erased value (`Any?`: the element of a `List<String>`, the `T` of a generic field, a lambda parameter) to the
+ * type it has at the use. Like the `checkcast` of the JVM it is checked: a polluted generic (`listOf<Any>(1) as List<String>`) must fail
+ * with a ClassCastException where the value is read, not be taken for a String (whose length and characters would then be read out of
+ * an object of another layout). Only `Any` itself cannot fail.
+ */
+internal fun erasedCastMode(to: MirType): MirExpr.CastMode =
+    if (to is TObject && to.cName == ANY_CNAME) MirExpr.CastMode.Unchecked else MirExpr.CastMode.Checked
+
+/** Converts an erased value (`Any?`) to the type [t] of a typed local (unboxing / checked cast). */
 internal fun Ir2Mir.convertFromErased(v: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     if (v.type == t) return v
-    if (t.isPrimitive) return unboxCast(v, t, MirExpr.CastMode.Unchecked)
-    if (t.isRef && v.type.isRef) return MirExpr.Cast(v, t, MirExpr.CastMode.Unchecked)
+    if (t.isPrimitive) return unboxCast(v, t, MirExpr.CastMode.Checked)
+    if (t.isRef && v.type.isRef) return MirExpr.Cast(v, t, erasedCastMode(t))
     return convertTo(v, t, at)
 }
 
@@ -350,8 +359,8 @@ internal fun Ir2Mir.adaptResult(e: MirExpr, expected: MirType, at: IrElement, ou
     if (!e.type.isRef) return e
     var v = e
     if (v.isOwned() || (v is MirExpr.FieldGet && v.type.isRef)) v = tmpOf(v, out)
-    if (expected.isPrimitive) return unboxCast(v, expected, MirExpr.CastMode.Unchecked)
-    if (expected.isRef) return MirExpr.Cast(v, expected, MirExpr.CastMode.Unchecked)
+    if (expected.isPrimitive) return unboxCast(v, expected, MirExpr.CastMode.Checked)
+    if (expected.isRef) return MirExpr.Cast(v, expected, erasedCastMode(expected))
     return e
 }
 

@@ -54,6 +54,10 @@ _Noreturn void mk_report_uncaught(void) {
     }
     fputc('\n', stderr);
     fflush(stderr);
+    /* nothing may be left behind for LeakSanitizer (and the exception's own references run their dispose) */
+    mk_release((MkObject *)text);
+    mk_release(e);
+    mk_release_drain();
     exit(1);
 }
 
@@ -442,9 +446,12 @@ static MkObject *array_new(const MkTypeInfo *type, MkInt length, size_t elem) {
         mk_raise(&MkNegativeArraySizeException_ti, buf);
         return NULL;
     }
+    /* (the size computation must not wrap on 32-bit targets, and a failed allocation must not be written through) */
+    if ((size_t)length > (SIZE_MAX - sizeof(MkArray)) / elem) mk_panic("OutOfMemoryError: array too large");
     size_t bytes = sizeof(MkArray) + elem * (size_t)length;
     if (type == &MkObjectArray_ti) mk_cycles_ensure();
     MkObject *o = type == &MkObjectArray_ti ? mk_alloc_sized(NULL, type, bytes) : mk_alloc_sized_plain(type, bytes); /* (primitive arrays are never candidates) */
+    if (o == NULL) mk_panic("OutOfMemoryError: Java heap space");
     ((MkArray *)o)->length = length;
     return o;
 }

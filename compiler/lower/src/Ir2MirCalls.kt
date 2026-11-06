@@ -242,7 +242,7 @@ internal fun Ir2Mir.memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<
     ) {
         val field = prop.backingField!!
         val args = callArgs(c, f, out)
-        if (real.parameters.size == 1) return adaptResult(fieldGet(args[0], field), mirType(c.type, c), c, out)
+        if (real.parameters.size == 1) return adaptResult(guardUnsetField(fieldGet(args[0], field), field), mirType(c.type, c), c, out)
         // the setter of a fake override in `class B : A<Int>()` takes an Int, the field (of `A<T>`) holds an Any
         val ft = mirType(field.type, field)
         out += MirStmt.SetField(args[0], fieldOwner(field).cName, field.name, ft, coerceFlexible(args[1], ft, c, out))

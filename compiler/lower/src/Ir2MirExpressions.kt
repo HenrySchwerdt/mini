@@ -111,7 +111,7 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrGetField -> {
         val f = e.field
         val r = e.receiver
-        if (r == null) staticFieldGet(f, e) else fieldGet(operands(listOf(r), out)[0], f)
+        if (r == null) guardUnsetField(staticFieldGet(f, e), f) else guardUnsetField(fieldGet(operands(listOf(r), out)[0], f), f)
     }
     is IrStringConcatenation -> stringConcat(e, out)
     is IrFunctionExpression -> lambdaValue(e, out)
@@ -262,7 +262,7 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
         unsupported(at, "conversion from $from to $to")
     }
     if (from is TObject && from.cName == ANY_CNAME && to.isPrimitive) {
-        return unboxCast(e, to, MirExpr.CastMode.Unchecked)
+        return unboxCast(e, to, MirExpr.CastMode.Checked)
     }
     if (from.isRef && to.isRef) return e // C-level retyping is done by the emitter
     // a generic result (`T` = Unit, an `Any?` at run time) where Unit is expected: the callers discard the value
