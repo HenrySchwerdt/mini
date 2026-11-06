@@ -35,11 +35,28 @@ private fun Ast2Ir.convertImpl(e: Expr, eqOperand: Boolean): IrExpression {
     return smartCast(convertRaw(e), e, eqOperand)
 }
 
+private val PRIMITIVE_BOUNDS = setOf("kotlin.Int", "kotlin.Long", "kotlin.Double", "kotlin.Float", "kotlin.Boolean", "kotlin.Char", "kotlin.Byte", "kotlin.Short")
+
 /** the smart cast recorded for [e], wrapped around its raw value [raw] */
 fun Ast2Ir.smartCast(raw: IrExpression, e: Ast, eqOperand: Boolean): IrExpression {
     var ir = raw
     val r = rec(e)
     val sm = r?.smart
+    if (sm == null) {
+        // a value of type `T : Int` (a final primitive bound) is an Int: operations on it are Int operations
+        val rt = raw.type
+        if (rt is TypeParamType && !rt.nullable) {
+            sema.ensureBounds(rt.tp)
+            val b = if (rt.tp.bounds.size == 1) rt.tp.bounds[0] else null
+            if (b is ClassType && !b.nullable && b.args.isEmpty() && b.classFqName in PRIMITIVE_BOUNDS) {
+                val st = irType(b)
+                val c = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, st, ir, st)
+                c.isSmart = true
+                c.startOffset = raw.startOffset
+                return c
+            }
+        }
+    }
     if (eqOperand && sm != null) return ir
     if (sm != null && !(sm is TypeParamType && sm.definitelyNotNull)) {
         val st = irType(sm)
@@ -486,7 +503,9 @@ fun Ast2Ir.superExpr(e: SuperExpr): IrExpression {
     while (c != null) {
         for (i in c.recvs.indices.reversed()) {
             val re = c.recvs[i]
-            if (re.cls != null) return IrGetValue(re.param, re.param.type, null)
+            // `super@A.f()`: the receiver of the labelled class
+            val rc = re.cls
+            if (rc != null && (e.label == null || rc.name == e.label)) return IrGetValue(re.param, re.param.type, null)
         }
         c = c.parent
     }

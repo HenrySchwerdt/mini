@@ -214,6 +214,80 @@ Still missing: Unicode outside the Basic Multilingual Plane (`Char` is 16 bit; c
 beyond the basics, `compareValuesBy` with vararg selectors returning different types (compiler: the lambdas are analysed before the type argument is
 known), Byte literal inference in generics, `box/arrays/primitiveArrays.kt` (the C compiler times out on one very large generated function).
 
+## Fifth round (c) (branch claude/conformance-5c)
+
+Language-feature gaps (frontend, lowering, suspend lowering, value classes). Rounds 5a (crashes / harness reporting) and 5b (stdlib long tail)
+ran in parallel; `origin/main` (with the object-layout work) was merged twice, so the numbers include whatever those branches landed.
+
+| | after round 4 | round 5 (c) |
+|---|---:|---:|
+| **pass** | **5243 (87.81%)** | **5415 (90.69%)** |
+| compile-error | 402 | 281 |
+| ice | 112 | 103 |
+| runtime-fail | 173 | 149 |
+| crash | 39 | 21 |
+| timeout | 2 | 2 |
+
+The five planned features:
+
+1. **`tailrec suspend fun`** (`SuspendTailrec.kt`, 9 of 9 tests): before `SuspendLowering` the body is rewritten into
+   `while (true) { val p' = $p; body }` over mutable copies of the parameters; a tail call (`return f(..)`, the branches of a returned
+   `if` / `when`, the last statement of a `Unit` function, parentheses) assigns the copies through temporaries (all new values are computed
+   before any parameter changes, an extension receiver may change: `(this - 1) test x`) and continues the loop. Every iteration works on
+   fresh `val`s, so lambdas created in the body keep the values of their iteration. A tail call that omits an argument (a default value)
+   and calls that are not in tail position stay ordinary calls. The state machine of the function then contains no self call.
+2. **Enums**: the entry is stored in the holder as soon as its construction starts (an `init` block or a property initializer of an entry
+   body may read `B.value`, `Z.name`; this was a null read, signal 11); the companion object is initialized together with the entries
+   (after them, and the first use of the companion creates the entries first, like the static initializer of the JVM); `valueOf` initializes
+   the class even for an unknown name.
+3. **Generic value classes**: the failures were not in the box / unbox code but in the type `T : Int`: a value of a type parameter with a
+   primitive upper bound is now an `IMPLICIT_CAST` to the bound where it is used (`x + 1`, `array[x]`, `x.toLong()`), and operands of
+   primitive members typed `Any?` are unboxed. Together with `A<Int>::member` (a callable reference to a member of a generic class with
+   written type arguments was parsed as a call), `is C<*>` smart casts of a `C<Int>?` (the narrowed type is the original without null) and the
+   expected type of an outer call reaching the lambda result (`useX(call { X(42) })`: the result variable of `call` has only the upper bound
+   `X<Int?>`, which is the expectation of the last expression) the inline-class tests went from 840 to 858 of 897.
+4. **Builder inference**: `buildList { add(1) }`, `buildMap`, `buildSet`, `buildString`, `sequence { yield(x) }`, `iterator { }` and nesting
+   of them worked already; what failed was `build outer@ { ... this@outer ... }` (the label of a lambda argument was dropped, 5 tests).
+   Left: real postponed type variables (`uncompilingFun = { handleInt(it) }` infers `T` from the use inside the lambda), builder lambdas in
+   an elvis / `if` synthetic call (`pclaRootIs*`), builder inference with local classes (3 ICEs).
+5. **`::member` inside lambdas with a receiver**: the reference binds the receiver of `with(a) { map(::foo) }` / `run` / `apply`
+   (members and properties), extension functions and properties of implicit receivers (`::aExtension` inside `class A`), the innermost scope
+   group wins (`::memberFunction` of an inner class); `Outer::Inner`, `outer::Inner`, `::Inner` (constructors of inner classes), references
+   to local extension functions (`A::localX`, `a::localX`), to constructors of the array classes (`::IntArray`, `::Array`) and to the
+   constructor of a fun interface (`::KSupplier`).
+
+Also fixed on the way (each has a test in `compiler/testdata`):
+
+* equality and hash codes of callable references (`::f == ::f`, `a::f == a::f`, `A::f != a::f`): references to the same function share a
+  closure class that compares the captured receiver; property references compare name and accessors; adapted references (defaults, vararg,
+  suspend conversion) share a class per target and shape. Not done: references coerced to Unit are not told apart (`coercionToUnit*`).
+* the companion objects of superclasses are in scope (members and properties; 11 `multipleCompanionsWithAccessors` tests);
+* inner classes: default arguments of constructors and members read the outer instances (`this@A`), `init` blocks of doubly nested inner
+  classes read the outermost one, the innermost implicit receiver wins (`Father.InClass()` in `Child2`), `super<K>@A.foo()` picks the
+  receiver of the labelled class, unqualified `super.f()` looks the member up in the superclass and the interfaces;
+* an array passed by name to a vararg parameter (`foo(s = s)`), `_` in explicit type arguments (`foo<Int, _>(...)`), `foo() == Unit`
+  (the call runs, the value is the Unit object), labels of lambda arguments of constructor calls (`Array<String>(1) { return@Array "x" }`)
+  and infix calls (`x myMap { return@myMap }`), extension functions called on a class name (`A.foo()` with a companion receiver), the
+  companion of a primitive class as a value, a `fun interface` whose abstract method is implemented by a sub-interface, `do while (c);`
+  and labels in front of local declarations;
+* a secondary constructor of an inner class that delegates to `this(...)` no longer stores the outer instance a second time (the outer
+  object leaked; found by the leak suite on the new `inner_secondary_ctor` test).
+
+172 more tests pass than at the start of the round, and no test that passed before fails now (full harness run, same harness, compared with
+the committed `results.json` of round 4). The crash column also contains what the parallel rounds and the layout work fixed.
+
+Validation of the final sources: `scripts/test-e2e.sh` (the default suites, `llvm`, `llvm-leak`), `compiler/bootstrap.sh`, the full
+`mini test`, `scripts/strict-corpus.sh --run` and the bootstrap with the 0.9.0 release as stage0 (`scripts/ci-stage0.sh`) all pass. The full
+harness run used the toolchain of the commit before the last small fix (the inner-class constructor leak, which the harness does not
+see); the rest of the validation ran on the final commit.
+
+Still open (largest): `unresolved call` (callee names are about 100 different ones, e.g. `foo(vararg x: Unit)` forms of `kt17691`, generic
+fun interface behind a typealias, `Flow.map { null }`), function references coerced to Unit and `::foo.name`, classes that extend `Number`
+(the `mk_checked_number_to_*` runtime does not call the user's `toInt`), integer-literal arithmetic with an expected `Long`
+(`val a: Long = 2147483647 + 1`: K2 computes in Int and converts), `Unit` as a value in data classes / locals (C compiler rejects), real
+builder inference, `Outer.Inner()` inside lambdas of inline functions that capture the outer instance, multiple-module and
+`// FILE:` tests whose first `fun box()` is a member (`properRecapturingInClass`: the harness picks the wrong package, 6 tests).
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

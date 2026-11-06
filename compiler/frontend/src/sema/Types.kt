@@ -46,6 +46,9 @@ class ErrType(val reason: String) : Type() {
     override fun withNullable(n: Boolean): Type = this
 }
 
+/** The `_` of an explicit type argument list (`foo<Int, _>(...)`): this type argument is inferred. Compared by identity. */
+val INFER_TYPE: Type = ErrType("_")
+
 /** The captured type of a projected type argument (`Captured(out X)`); approximated by [approximate] where K2 does so. */
 class CapType(val arg: TArg, override val nullable: Boolean) : Type() {
     override fun withNullable(n: Boolean): Type = if (n == nullable) this else CapType(arg, n)

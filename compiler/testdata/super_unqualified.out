@@ -1,0 +1,7 @@
+Base.baseFun
+Base.unambiguous
+Base.baseProp
+Interface.interfaceFun
+true
+Interface.interfaceFun/Base.baseFun
+Interface.interfaceFun,DerivedInterface.interfaceFun

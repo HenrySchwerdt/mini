@@ -50,10 +50,10 @@ fun BodyChecker.fillReceivers(info: CallInfo, recv: RecvInfo?, callee: Expr) {
     }
     if (dref != null) info.dispatch = RecvUse(null, false, dref, null)
     if (eref != null) info.ext = RecvUse(null, false, eref, null)
-    if (recv is ClassRecv && eref == null && fn.receiver != null && fn.kind != FunKind.CONSTRUCTOR) {
-        // `Foo.f()` where `f` is an extension of `Foo.Companion` (`Double.fromBits(...)`): the extension receiver is the companion object
-        val comp = recv.cls.companion ?: (if (recv.cls.isObject) recv.cls else null)
-        if (comp != null) info.ext = RecvUse(null, false, RecvRef(comp, null, true), null)
+    if (recv is ClassRecv && fn.receiver != null && eref == null && fn.kind != FunKind.CONSTRUCTOR) {
+        // `A.foo()` for an extension `Any.foo()` / `A.Companion.foo()` (`Double.fromBits(...)`): the extension receiver is the companion object (or the object) named by `A`
+        val oc = if (recv.cls.isObject) recv.cls else recv.cls.companion
+        if (oc != null) info.ext = RecvUse(null, false, RecvRef(oc, null, true), null)
     }
     if (recv is ClassRecv && dref == null) {
         val o = fn.owner

@@ -47,6 +47,27 @@ internal fun Ir2Mir.callArgs(
         val lv: MirExpr = if (v is MirExpr.Local) v else tmpOfPlain(v, out)
         saved += p to locals[p]
         locals[p] = (lv as MirExpr.Local).local
+        // the default value of a parameter of an inner class (its constructor or a member) may read the outer instances (`this@Outer`):
+        // the dispatch argument is the instance of the nearest one (of the class itself for a member), the others are behind `$outer`
+        if (i == 0 && p.kind == IrParameterKind.DispatchReceiver && callee.parent is IrClass) {
+            val owner = callee.parent as IrClass
+            var k: IrClass? = if (callee is IrConstructor) (if (owner.isInner) owner.parent as? IrClass else null) else (if (owner.isInner) owner else null)
+            if (callee is IrConstructor && k != null) {
+                // the dispatch argument is the outer instance
+                val ot = k.thisReceiver
+                if (ot != null) { saved += ot to locals[ot]; locals[ot] = lv.local }
+            }
+            var cur: MirLocal = lv.local
+            while (k != null && k.isInner) {
+                val oc = k.parent as? IrClass ?: break
+                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
+                val ot = oc.thisReceiver
+                if (ot != null) { saved += ot to locals[ot]; locals[ot] = l }
+                cur = l
+                k = oc
+            }
+        }
         // the default of an overridden function reads the parameters of that function
         if (callee is IrSimpleFunction) for (o in allOverridden(callee)) {
             val op = o.parameters.getOrNull(i) ?: continue
@@ -385,6 +406,17 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
         "EQEQEQ" -> BinaryOp.IdEq
         else -> unsupported(c, "compiler intrinsic '$name'")
     }
+    if ((op == BinaryOp.Eq || op == BinaryOp.IdEq) && args.size == 2 && args.any { it.type.classFqName == "kotlin.Unit" && !it.type.nullable }) {
+        // `foo() == Unit`: the Unit value is the Unit object (the call runs first)
+        val nv = ArrayList<MirExpr>()
+        for (a in args) {
+            if (a.type.classFqName == "kotlin.Unit" && !a.type.nullable) {
+                if (a !is IrGetObjectValue) stmt(a, out)
+                nv += unitInstance()
+            } else nv += tmpOfPlain(value(a, out), out)
+        }
+        return refEquality(op, nv[0], nv[1], c, out)
+    }
     val v = operands(args, out)
     if (v.size != 2) unsupported(c, "compiler intrinsic '$name'")
     val ta = v[0].type
@@ -437,7 +469,13 @@ internal fun Ir2Mir.primitiveMember(
     args: List<IrExpression>,
     out: MutableList<MirStmt>,
 ): MirExpr {
-    val v = operands(args, out)
+    val v0 = operands(args, out)
+    // an operand typed by a type parameter with a primitive bound (`T : Int`) is a boxed value at run time: unbox it
+    val v = if (v0.any { !it.type.isPrimitive && it.type.isRef && it.type !is TInline }) v0.mapIndexed { i, e ->
+        val p = c.callee.parameters.getOrNull(i)
+        val pt = if (p != null && e.type.isRef && e.type !is TInline && e.type != TString) mirType(p.type, p) else null
+        if (pt != null && pt.isPrimitive && pt != TUnit && pt != TString) convertTo(e, pt, c) else e
+    } else v0
     val recv = v[0]
     val resultType = mirType(c.type, c)
 

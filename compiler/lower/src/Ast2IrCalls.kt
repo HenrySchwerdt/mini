@@ -166,8 +166,21 @@ fun Ast2Ir.markSuperAccess(call: IrCall, use: RecvUse?) {
     val ux = use?.expr ?: return
     if (unparen(ux) !is SuperExpr) return
     val st = recvStaticType(use!!)
-    val sc = if (st != null) classOf(st) else null
+    val sc = superQualifierFor(st, call.callee)
     if (sc != null) call.superQualifier = irClass(sc)
+}
+
+/** the class `super.f()` calls into: the static type of `super`, for several supertypes the one that has the callee */
+fun Ast2Ir.superQualifierFor(st: Type?, callee: IrSimpleFunction): ClassSym? {
+    if (st == null) return null
+    if (st is IsectType) {
+        val owner = (callee.parent as? IrClass)?.sym
+        if (owner != null) for (p in st.parts) {
+            val pc = classOf(p) ?: continue
+            if (classExtends(pc, owner, 0)) return pc
+        }
+    }
+    return classOf(st)
 }
 
 fun Ast2Ir.recvStaticType(u: RecvUse): Type? {
@@ -197,7 +210,7 @@ fun Ast2Ir.buildCall(
     val dux = dispatchUse?.expr
     if (dispatchUse != null && dux != null && unparen(dux) is SuperExpr) {
         val st = recvStaticType(dispatchUse)
-        val sc = if (st != null) classOf(st) else null
+        val sc = superQualifierFor(st, callee)
         if (sc != null) call.superQualifier = irClass(sc)
     }
     fillCallArgs(call, callee, info, dispatch, ext, label)
@@ -266,7 +279,7 @@ fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): 
         val oc = cs.outer
         if (oc != null) outer = receiverOfClass(oc)
     }
-    fillCallArgs(call, k, info, outer, null, info.fn.name)
+    fillCallArgs(call, k, info, outer, null, cs?.name ?: info.fn.name)
     return spillForSourceOrder(call, k, info)
 }
 
@@ -524,7 +537,8 @@ fun Ast2Ir.binaryExpr(e: BinaryExpr): IrExpression {
         else -> null
     }
     val l = convert(e.left)
-    val rr = convert(e.right)
+    // `x myMap { return@myMap }`: a lambda argument of an infix call is labelled with the name of the function
+    val rr = if (unwrapPostponed(e.right) is LambdaExpr) convertArg(Arg(e.right, null, false), info.fn.name, info.paramTypes.getOrNull(0)) else convert(e.right)
     return callOperator(info, l, listOf(rr), t, origin)
 }
 

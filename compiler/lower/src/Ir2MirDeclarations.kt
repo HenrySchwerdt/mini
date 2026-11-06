@@ -85,6 +85,27 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         val cn = info(f.parent as IrClass).cName
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$name", TString, MirExpr.Local(params[1]))
         out += MirStmt.SetField(MirExpr.Local(params[0]), cn, "\$ordinal", TInt, MirExpr.Local(params[2]))
+        // an initializer of the entry (an `init` block, a property of its body) may read the entry itself (`B.value`): the entry is
+        // visible in the holder from the start of its construction, like `this`
+        val ec = f.parent as IrClass
+        if (enumRefersToOwnEntries(ec)) {
+            val ci = info(ec)
+            for ((i, _) in enumEntries(ec).withIndex()) {
+                out += MirStmt.If(MirExpr.Binary(BinaryOp.Eq, MirExpr.Local(params[2]), MirExpr.IntConst(i)), listOf(
+                    MirStmt.SetField(MirExpr.ObjectGet(holderName(ci), holderType(ci)), holderName(ci), "e$i", typeOf(ec), MirExpr.Local(params[0])),
+                ), emptyList())
+            }
+        }
+    }
+    if (f is IrConstructor) {
+        // the companion object of an enum class is initialized with the class, after its entries (the static initializer of Kotlin):
+        // the first use of the companion creates the entries first
+        val cc = f.parent as IrClass
+        val ec = cc.parent as? IrClass
+        if (cc.isCompanion && ec != null && ec.kind == IrClassKind.ENUM_CLASS && ec in classInfos) {
+            val ei = info(ec)
+            out += MirStmt.Eval(MirExpr.ObjectGet(holderName(ei), holderType(ei)))
+        }
     }
     val tails = if (f is IrSimpleFunction && f.sym?.has("tailrec") == true && f.parameters.none { it in closure.boxed }) tailCallsOf(f) else emptySet()
     if (tails.isNotEmpty()) {
@@ -363,4 +384,24 @@ private fun Ir2Mir.poolNew(c: IrConstructorCall, ctor: String, cls: IrClass, arg
         MirExpr.RuntimeCall("mk_pool_new_h", listOf(MirExpr.TypeInfoOf(typeOf(ta)), args[0]), TLong),
     )
     return obj
+}
+
+/** Does the enum class [c] (its entries, their bodies, its initializers) read one of its own entries (`B.x` inside the declaration of `B`)? */
+internal fun Ir2Mir.enumRefersToOwnEntries(c: IrClass): Boolean {
+    var found = false
+    val w = object : IrWalker() {
+        override fun visit(e: IrElement) {
+            if (found) return
+            if (e is IrGetEnumValue && e.entry.parent === c) { found = true; return }
+            visitChildren(e)
+        }
+    }
+    for (d in c.declarations) {
+        if (d is IrEnumEntry) {
+            val ce = d.correspondingClass
+            if (ce != null) w.visit(ce)
+        } else if (d is IrClass) continue
+        else if (d !is IrSimpleFunction) w.visit(d)
+    }
+    return found
 }

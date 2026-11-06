@@ -1,0 +1,8 @@
+OK
+OKLB1
+Z
+Z;
+2 A null
+Foo.FOO;Foo.BAR;Foo.CO;caught;
+F.init(x);F.init(y);F.companion.init;F.foo();X;
+G.O.init;G.O.foo();X;
