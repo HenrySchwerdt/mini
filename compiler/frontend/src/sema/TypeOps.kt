@@ -286,7 +286,6 @@ class TypeOps(private val sema: Sema) {
     }
 
     private fun funSub(a: FunType, b: FunType, depth: Int): Boolean {
-        if (a.params.size != b.params.size) return false
         if ((a.receiver == null) != (b.receiver == null)) {
             // `A.(B) -> R` and `(A, B) -> R` are interchangeable as values
             if (a.arity != b.arity) return false
@@ -299,6 +298,7 @@ class TypeOps(private val sema: Sema) {
             }
             return sub(a.ret, b.ret, depth + 1)
         }
+        if (a.params.size != b.params.size) return false
         val ra = a.receiver
         val rb = b.receiver
         if (ra != null && rb != null && !sub(rb, ra, depth + 1)) return false

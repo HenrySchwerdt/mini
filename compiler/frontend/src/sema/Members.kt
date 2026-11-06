@@ -147,19 +147,30 @@ class Members(private val sema: Sema) {
             out.add(MemberFun(invokeFor(t), HashMap(), null))
             return out
         }
-        val keys = HashSet<String>()
+        val keys = HashMap<String, Int>()
         for (site in sema.ops.closure(t)) {
             ensureSynth(site.cls)
             val l = site.cls.funs[name] ?: continue
             val m = sema.ops.substOf(site)
             for (f in l) {
                 val k = sigKey(f, m)
-                if (keys.contains(k)) continue
-                keys.add(k)
+                val prev = keys[k]
+                if (prev != null) {
+                    // a function inherited from a class and the same signature with default values from an interface (`class C : I, Impl()`): the defaults are visible
+                    if (f.kind == FunKind.NORMAL && site.cls.isInterface && !hasParamDefaults(out[prev].fn) && hasParamDefaults(f)) out[prev] = MemberFun(f, m, site)
+                    continue
+                }
+                keys[k] = out.size
                 out.add(MemberFun(f, m, site))
             }
         }
         return out
+    }
+
+    private fun hasParamDefaults(f: FunSym): Boolean {
+        sema.ensureSig(f)
+        for (p in f.params) if (p.hasDefault) return true
+        return false
     }
 
     fun propsNamed(t: Type, name: String): List<MemberProp> {

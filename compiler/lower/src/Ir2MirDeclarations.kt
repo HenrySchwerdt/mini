@@ -152,6 +152,11 @@ internal fun Ir2Mir.newTemp(type: MirType, name: String = "tmp"): MirLocal = Mir
 
 /** Stores [v] (owned or borrowed) in a fresh temporary that lives until the end of the scope. */
 internal fun Ir2Mir.tmpOf(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
+    // a Unit / Nothing value has no storage (`val x = unitCall()`, a Unit component of a data class): it runs for its effect
+    if (v.type == TUnit && v !== MirExpr.UnitValue) {
+        out += MirStmt.Eval(v)
+        return MirExpr.UnitValue
+    }
     val t = newTemp(v.type)
     out += MirStmt.Declare(t, v)
     ownedTemps += t

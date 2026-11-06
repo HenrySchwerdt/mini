@@ -511,15 +511,28 @@ fun Ast2Ir.callOperator(info: CallInfo, recv: IrExpression, args: List<IrExpress
             IrParameterKind.ExtensionReceiver -> call.arguments.add(adaptReceiver(recv, p))
             IrParameterKind.Regular -> {
                 val map = info.paramOfArg
-                if (map.size == args.size && map.indices.any { map[it] != it }) {
+                var shifted = false
+                if (map.size == args.size) {
+                    var q = 0
+                    while (q < map.size) {
+                        if (map[q] != q) shifted = true
+                        q++
+                    }
+                }
+                if (shifted) {
                     // `a[i] = v` with `set(i: String, d: String = "x", value: String)` / `set(vararg i: Int, value: Int)`: bound by the resolution
-                    val idxs = args.indices.filter { map[it] == regular }
+                    val vs = ArrayList<IrVarargElement>()
+                    var first: IrExpression? = null
+                    var q = 0
+                    while (q < args.size) {
+                        if (map[q] == regular) {
+                            if (first == null) first = args[q]
+                            vs.add(args[q])
+                        }
+                        q++
+                    }
                     val ve = p.varargElementType
-                    call.arguments.add(
-                        if (idxs.isEmpty()) null
-                        else if (ve == null) args[idxs[0]]
-                        else IrVararg(irType(ve), idxs.map { args[it] }, irType(p.type)),
-                    )
+                    call.arguments.add(if (first == null) null else if (ve == null) first else IrVararg(irType(ve), vs, irType(p.type)))
                 } else call.arguments.add(if (regular < args.size) args[regular] else null)
                 regular++
             }
@@ -546,6 +559,11 @@ fun Ast2Ir.binaryExpr(e: BinaryExpr): IrExpression {
     val r = rec(e) ?: fail(e, "binary expression without record")
     val info = r.call ?: fail(e, "operator " + op + " is not resolved")
     val t = irType(r.type)
+    if (t.classFqName == "kotlin.Long" && info.ret?.classFqName == "kotlin.Int") {
+        // `val a: Long = 2147483647 + 1`: computed in Int, converted to Long
+        val v = evalConst(e)
+        if (v != null) return IrConst(t, convertConst(v, t))
+    }
     if ((op == "+" || op == "-" || op == "*" || op == "/" || op == "%") && mentionsConst(e)) {
         // K2 evaluates constant expressions that involve a `const val`
         val v = evalConst(e)
@@ -745,6 +763,10 @@ fun Ast2Ir.prefixExpr(e: PrefixExpr): IrExpression {
                 if (v <= 2147483647L || t.classFqName == "kotlin.Long" || -v >= -2147483648L) return intConst(t, -v)
             }
             val info = r.call ?: fail(e, "unary operator is not resolved")
+            if (irType(r.type).classFqName == "kotlin.Long" && info.ret?.classFqName == "kotlin.Int") {
+                val cv = evalConst(e)
+                if (cv != null) return IrConst(irType(r.type), convertConst(cv, irType(r.type)))
+            }
             val v = convert(e.expr)
             return callOperator(info, v, emptyList(), irType(r.type), if (e.op == "-") "UMINUS" else "UPLUS")
         }

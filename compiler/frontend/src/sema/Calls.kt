@@ -515,7 +515,7 @@ fun bindArgs(params: List<VarSym>, args: List<Arg>): Binding? {
             assigned[found] = true
             paramOfArg[i] = found
             if (params[found].isVararg) usesVararg = true
-            else if (found == pos) pos = found + 1 // `f(a = 1, 2)`: a named argument in its own position
+            if (found == pos) pos = found + 1 // `f(a = 1, 2)`: a named argument in its own position (also a vararg given by name: `f(p1 = *a, "3")`)
         } else {
             var target: Int
             if (a.trailing) {

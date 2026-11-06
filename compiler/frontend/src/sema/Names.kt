@@ -510,6 +510,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         }
     }
     val groups: List<List<Candidate>>
+    var preRes: CallRes? = null
     var safe = false
     var name: String? = null
     if (callee is NameExpr) {
@@ -548,13 +549,40 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
     } else {
         // (expr)(args): invoke on the value
         val ct = fin(expr(callee, null))
+        val ft0 = ops.asFunType(ct) ?: ct
+        if (recv != null && ft0 is FunType && ft0.receiver != null && (recv is ValueRecv || (recv is ClassRecv && (recv.cls.isObject || recv.cls.companion != null)))) {
+            // `1.(fun Int.() = this + 1)()`, `A.(foo)()`: the function value (an expression in parentheses) is called with the receiver in front
+            val ru: RecvUse
+            val rtype: Type
+            if (recv is ValueRecv) {
+                ru = RecvUse(recv.expr, recv.safe, null, recv.type)
+                rtype = if (recv.safe) ops.makeNotNull(recv.type) else recv.type
+            } else {
+                val oc = if ((recv as ClassRecv).cls.isObject) recv.cls else recv.cls.companion!!
+                ru = RecvUse(null, false, RecvRef(oc, null, true), null)
+                rtype = oc.thisType()
+            }
+            val a2 = ArrayList<Arg>()
+            val ra = Arg(null, null, false)
+            ra.type = rtype
+            a2.add(ra)
+            a2.addAll(args)
+            preRes = resolveCallGroups(node, listOf(invokeCandidates(ft0)), a2, typeArgs, expected, false)
+            val inf = preRes?.info
+            if (inf != null) {
+                inf.isInvoke = true
+                inf.recvAsFirstArg = true
+                inf.invokeValue = RecvUse(callee, false, null, null)
+                inf.dispatch = ru
+            }
+        }
         val ig = ArrayList<List<Candidate>>()
         ig.add(invokeCandidates(ct))
         implicitMemberExtGroup("invoke", ct, ig)
         extensionGroups("invoke", ct, ig)
         groups = ig
     }
-    var res = resolveCallGroups(node, groups, args, typeArgs, expected, false)
+    var res = preRes ?: resolveCallGroups(node, groups, args, typeArgs, expected, false)
     if (res == null && recv is ValueRecv && name != null) {
         // `recv.f(args)` where `f` is a variable of type `Recv.(args) -> R`
         val vr = resolveSimpleName(name)
