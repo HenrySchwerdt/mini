@@ -794,6 +794,8 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
 
     private fun delegateFieldType(sym: PropSym): Type {
         val d = sym.decl ?: return sema.nullableAny
+        val di = sema.records.get(d)?.extra as? DelegateInfo
+        if (di != null) return di.delegateType
         val r = sema.records.get(d.delegate!!)
         return r?.type ?: sema.nullableAny
     }

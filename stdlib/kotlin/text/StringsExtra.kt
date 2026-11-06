@@ -359,7 +359,7 @@ public operator fun Char.plus(other: String): String = this.toString() + other
 // ---- windowed / zip -----------------------------------------------------------------------------------
 
 public fun String.windowed(size: Int, step: Int = 1, partialWindows: Boolean = false): List<String> =
-    windowed(size, step, partialWindows) { it }
+    windowed(size, step, partialWindows) { it.toString() }
 
 public fun <R> String.windowed(size: Int, step: Int = 1, partialWindows: Boolean = false, transform: (String) -> R): List<R> {
     require(size > 0 && step > 0) {
