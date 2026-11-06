@@ -111,7 +111,9 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
     try {
         for ((i, tp) in callee.typeParameters.withIndex()) {
             val a = c.typeArguments.getOrNull(i)
-            if (a != null && tp.reified) typeSubst[tp] = a // a non-reified type parameter stays erased (an unchecked cast to it must not check)
+            // a non-reified type parameter stays erased (an unchecked cast to it must not check), except for a C pointer type argument:
+            // a pointer cannot be boxed into the erased `Any?` (`memScoped { LLVMGetTypeByName2(...) }` with R = CPointer<..>?)
+            if (a != null && (tp.reified || mirType(a, c).isInteropScalar)) typeSubst[tp] = a
         }
         val params = callee.parameters
         for ((i, p) in params.withIndex()) {
