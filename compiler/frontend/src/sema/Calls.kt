@@ -143,8 +143,11 @@ fun BodyChecker.extensionGroups(name: String, recv: Type, out: ArrayList<List<Ca
     for (g in fileTopFuns(name)) {
         val l = ArrayList<Candidate>()
         for (f in g) if (f.isExtension) {
-            val c = Candidate(f, HashMap(), recv)
+            val via = sema.importedVia[f]
+            val c = Candidate(f, sema.importedSubstOf(f), recv)
             c.extRef = ref
+            // a member extension an object inherits, imported by name: the object is the dispatch receiver
+            if (via != null) c.dispatchRef = RecvRef(via, null, true)
             l.add(c)
         }
         if (l.isNotEmpty()) out.add(l)
@@ -345,7 +348,12 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 for (g in sema.topLevel(file, name)) {
                     val l = ArrayList<Candidate>()
                     for (x in g) {
-                        if (x is FunSym && !x.isExtension) l.add(Candidate(x, HashMap(), null))
+                        if (x is FunSym && !x.isExtension) {
+                            val via = sema.importedVia[x]
+                            val c = Candidate(x, sema.importedSubstOf(x), null)
+                            if (via != null) c.dispatchRef = RecvRef(via, null, true)
+                            l.add(c)
+                        }
                         else if (x is ClassSym) l.addAll(ctorCandidates(x))
                         else if (x is TypeAliasSym) {
                             val et = sema.expandAlias(x)

@@ -47,6 +47,9 @@ fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
                     val br = bestRecv
                     if (best == null || (br != null && x.typeParams.isEmpty() && ops.isSubtype(r, br) && !ops.isSubtype(br, r))) {
                         best = NameRes(x, t, null, NameRes.VALUE)
+                        // an extension property an object inherits, imported by name: the object is the dispatch receiver
+                        val via = sema.importedVia[x]
+                        if (via != null) best.dispatch = RecvRef(via, null, true)
                         bestRecv = if (x.typeParams.isEmpty()) r else null
                     }
                 }
@@ -185,7 +188,10 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
     for (g in sema.topLevel(file, name)) {
         for (x in g) {
             if (x is PropSym && x.decl?.receiver == null) {
-                return NameRes(x, sema.typeOfProp(x), null, NameRes.VALUE)
+                val nr = NameRes(x, sema.typeOfProp(x), null, NameRes.VALUE)
+                val via = sema.importedVia[x]
+                if (via != null) nr.dispatch = RecvRef(via, null, true)
+                return nr
             }
             if (x is EnumEntrySym) return NameRes(x, x.owner.thisType(), null, NameRes.VALUE)
         }
