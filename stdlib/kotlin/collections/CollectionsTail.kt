@@ -617,3 +617,9 @@ public inline fun <K, V, M : MutableMap<in K, in V>> Map<out K, V>.filterNotTo(d
     }
     return destination
 }
+
+public fun <T> List<T>.single(): T {
+    if (size == 0) throw NoSuchElementException("List is empty.")
+    if (size != 1) throw IllegalArgumentException("List has more than one element.")
+    return this[0]
+}
