@@ -477,6 +477,14 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         }
         if (adapted != null) adapted.suspendConv = true
     }
+    // coercion to Unit: a reference to a function with a result where `... -> Unit` is expected is adapted (its own class: it is not equal to the plain reference)
+    if (ef != null && adapted == null && csym is FunSym && !chosen.isProp && ops.isUnit(cs.resolveFixed(ef.ret)) && !ops.isUnit(cs.resolveFixed(ops.substitute(chosen.ret, m)))) {
+        val off0 = chosen.params.size - csym.params.size
+        if (off0 in 0..1) {
+            val n0 = csym.params.size
+            adapted = AdaptedRef(AdaptMap(IntArray(n0) { off0 + it }, IntArray(n0) { 1 }), off0)
+        }
+    }
     val ps = ArrayList<Type>()
     if (adapted != null && ef != null) {
         for (p in ops.allParams(ef)) ps.add(cs.resolveFixed(p))

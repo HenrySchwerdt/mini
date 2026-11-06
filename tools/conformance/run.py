@@ -221,7 +221,9 @@ def run_test(a, tc):
             res.update(status='timeout', phase='run', msg='run timeout')
             return res
         out = r.stdout.decode('utf-8', 'replace').strip()
-        if r.returncode == 0 and out == 'OK':
+        # the verdict is the last line: a test may print on the way (`println(list)`) before it returns the result of box()
+        last = out.splitlines()[-1].strip() if out else ''
+        if r.returncode == 0 and last == 'OK':
             res['status'] = 'pass'
         elif r.returncode < 0:
             res.update(status='crash', msg='signal %d' % -r.returncode, raw=(out + r.stderr.decode('utf-8', 'replace'))[:300])

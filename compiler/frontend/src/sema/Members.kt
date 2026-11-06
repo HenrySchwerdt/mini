@@ -121,6 +121,16 @@ class Members(private val sema: Sema) {
     }
 
     private fun addSynthAny(c: ClassSym, name: String, params: List<Type>, ret: Type, tf: ClassType) {
+        // a `final` member of a superclass (`final override fun toString()`) is kept: the data class does not generate its own
+        for (site in sema.ops.closure(tf)) {
+            val sc = site.cls
+            if (sc === c || sc.isInterface) continue
+            val sf = sc.funs[name] ?: continue
+            for (e in sf) {
+                if (e.kind == FunKind.SYNTH || e.params.size != params.size || !e.has("final")) continue
+                return
+            }
+        }
         val existing = c.funs[name]
         if (existing != null) {
             for (e in existing) {

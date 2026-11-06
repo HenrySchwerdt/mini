@@ -73,8 +73,15 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
         val stmts = ArrayList<IrStatement>()
         stmts.add(coerceToUnit(convert(e.receiver)))
         val str = sema.stringType
-        stmts.add(IrConst(str, cref.name))
+        // the name of a constructor reference is `<init>`
+        val rsym = rec(cref)?.callee
+        stmts.add(IrConst(str, if (rsym is FunSym && rsym.kind == FunKind.CONSTRUCTOR) "<init>" else cref.name))
         return IrBlock(stmts, irType(str), null)
+    }
+    if (sel is NameExpr && sel.name == "name" && r.callee is PropSym) {
+        // `E.A.name` is a constant (K2 evaluates it): the enum class is not initialized for it
+        val entry = rec(cref)?.callee
+        if (entry is EnumEntrySym) return IrConst(sema.stringType, entry.name)
     }
     // property / enum entry / object
     val sym = r.callee
@@ -256,7 +263,8 @@ fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunct
     if (ordered) return call
     fun needsSpill(e: IrExpression): Boolean = when (e) {
         is IrFunctionReference -> e.arguments.any { it != null && needsSpill(it) }   // `receiver::f`: the bound receiver is evaluated here
-        is IrConst, is IrFunctionExpression, is IrPropertyReference, is IrVararg, is IrClassReference -> false
+        is IrVararg -> e.elements.any { el -> val x = if (el is IrSpreadElement) el.expression else el as? IrExpression; x != null && needsSpill(x) }
+        is IrConst, is IrFunctionExpression, is IrPropertyReference, is IrClassReference -> false
         is IrGetValue -> (e.owner as? IrVariable)?.isVar == true
         else -> true
     }
