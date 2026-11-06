@@ -305,7 +305,8 @@ internal fun Ir2Mir.stringConcat(e: IrStringConcatenation, out: MutableList<MirS
     // the pieces as strings; neighbouring constants are joined here
     val parts = ArrayList<MirExpr>()
     for (v in vals) {
-        val s = toStringExpr(v, e, out)
+        val s = if (e.arrayContent && arrayKindOf(v.type) != null) tmpOf(MirExpr.RuntimeCall("mk_array_content_to_string", listOf(v), TString), out)
+        else toStringExpr(v, e, out)
         val last = if (parts.isEmpty()) null else parts[parts.size - 1]
         if (last is MirExpr.StringConst && s is MirExpr.StringConst) parts[parts.size - 1] = MirExpr.StringConst(last.value + s.value)
         else parts.add(s)

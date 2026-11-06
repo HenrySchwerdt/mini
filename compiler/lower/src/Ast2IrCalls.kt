@@ -98,7 +98,17 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
 
 fun Ast2Ir.propertyGetDot(sym: PropSym, r: ExprRec, t: Type, node: Ast): IrExpression {
     val cv = constantOf(sym, t)
-    if (cv != null) return cv
+    if (cv != null) {
+        // `getC().x` with a `const val x`: the receiver expression is still evaluated (its side effects), then the constant
+        val d0 = r.access?.dispatch
+        if (d0 != null && d0.expr != null && unparen(d0.expr) is CallExpr) {
+            val stmts = ArrayList<IrStatement>()
+            stmts.add(recvValue(d0, node))
+            stmts.add(cv)
+            return IrBlock(stmts, cv.type, null)
+        }
+        return cv
+    }
     val access = r.access
     val p = propertyOf(sym)
     val g = p.getter ?: fail(node, "property " + sym.name + " has no getter")

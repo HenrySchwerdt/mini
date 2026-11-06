@@ -370,7 +370,10 @@ class IrGetField(val field: IrField, var receiver: IrExpression?, type: Type) : 
 
 class IrSetField(val field: IrField, var receiver: IrExpression?, var value: IrExpression, type: Type) : IrExpression(type)
 
-class IrStringConcatenation(val arguments: ArrayList<IrExpression>, type: Type) : IrExpression(type)
+class IrStringConcatenation(val arguments: ArrayList<IrExpression>, type: Type) : IrExpression(type) {
+    /** the synthesized `toString` of a data class: array typed pieces print their content (`[1, 2]`), not the identity */
+    var arrayContent = false
+}
 
 class IrFunctionExpression(val function: IrSimpleFunction, type: Type, val origin: String) : IrExpression(type) {
     /** a lambda that adapts a callable reference (`::f` with defaults, `vararg`, coercion to Unit): the target and the shape of the adaptation, for equality */

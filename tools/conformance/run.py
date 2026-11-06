@@ -69,6 +69,9 @@ def skip_reason(path, rel, src):
     for rx, why in DIRECTIVE_SKIPS:
         if rx.search(src):
             return why
+    # opt-in compiler mode: Kotlin/Native does not check unchecked generic casts (`x as T`) unless built with this flag
+    if re.search(r'^// FREE_COMPILER_ARGS:.*-Xbinary=genericSafeCasts=true', src, re.M):
+        return 'non-default-flag'
     if re.search(r'^// FILE: .*\.(java|js|c|h|m|mm|def|xml|json|txt|properties)\s*$', src, re.M):
         return 'foreign-source'
     for rx, why in JVM_TEXT:
@@ -113,10 +116,12 @@ def split_files(src):
 
 
 def box_package(files):
-    for _, text in files:
-        if re.search(r'^\s*(?:(?:public|internal|private)\s+)?(?:(?:inline|suspend|tailrec|operator)\s+)*fun\s+box\s*\(\s*\)', text, re.M):
-            m = re.search(r'^\s*package\s+([\w.`]+)', text, re.M)
-            return m.group(1) if m else ''
+    # a top-level `fun box` (no indentation) wins over a member `fun box` of a class in an earlier file
+    for indent in (r'', r'[ \t]*'):
+        for _, text in files:
+            if re.search(r'^' + indent + r'(?:(?:public|internal|private)\s+)?(?:(?:inline|suspend|tailrec|operator)\s+)*fun\s+box\s*\(\s*\)', text, re.M):
+                m = re.search(r'^\s*package\s+([\w.`]+)', text, re.M)
+                return m.group(1) if m else ''
     return None
 
 

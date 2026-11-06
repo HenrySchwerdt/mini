@@ -499,7 +499,16 @@ fun BodyChecker.infixCall(e: BinaryExpr, expected: Type?): Type {
     val a = Arg(e.right, null, false)
     args.add(a)
     val groups = memberAndExtensionGroups(l, e.op, false)
-    val res = resolveCallGroups(e, groups, args, null, expected, false)
+    // `a f b` only sees `infix` functions: a member that is not infix (`Int.rem`) does not hide an infix extension of the same name
+    val infixGroups = ArrayList<List<Candidate>>()
+    var dropped = false
+    for (g in groups) {
+        val ig = g.filter { it.fn.isInfix }
+        if (ig.size != g.size) dropped = true
+        if (ig.isNotEmpty()) infixGroups.add(ig)
+    }
+    var res = if (infixGroups.isNotEmpty() && dropped) resolveCallGroups(e, infixGroups, args, null, expected, false) else null
+    if (res == null) res = resolveCallGroups(e, groups, args, null, expected, false)
     if (res == null) {
         err(e.start, "unresolved infix function " + e.op)
         return ErrType("infix " + e.op)
