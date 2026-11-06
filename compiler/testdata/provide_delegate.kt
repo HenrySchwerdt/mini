@@ -38,6 +38,8 @@ class Test {
 }
 
 fun main() {
+    val unused: () -> Unit = { log += "" }
+    unused()
     val t = Test()
     println(log)
     println(t.a + t.b)
