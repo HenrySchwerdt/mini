@@ -216,7 +216,14 @@ internal fun Ir2Mir.closureClass(
         extraClasses += MirClass(
             qualified, cName, false, null, fields, ifaces.map { info(it).cName }, listOf(null, null, null),
             ifaces.map { i ->
-                MirItable(info(i).cName, interfaceMethods(i).map { m -> if (m === sam.method) invokeName else implName(if (hasBody(m)) m else null) })
+                MirItable(info(i).cName, interfaceMethods(i).map { m ->
+                    if (m === sam.method) invokeName
+                    else {
+                        // a default method of a sub-interface that implements the method (`override fun doStuff() = ...` in `fun interface Proxy : I`)
+                        val over = ifaces.flatMap { x -> interfaceMethods(x) }.firstOrNull { o -> o !== m && hasBody(o) && m in allOverridden(o) }
+                        implName(if (over != null) over else if (hasBody(m)) m else null)
+                    }
+                })
             },
         )
     }
@@ -514,7 +521,9 @@ internal class SamTarget(val iface: IrClass, val method: IrSimpleFunction, val a
 internal fun Ir2Mir.samTarget(iface: IrClass, at: IrElement): SamTarget {
     if (iface !in classInfos) unsupported(at, "SAM conversion to '${iface.name}'")
     // the abstract method of the interface itself, or the one it inherits (`fun interface C : G<Char>`)
-    val abstract = (listOf(iface) + allInterfaces(iface)).flatMap { i -> interfaceMethods(i).filter { it.modality == IrModality.ABSTRACT } }.distinct()
+    val all = (listOf(iface) + allInterfaces(iface)).flatMap { i -> interfaceMethods(i) }.distinct()
+    // an abstract method that a sub-interface implements (`fun interface Proxy : I { override fun f() = g(); fun g(): Int }`) is not the SAM
+    val abstract = all.filter { it.modality == IrModality.ABSTRACT && all.none { o -> o !== it && o.modality != IrModality.ABSTRACT && it in allOverridden(o) } }
     val m = abstract.singleOrNull() ?: unsupported(at, "SAM conversion to '${iface.name}' (needs exactly one abstract method)")
     val args = m.parameters.drop(1).map { mirType(it.type, it) }
     return SamTarget(iface, m, args, mirType(m.returnType, m))
