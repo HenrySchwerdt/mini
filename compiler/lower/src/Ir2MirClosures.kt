@@ -158,6 +158,7 @@ internal fun Ir2Mir.closureClass(
     capTypes: List<MirType>,
     sam: SamTarget? = null,
     borrowedCaps: List<Boolean> = emptyList(),
+    hashSeed: Int? = null,
     makeBody: (self: MirLocal, args: List<MirLocal>, caps: List<MirLocal>, out: MutableList<MirStmt>) -> Unit,
 ): Pair<String, TObject> {
     val iface = if (sam == null) functionInterface(arity) else null
@@ -196,9 +197,18 @@ internal fun Ir2Mir.closureClass(
         extraFunctions += MirFunction("$qualified.<init>", ctorName, listOf(self) + ps, TUnit, body, cName)
     }
     extraFunctions += fn
+    var vt: List<String?> = listOf(null, null, null)
+    if (hashSeed != null && sam == null) {
+        val eh = refEqualsFunctions(type, cName, qualified, capTypes, hashSeed)
+        if (eh != null) {
+            extraFunctions += eh.first
+            extraFunctions += eh.second
+            vt = listOf(null, eh.first.cName, eh.second.cName)
+        }
+    }
     if (iface != null) {
         extraClasses += MirClass(
-            qualified, cName, false, null, fields, listOf(iface.cName), listOf(null, null, null),
+            qualified, cName, false, null, fields, listOf(iface.cName), vt,
             listOf(MirItable(iface.cName, listOf(invokeName))),
         )
     } else {
@@ -211,6 +221,45 @@ internal fun Ir2Mir.closureClass(
         )
     }
     return ctorName to type
+}
+
+/**
+ * `equals` and `hashCode` of the closure class of a function reference: two references are equal when they are instances of the same
+ * class (the same target function and the same bound parameters) and their captured values are equal. Null when a captured value
+ * cannot be compared here.
+ */
+private fun Ir2Mir.refEqualsFunctions(type: TObject, cName: String, qualified: String, capTypes: List<MirType>, seed: Int): Pair<MirFunction, MirFunction>? {
+    for (t in capTypes) if (!(t.isPrimitive || (t.isRef && t !is TInline)) || t == TUnit) return null
+    val self = MirLocal(0, "this", type)
+    val other = MirLocal(1, "other", anyNullable)
+    val o = MirExpr.Cast(MirExpr.Local(other), type, MirExpr.CastMode.Unchecked)
+    fun field(base: MirExpr, i: Int): MirExpr = MirExpr.FieldGet(base, cName, "c$i", capTypes[i])
+    var same: MirExpr = MirExpr.BooleanConst(true)
+    for (i in capTypes.indices) {
+        val t = capTypes[i]
+        val eq: MirExpr = if (t.isPrimitive) MirExpr.Binary(BinaryOp.Eq, field(MirExpr.Local(self), i), field(o, i))
+        else MirExpr.RuntimeCall("mk_equals", listOf(asAny(field(MirExpr.Local(self), i)), asAny(field(o, i))), TBoolean)
+        same = if (i == 0) eq else MirExpr.Binary(BinaryOp.And, same, eq)
+    }
+    val eqBody = listOf<MirStmt>(
+        MirStmt.If(MirExpr.IsInstance(MirExpr.Local(other), type), listOf(MirStmt.Return(same)), listOf(MirStmt.Return(MirExpr.BooleanConst(false)))),
+    )
+    val eqFn = MirFunction("$qualified.equals", cName + "_refEquals", listOf(self, other), TBoolean, eqBody)
+    val self2 = MirLocal(0, "this", type)
+    var h: MirExpr = MirExpr.IntConst(seed)
+    for (i in capTypes.indices) {
+        val t = capTypes[i]
+        val f = field(MirExpr.Local(self2), i)
+        val fh: MirExpr = when {
+            t == TInt -> f
+            t == TBoolean -> MirExpr.Conditional(f, MirExpr.IntConst(1231), MirExpr.IntConst(1237))
+            t.isPrimitive -> MirExpr.Convert(f, TInt)
+            else -> MirExpr.RuntimeCall("mk_hash_code", listOf(asAny(f)), TInt)
+        }
+        h = MirExpr.Binary(BinaryOp.Add, MirExpr.Binary(BinaryOp.Mul, h, MirExpr.IntConst(31)), fh)
+    }
+    val hashFn = MirFunction("$qualified.hashCode", cName + "_refHashCode", listOf(self2), TInt, listOf<MirStmt>(MirStmt.Return(h)))
+    return eqFn to hashFn
 }
 
 internal fun Ir2Mir.convertBodyOf(f: IrFunction, ret: MirType, out: MutableList<MirStmt>) {
@@ -233,7 +282,15 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
     val borrowed = caps.map { borrowedCapture(it) }
     val arity = fn.parameters.size
     val ret = mirType(fn.returnType, fn)
-    val (ctor, type) = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam, borrowed) { _, args, capLocals, body ->
+    val rt = e.refTarget
+    var refKey: String? = null
+    if (rt != null && sam == null) {
+        val tid = refTargetIds.getOrPut(rt) { refTargetIds.size + 1 }
+        refKey = "L$tid:" + e.refShape + ":" + caps.size + (if (currentStrict) "s" else "")
+        val shared = refClassCache[refKey]
+        if (shared != null) return MirExpr.New(shared.first, caps.map { MirExpr.Local(localOf(it, e)) }, shared.second)
+    }
+    val made = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam, borrowed, if (refKey != null) refKey.hashCode() else null) { _, args, capLocals, body ->
         for ((i, v) in caps.withIndex()) locals[v] = capLocals[i]
         currentFunction = fn
         currentReturn = if (sam != null) sam.ret else if (ret == TUnit) TUnit else anyNullable
@@ -250,6 +307,8 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
             else if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(MirExpr.Unreachable(sam.ret))
         }
     }
+    if (refKey != null) refClassCache[refKey] = made
+    val (ctor, type) = made
     val values = caps.map { MirExpr.Local(localOf(it, e)) }
     return MirExpr.New(ctor, values, type)
 }
@@ -386,7 +445,11 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
     val capTypes = boundTypes + liftedCaps.map { capturedType(it) }
     val arity = params.size - boundIdx.size
     val name = target.name
-    val (ctor, type) = closureClass(currentFunctionName() + ".::" + name, arity, capTypes) { _, args, capLocals, body ->
+    val tid = refTargetIds.getOrPut(target) { refTargetIds.size + 1 }
+    val key = "$tid:" + boundIdx.joinToString(",") + ":" + liftedCaps.size + ":" + ((e.type as? ClassType)?.args?.lastOrNull()?.type?.classFqName ?: "?") + (if (currentStrict) "s" else "")
+    val shared = refClassCache[key]
+    if (shared != null) return MirExpr.New(shared.first, bound + liftedCaps.map { MirExpr.Local(localOf(it, e)) }, shared.second)
+    val made = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, emptyList(), tid * 7919 + boundIdx.size) { _, args, capLocals, body ->
         val actual = ArrayList<MirExpr>()
         var k = 0
         for ((i, p) in params.withIndex()) {
@@ -410,6 +473,8 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
             body += MirStmt.Return(convertTo(v, anyNullable, e))
         }
     }
+    refClassCache[key] = made
+    val (ctor, type) = made
     val values = bound + liftedCaps.map { MirExpr.Local(localOf(it, e)) }
     return MirExpr.New(ctor, values, type)
 }
