@@ -490,7 +490,13 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
         }
         if (pt is ClassType) {
             if (pt.cls === sema.anyType.cls) return true
-            if (pt.cls.isFunInterface) return true
+            if (pt.cls.isFunInterface) {
+                // `compareBy(comparator, selector)` against `compareBy({ it.a }, { it.b })`: a lambda without parameters cannot be a two-argument SAM
+                val sf = samFunType(pt) ?: return true
+                if (u is LambdaExpr) return if (u.hasArrow) u.params.size == sf.params.size else sf.params.size <= 1
+                if (u is AnonFunExpr) return u.fn.params.size == sf.params.size
+                return true
+            }
             return false
         }
         return pt is TypeParamType
