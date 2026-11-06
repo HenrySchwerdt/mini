@@ -1,0 +1,4 @@
+provide(a,a);b;tdf(b;);c;
+a!b;
+local!
+provide(a,a);b;tdf(b;);c;get(a!);sget(b;);provide(local,local);get(local!);

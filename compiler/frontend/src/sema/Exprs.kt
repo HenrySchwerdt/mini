@@ -564,6 +564,7 @@ fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
             val res = resolveOperator(name, t, emptyList(), e.start, null)
             if (res != null) recordAt(e.start, e.start + 2, res.ret, res.callee, res.calleeText)
             invalidate(e.expr)
+            if (res != null) factAfterOp(e.expr, res.ret)
             val pr = record(e, t, null)
             pr.call = res?.info
             if (res != null) pr.extra = CompoundInfo(false, indexSetForIncDec(e.expr, res.ret, e.start))
@@ -591,10 +592,22 @@ fun BodyChecker.postfix(e: PostfixExpr, expected: Type?): Type {
     val res = resolveOperator(name, t, emptyList(), e.start, null)
     if (res != null) recordAt(e.end - 2, e.end, res.ret, res.callee, res.calleeText)
     invalidate(e.expr)
+    if (res != null) factAfterOp(e.expr, res.ret)
     val por = record(e, t, null)
     por.call = res?.info
     if (res != null) por.extra = CompoundInfo(false, indexSetForIncDec(e.expr, res.ret, e.start))
     return t
+}
+
+/** a local variable [target] was assigned a value of type [t0] by an operator: smart cast it to that type */
+fun BodyChecker.factAfterOp(target: Expr, t0: Type) {
+    val x = AstWalk.unparen(target)
+    if (x !is NameExpr) return
+    val c = rec.get(x)?.callee as? VarSym ?: return
+    val declared = c.type ?: return
+    val k = stableKey(x) ?: return
+    val a = fin(t0)
+    if (declared !is ErrType && a !is ErrType && !typeEquals(a, declared) && ops.isSubtype(a, declared)) flow.add(FactAdd(k.key, k.root, a))
 }
 
 /** `x` was assigned: forget what is known about it */
@@ -680,6 +693,8 @@ fun BodyChecker.compoundAssign(e: BinaryExpr): Type {
         rr.extra = CompoundInfo(isAssignOp, setInfo)
     }
     invalidate(l)
+    // `x += y` assigns the result of `plus`: x has that type afterwards (`var k: Int? ; k += 1; k * 2`)
+    if (res != null && !isAssignOp) factAfterOp(l, res.ret)
     return sema.unitType
 }
 

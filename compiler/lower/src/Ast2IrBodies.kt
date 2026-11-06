@@ -286,6 +286,14 @@ fun Ast2Ir.irLocalClass(sym: ClassSym): IrClass {
             localClassCtxs[ex] = ctx
             ex.parent = enclosingParent()
         }
+        // created through its type before (`object : T { ... }.f()`): its fake overrides and the `overridden` links of its
+        // declared members may still be missing
+        var j = 0
+        val m = allClasses.size
+        while (j < m) {
+            ensureFakeOverrides(allClasses[j])
+            j++
+        }
         return ex
     }
     val saved = pendingLocalCtx
@@ -463,7 +471,18 @@ fun Ast2Ir.buildEnumEntryInit(es: EnumEntrySym, c: IrClass): IrExpressionBody? {
 fun Ast2Ir.buildDelegateInit(p: IrProperty, sym: PropSym, c: IrClass?, e: Expr): IrExpressionBody? {
     val bc: BodyCtx
     if (c != null) bc = initCtx(c) else bc = BodyCtx(null, null, null, false)
-    return withCtx(bc) { IrExpressionBody(convert(e)) }
+    return withCtx(bc) {
+        var v = convert(e)
+        val di = rec(sym.decl ?: e)?.extra as? DelegateInfo
+        val pi = di?.provide
+        if (di != null && pi != null) {
+            // `by` expression: provideDelegate(thisRef, property) runs once, at the initialisation of the property
+            val thisRef: IrExpression = if (c != null) getValue(c.thisReceiver!!) else nullConst()
+            val propRef = delegateReference(sym.name, irType(sema.typeOfProp(sym)), if (c != null || sym.receiver != null) 1 else 0)
+            v = callOperator(pi, v, listOf(thisRef, propRef), irType(di.delegateType), null)
+        }
+        IrExpressionBody(v)
+    }
 }
 
 fun Ast2Ir.buildDefaultValue(fn: IrFunction, ip: IrValueParameter, e: Expr): IrExpressionBody {
@@ -525,7 +544,11 @@ fun Ast2Ir.buildAccessorBody(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c
                 stmts.add(IrSetField(fld, recvExpr, getValue(value), sema.unitType))
             }
         }
-        IrBlockBody(stmts)
+        val ab = IrBlockBody(stmts)
+        if (f.isSuspend) {
+            if (f.isInline) f.suspendInlineTemplate = snapshotBody(f, ab)
+            lowerSuspendBody(f, ab)
+        } else ab
     }
 }
 
@@ -569,7 +592,9 @@ fun Ast2Ir.localDelegatedProperty(d: PropertyDecl, v: VarSym): IrStatement {
     val t = irType(v.type ?: sema.nullableAny)
     val prop = IrLocalDelegatedProperty(d.name)
     prop.parent = enclosingParent()
-    val de = convert(d.delegate!!)
+    var de = convert(d.delegate!!)
+    val pi = di.provide
+    if (pi != null) de = callOperator(pi, de, listOf(nullConst(), delegateReference(d.name, t, 0)), irType(di.delegateType), null)
     val dv = IrVariable(d.name + "\$delegate", de.type, false)
     dv.origin = "PROPERTY_DELEGATE"
     dv.parent = ctx?.fn

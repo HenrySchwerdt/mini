@@ -9,6 +9,8 @@ class ReturnTarget(val label: String?, val expected: Type?, val fn: FunSym?, val
     var isSuspend = false
     /** a lambda passed for a non-noinline, non-crossinline function parameter of an `inline` function: it is expanded where it is called, so suspension points in it belong to the enclosing function */
     var inlinable = false
+    /** the getter of a `suspend val`: a suspend function without a [fn] */
+    var suspendAccessor = false
 }
 
 /**
@@ -70,6 +72,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             } else {
                 val f = t.fn
                 if (f != null && f.mods()?.has("suspend") == true) return
+                if (t.suspendAccessor) return
             }
             break
         }
@@ -356,6 +359,11 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             if (dtp != null) lr.extra = delegateInfo(fin(dtp), d.isVar, v.type ?: sema.nullableAny, d.start)
         }
         declareVar(l, v)
+        if (init != null && d.isVar && declared != null && !(v.isVar && v.capturedAndModified)) {
+            // `var x: Int? = 5`: after the initialisation x is smart cast to the type of the initializer
+            val a = fin(rec.get(AstWalk.unparen(init))?.type ?: sema.nullableAny)
+            if (a !is ErrType && !typeEquals(a, declared) && ops.isSubtype(a, declared) && !a.nullable && declared.nullable) flow.add(FactAdd("v" + v.id, v.name, a))
+        }
         if (init != null && !d.isVar) {
             val ct = rec.get(init)?.type
             if (ct is ClassType && ct.cls === sema.booleanType.cls) {
@@ -387,14 +395,19 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     }
 
     /** resolves `getValue` / `setValue` of the delegate type of a property of type [propType] */
-    fun delegateInfo(delegateType: Type, isVar: Boolean, propType: Type, pos: Int, thisRef: Type? = null): DelegateInfo {
+    fun delegateInfo(delegateType0: Type, isVar: Boolean, propType: Type, pos: Int, thisRef: Type? = null): DelegateInfo {
+        // `provideDelegate` turns the expression after `by` into the delegate
+        val pd = resolveOperator("provideDelegate", delegateType0, delegateArgs(thisRef), pos, null)
+        val delegateType = if (pd != null && pd.ret !is ErrType) fin(pd.ret) else delegateType0
         val g = resolveOperator("getValue", delegateType, delegateArgs(thisRef), pos, null)
         var s: OpResult? = null
         if (isVar) s = resolveOperator("setValue", delegateType, delegateArgs(thisRef) + listOf(propType), pos, null)
-        return DelegateInfo(delegateType, g?.info, s?.info)
+        return DelegateInfo(delegateType, g?.info, s?.info, if (pd != null) pd.info else null)
     }
 
-    fun delegatedType(delegateType: Type, pos: Int, thisRef: Type? = null): Type {
+    fun delegatedType(delegateType0: Type, pos: Int, thisRef: Type? = null): Type {
+        val pd = resolveOperator("provideDelegate", delegateType0, delegateArgs(thisRef), pos, null)
+        val delegateType = if (pd != null && pd.ret !is ErrType) fin(pd.ret) else delegateType0
         // operator getValue on the delegate
         val r = resolveOperator("getValue", delegateType, delegateArgs(thisRef), pos, null)
         return r?.ret ?: ErrType("delegate getValue")

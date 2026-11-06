@@ -116,7 +116,8 @@ fun Ast2Ir.compoundAssign(e: BinaryExpr): IrExpression {
     }
     if (sym is VarSym && !sym.isField) {
         val v = varMap[sym] ?: fail(left, "variable " + sym.name + " is not declared in the IR")
-        val got = IrGetValue(v, v.type, origin)
+        // a smart cast target (`var i: Int? ; i = 10; i += 1`) is read with its cast
+        val got: IrExpression = if (lr.smart != null) convert(left) else IrGetValue(v, v.type, origin)
         val op = callOperator(info, got, listOf(convert(e.right)), irType(info.ret ?: v.type), origin)
         return IrSetValue(v, op, unit, origin)
     }
@@ -230,16 +231,17 @@ fun Ast2Ir.incDec(target0: Expr, inc: Boolean, prefix: Boolean, node: Expr, r: E
     if (sym is VarSym && !sym.isField) {
         val v = varMap[sym] ?: fail(target, "variable " + sym.name + " is not declared in the IR")
         val stmts = ArrayList<IrStatement>()
+        val smartTarget = tr.smart != null
         if (prefix) {
-            val op = callOperator(info, IrGetValue(v, v.type, origin), emptyList(), irType(info.ret ?: t), origin)
+            val op = callOperator(info, if (smartTarget) convert(target) else IrGetValue(v, v.type, origin), emptyList(), irType(info.ret ?: t), origin)
             stmts.add(IrSetValue(v, op, unit, origin))
             stmts.add(IrGetValue(v, v.type, origin))
             return IrBlock(stmts, t, origin)
         }
-        val tmp = IrVariable("<unary>", v.type, false)
+        val tmp = IrVariable("<unary>", if (smartTarget) irType(tr.smart!!) else v.type, false)
         tmp.origin = "IR_TEMPORARY_VARIABLE"
         tmp.parent = ctx?.fn
-        tmp.initializer = IrGetValue(v, v.type, origin)
+        tmp.initializer = if (smartTarget) convert(target) else IrGetValue(v, v.type, origin)
         stmts.add(tmp)
         val op = callOperator(info, getValue(tmp), emptyList(), irType(info.ret ?: t), origin)
         stmts.add(IrSetValue(v, op, unit, origin))

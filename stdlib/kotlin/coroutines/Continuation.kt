@@ -124,3 +124,10 @@ public suspend fun <T> suspendCoroutine(block: (Continuation<T>) -> Unit): T = s
 }
 
 public suspend fun currentCoroutineContext(): CoroutineContext = suspendCoroutineUninterceptedOrReturn { c -> c.context }
+
+/** The compiler replaces a call inside a suspend function by that function's continuation (used by [coroutineContext]). */
+internal fun currentContinuationIntrinsic(): Continuation<Any?> = throw IllegalStateException("currentContinuationIntrinsic is lowered by the compiler")
+
+/** The context of the coroutine that calls this suspend property. */
+public suspend val coroutineContext: CoroutineContext
+    get() = currentContinuationIntrinsic().context
