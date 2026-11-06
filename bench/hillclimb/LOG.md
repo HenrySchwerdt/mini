@@ -226,3 +226,37 @@ Fix (CI): EmitterTest.stringLiteralsAreUtf16AndDeduplicated asserted the UTF-16-
 (MK_STRING_LITERAL8 for all-below-256 strings, MK_STRING_LITERAL otherwise) including deduplication of each and a mixed module. The emitter was correct.
 Full `mini test -p backend -p frontend -p native-driver -p mini-tool`: exit 0 (103 + 33 + 2 + 79 tests). check-purity's "backend: unbound variable"
 is on origin/main too (scripts/check-purity.sh is identical there; `declare -A` does not exist in the macOS bash 3.2).
+
+# Round 4 (`claude/perf-3`, base origin/main 8c22f6c)
+
+Same-session A/B (5 runs, cpu 3, `score.py --no-guard`): head = this branch, base = the same compiler/stdlib with the origin/main runtime library
+(`libminirt.a` swapped, so only the runtime differs).
+
+|  | S | R | Z | score |
+|---|---|---|---|---|
+| base (origin/main runtime) | 1.4105 | 1.1048 | 0.1258 | 0.7251 |
+| head | 1.3829 | 1.1043 | 0.1116 | **0.6968** (-3.9 %) |
+
+hello stripped 27024 -> 18720 B (C and LLVM-API), wordcount/json/graph sizes -4 KB each (0.21 -> 0.21, 0.20 -> 0.19, 0.17 -> 0.17 of Rust: the
+programs that use a candidate-capable class still link the collector). Speed and RSS differences are noise (Rust's own times moved +-8 % between the two runs).
+
+### 1. Link the cycle collector, the arena allocator and the deferred-release queue only where they are used (KEPT) - runtime/src/{object,alloc,alloc_arena,cycles}.c, internal.h
+Object files of a static library are pulled in by symbol, but `--gc-sections` (function sections, see 9 of round 2) removes everything that live code does
+not reach; the cycle collector was reached from `mk_release` / `mk_alloc` of every program (+4 KB in hello world).
+* `MkCyclesHooks mk_cycles_hooks` (object.c): `candidate`, `forget`, `state`, `at_exit`, `release_armed`, `drain`. `mk_release`, `free_dead`, the entry's
+  `mk_cycles_at_exit` and `mk_release_drain` call through it; the trampoline `mk_cycles_candidate` stays for generated code.
+* `mk_cycles_install()` (cycles.c) fills the table. It is called by `mk_cycles_ensure()` from the only places that make candidates: `mk_alloc_armed`
+  (the compiler's allocation entry of a cyclic class), `mk_ref_array_new`, `array_new` of object arrays and `mk_cycles_collect`. The generic paths
+  (`mk_alloc`, `mk_alloc_sized`, `mk_alloc_sized_site`) arm a traced type only when the table is installed (`MK_ARMABLE`). Corner: a traced class that is
+  allocated only through the generic `mk_alloc` of a program with no armed class and no array of references is not armed (not produced by the compiler).
+* The release path of ARMED / BUFFERED objects (deep-chain queue `pending_*`, `release_buffered`) moved to `mk_release_armed` / `mk_release_drain_armed`,
+  reachable only through the table; `mk_threads_running` moved to sys.c.
+* Arena: `alloc.c` reaches the arena only through `mk_arena_marker` / `mk_arena_zeroed_hook`, set by `mk_arena_create` (one indirect call per arena object).
+Result: hello 27024 -> 18720 B (the text segment dropped below the page boundaries too). Programs with candidate classes are unchanged (one load + compare in
+`mk_alloc_armed`). runtime/tests/test_cycles.c calls `mk_cycles_install()` first.
+
+### Not done in this round (candidates, measured/analysed only)
+* wordcount (callgrind, 600K words): 970 instr/word; get+put hash and compare the key twice (hash 76, equals 56, findNode 55, put 113), box alloc/release 40:
+  a string hash slot in the header (4 B, both emitters and the LLVM lowering hard-code the layout: `Lowering.kt` literal and `stringCharAt`), a fused
+  get/put, a String fast path in `mk_equals` are each worth 3-5 %.
+* graph: 128 B per node (Node 32 + ArrayList 32 + 4-slot array 64: the array is 24 B header + 32 B = 56 -> 64 class); the collector is not the RSS (one collection, 1 root).
