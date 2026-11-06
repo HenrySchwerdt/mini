@@ -30,6 +30,8 @@ fun BodyChecker.propBaseType(p: PropSym, subst: Map<TypeParamSym, Type>): Type =
 
 /** extension properties named [name] applicable to [recv] (top-level scopes) */
 fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
+    var best: NameRes? = null
+    var bestRecv: Type? = null
     for (g in sema.topLevel(file, name)) {
         for (x in g) {
             if (x is PropSym && x.decl?.receiver != null) {
@@ -41,12 +43,17 @@ fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
                 if (cs.addSub(recv, ops.substitute(r, m))) {
                     cs.fixAll()
                     val t = cs.resolveFixed(ops.substitute(sema.typeOfProp(x), m))
-                    return NameRes(x, t, null, NameRes.VALUE)
+                    // several applicable extension properties: the one with the most specific receiver (`D.attr` over `C.attr`)
+                    val br = bestRecv
+                    if (best == null || (br != null && x.typeParams.isEmpty() && ops.isSubtype(r, br) && !ops.isSubtype(br, r))) {
+                        best = NameRes(x, t, null, NameRes.VALUE)
+                        bestRecv = if (x.typeParams.isEmpty()) r else null
+                    }
                 }
             }
         }
     }
-    return null
+    return best
 }
 
 /** extension properties declared as members of the classes of the implicit receivers */
@@ -543,6 +550,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         val ct = fin(expr(callee, null))
         val ig = ArrayList<List<Candidate>>()
         ig.add(invokeCandidates(ct))
+        implicitMemberExtGroup("invoke", ct, ig)
         extensionGroups("invoke", ct, ig)
         groups = ig
     }
@@ -595,6 +603,11 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
             }
         }
     }
+    if (res == null && callee is NameExpr && name != null && (recv == null || recv is ClassRecv || recv is ValueRecv)) {
+        // `ONE(42)`, `A.ONE(42)`, `x.attr { }`: the name is a value with an `invoke`
+        val vg = valueInvokeGroups(callee, recv)
+        if (vg != null) res = resolveCallGroups(node, vg, args, typeArgs, expected, true)
+    }
     if (res == null) {
         err(e.start, "unresolved call '" + (name ?: "<expr>") + "'")
         return ErrType("unresolved call " + (name ?: ""))
@@ -644,12 +657,18 @@ fun BodyChecker.classGroups(c: ClassSym, name: String): List<List<Candidate>> {
         groups.clear()
         groups.addAll(memberAndExtensionGroups(c.thisType(), name, false))
         val onc = sema.nestedClassifier(c, name, 0)
-        if (onc is ClassSym) groups.add(ctorCandidates(onc))
+        if (onc is ClassSym) {
+            groups.add(ctorCandidates(onc))
+            groups.addAll(objectInvokeGroups(onc))
+        }
         return groups
     }
     if (st.isNotEmpty()) groups.add(st)
     val nc = sema.nestedClassifier(c, name, 0)
-    if (nc is ClassSym) groups.add(ctorCandidates(nc))
+    if (nc is ClassSym) {
+        groups.add(ctorCandidates(nc))
+        groups.addAll(objectInvokeGroups(nc))
+    }
     val comp = c.companion
     if (comp != null) groups.addAll(memberAndExtensionGroups(comp.thisType(), name, false))
     return groups

@@ -467,7 +467,7 @@ fun Ast2Ir.invokeCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExp
     val subst = HashMap<TypeParamSym, Type>()
     for (pp in callee.parameters) {
         when (pp.kind) {
-            IrParameterKind.DispatchReceiver -> call.arguments.add(if (fn.receiver == null) fv else null)
+            IrParameterKind.DispatchReceiver -> call.arguments.add(if (fn.receiver == null) fv else if (d != null && iv != null) adaptReceiver(recvValue(d, node), pp) else null)
             IrParameterKind.ExtensionReceiver -> call.arguments.add(if (fn.receiver != null) adaptReceiver(fv, pp) else null)
             IrParameterKind.Regular -> {
                 if (info.recvAsFirstArg && regular == 0) {
@@ -510,7 +510,17 @@ fun Ast2Ir.callOperator(info: CallInfo, recv: IrExpression, args: List<IrExpress
             )
             IrParameterKind.ExtensionReceiver -> call.arguments.add(adaptReceiver(recv, p))
             IrParameterKind.Regular -> {
-                call.arguments.add(if (regular < args.size) args[regular] else null)
+                val map = info.paramOfArg
+                if (map.size == args.size && map.indices.any { map[it] != it }) {
+                    // `a[i] = v` with `set(i: String, d: String = "x", value: String)` / `set(vararg i: Int, value: Int)`: bound by the resolution
+                    val idxs = args.indices.filter { map[it] == regular }
+                    val ve = p.varargElementType
+                    call.arguments.add(
+                        if (idxs.isEmpty()) null
+                        else if (ve == null) args[idxs[0]]
+                        else IrVararg(irType(ve), idxs.map { args[it] }, irType(p.type)),
+                    )
+                } else call.arguments.add(if (regular < args.size) args[regular] else null)
                 regular++
             }
             // `context(h: Heap) operator fun matmul(...)`: the context argument comes from the scope like for any call
