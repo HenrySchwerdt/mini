@@ -221,3 +221,8 @@ the 1M node graph was complete: 2.9M objects visited, 0.5 s of 2.1 s, nothing fr
 only the allocation volume trigger (>= 3 x live bytes x backoff, at least 256 MB) starts a collection; the roots trigger applies again after the first collection that frees something.
 graph 3.27x -> 2.45x (C), 3.23x -> 2.31x (API), RSS 2.15x -> 2.00x; json, binarytrees, wordcount unchanged (wordcount 2.58 -> 2.30 was noise: no collection runs there beyond the first).
 Cost: a program that starts to create cyclic garbage after a useless collection can grow to 256 MB before the next one (stress-rss/stress-leak suites pass).
+
+Fix (CI): EmitterTest.stringLiteralsAreUtf16AndDeduplicated asserted the UTF-16-only literal; it now checks both representations
+(MK_STRING_LITERAL8 for all-below-256 strings, MK_STRING_LITERAL otherwise) including deduplication of each and a mixed module. The emitter was correct.
+Full `mini test -p backend -p frontend -p native-driver -p mini-tool`: exit 0 (103 + 33 + 2 + 79 tests). check-purity's "backend: unbound variable"
+is on origin/main too (scripts/check-purity.sh is identical there; `declare -A` does not exist in the macOS bash 3.2).
