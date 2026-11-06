@@ -226,6 +226,49 @@ Everything below is runtime internals (`runtime/src/alloc*.c`); the language-lev
 * **Statistics.** `-DMK_STATS` adds an allocator line to the summary: objects served from size classes vs `malloc`,
   chunks and chunk bytes, central pool refills and hand-offs, arena allocations (slow path) and arena chunks.
 
+### 2.7 Object layout (`compiler/backend/src/Layout.kt`)
+
+The size of an instance and the offset of every field come from one function, `ObjectLayouts`, used by the C emitter and both
+LLVM backends (text IR and the in-process API), so every backend produces the same bytes. Programs never see the layout:
+declaration order is what `toString`, `componentN`, `copy`, `equals`, `hashCode`, property references and enum constructors
+observe; only the memory order differs.
+
+Rules:
+
+1. **The header comes first** (`MkObject`: type pointer, refcount, flags; `ptrBytes + 8` bytes). A class defined by the runtime
+   (the exception classes, `MkThrowable`: header, `message`, `cause`) is a **fixed prefix**: a user exception class starts with it
+   and its own fields follow it.
+2. **A subclass starts at the superclass's unpadded data end**, not after the superclass's tail padding: it fills that padding.
+   (A class whose last field is an `Int` after a `Long` has 4 bytes of padding; the first small field of a subclass uses them.)
+3. **Own fields are sorted by alignment, then size, both descending**; declaration order breaks ties (the sort is stable). Before a
+   field is placed at an aligned slot that would leave a gap, the largest remaining field that fits into the gap is placed there
+   (so `Boolean`, `Byte`, `Short` and `Int` fields fill holes).
+4. **Size** = data end rounded up to the object alignment, which is the largest field alignment of the whole chain (at least the
+   pointer size). Sizes: `Boolean`/`Byte` 1, `Short`/`Char` 2, `Int`/`Float` 4, `Long`/`Double` 8, references and pointers `ptrBytes`.
+5. **Deterministic in the class chain alone.** The layout of a class depends only on its own fields and its superclass's layout,
+   never on the program that uses it (not on which classes are reachable, not on the order of files). A precompiled `.mlib`, a
+   wasm object and the program compiled against them therefore agree without recording offsets.
+
+The C emitter writes the struct with every field (inherited ones included) flat, in offset order, plus `_Static_assert`s on
+`sizeof` and on the offset of every own field, so a C compiler that lays the struct out differently fails to compile instead of
+corrupting memory. The numbers are computed for 8-byte pointers (the C backend targets 64-bit hosts, Windows included), so the asserts
+sit under `#if UINTPTR_MAX == 0xffffffffffffffffu` and are skipped on a target with other pointers. The LLVM backends use the
+offsets directly with the target's pointer size (`wasm32`: 4-byte pointers, a 12-byte header).
+
+**`-Xlayout-stats`** (a `minic-native`/`minic build` option, report on stderr) prints, per class, the new size next to the old size
+(declaration order, padded superclass embedded), the padding bytes, and every field with its offset (old offset in parentheses):
+
+```
+B: 40 (48) pad 0 (8) [a1@16 (16), a2@24 (24), b1@30 (32), b2@28 (34), b3@31 (36), b4@32 (40)]
+layout-stats: 15 classes, sum of instance sizes 432 B (old 456 B), padding 15 B (old 39 B)
+layout-stats: allocator blocks (16 B granules): sum 448 B (old 464 B), 1 classes drop a granule
+layout-stats: Boolean fields: 3; with bit packing (estimate) blocks would be 448 B, 0 more classes would drop a granule
+```
+
+The totals count only the classes of the program (the reachable stdlib classes included). Tests: `compiler/testdata/layout_*.kt` (all
+backends, sanitizers, wasm), `mlib::objectLayout` and `multifile::classChainAcrossFiles` in `scripts/test-e2e.sh`, and the layout
+checks of `scripts/wasm/test-mlib-object-inheritance.sh` (4-byte pointers).
+
 ---
 
 ## 3. Release

@@ -87,14 +87,25 @@ jobs:
       - name: Toolchain
         if: matrix.shard != 'stage0'
         run: scripts/ci-toolchain.sh
+      - name: LLVM 18 .deb cache key (Linux)
+        id: llvmkey
+        if: matrix.shard == 'llvm' && runner.os == 'Linux'
+        # ImageOS / ImageVersion are runner env vars, not available in ${{ }} expressions, so the key is computed here from the
+        # distro, architecture and the apt candidate version of llvm-18-dev: a new image or package version gets a fresh cache.
+        run: |
+          . /etc/os-release
+          cand="$(apt-cache policy llvm-18-dev | awk '/Candidate:/ {print $2}')"
+          key="llvm18-debs-${ID}-${VERSION_CODENAME}-$(dpkg --print-architecture)-${cand:-unknown}-v2"
+          key="$(printf '%s' "$key" | tr -c '[:alnum:]._+\n-' '_')"
+          echo "candidate=${cand}" >> "$GITHUB_OUTPUT"
+          echo "key=${key}" >> "$GITHUB_OUTPUT"
+          echo "cache key: ${key}"
       - name: LLVM 18 .deb cache (Linux)
         if: matrix.shard == 'llvm' && runner.os == 'Linux'
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/llvm-debs
-          key: llvm18-debs-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
-          restore-keys: |
-            llvm18-debs-${{ runner.os }}-${{ env.ImageOS }}-
+          key: ${{ steps.llvmkey.outputs.key }}
       - name: LLVM 18 (Linux)
         # LLVM C API headers and libLLVM for the in-memory backend (and the ORC JIT). The Ubuntu mirror is sometimes extremely
         # slow (35 s .. 34 min), so the .debs are cached (see the cache step above): a hit installs offline in seconds. A miss
@@ -103,6 +114,7 @@ jobs:
         timeout-minutes: 30
         env:
           DEB_DIR: ${{ runner.temp }}/llvm-debs
+          LLVM_CANDIDATE: ${{ steps.llvmkey.outputs.candidate }}
         run: |
           set -o pipefail
           stamp() { while IFS= read -r l; do printf '%s %s\n' "$(date -u +%T)" "$l"; done; }
@@ -114,6 +126,15 @@ jobs:
             mkdir -p "$DEB_DIR"
             installed=
             # 1. cache hit: install from the cached .debs only (no mirror access when the closure is complete)
+            cached_ver=
+            if ls "$DEB_DIR"/llvm-18-dev_*.deb >/dev/null 2>&1; then
+              cached_ver="$(dpkg-deb -f "$(ls "$DEB_DIR"/llvm-18-dev_*.deb | head -n1)" Version 2>/dev/null || true)"
+            fi
+            if [ -n "$cached_ver" ] && [ "$cached_ver" != "$LLVM_CANDIDATE" ]; then
+              echo "::warning::cached llvm-18-dev $cached_ver != candidate $LLVM_CANDIDATE; ignoring cached .debs"
+              sudo rm -rf "$DEB_DIR"
+              mkdir -p "$DEB_DIR"
+            fi
             if ls "$DEB_DIR"/*.deb >/dev/null 2>&1; then
               echo "installing from cached .debs ($(ls "$DEB_DIR"/*.deb | wc -l) files)"
               if sudo timeout 300 apt-get install "${APT_OPTS[@]}" -o Acquire::Retries=0 "$DEB_DIR"/*.deb 2>&1 | stamp; then

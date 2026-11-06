@@ -1,0 +1,12 @@
+step 0 got=1 flag=true count=1 big=35359738375 ratio=3.0 name=m4 acc=35359738375/1/false
+step 1 got=20 flag=true count=21 big=55359738515 ratio=23.0 name=m4 acc=90719476890/2/true
+step 2 got=300 flag=true count=321 big=355359740615 ratio=323.0 name=m4 acc=446079217505/3/false
+a done m4 true 321 355359740615 323.0 446079217505 3 false null
+step 0 got=7 flag=false count=7 big=49949673009 ratio=9.5 name=m5 acc=49949673009/1/true
+step 1 got=8 flag=false count=15 big=57949673065 ratio=17.5 name=m5 acc=107899346074/2/false
+step 2 got=9 flag=false count=24 big=66949673128 ratio=26.5 name=m5 acc=174849019202/3/true
+step 0 got=10 flag=true count=10 big=61539607622 ratio=13.0 name=m6 acc=61539607622/1/false
+step 1 got=11 flag=true count=21 big=72539607699 ratio=24.0 name=m6 acc=134079215321/2/true
+step 2 got=12 flag=true count=33 big=84539607783 ratio=36.0 name=m6 acc=218618823104/3/false
+b done m5 false 24 66949673128 26.5 174849019202 3 true|m6 true 33 84539607783 36.0 218618823104 3 false null
+[true 1099511627777 1, true 1099511627779 2, true 1099511627782 3]

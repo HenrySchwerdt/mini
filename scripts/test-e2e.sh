@@ -322,6 +322,44 @@ t_multifile() {
     return 0
 }
 
+# a class chain spread over three files, with an unreachable sibling subclass: the layout depends on the class chain alone, so pruning
+# classes must not change the offsets of the others
+t_multifile_layout() {
+    local d="$W/multi-layout"; mkdir -p "$d"
+    cat > "$d/a.kt" <<'EOF'
+fun main() {
+    val c = Leaf(1L shl 34, 2, true, 3, 4, "leaf", 5, 6L shl 34, null)
+    println(c)
+    c.mid2 = 9; c.flagA = false; c.last = 7
+    println(c)
+    val m: Mid = c
+    println(m.sum())
+}
+EOF
+    cat > "$d/b.kt" <<'EOF'
+open class Root(var big: Long, var n: Int) {
+    override fun toString(): String = "Root($big,$n)"
+}
+
+open class Mid(big: Long, n: Int, var flagA: Boolean, var mid2: Short, var mid3: Byte, var name: String) : Root(big, n) {
+    fun sum(): Long = big + n + (if (flagA) 100 else 0) + mid2 + mid3
+}
+
+class Pruned(big: Long, n: Int, var x: Long, var y: Boolean) : Root(big, n)
+EOF
+    cat > "$d/c.kt" <<'EOF'
+class Leaf(big: Long, n: Int, flagA: Boolean, mid2: Short, mid3: Byte, name: String, var last: Int, var other: Long, var link: Root?) :
+    Mid(big, n, flagA, mid2, mid3, name) {
+    override fun toString(): String = "Leaf($big,$n,$flagA,$mid2,$mid3,$name,$last,$other,$link)"
+}
+EOF
+    "$MINIC" -o "$d/out.c" "$d/a.kt" "$d/b.kt" "$d/c.kt" $(cat "$W/stdlib.txt") > "$d/log" 2>&1 || { echo "build failed:"; head "$d/log"; return 1; }
+    "$CC" -std=c17 -O1 -Wall $WNO -Werror -I "$INCLUDE" "$d/out.c" "$RTLIB" -o "$d/out" -lm > "$d/cc" 2>&1 || { echo "C compiler failed:"; head "$d/cc"; return 1; }
+    [ "$("$d/out")" = "$(printf 'Leaf(17179869184,2,true,3,4,leaf,5,103079215104,null)\nLeaf(17179869184,2,false,9,4,leaf,7,103079215104,null)\n17179869199')" ] || { echo "wrong output: $("$d/out")"; return 1; }
+    grep -q "struct Pruned" "$d/out.c" && { echo "the unreachable class was emitted"; return 1; }
+    return 0
+}
+
 t_allfiles() { # the memory checker looks at every user file, not only the first
     local d="$W/allfiles"; mkdir -p "$d"
     printf '@file:MemoryMode(Mode.Strict)\nimport mini.memory.*\n\n@AllocatedBy(Heap::class)\nclass Box(val v: Int)\n\nfun main() {\n    val b = Box(1)\n    b.free()\n    leak()\n}\n' > "$d/a.kt"
@@ -364,6 +402,101 @@ t_mlib_chain() {
     "$MINIC" --emit-mlib "$d/a2.mlib" --name a --compiler-id "$V" --lib "$S" "$d/a2.kt" > "$d/log" 2>&1 || { echo "a2.mlib failed:"; head "$d/log"; return 1; }
     "$MINIC" --check "$d/main.kt" --lib "$S" --lib "$d/b.mlib" --lib "$d/a2.mlib" > "$d/log" 2>&1 && { echo "wrong dependency hash was not reported"; return 1; }
     grep -q "was built against 'a'" "$d/log" || { echo "wrong message for a wrong dependency:"; head "$d/log"; return 1; }
+    return 0
+}
+
+# object layout across precompiled libraries (docs/memory-model.md, "Object layout"): a class chain whose levels live in two libraries and
+# the program (a subclass fills the tail padding of its superclass; an exception chain; a data class) must lay out identically in library
+# mode and in source mode, and the fields of all levels must stay independent
+t_mlib_layout() {
+    [ "$STDMODE" = mlib ] || return 77
+    local d="$W/mlib-layout"; mkdir -p "$d"
+    local S="$NATIVE/lib/stdlib.mlib" V; V="$(cat "$NATIVE/VERSION" 2>/dev/null || echo unknown)"
+    cat > "$d/a.kt" <<'EOF'
+package base
+
+open class Animal(var weight: Long, var legs: Int) {
+    open fun describe(): String = "Animal($weight,$legs)"
+}
+
+open class BaseError(message: String, val code: Int, val fatal: Boolean) : Exception(message) {
+    var attempts: Long = 3L
+}
+
+data class Key(val on: Boolean, val id: Int, val big: Long, val name: String)
+EOF
+    cat > "$d/b.kt" <<'EOF'
+package mid
+
+import base.*
+
+open class Dog(weight: Long, legs: Int, var tame: Boolean, var age: Short, var tag: Byte, var name: String) : Animal(weight, legs) {
+    override fun describe(): String = "Dog($weight,$legs,$tame,$age,$tag,$name)"
+}
+
+class MidError(message: String, code: Int, val host: String, val retry: Boolean) : BaseError(message, code, false) {
+    var bytes: Long = -1L
+}
+
+fun mkKey(i: Int): Key = Key(i % 2 == 0, i, i.toLong() shl 33, "k$i")
+EOF
+    cat > "$d/main.kt" <<'EOF'
+import base.*
+import mid.*
+
+class Puppy(weight: Long, legs: Int, tame: Boolean, age: Short, tag: Byte, name: String, var months: Int, var big: Long, var flag: Boolean, var mom: Dog?) :
+    Dog(weight, legs, tame, age, tag, name) {
+    override fun describe(): String = "Puppy($weight,$legs,$tame,$age,$tag,$name,$months,$big,$flag,${mom?.describe()})"
+}
+
+class AppError(host: String, val millis: Long, val soft: Boolean) : MidError("app", 7, host, true) {
+    var tries: Int = 2
+}
+
+fun main() {
+    val dog = Dog(5L shl 32, 4, true, -3, 9, "rex")
+    val pup = Puppy(1L shl 33, 4, false, 2, -5, "bit", 7, 1L shl 40, true, dog)
+    println(dog.describe())
+    println(pup.describe())
+    val all: List<Animal> = listOf(Animal(1, 2), dog, pup)
+    println(all.map { it.describe() })
+    pup.legs = 3; pup.tame = true; pup.months += 1; pup.flag = false
+    println(pup.describe())
+    try {
+        throw AppError("h.example", 1L shl 35, true)
+    } catch (e: MidError) {
+        val a = e as AppError
+        println("${e.message} ${e.code} ${e.fatal} ${e.attempts} ${e.host} ${e.retry} ${e.bytes} ${a.millis} ${a.soft} ${a.tries}")
+    }
+    val k = mkKey(3)
+    println(k)
+    println(k == k.copy(id = 3))
+    println(k.copy(on = true) == k)
+    println(k.hashCode() == mkKey(3).hashCode())
+}
+EOF
+    cat > "$d/expected.txt" <<'EOF'
+Dog(21474836480,4,true,-3,9,rex)
+Puppy(8589934592,4,false,2,-5,bit,7,1099511627776,true,Dog(21474836480,4,true,-3,9,rex))
+[Animal(1,2), Dog(21474836480,4,true,-3,9,rex), Puppy(8589934592,4,false,2,-5,bit,7,1099511627776,true,Dog(21474836480,4,true,-3,9,rex))]
+Puppy(8589934592,3,true,2,-5,bit,8,1099511627776,false,Dog(21474836480,4,true,-3,9,rex))
+app 7 false 3 h.example true -1 34359738368 true 2
+Key(on=false, id=3, big=25769803776, name=k3)
+true
+false
+true
+EOF
+    "$MINIC" --emit-mlib "$d/a.mlib" --name base --lib-version 1.0.0 --compiler-id "$V" --lib "$S" "$d/a.kt" > "$d/log" 2>&1 || { echo "a.mlib failed:"; head "$d/log"; return 1; }
+    "$MINIC" --emit-mlib "$d/b.mlib" --name mid --compiler-id "$V" --lib "$S" --lib "$d/a.mlib" "$d/b.kt" > "$d/log" 2>&1 || { echo "b.mlib failed:"; head "$d/log"; return 1; }
+    "$MINIC" -o "$d/out.c" "$d/main.kt" --lib "$S" --lib "$d/b.mlib" --lib "$d/a.mlib" --compiler-id "$V" > "$d/log" 2>&1 || { echo "program failed:"; head "$d/log"; return 1; }
+    "$CC" -std=c17 -O1 -Wall $WNO -Werror -I "$INCLUDE" "$d/out.c" "$RTLIB" -o "$d/out" -lm > "$d/cc" 2>&1 || { echo "C compiler failed:"; head "$d/cc"; return 1; }
+    "$d/out" > "$d/out.txt" 2>&1 || { echo "program failed to run:"; head "$d/out.txt"; return 1; }
+    "$MINIC" -o "$d/src.c" "$d/main.kt" "$d/a.kt" "$d/b.kt" --stdlib $STD > "$d/log" 2>&1 || { echo "source mode failed:"; head "$d/log"; return 1; }
+    "$CC" -std=c17 -O1 -Wall $WNO -Werror -I "$INCLUDE" "$d/src.c" "$RTLIB" -o "$d/src" -lm > "$d/cc" 2>&1 || { echo "C compiler failed:"; head "$d/cc"; return 1; }
+    "$d/src" > "$d/src.txt" 2>&1 || { echo "source-mode program failed to run:"; head "$d/src.txt"; return 1; }
+    cmp -s "$d/out.txt" "$d/src.txt" || { echo "source mode and library mode differ"; diff "$d/out.txt" "$d/src.txt" | head; return 1; }
+    cmp -s "$d/out.txt" "$d/expected.txt" || { echo "wrong output:"; diff "$d/out.txt" "$d/expected.txt" | head; return 1; }
+    grep -q "_Static_assert(offsetof(struct" "$d/out.c" || { echo "no layout asserts in the program C"; return 1; }
     return 0
 }
 
@@ -424,7 +557,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_allfiles t_mlib_chain t_mlib_errors t_mlib_summaries run_with_timeout
+export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -458,8 +591,8 @@ stress_progs() { find "$TESTDATA/stress" -maxdepth 1 -name '*.kt' 2>/dev/null | 
 want_suite stress-leak && for f in $(stress_progs); do add stress-leak "$(basename "$f" .kt)" "t_c $f asan"; done
 want_suite stress-llvm-leak && for f in $(stress_progs); do add stress-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
-want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib summaries t_mlib_summaries; }
-want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; }
+want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
+want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; add multifile classChainAcrossFiles t_multifile_layout; }
 
 if [ -n "$FILTER" ]; then grep -F -- "$FILTER" "$LISTFILE" > "$LISTFILE.f" || true; mv "$LISTFILE.f" "$LISTFILE"; fi
 total="$(wc -l < "$LISTFILE" | tr -d ' ')"

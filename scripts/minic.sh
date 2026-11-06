@@ -252,7 +252,7 @@ while [ "$nargs" -gt 0 ]; do
         -o?*) name="-o"; val="${a#-o}"; has_val=1 ;;
     esac
     case "$a" in
-        -Xno-*|-Xopt-stats) XOPTS="$XOPTS$a
+        -Xno-*|-Xopt-stats|-Xlayout-stats) XOPTS="$XOPTS$a
 "; continue ;;   # MIR optimization switches (compiler/backend/src/opt/MirOpt.kt): passed to minic-native as they are
     esac
     case "$a" in

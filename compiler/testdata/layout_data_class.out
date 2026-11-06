@@ -1,0 +1,21 @@
+Rec(flag=true, id=7, name=seven, big=7000000000, b=7, score=7.5, tag=null, on=false, ch=q)
+true 7 seven 7000000000 7 7.5 null false q
+true 7 seven 7000000000 7 7.5 null false q
+Rec(flag=true, id=8, name=seven, big=-1, b=7, score=7.5, tag=t, on=false, ch=q)
+true
+true
+false
+false
+false
+false
+false
+Pt(flag=true, x=1, y=2, label=p)
+true
+false
+true
+Big(a=1, b=2, c=3, d=4, e=true)
+-1 1099511627776 -3 4 false
+2
+1
+y
+[Pt(flag=false, x=1, y=1, label=a), Pt(flag=true, x=3, y=3, label=c)]
