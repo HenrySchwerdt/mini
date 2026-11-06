@@ -1336,6 +1336,26 @@ small open-addressing table (`slots` in `cycles.c`, touched only when an object 
 suites). `scripts/test-e2e.sh --suite stress` runs allocation-heavy programs (`compiler/testdata/stress/`): LeakSanitizer clean and the
 peak RSS at 4x the rounds must stay within 25 percent of the peak at 1x.
 
+## Memory-safety gaps closed (Managed mode, generated code and runtime)
+
+An audit of what well-typed Kotlin could still do to the process (use after free, double free, null dereference without an exception,
+out-of-bounds access, races on reference counts). Each item names the gap, the root cause and the regression test (`compiler/testdata`,
+which run under AddressSanitizer + LeakSanitizer in the `leak` and `llvm-leak` suites).
+
+| Gap | Root cause | Fix | Test |
+|---|---|---|---|
+| **Heap pollution is type confusion.** `listOf<Any>(1) as List<String>` followed by `l[0].length` read the boxed Int as a String (length and characters taken from a foreign layout: garbage output, out-of-bounds reads); the same for a generic field (`Box<T>.v`), `T` results, lambda parameters and `Array<String>` | the conversion of an erased value (`Any?`) to the type it has at the use (`adaptResult`, `convertFromErased`, `coerceFlexible`, unboxing from `Any`) was a C-level retyping (`CastMode.Unchecked`) | it is a **checked cast** (`CastMode.Checked`, `erasedCastMode`) like the `checkcast` the JVM inserts at the use: `ClassCastException` (`NullPointerException` for a `null` that is not allowed). `Any` itself, the common case, costs nothing; same-class values pass the inline type-pointer compare | `generic_pollution_cce` |
+| **A non-null property read before it is initialized dereferenced the zero of the allocation** (`open class Base { init { show() } }`, `class D : Base() { val s = "x"; override fun show() { s.length } }`; two `object`s or files that read each other's properties while they initialize). Strings silently read as `""`/`"null"`, other classes were a null dereference | the field of a non-null type is assumed to hold a value | reads of such a field are null-checked (`NullPointerException`, like the JVM) when the field can still be unset while code of its class runs: classes whose initialization lets `this` out (`initLeaksThis`: a member call with the implicit receiver, `this` passed or captured in a property initializer, `init` block or constructor, in the class or one of its superclasses), fields of `object`s and top-level properties that have a non-constant initializer. Other classes pay nothing (`Ir2MirInitSafety.kt`) | `uninit_field_npe` |
+| **Huge arrays**: `IntArray(Int.MAX_VALUE)` on a machine that cannot supply the memory wrote the length into a null block; on a 32-bit target (wasm32) `elem * length` wrapped to a small block and later accesses were out of bounds | `array_new` neither checked the size computation nor the result of the allocator | overflow-checked size, a failed allocation is the fatal `OutOfMemoryError` (like `string too long`) | (needs an unreasonable allocation; the check is in `runtime/src/v1l.c`) |
+| **`list.addAll(list)` never ended** (the loop re-read the size of the list it was growing and ran until the storage was exhausted) | `ArrayList.addAll` iterated with the live size | the element count is taken once before the copy | `list_addall_self` |
+| **Leaks at the end of an uncaught exception**: the exception object and its text were not released before `exit(1)`, so a leak checker flagged every program that ends with an uncaught exception | `mk_report_uncaught` | released | (visible with LeakSanitizer on any `.err` program) |
+| **Data race on reference counts in threaded programs** (`reference count underflow` aborts, use after free): `mk_release` recorded the cycle candidate **after** it had dropped its reference, when another thread could already have freed the object; and `HashMap.get` wrote its one-entry lookup cache (two reference fields) on every read, so concurrent readers of a read-only map double-released the cached node | see left | the candidate is recorded before the decrement (this reference still keeps the object alive; if the decrement then reaches zero the object is a buffered root that dies, which the zero path already handles); the lookup cache is only written while no thread has been started (`mini.internal.threadsActive`) | `threads_shared_readers` |
+
+Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-range index as a fatal
+`StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
+catchable. Unsynchronized writes to a *shared mutable* collection from several threads are a data race of the program (as on the JVM)
+and are not made safe; the cycle collector still only runs while no Kotlin thread runs (section "Threads").
+
 ## Experience from D2 (Strict code generation)
 
 - Annotations: the new test programs `strict_{heap_list,arena_tree,pool,boundary,auto,close}.kt` need one allocator

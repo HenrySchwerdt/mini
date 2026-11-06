@@ -526,6 +526,8 @@ MkObject *mk_atomic_ref_get(MkObject *a);
 void mk_atomic_ref_set(MkObject *a, MkObject *v);
 MkObject *mk_atomic_ref_exchange(MkObject *a, MkObject *v);
 bool mk_atomic_ref_cas(MkObject *a, MkObject *expected, MkObject *v);
+/* true once a thread has been started: objects may be reachable from several threads (read-only operations must not write caches then) */
+bool mk_sys_threads_active(void);
 
 /* ---- end v1-S ------------------------------------------------------------------- */
 

@@ -232,7 +232,17 @@ void mk_release(MkObject *object) {
     uint32_t old;
     if ((flags & MK_FLAG_SHARED) || __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
         MK_STAT_RELEASE(2);
+        /* Once the count is dropped another thread may release the last reference and free the object, so nothing may touch it
+         * afterwards unless this call turned out to hold the last reference itself. The cycle candidate is therefore recorded
+         * BEFORE the decrement, while this reference still keeps the object alive (when the decrement then reaches zero the
+         * object is a buffered root that dies, which the zero path below handles like any buffered object). */
+        if ((__atomic_load_n(&object->flags, __ATOMIC_RELAXED) & MK_FLAG_ARMED) && __atomic_load_n(&object->refcount, __ATOMIC_RELAXED) > 1u)
+            mk_cycles_hooks.candidate(object);
         old = mk_atomic_fetch_add(&object->refcount, UINT32_MAX); /* -1 */
+        if (old != 1u) {
+            if (old == 0u) mk_panic("reference count underflow");
+            return;
+        }
         flags = __atomic_load_n(&object->flags, __ATOMIC_RELAXED); /* (other threads record candidates meanwhile) */
     } else {
         MK_STAT_RELEASE(1);

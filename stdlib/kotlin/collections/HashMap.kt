@@ -118,7 +118,9 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         var e = slot((n - 1) and hash)
         while (e != null) {
             if (e.hash == hash && e.key == key) {
-                if (key is String) {
+                // the cache is written by a read: with threads running that would be a data race on two reference fields
+                // (a double release of the old node, a key of one lookup paired with the node of another), so it is only kept while single threaded
+                if (key is String && !mini.internal.threadsActive()) {
                     lastKey = key
                     lastNode = e
                 }
