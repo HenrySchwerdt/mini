@@ -413,7 +413,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     }
     val module = if (separateMlibs || wasmLib) unoptimized else MirOpt.run(unoptimized, optOptions) { line -> errln(line) }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
-    if (optOptions.layoutStats) LayoutStats.report(module, if (wasmLib) 4 else 8) { line -> errln(line) }
+    if (optOptions.layoutStats) LayoutStats.report(module, if (wasm32) 4 else 8) { line -> errln(line) }
     if (wasmLib) {
         if (module.functions.any { it.cName == Mangling.MAIN }) {
             printGeneral(diag, "a wasm library has no entry point: remove `fun main` from " + name + " (or build it without --emit=wasm-lib)")

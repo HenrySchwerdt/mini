@@ -332,8 +332,12 @@ object CEmitter {
                     out.append("    ${cType(sl.type)} $fname;\n")
                 }
                 out.append("};\n")
+                // the numbers are computed for 8-byte pointers (layouts = ObjectLayouts(classes, 8)): a target with other pointers
+                // (a 32-bit C build) keeps the C compiler's own layout and skips the checks
+                out.append("#if UINTPTR_MAX == 0xffffffffffffffffu\n")
                 out.append("_Static_assert(sizeof(struct ${c.cName}) == ${lay.size}, \"object layout\");\n")
                 for (f in c.fields) out.append("_Static_assert(offsetof(struct ${c.cName}, ${Mangling.field(f.name)}) == ${lay.offsets[f.name]}, \"object layout\");\n")
+                out.append("#endif\n")
                 // dispose
                 val refFields = c.fields.filter { tr.rcField(c, it) }
                 // owned fields of tracked type (Strict classes): freeing the object frees them (docs/memory-model.md 5.3)

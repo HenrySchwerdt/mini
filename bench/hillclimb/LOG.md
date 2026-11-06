@@ -247,6 +247,12 @@ Measured (instance size, old -> new):
 
 Verdict: the realistic gain is within noise (most padding is the unavoidable 8 B tail round-up, and the allocator rounds to 16 B anyway).
 Recommendation: merge only if the risk is judged acceptable; `-Xlayout-stats` is the durable part.
+
+Full validation (head = main e434374 + #70/#71 merged): all test-e2e.sh suites (c, llvm, leak, llvm-leak, memcheck, memrun, strict,
+strict-leak, strict-llvm-leak, stress-leak, stress-llvm-leak, stress-rss, multifile, mlib, llvm-api), runtime/run_tests.sh, C bootstrap
+and llvm-api bootstrap (stage2 == stage3), `mini test` (79 tests), strict-corpus --run, ci-stage0 (0.9.0 stage0), the wasm toolchain
+with the mlib inheritance test (wasm32 layout checked: 12-byte header, `Int` placed in the gap before the 8-aligned `Long`). Fixes: the
+C asserts are skipped unless pointers are 64-bit; `-Xlayout-stats` used 8-byte pointers for `--target=wasm32` without `--emit=wasm-lib`.
 # Round 4 (`claude/perf-3`, base origin/main 8c22f6c)
 
 Same-session A/B (5 runs, cpu 3, `score.py --no-guard`): head = this branch, base = the same compiler/stdlib with the origin/main runtime library
