@@ -10,6 +10,9 @@ class Diag(val path: String, val start: Int, val message: String)
  * Expression checking lives in [BodyChecker]; type algebra in [TypeOps]; member lookup in [Members].
  */
 class Sema {
+    /** set while the type of an `is` / `as` is resolved: a generic class or alias written without type arguments is allowed (inferred from the subject) */
+    var bareTypeOk = false
+
     val files = ArrayList<FileInfo>()
     val packages = LinkedHashMap<String, PackageInfo>()
     val diags = ArrayList<Diag>()
@@ -429,8 +432,8 @@ class Sema {
             }
         }
         if (cur == null) {
-            // qualified by a package
-            var k = 1
+            // qualified by a package (`kotlin.Comparator<T>`: the package may be a single name)
+            var k = 0
             while (k < segs.size && cur == null) {
                 val sb = StringBuilder()
                 var j = 0
@@ -491,7 +494,7 @@ class Sema {
                         // `Foo` for a generic class where the arguments cannot be left out: tolerated as star projections
                         val st = ArrayList<TArg>()
                         for (tp in c.typeParams) st.add(TArg(null, Variance.INV))
-                        error(file, ref.start, "type arguments expected for " + c.name)
+                        if (!bareTypeOk) error(file, ref.start, "type arguments expected for " + c.name)
                         return ClassType(c, st, false)
                     }
                     error(file, ref.start, "wrong number of type arguments for " + c.name)
@@ -501,6 +504,7 @@ class Sema {
             }
             is TypeAliasSym -> {
                 val e = expandAlias(c)
+                if (args.isEmpty() && bareTypeOk) for (tp in c.typeParams) args.add(TArg(null, Variance.INV))
                 if (args.size != c.typeParams.size) {
                     error(file, ref.start, "wrong number of type arguments for typealias " + c.name)
                     return ErrType("alias args")
@@ -512,7 +516,28 @@ class Sema {
                     m[tp] = t ?: nullableAny
                     k++
                 }
-                return ops.substitute(e, m)
+                val sub = ops.substitute(e, m)
+                // `typealias AddLastDesc<T> = AddLastDesc2<T>` used as `AddLastDesc<*>`: the star stays a star of the class (not `Any?`)
+                if (e is ClassType && sub is ClassType && e.args.size == sub.args.size) {
+                    var anyStar = false
+                    for (a in args) if (a.type == null) anyStar = true
+                    if (anyStar) {
+                        val nargs = ArrayList<TArg>()
+                        var q = 0
+                        while (q < e.args.size) {
+                            val ety = e.args[q].type
+                            var star = false
+                            if (ety is TypeParamType) {
+                                val ix = c.typeParams.indexOf(ety.tp)
+                                if (ix >= 0 && args[ix].type == null) star = true
+                            }
+                            nargs.add(if (star) TArg(null, e.args[q].variance) else sub.args[q])
+                            q++
+                        }
+                        return ClassType(sub.cls, nargs, sub.nullable)
+                    }
+                }
+                return sub
             }
             else -> return ErrType("classifier")
         }
