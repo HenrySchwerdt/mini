@@ -474,3 +474,13 @@ public val String.Companion.CASE_INSENSITIVE_ORDER: Comparator<String>
     get() = Comparator { a, b -> a.compareTo(b, true) }
 
 public fun StringBuilder(content: CharSequence): StringBuilder = StringBuilder(content.toString())
+
+public fun String.Companion.format(format: String, vararg args: Any?): String = format.format(*args)
+
+public inline fun <K> CharSequence.groupingBy(crossinline keySelector: (Char) -> K): Grouping<Char, K> {
+    val cs = this
+    return object : Grouping<Char, K> {
+        override fun sourceIterator(): Iterator<Char> = cs.iterator()
+        override fun keyOf(element: Char): K = keySelector(element)
+    }
+}

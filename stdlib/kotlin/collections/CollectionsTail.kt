@@ -180,7 +180,26 @@ public inline fun <T, R, V> Iterable<T>.zip(other: Array<out R>, transform: (a: 
     return list
 }
 
+public fun <@kotlin.internal.OnlyInputTypes T> Iterable<T>.lastIndexOf(element: T): Int {
+    var lastIndex = -1
+    var index = 0
+    for (item in this) {
+        if (element == item) lastIndex = index
+        index++
+    }
+    return lastIndex
+}
+
 // ---- List ----------------------------------------------------------------------------------------------
+
+public fun <@kotlin.internal.OnlyInputTypes T> List<T>.lastIndexOf(element: T): Int {
+    var index = size - 1
+    while (index >= 0) {
+        if (element == get(index)) return index
+        index--
+    }
+    return -1
+}
 
 public operator fun <T> List<T>.component1(): T = get(0)
 public operator fun <T> List<T>.component2(): T = get(1)
@@ -437,3 +456,164 @@ public fun <K, V> Map<K, V>.withDefault(defaultValue: (key: K) -> V): Map<K, V> 
 @kotlin.jvm.JvmName("withDefaultMutable")
 public fun <K, V> MutableMap<K, V>.withDefault(defaultValue: (key: K) -> V): MutableMap<K, V> =
     if (this is MutableMapWithDefaultImpl<K, V>) this.map.withDefault(defaultValue) else MutableMapWithDefaultImpl<K, V>(this, defaultValue)
+
+// ---- more Iterable / Grouping / Map ----------------------------------------------------------------------
+
+public inline fun <T, R, C : MutableCollection<in R>> Iterable<T>.flatMapIndexedTo(destination: C, transform: (index: Int, T) -> Iterable<R>): C {
+    var index = 0
+    for (element in this) {
+        destination.addAll(transform(index++, element))
+    }
+    return destination
+}
+
+public inline fun <T, R : Any, C : MutableCollection<in R>> Iterable<T>.mapIndexedNotNullTo(destination: C, transform: (index: Int, T) -> R?): C {
+    var index = 0
+    for (element in this) {
+        val v = transform(index++, element)
+        if (v != null) destination.add(v)
+    }
+    return destination
+}
+
+public inline fun <T, R> Iterable<T>.maxOfWithOrNull(comparator: Comparator<in R>, selector: (T) -> R): R? {
+    val iterator = iterator()
+    if (!iterator.hasNext()) return null
+    var maxValue = selector(iterator.next())
+    while (iterator.hasNext()) {
+        val v = selector(iterator.next())
+        if (comparator.compare(maxValue, v) < 0) maxValue = v
+    }
+    return maxValue
+}
+
+public inline fun <T, R> Iterable<T>.minOfWithOrNull(comparator: Comparator<in R>, selector: (T) -> R): R? {
+    val iterator = iterator()
+    if (!iterator.hasNext()) return null
+    var minValue = selector(iterator.next())
+    while (iterator.hasNext()) {
+        val v = selector(iterator.next())
+        if (comparator.compare(minValue, v) > 0) minValue = v
+    }
+    return minValue
+}
+
+public inline fun <T, K, V, M : MutableMap<in K, MutableList<V>>> Iterable<T>.groupByTo(destination: M, keySelector: (T) -> K, valueTransform: (T) -> V): M {
+    for (element in this) {
+        val key = keySelector(element)
+        var list = destination[key]
+        if (list == null) {
+            list = ArrayList<V>()
+            destination.put(key, list)
+        }
+        list.add(valueTransform(element))
+    }
+    return destination
+}
+
+public inline fun <T, K, V, M : MutableMap<in K, in V>> Iterable<T>.associateByTo(destination: M, keySelector: (T) -> K, valueTransform: (T) -> V): M {
+    for (element in this) {
+        destination.put(keySelector(element), valueTransform(element))
+    }
+    return destination
+}
+
+public inline fun <K, V, M : MutableMap<in K, in V>> Iterable<K>.associateWithTo(destination: M, valueSelector: (K) -> V): M {
+    for (element in this) {
+        destination.put(element, valueSelector(element))
+    }
+    return destination
+}
+
+public fun <T> Iterator<T>.withIndex(): Iterator<IndexedValue<T>> {
+    val src = this
+    return object : Iterator<IndexedValue<T>> {
+        private var index = 0
+        override fun hasNext(): Boolean = src.hasNext()
+        override fun next(): IndexedValue<T> = IndexedValue(index++, src.next())
+    }
+}
+
+@kotlin.jvm.JvmName("flattenArrays")
+public fun <T> Iterable<Array<out T>>.flatten(): List<T> {
+    val result = ArrayList<T>()
+    for (element in this) {
+        result.addAll(element.asList())
+    }
+    return result
+}
+
+public fun <T, K, M : MutableMap<in K, Int>> Grouping<T, K>.eachCountTo(destination: M): M {
+    val it0 = sourceIterator()
+    while (it0.hasNext()) {
+        val k = keyOf(it0.next())
+        destination.put(k, (destination.get(k) ?: 0) + 1)
+    }
+    return destination
+}
+
+public inline fun <T, K, R> Grouping<T, K>.fold(initialValueSelector: (key: K, element: T) -> R, operation: (key: K, accumulator: R, element: T) -> R): Map<K, R> =
+    foldTo(LinkedHashMap<K, R>(), initialValueSelector, operation)
+
+public inline fun <T, K, R, M : MutableMap<in K, R>> Grouping<T, K>.foldTo(
+    destination: M,
+    initialValueSelector: (key: K, element: T) -> R,
+    operation: (key: K, accumulator: R, element: T) -> R,
+): M {
+    val it0 = sourceIterator()
+    while (it0.hasNext()) {
+        val e = it0.next()
+        val k = keyOf(e)
+        val acc: R = if (destination.containsKey(k)) (destination.get(k) as R) else initialValueSelector(k, e)
+        destination.put(k, operation(k, acc, e))
+    }
+    return destination
+}
+
+public inline fun <T, K, R, M : MutableMap<in K, R>> Grouping<T, K>.foldTo(destination: M, initialValue: R, operation: (accumulator: R, element: T) -> R): M {
+    val it0 = sourceIterator()
+    while (it0.hasNext()) {
+        val e = it0.next()
+        val k = keyOf(e)
+        val acc: R = if (destination.containsKey(k)) (destination.get(k) as R) else initialValue
+        destination.put(k, operation(acc, e))
+    }
+    return destination
+}
+
+public inline fun <S, T : S, K, M : MutableMap<in K, S>> Grouping<T, K>.reduceTo(destination: M, operation: (key: K, accumulator: S, element: T) -> S): M {
+    val it0 = sourceIterator()
+    while (it0.hasNext()) {
+        val e = it0.next()
+        val k = keyOf(e)
+        if (destination.containsKey(k)) {
+            destination.put(k, operation(k, destination.get(k) as S, e))
+        } else {
+            destination.put(k, e)
+        }
+    }
+    return destination
+}
+
+public inline fun <T, K, R, M : MutableMap<in K, R>> Grouping<T, K>.aggregateTo(destination: M, operation: (key: K, accumulator: R?, element: T, first: Boolean) -> R): M {
+    val it0 = sourceIterator()
+    while (it0.hasNext()) {
+        val e = it0.next()
+        val k = keyOf(e)
+        val first = !destination.containsKey(k)
+        destination.put(k, operation(k, if (first) null else (destination.get(k) as R), e, first))
+    }
+    return destination
+}
+
+public inline fun <K, V, R : Comparable<R>> Map<out K, V>.maxOfOrNull(selector: (Map.Entry<K, V>) -> R): R? = entries.maxOfOrNull(selector)
+public inline fun <K, V, R : Comparable<R>> Map<out K, V>.minOfOrNull(selector: (Map.Entry<K, V>) -> R): R? = entries.minOfOrNull(selector)
+public inline fun <K, V, R> Map<out K, V>.maxOfWith(comparator: Comparator<in R>, selector: (Map.Entry<K, V>) -> R): R = entries.maxOfWith(comparator, selector)
+public inline fun <K, V, R> Map<out K, V>.minOfWith(comparator: Comparator<in R>, selector: (Map.Entry<K, V>) -> R): R = entries.minOfWith(comparator, selector)
+
+public inline fun <K, V, M : MutableMap<in K, in V>> Map<out K, V>.filterNotTo(destination: M, predicate: (Map.Entry<K, V>) -> Boolean): M {
+    for (element in this) {
+        if (!predicate(element)) destination.put(element.key, element.value)
+    }
+    return destination
+}

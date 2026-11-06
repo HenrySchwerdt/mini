@@ -41,3 +41,17 @@ public fun Random.nextULong(from: ULong, until: ULong): ULong {
     val signedResult = nextLong(signedFrom, signedUntil) xor Long.MIN_VALUE
     return signedResult.toULong()
 }
+
+public fun Random.nextUInt(range: UIntRange): UInt {
+    if (range.isEmpty()) throw IllegalArgumentException("Cannot get random in empty range: " + range)
+    return if (range.last < UInt.MAX_VALUE) nextUInt(range.first, range.last + 1u)
+    else if (range.first > UInt.MIN_VALUE) nextUInt(range.first - 1u, range.last) + 1u
+    else nextUInt()
+}
+
+public fun Random.nextULong(range: ULongRange): ULong {
+    if (range.isEmpty()) throw IllegalArgumentException("Cannot get random in empty range: " + range)
+    return if (range.last < ULong.MAX_VALUE) nextULong(range.first, range.last + 1uL)
+    else if (range.first > ULong.MIN_VALUE) nextULong(range.first - 1uL, range.last) + 1uL
+    else nextULong()
+}
