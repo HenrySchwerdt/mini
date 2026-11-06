@@ -457,6 +457,17 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     // suspend conversion: a reference to a non-suspend function where a suspend function type is expected becomes a suspend lambda;
     // so does a reference to a suspend function (`O(::id)`), whose closure would not take the continuation like a suspend function value
     val csym = chosen.sym
+    // `val f = ::suspendFun`: with no expected type the reference is a value of the suspend function type (calling it passes the continuation)
+    val selfSuspend = ef == null && csym is FunSym && !chosen.isProp && csym.mods()?.has("suspend") == true &&
+        chosen.params.none { unfixedType(cs.resolveFixed(ops.substitute(it, m))) } && !unfixedType(cs.resolveFixed(ops.substitute(chosen.ret, m)))
+    if (selfSuspend && csym is FunSym) {
+        val off0 = chosen.params.size - csym.params.size
+        if (off0 in 0..1 && adapted == null) {
+            val n0 = csym.params.size
+            adapted = AdaptedRef(AdaptMap(IntArray(n0) { off0 + it }, IntArray(n0) { 1 }), off0)
+        }
+        if (adapted != null) adapted.suspendConv = true
+    }
     if (ef != null && ef.suspend && csym is FunSym && !chosen.isProp) {
         if (adapted == null) {
             val off0 = chosen.params.size - csym.params.size
@@ -466,6 +477,14 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             }
         }
         if (adapted != null) adapted.suspendConv = true
+    }
+    // coercion to Unit: a reference to a function with a result where `... -> Unit` is expected is adapted (its own class: it is not equal to the plain reference)
+    if (ef != null && adapted == null && csym is FunSym && !chosen.isProp && ops.isUnit(cs.resolveFixed(ef.ret)) && !ops.isUnit(cs.resolveFixed(ops.substitute(chosen.ret, m)))) {
+        val off0 = chosen.params.size - csym.params.size
+        if (off0 in 0..1) {
+            val n0 = csym.params.size
+            adapted = AdaptedRef(AdaptMap(IntArray(n0) { off0 + it }, IntArray(n0) { 1 }), off0)
+        }
     }
     val ps = ArrayList<Type>()
     if (adapted != null && ef != null) {
@@ -500,7 +519,28 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         adapted.typeArgs = targs
         rr.extra = adapted
     }
+    // the lowering reads the arguments of the KFunction type recorded above; the checker sees the suspend function type
+    if (selfSuspend && adapted != null && !chosen.isProp && !ps.any { unfixedType(it) } && !unfixedType(ret)) return FunType(null, ps, ret, false, true)
     return t
+}
+
+/** does [t] still have an inference variable or an unresolved part? */
+fun unfixedType(t: Type): Boolean {
+    if (t is ErrType || t is VarType) return true
+    if (t is ClassType) {
+        for (a in t.args) {
+            val x = a.type
+            if (x != null && unfixedType(x)) return true
+        }
+        return false
+    }
+    if (t is FunType) {
+        val r = t.receiver
+        if (r != null && unfixedType(r)) return true
+        for (p in t.params) if (unfixedType(p)) return true
+        return unfixedType(t.ret)
+    }
+    return false
 }
 
 /** How the expected parameters of a function type map onto the parameters of the function a callable reference was adapted to. */

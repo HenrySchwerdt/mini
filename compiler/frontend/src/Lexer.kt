@@ -360,6 +360,15 @@ class Lexer(private val src: String) {
         val s = pos
         if (identNext) {
             identNext = false
+            if (c == '`') {
+                // a backtick identifier in a template: dollar, backtick, name, backtick
+                var e = pos + 1
+                while (e < n && src[e] != '`' && src[e] != '\n') e++
+                if (e < n && src[e] == '`') e++
+                pos = e
+                emit(Tk.IDENT, s, e)
+                return
+            }
             if (isIdentStart(c)) {
                 var e = pos + 1
                 while (e < n && isIdentPart(src[e])) e++
@@ -394,7 +403,7 @@ class Lexer(private val src: String) {
             var k = 0
             while (at(pos + k) == '$') k++
             val after = at(pos + k)
-            if (k >= dollars && (isIdentStart(after) || after == '{')) {
+            if (k >= dollars && (isIdentStart(after) || after == '{' || after == '`')) {
                 if (k > dollars) {
                     // surplus dollars are literal text
                     pos += k - dollars
@@ -442,7 +451,7 @@ class Lexer(private val src: String) {
             if (d == '$') {
                 var k = 0
                 while (at(e + k) == '$') k++
-                if (k >= dollars && (isIdentStart(at(e + k)) || at(e + k) == '{')) break
+                if (k >= dollars && (isIdentStart(at(e + k)) || at(e + k) == '{' || at(e + k) == '`')) break
                 e += k
                 continue
             }

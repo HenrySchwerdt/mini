@@ -163,11 +163,13 @@ private fun Ast2Ir.compoundOnProperty(e: BinaryExpr, left: Expr, lr: ExprRec, in
     val gc = findMember(getter, d ?: x)
     val got = IrCall(gc, t)
     got.origin = origin
+    markSuperAccess(got, d)
     fillAccessorArgs(got, gc, disp(), ext, null)
     val op = callOperator(info, got, listOf(convert(e.right)), irType(info.ret ?: lr.type), origin)
     val sc = findMember(setter, d ?: x)
     val set = IrCall(sc, unit)
     set.origin = origin
+    markSuperAccess(set, d)
     fillAccessorArgs(set, sc, disp(), if (x != null) recvValue(x, left) else null, op)
     if (!explicit) return set
     stmts.add(set)
@@ -226,7 +228,14 @@ fun Ast2Ir.incDec(target0: Expr, inc: Boolean, prefix: Boolean, node: Expr, r: E
         for (iv in idxVars) setArgs.add(getValue(iv))
         setArgs.add(if (prefix) getValue(result) else op)
         stmts.add(callOperator(setInfo, getValue(arr), setArgs, unit, origin))
-        stmts.add(getValue(result))
+        val gf = getInfo.fn
+        val libraryGet = (gf.owner?.fqName() ?: gf.file?.pkg ?: "kotlin").startsWith("kotlin")
+        if (prefix && !libraryGet) {
+            // K2 reads the element again for the value of `++a[i]` of a user defined `get` (KT-42077)
+            val getArgs2 = ArrayList<IrExpression>()
+            for (iv in idxVars) getArgs2.add(getValue(iv))
+            stmts.add(callOperator(getInfo, getValue(arr), getArgs2, t, origin))
+        } else stmts.add(getValue(result))
         return IrBlock(stmts, t, origin)
     }
     if (sym is VarSym && sym.isField) {

@@ -69,6 +69,9 @@ def skip_reason(path, rel, src):
     for rx, why in DIRECTIVE_SKIPS:
         if rx.search(src):
             return why
+    # opt-in compiler mode: Kotlin/Native does not check unchecked generic casts (`x as T`) unless built with this flag
+    if re.search(r'^// FREE_COMPILER_ARGS:.*-Xbinary=genericSafeCasts=true', src, re.M):
+        return 'non-default-flag'
     if re.search(r'^// FILE: .*\.(java|js|c|h|m|mm|def|xml|json|txt|properties)\s*$', src, re.M):
         return 'foreign-source'
     for rx, why in JVM_TEXT:
@@ -113,8 +116,8 @@ def split_files(src):
 
 
 def box_package(files):
-    # a top-level `fun box()` (no indentation) wins over a member named box (properRecapturingInClass)
-    for indent in (r'', r'\s*'):
+    # a top-level `fun box` (no indentation) wins over a member `fun box` of a class in an earlier file
+    for indent in (r'', r'[ \t]*'):
         for _, text in files:
             if re.search(r'^' + indent + r'(?:(?:public|internal|private)\s+)?(?:(?:inline|suspend|tailrec|operator)\s+)*fun\s+box\s*\(\s*\)', text, re.M):
                 m = re.search(r'^\s*package\s+([\w.`]+)', text, re.M)
@@ -218,7 +221,9 @@ def run_test(a, tc):
             res.update(status='timeout', phase='run', msg='run timeout')
             return res
         out = r.stdout.decode('utf-8', 'replace').strip()
-        if r.returncode == 0 and out == 'OK':
+        # the verdict is the last line: a test may print on the way (`println(list)`) before it returns the result of box()
+        last = out.splitlines()[-1].strip() if out else ''
+        if r.returncode == 0 and last == 'OK':
             res['status'] = 'pass'
         elif r.returncode < 0:
             res.update(status='crash', msg='signal %d' % -r.returncode, raw=(out + r.stderr.decode('utf-8', 'replace'))[:300])
