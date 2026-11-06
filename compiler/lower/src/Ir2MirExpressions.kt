@@ -152,6 +152,10 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 val isNum = MirExpr.RuntimeCall("mk_is_number", listOf(asAny(v)), TBoolean)
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isNum else MirExpr.Unary(UnaryOp.Not, isNum)
             }
+            if (e.typeOperand.classFqName == "kotlin.CharSequence") {
+                val isCs = MirExpr.RuntimeCall("mk_is_char_sequence", listOf(asAny(v), charSequenceInterface()), TBoolean)
+                return if (e.operator == IrTypeOperator.INSTANCEOF) isCs else MirExpr.Unary(UnaryOp.Not, isCs)
+            }
             val test: MirExpr = MirExpr.IsInstance(v, if (target.isPrimitive) TBoxed(target) else target.nonNull())
             return if (e.operator == IrTypeOperator.INSTANCEOF) test else MirExpr.Unary(UnaryOp.Not, test)
         }

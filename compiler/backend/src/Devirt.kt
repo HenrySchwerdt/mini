@@ -63,8 +63,9 @@ object Devirt {
             for (i in 0 until minOf(4, c.vtable.size)) reach(c.vtable[i])
             for (t in c.itables) {
                 val q = classes[t.interfaceCName]?.qualifiedName
-                // interfaces the runtime dispatches on by itself: threads call Function0.invoke, sorting calls Comparable.compareTo
-                if (q == "kotlin.Function0" || q == "kotlin.Comparable") for (e in t.entries) reach(e)
+                // interfaces the runtime dispatches on by itself: threads call Function0.invoke, sorting calls Comparable.compareTo,
+                // mk_cs_length / mk_cs_get / mk_cs_sub_sequence call CharSequence
+                if (q == "kotlin.Function0" || q == "kotlin.Comparable" || q == "kotlin.CharSequence") for (e in t.entries) reach(e)
             }
             val anc = ancestorsOf(c)
             for (a in anc) {

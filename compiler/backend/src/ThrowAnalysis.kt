@@ -117,7 +117,7 @@ internal class ThrowAnalysis(
     companion object {
         /** Runtime functions that may leave an exception pending. */
         fun runtimeCallThrows(name: String): Boolean =
-            name == "mk_to_string" || name == "mk_equals" || name == "mk_hash_code" || name == "mk_compare_to" ||
+            name == "mk_to_string" || name == "mk_equals" || name == "mk_hash_code" || name == "mk_compare_to" || name.startsWith("mk_cs_") ||
                 name.startsWith("mk_checked_") || name.startsWith("mk_raise") || name == "mk_string_get_char" || name == "mk_throw" ||
                 (name.startsWith("mk_array_") && name != "mk_array_length") || name == "mk_throwable_cause_message"
     }

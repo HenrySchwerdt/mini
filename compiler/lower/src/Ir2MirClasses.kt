@@ -21,7 +21,8 @@ internal fun Ir2Mir.collectClass(c: IrClass, pkg: String, path: List<String>, fi
     // the Comparable interface is compiled like a user interface (compareTo on generic values goes through mk_compare_to)
     for (s in comparableSupers(c)) {
         if (s !in classInfos) {
-            classInfos[s] = ClassInfo(s, Mangling.className("kotlin", listOf("Comparable")), "kotlin.Comparable", file)
+            val sn = s.kotlinFqName.removePrefix("kotlin.")
+            classInfos[s] = ClassInfo(s, Mangling.className("kotlin", listOf(sn)), "kotlin." + sn, file)
         }
     }
     for (d in c.declarations) {
@@ -34,7 +35,7 @@ internal fun Ir2Mir.comparableSupers(c: IrClass): List<IrClass> {
     val out = ArrayList<IrClass>()
     for (t in c.superTypes) {
         val s = t.classOrNull ?: continue
-        if (s.kotlinFqName == "kotlin.Comparable") out += s
+        if (s.kotlinFqName == "kotlin.Comparable" || s.kotlinFqName == "kotlin.CharSequence") out += s
         else if (c.kind == IrClassKind.ENUM_CLASS && s.kotlinFqName == "kotlin.Enum") {
             for (t2 in s.superTypes) {
                 val s2 = t2.classOrNull ?: continue

@@ -371,6 +371,45 @@ MkInt mk_compare_to(MkObject *a, MkObject *b, const MkTypeInfo *comparable) {
     return ((CompareFn)it[0])(a, b);
 }
 
+/* ---- CharSequence ----------------------------------------------------------------------- */
+
+typedef MkInt (*CsLengthFn)(MkObject *);
+typedef MkChar (*CsGetFn)(MkObject *, MkInt);
+typedef MkObject *(*CsSubFn)(MkObject *, MkInt, MkInt);
+
+static void *const *cs_table(MkObject *a, const MkTypeInfo *cs) {
+    void *const *it = cs != NULL ? mk_itable(a, cs) : NULL;
+    if (it == NULL) mk_raise_class_cast(a, cs != NULL ? cs : &mk_type_Any);
+    return it;
+}
+
+MkInt mk_cs_length(MkObject *a, const MkTypeInfo *cs) {
+    if (a == NULL) { mk_raise_npe(); return 0; }
+    if (a->type == &mk_type_String) return ((const MkString *)a)->length;
+    void *const *it = cs_table(a, cs);
+    return it == NULL ? 0 : ((CsLengthFn)it[0])(a);
+}
+
+MkChar mk_cs_get(MkObject *a, MkInt index, const MkTypeInfo *cs) {
+    if (a == NULL) { mk_raise_npe(); return 0; }
+    if (a->type == &mk_type_String) return mk_string_char_at((const MkString *)a, index);
+    void *const *it = cs_table(a, cs);
+    return it == NULL ? 0 : ((CsGetFn)it[1])(a, index);
+}
+
+MkObject *mk_cs_sub_sequence(MkObject *a, MkInt start, MkInt end, const MkTypeInfo *cs) {
+    if (a == NULL) { mk_raise_npe(); return NULL; }
+    if (a->type == &mk_type_String) return (MkObject *)mk_string_substring((const MkString *)a, start, end);
+    void *const *it = cs_table(a, cs);
+    return it == NULL ? NULL : ((CsSubFn)it[2])(a, start, end);
+}
+
+MkBoolean mk_is_char_sequence(const MkObject *a, const MkTypeInfo *cs) {
+    if (a == NULL) return 0;
+    if (a->type == &mk_type_String) return 1;
+    return cs != NULL && mk_itable(a, cs) != NULL;
+}
+
 /* ---- arrays ----------------------------------------------------------------------------------- */
 
 static void object_array_dispose(MkObject *self) {
