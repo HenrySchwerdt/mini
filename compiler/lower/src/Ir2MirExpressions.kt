@@ -151,12 +151,26 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
         IrTypeOperator.INSTANCEOF, IrTypeOperator.NOT_INSTANCEOF -> {
             var v = value(e.argument, out)
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
+            if (e.typeOperand.classFqName == "kotlin.Function") {
+                // `x is Function<*>`: the object implements one of the FunctionN interfaces
+                val isFn = MirExpr.RuntimeCall("mk_is_function", listOf(asAny(v)), TBoolean)
+                return if (e.operator == IrTypeOperator.INSTANCEOF) isFn else MirExpr.Unary(UnaryOp.Not, isFn)
+            }
             val target = mirType(e.typeOperand, e)
             if (target == TNothing || target === TNull) {
                 // `x is Nothing` is never true, `x is Nothing?` is `x == null`
                 if (!(target === TNull && v.type.isRef) && v is MirExpr.Call) out += MirStmt.Eval(v)
                 val isNull: MirExpr = if (target === TNull && v.type.isRef) MirExpr.Binary(BinaryOp.IdEq, v, MirExpr.NullConst()) else MirExpr.BooleanConst(false)
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isNull else MirExpr.Unary(UnaryOp.Not, isNull)
+            }
+            if (target == TUnit) {
+                // the Unit value is the generated singleton object (what `Unit` is as an `Any?`): `x is Unit` compares with it
+                val nullable = e.typeOperand.isMarkedNullable() && v.type.isRef
+                val uv = if (v.type == TUnit || !nullable || v is MirExpr.Local) v else tmpOfPlain(v, out)
+                val isUnit: MirExpr = if (uv.type == TUnit) { if (uv is MirExpr.Call) out += MirStmt.Eval(uv); MirExpr.BooleanConst(true) }
+                    else MirExpr.Binary(BinaryOp.IdEq, asAny(uv), unitInstance())
+                val withNull = if (nullable) MirExpr.Binary(BinaryOp.OrOr, MirExpr.Binary(BinaryOp.IdEq, uv, MirExpr.NullConst()), isUnit) else isUnit
+                return if (e.operator == IrTypeOperator.INSTANCEOF) withNull else MirExpr.Unary(UnaryOp.Not, withNull)
             }
             if (e.typeOperand.classFqName == "kotlin.Number") {
                 val isNum = MirExpr.RuntimeCall("mk_is_number", listOf(asAny(v)), TBoolean)

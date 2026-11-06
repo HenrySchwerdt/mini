@@ -45,7 +45,7 @@ public abstract class Number {
     public abstract fun toFloat(): Float
     public abstract fun toLong(): Long
     public abstract fun toInt(): Int
-    public abstract fun toChar(): Char
+    public open fun toChar(): Char
     public abstract fun toShort(): Short
     public abstract fun toByte(): Byte
 }

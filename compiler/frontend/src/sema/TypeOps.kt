@@ -253,7 +253,7 @@ class TypeOps(private val sema: Sema) {
                     // a function value where a fun interface is expected (SAM conversion)
                     if (b.cls.isFunInterface) {
                         val sf = samFunType(b)
-                        if (sf != null && sf.suspend == a.suspend) return funSub(a, sf, depth + 1)
+                        if (sf != null && (sf.suspend == a.suspend || (sf.suspend && !a.suspend))) return funSub(a, sf, depth + 1)
                     }
                     return false
                 }
@@ -267,7 +267,9 @@ class TypeOps(private val sema: Sema) {
                 if (a is FunType) return funSub(a, b, depth)
                 if (a is ClassType) {
                     val af = asFunType(a)
-                    if (af != null) return funSub(af, b, depth)
+                    if (af != null && funSub(af, b, depth)) return true
+                    // a class that is several function types (`class T : () -> A, (Int) -> B`)
+                    for (f in funSupersOf(a)) if (f !== af && funSub(f, b, depth + 1)) return true
                     return false
                 }
                 if (a is TypeParamType) return boundsSub(a, b, depth)
@@ -357,6 +359,25 @@ class TypeOps(private val sema: Sema) {
         }
         if (t is ClassType) return funSuper(t, 0)
         return null
+    }
+
+    /** every function type [t] is a subtype of: itself, the function types among the supertypes of a class (`class T : () -> A, (Int) -> B`), the bounds of a type parameter */
+    fun funSupersOf(t: Type, depth: Int = 0): List<FunType> {
+        val out = ArrayList<FunType>()
+        if (depth > 6) return out
+        when (t) {
+            is FunType -> out.add(t)
+            is ClassType -> if (t.cls.fnArity >= 0) { asFunType(t)?.let { out.add(it) } } else {
+                for (s in directSupertypes(t)) out.addAll(funSupersOf(s, depth + 1))
+            }
+            is TypeParamType -> {
+                sema.ensureBounds(t.tp)
+                for (b in t.tp.bounds) out.addAll(funSupersOf(b, depth + 1))
+            }
+            is IsectType -> for (p in t.parts) out.addAll(funSupersOf(p, depth + 1))
+            else -> {}
+        }
+        return out
     }
 
     private fun funSuper(t: ClassType, depth: Int): FunType? {

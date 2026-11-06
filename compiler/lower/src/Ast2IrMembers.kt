@@ -213,13 +213,13 @@ private fun Ast2Ir.hashCodeFunction(c: IrClass, sym: ClassSym, fs: FunSym, props
                 stmts.add(ret(f, constInt(0)))
             } else if (props.size == 1) {
                 val p0 = props[0]
-                stmts.add(ret(f, hashOf(f, p0)))
+                stmts.add(ret(f, hashOf(f, p0, sym.isAnnotation)))
             } else {
                 val result = IrVariable("result", sema.intType, true)
                 result.parent = f
                 var i = 0
                 for (p in props) {
-                    val h = hashOf(f, p)
+                    val h = hashOf(f, p, sym.isAnnotation)
                     if (i == 0) {
                         result.initializer = h
                         stmts.add(result)
@@ -242,8 +242,28 @@ private fun Ast2Ir.hashCodeFunction(c: IrClass, sym: ClassSym, fs: FunSym, props
     return f
 }
 
-private fun Ast2Ir.hashOf(f: IrFunction, p: IrProperty): IrExpression {
+/** `contentEquals` / `contentHashCode` of the array type [t] (the properties of an annotation class compare arrays by content), or null when [t] is no array */
+private fun Ast2Ir.arrayContentFun(t: Type, name: String): IrSimpleFunction? {
+    val tc = (t as? ClassType)?.cls ?: return null
+    val pk = sema.packages["kotlin.collections"] ?: return null
+    for (fs in pk.funs[name] ?: return null) {
+        sema.ensureSig(fs)
+        val r = fs.receiver as? ClassType ?: continue
+        if (r.cls === tc) return functionFor(fs, null)
+    }
+    return null
+}
+
+private fun Ast2Ir.hashOf(f: IrFunction, p: IrProperty, anno: Boolean = false): IrExpression {
     val t = p.backingField!!.type
+    if (anno) {
+        val ah = arrayContentFun(t, "contentHashCode")
+        if (ah != null) {
+            val call = IrCall(ah, sema.intType)
+            call.arguments.add(fieldGet(f, p))
+            return call
+        }
+    }
     if (ops.mayBeNull(t)) {
         // `if (x == null) 0 else x.hashCode()`
         val call = IrCall(memberFunNamed(ops.makeNotNull(t), "hashCode", 0), sema.intType)
@@ -294,7 +314,8 @@ private fun Ast2Ir.equalsFunction(c: IrClass, sym: ClassSym, fs: FunSym, props: 
             // Double / Float properties compare with Double.equals (total order: NaN equals NaN, 0.0 differs from -0.0): a nullable one
             // through the general equality (boxed equals), not through the IEEE comparison of two statically known doubles
             val name = "EQEQ"
-            val eq = if (isFloating(fld.type) && !fld.type.nullable) IrCall(memberFunNamed(fld.type, "equals", 1), sema.booleanType) else IrCall(builtinFun(name), sema.booleanType)
+            val arrEq = if (sym.isAnnotation) arrayContentFun(fld.type, "contentEquals") else null
+            val eq = if (arrEq != null) IrCall(arrEq, sema.booleanType) else if (isFloating(fld.type) && !fld.type.nullable) IrCall(memberFunNamed(fld.type, "equals", 1), sema.booleanType) else IrCall(builtinFun(name), sema.booleanType)
             eq.origin = "EXCLEQ"
             eq.arguments.add(a)
             eq.arguments.add(b)

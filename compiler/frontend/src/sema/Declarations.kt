@@ -283,7 +283,7 @@ fun Sema.checkClass(c: ClassSym) {
         } else if (s is SuperDelegate) {
             // `class C(a: I) : I by a`: the delegate expression sees the primary constructor parameters
             val dc = BodyChecker(this, file)
-            dc.scope = initializerScope(c, true)
+            dc.scope = if (c.isAnonymous) superCallScope(c) else initializerScope(c, true)
             dc.expr(s.delegate, resolveType(s.type, hs))
         }
     }

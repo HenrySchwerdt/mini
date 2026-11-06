@@ -141,7 +141,17 @@ fun Ast2Ir.buildFunctionBody(fn: IrSimpleFunction, sym: FunSym): IrBody? {
 }
 
 /** the context a member of a local class continues in (the function the class was declared in) */
-fun Ast2Ir.localClassCtx(c: IrClass): BodyCtx? = localClassCtxs[c]
+fun Ast2Ir.localClassCtx(c: IrClass): BodyCtx? {
+    // an inner class of a local class (`object { inner class Y { val y = x } }`) sees the context of the function around the local class
+    var k: IrClass? = c
+    while (k != null) {
+        val bc = localClassCtxs[k]
+        if (bc != null) return bc
+        if (!k.isInner) break
+        k = k.parent as? IrClass
+    }
+    return null
+}
 
 fun Ast2Ir.functionBody(fn: IrFunction, body: Expr, expressionBody: Boolean): IrBody {
     val stmts = ArrayList<IrStatement>()
@@ -272,6 +282,8 @@ fun Ast2Ir.irLocalFunction(sym: FunSym): IrSimpleFunction {
     fn.parent = enclosingParent()
     // the body is built now: it sees the variables of the enclosing function
     val body = fn.body
+    // the default values see the enclosing context too (`fun nested(x: T = k)` reads a member of the enclosing class)
+    for (p in fn.parameters) p.defaultValue
     return fn
 }
 

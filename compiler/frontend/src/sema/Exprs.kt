@@ -1149,8 +1149,12 @@ fun BodyChecker.doWhile(e: DoWhileExpr): Type {
     if (body != null) loopKill(body, e.cond)
     val base = flow
     flow = base.copy()
-    if (body != null) loopBody(body)
+    // the condition sees the variables declared in the body block
+    val savedScope = scope
+    if (body is BlockExpr) newLocal()
+    if (body != null) { if (body is BlockExpr) blockNode(body, null, false) else loopBody(body) }
     expr(e.cond, sema.booleanType)
+    scope = savedScope
     flow = base
     loopKill(e.cond, null)
     if (body != null) loopKill(body, null)

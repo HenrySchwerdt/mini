@@ -218,7 +218,8 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
             sym.isEnum -> IrClassKind.ENUM_CLASS
             sym.isInterface -> IrClassKind.INTERFACE
             sym.isObject -> IrClassKind.OBJECT
-            sym.isAnnotation -> IrClassKind.ANNOTATION_CLASS
+            // an annotation class of the program can be instantiated (`A(10)`): it is compiled like a final class
+            sym.isAnnotation -> if (inLib(sym.file)) IrClassKind.ANNOTATION_CLASS else IrClassKind.CLASS
             else -> IrClassKind.CLASS
         }
         c.modality = when {
@@ -351,7 +352,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
                 }
             }
         }
-        if (sym.isData || sym.isValue) addDataMembers(c, sym)
+        if (sym.isData || sym.isValue || (sym.isAnnotation && c.kind == IrClassKind.CLASS)) addDataMembers(c, sym)
         if (sym.isEnum) addEnumMembers(c, sym)
     }
 
@@ -692,7 +693,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         k.returnType = irType(c.sym!!.thisType())
         k.bodyBuilder = { buildConstructorBody(k, sym, c) }
         if (inLib(sym.file)) k.stub = true
-        if (cs != null && cs.isAnnotation) {
+        if (cs != null && cs.isAnnotation && c.kind == IrClassKind.ANNOTATION_CLASS) {
             // an annotation class has no code: its parameter defaults (`[]`, enum entries) are only read by tools
             for (p in k.parameters) p.defaultValueBuilder = null
             k.bodyBuilder = null
