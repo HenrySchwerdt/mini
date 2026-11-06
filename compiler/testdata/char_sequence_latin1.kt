@@ -1,0 +1,1 @@
+fun main() { val cs: CharSequence = "héllo ü"; println(cs.length); println(cs[1]); println(cs.subSequence(1, 4)); val sb = StringBuilder("ça va"); val c2: CharSequence = sb; println(c2[0]); println(c2.subSequence(0,2)) }
