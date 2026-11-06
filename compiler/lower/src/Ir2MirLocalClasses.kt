@@ -43,6 +43,17 @@ internal fun Ir2Mir.enterClassMember(f: IrFunction, cls: IrClass, params: Mutabl
             val outerParam = params.getOrNull(if (cls.kind == IrClassKind.ENUM_CLASS) 3 else 1) ?: return
             out += MirStmt.SetField(MirExpr.Local(self), info.cName, "\$outer", typeOf(outerCls), MirExpr.Local(outerParam))
             outerCls.thisReceiver?.let { locals[it] = outerParam }
+            // the outer instances further out (an inner class of an inner class reads members of the outermost one in an initializer)
+            var cur = outerParam
+            var k = outerCls
+            while (k.isInner) {
+                val oc = k.parent as? IrClass ?: break
+                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
+                oc.thisReceiver?.let { locals[it] = l }
+                cur = l
+                k = oc
+            }
         }
         return
     }
