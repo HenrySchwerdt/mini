@@ -1,0 +1,6 @@
+app plain code=1 fatal=true attempts=3
+net net code=2 fatal=false attempts=3 host=example.org retry=true port=443 bytes=-1
+timeout timeout after 34359738368 ms code=408 fatal=false attempts=3 host=slow.example.org retry=true port=8080 bytes=-1 millis=34359738368 soft=true note=n/a tries=2
+wrapped wrapped code=500 fatal=true level=3 cause=timeout after 5 ms millis=5 soft=false note=null host=deep.example.org
+42 123456789012 4 408 timeout after 9 ms 8080 9
+true

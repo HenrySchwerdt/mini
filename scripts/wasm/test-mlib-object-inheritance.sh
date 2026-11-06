@@ -20,6 +20,8 @@ interface Readable {
 }
 
 open class Base : Readable {
+    var weight: Long = 1L shl 33
+    var count: Int = 5
     override fun read(): Int = 7
 }
 
@@ -38,7 +40,14 @@ EOF
 cat >"$work/derived.kt" <<'EOF'
 package shared
 
-class Derived : Base()
+// the fields of the three levels (Base here, Derived, the program's Leaf) are laid out by the shared layout function, with 4-byte
+// pointers on wasm32: Base.count sits in the header's gap before the 8-aligned Long, Derived's fields follow Base's data end
+open class Derived : Base() {
+    var on: Boolean = true
+    var small: Short = -3
+    var tag: Byte = 9
+    var label: String = "d"
+}
 
 fun counterB(): () -> Int {
     var n = 39
@@ -51,7 +60,17 @@ package app
 
 import shared.*
 
+class Leaf : Derived() {
+    var more: Int = 11
+    var big: Long = -1L
+    var flag: Boolean = false
+    var next: Leaf? = null
+}
+
 fun main() {
+    val leaf = Leaf()
+    leaf.count += 1; leaf.tag = (leaf.tag + 1).toByte(); leaf.more = 12; leaf.flag = true; leaf.next = leaf; leaf.small = 4; leaf.on = false
+    println("${leaf.weight} ${leaf.count} ${leaf.on} ${leaf.small} ${leaf.tag} ${leaf.label} ${leaf.more} ${leaf.big} ${leaf.flag} ${leaf.next === leaf}")
     val derived = Derived()
     val base: Base = derived
     val readable: Readable = derived
@@ -110,8 +129,19 @@ $Y --mount "$w" clang --target=wasm32-wasip1 -Wl,--fatal-warnings \
 
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/split.wasm" >"$work/split.out"
 node --no-warnings scripts/wasm/run-wasi.mjs "$work/mono.wasm" >"$work/mono.out"
-printf '7\n7\n6\n7\n40\n41\n102\ncaught nothing\ncaught forwarded int\n' >"$work/expected.out"
+printf '8589934592 6 false 4 10 d 12 -1 true true\n7\n7\n6\n7\n40\n41\n102\ncaught nothing\ncaught forwarded int\n' >"$work/expected.out"
 cmp "$work/expected.out" "$work/split.out"
 cmp "$work/expected.out" "$work/mono.out"
 cmp "$work/mono.out" "$work/split.out"
+# the layout with 4-byte pointers (12-byte header), computed by the same function for the libraries and the program: every level
+# must place its fields behind the superclass's data end whichever compilation unit lays the class out
+"$minic" --target=wasm32 -Xlayout-stats --emit-ll "$work/stats.ll" "$work/app.kt" \
+    --lib "$stdlib" --lib "$work/base.mlib" --lib "$work/derived.mlib" 2>"$work/layout.txt" || true
+grep -F 'shared.Base: ' "$work/layout.txt" | grep -F 'weight@16' | grep -F 'count@12' >/dev/null \
+    || { echo "wasm32 layout of Base is wrong:"; grep -E 'Base|Derived|Leaf' "$work/layout.txt"; exit 1; }
+grep -F 'shared.Derived: ' "$work/layout.txt" | grep -F 'weight@16' | grep -F 'count@12' | grep -F 'label@24' | grep -F 'small@28' \
+    | grep -F 'on@30' | grep -F 'tag@31' >/dev/null \
+    || { echo "wasm32 layout of Derived is wrong:"; grep -E 'Base|Derived|Leaf' "$work/layout.txt"; exit 1; }
+grep -E '^(app\.)?Leaf: ' "$work/layout.txt" | grep -F 'more@' >/dev/null \
+    || { echo "wasm32 layout of Leaf is missing:"; cat "$work/layout.txt"; exit 1; }
 echo "split inherited dispatch and shared mutable-capture helpers match monolithic output"

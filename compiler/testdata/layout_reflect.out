@@ -1,0 +1,26 @@
+flag count big label small tail
+true
+5
+6000000000
+lbl
+7
+3
+55
+label=lbl
+Sample
+[6000000000, 2]
+[true, false]
+56
+MERCURY#0 moons=0 ringed=false tag=m id=1099511627776
+EARTH#1 moons=1 ringed=false tag=e id=2199023255552
+SATURN#2 moons=146 ringed=true tag=s id=3298534883328
+1
+[false, true, true]
+2
+true 5000000000 cfg 3
+false 1000000000 cfg 4
+68719476736 true t
+key 99
+1.2E10
+r true 3 4000000000
+Rect
