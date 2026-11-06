@@ -45,4 +45,12 @@ fun main() {
     val u: Any = Unit
     println("${x is Unit} ${u is Unit}")
     println(N().C().test6())
+    // the array of a for loop is evaluated once
+    var xs = intArrayOf(1, 2, 3)
+    var sum = 0
+    for (v in xs) {
+        sum = sum * 10 + v
+        xs = intArrayOf(4, 5)
+    }
+    println(sum)
 }
