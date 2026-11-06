@@ -254,6 +254,7 @@ private class AstReader(private val text: String, from: Int) {
     private fun <T> listN(): List<T>? {
         val n = int()
         if (n == 0) return null
+        if (n == 1) return emptyList()   // most lists are empty (type parameters, constraints, modifiers, ...): no allocation
         val out = ArrayList<T>(n - 1)
         for (i in 0 until n - 1) out.add(node() as T)
         return out
