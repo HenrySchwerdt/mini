@@ -103,11 +103,11 @@ public interface ContinuationInterceptor : CoroutineContext.Element {
 
 @Suppress("UNCHECKED_CAST")
 public fun <T> (suspend () -> T).createCoroutine(completion: Continuation<T>): Continuation<Unit> =
-    SafeStarter(completion as Continuation<Any?>, { c -> (this as (Continuation<T>) -> Any?)(c as Continuation<T>) }).intercepted() as Continuation<Unit>
+    SafeStarter(completion as Continuation<Any?>, { c -> (this as (Continuation<T>) -> Any?)(c as Continuation<T>) }).intercepted().let { OnceContinuation(it) as Continuation<Unit> }
 
 @Suppress("UNCHECKED_CAST")
 public fun <R, T> (suspend R.() -> T).createCoroutine(receiver: R, completion: Continuation<T>): Continuation<Unit> =
-    SafeStarter(completion as Continuation<Any?>, { c -> (this as (R, Continuation<T>) -> Any?)(receiver, c as Continuation<T>) }).intercepted() as Continuation<Unit>
+    SafeStarter(completion as Continuation<Any?>, { c -> (this as (R, Continuation<T>) -> Any?)(receiver, c as Continuation<T>) }).intercepted().let { OnceContinuation(it) as Continuation<Unit> }
 
 public fun <T> (suspend () -> T).startCoroutine(completion: Continuation<T>) {
     createCoroutine(completion).resume(Unit)

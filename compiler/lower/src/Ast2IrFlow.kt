@@ -175,7 +175,8 @@ private fun Ast2Ir.compoundOnProperty(e: BinaryExpr, left: Expr, lr: ExprRec, in
 }
 
 fun Ast2Ir.incDec(target0: Expr, inc: Boolean, prefix: Boolean, node: Expr, r: ExprRec): IrExpression {
-    val target = unparen(target0)
+    var target = unparen(target0)
+    while (target is LabeledExpr) target = unparen(target.expr) // `(label@ x)++`
     val info = r.call ?: fail(node, "inc/dec is not resolved")
     val origin = if (prefix) (if (inc) "PREFIX_INCR" else "PREFIX_DECR") else (if (inc) "POSTFIX_INCR" else "POSTFIX_DECR")
     val tr = rec(target) ?: fail(target, "inc/dec target without record")
@@ -226,6 +227,30 @@ fun Ast2Ir.incDec(target0: Expr, inc: Boolean, prefix: Boolean, node: Expr, r: E
         setArgs.add(if (prefix) getValue(result) else op)
         stmts.add(callOperator(setInfo, getValue(arr), setArgs, unit, origin))
         stmts.add(getValue(result))
+        return IrBlock(stmts, t, origin)
+    }
+    if (sym is VarSym && sym.isField) {
+        // `field++` / `++field` in an accessor
+        val f = currentAccessorField() ?: fail(target, "field outside of an accessor")
+        val stmts = ArrayList<IrStatement>()
+        val oldV = IrVariable("<unary>", f.type, false)
+        oldV.origin = "IR_TEMPORARY_VARIABLE"
+        oldV.parent = ctx?.fn
+        oldV.initializer = IrGetField(f, currentThisOf(f), f.type)
+        stmts.add(oldV)
+        val op = callOperator(info, getValue(oldV), emptyList(), irType(info.ret ?: t), origin)
+        if (prefix) {
+            val nv = IrVariable("<unary>", f.type, false)
+            nv.origin = "IR_TEMPORARY_VARIABLE"
+            nv.parent = ctx?.fn
+            nv.initializer = op
+            stmts.add(nv)
+            stmts.add(IrSetField(f, currentThisOf(f), getValue(nv), unit))
+            stmts.add(getValue(nv))
+        } else {
+            stmts.add(IrSetField(f, currentThisOf(f), op, unit))
+            stmts.add(getValue(oldV))
+        }
         return IrBlock(stmts, t, origin)
     }
     if (sym is VarSym && !sym.isField) {

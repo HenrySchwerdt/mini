@@ -466,6 +466,8 @@ internal fun Ir2Mir.dispatchOf(f: IrSimpleFunction): Dispatch {
     val root = interfaceRoot(f)
     val iface = parentClass(root)!!
     val idx = interfaceMethods(iface).indexOf(root)
+    // a private interface function (with a body) is not part of the itable: it is called directly
+    if (idx < 0 && root.visibility == "private" && root.body != null) return Dispatch.Direct(root)
     if (idx < 0) error("interface method ${root.name} not found")
     return Dispatch.Interface(info(iface).cName, idx)
 }

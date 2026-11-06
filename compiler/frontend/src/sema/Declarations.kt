@@ -75,6 +75,21 @@ fun Sema.initializerScope(c: ClassSym, allParams: Boolean = false): Scope {
     return l
 }
 
+/**
+ * Scope of the arguments of a super constructor call: the primary constructor parameters over the static part of the class (companion,
+ * nested classes) and the scope around the class; the members of the class itself are not available yet (`object : A(b)` inside `A` reads
+ * the `b` of the enclosing instance, not the one being constructed).
+ */
+fun Sema.superCallScope(c: ClassSym): Scope {
+    val hs = c.headerScope ?: return initializerScope(c, true)
+    // (an object has no static part, and its own members must stay out: the static scope of an object is the object itself)
+    val l = LocalScope(if (c.isObject) hs else ClassScope(c, hs, false))
+    val pc = c.primaryCtor ?: return l
+    ensureSig(pc)
+    for (p in pc.params) l.vars[p.name] = p
+    return l
+}
+
 fun Sema.checkProp(p: PropSym) {
     if (p.initChecked) return
     p.initChecked = true
@@ -230,7 +245,7 @@ fun Sema.checkClass(c: ClassSym) {
     for (s in d.supers) {
         if (s is SuperCall) {
             val sc = BodyChecker(this, file)
-            sc.scope = initializerScope(c, true)
+            sc.scope = superCallScope(c)
             sc.superConstructorCall(c, s)
         } else if (s is SuperDelegate) {
             // `class C(a: I) : I by a`: the delegate expression sees the primary constructor parameters

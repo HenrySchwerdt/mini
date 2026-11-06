@@ -337,6 +337,12 @@ class ConstraintSystem(private val sema: Sema) {
                     }
                 }
             }
+            // `assertEquals(1234, someLong)`: the integer literal adapts to the type of the other arguments (T = Long)
+            if (!onlyLit && lows.any { it is IntLiteralType }) {
+                val rest = lows.filter { it !is IntLiteralType }
+                val rc = ops.commonSuperType(rest)
+                if (rc is ClassType && lows.all { it !is IntLiteralType || ops.isSubtype(it, rc) }) return rc
+            }
             var r = ops.commonSuperType(lows)
             if (r is TypeParamType && r.definitelyNotNull && !r.nullable) r = TypeParamType(r.tp, false, false)
             if (r is IsectType && ups.isNotEmpty()) {

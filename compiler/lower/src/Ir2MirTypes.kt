@@ -59,7 +59,7 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
     arrayKindOfFq(n)?.let { return arrayType(it, nullable) }
     return when (n) {
         "kotlin.String" -> if (nullable) TNString else TString
-        "kotlin.Unit" -> if (nullable || at is IrValueParameter) anyNullable else TUnit // a Unit parameter holds null
+        "kotlin.Unit" -> if (nullable || at is IrValueParameter || at is IrField) anyNullable else TUnit // a Unit parameter or field holds null
         "kotlin.Nothing" -> if (nullable) TNull else TNothing
         // Comparable values are boxed primitives, strings or user objects: represented as Any (compareTo: mk_compare_to)
         // CharSequence values are a String or an object of a class that implements the interface (mk_cs_*): Any as well

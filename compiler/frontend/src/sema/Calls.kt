@@ -33,12 +33,14 @@ fun isPostponedExpr(e0: Expr): Boolean {
 
 fun unwrapPostponed(e0: Expr): Expr {
     var e = e0
+    var label: String? = null
     while (true) {
         if (e is ParenExpr) e = e.inner
-        else if (e is LabeledExpr) e = e.expr
+        else if (e is LabeledExpr) { label = e.label; e = e.expr }
         else if (e is AnnotatedExpr) e = e.expr
         else break
     }
+    if (label != null && e is LambdaExpr) e.explicitLabel = label
     return e
 }
 

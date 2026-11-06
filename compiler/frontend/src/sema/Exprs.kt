@@ -325,6 +325,7 @@ fun BodyChecker.superExpr(e: SuperExpr): Type {
     for (r in rs) {
         val c = r.cls ?: continue
         if (r.isCompanion) continue
+        if (e.label != null && c.name != e.label) continue // `super@Outer.f()`
         val ta = e.typeArg
         if (ta != null) return sema.resolveType(ta, scope)
         sema.ensureSupertypes(c)

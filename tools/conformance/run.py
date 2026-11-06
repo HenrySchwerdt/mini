@@ -193,9 +193,9 @@ def run_test(a, tc):
                 open(fp, 'w').write(txt)
                 srcs.append(fp)
         call = (pkg + '.box()') if pkg else 'box()'
-        main = os.path.join(work, 'zz_main.kt')
-        open(main, 'w').write('fun main() {\n    println(%s)\n}\n' % call)
-        srcs.append(main)
+        main = os.path.join(work, '00_main.kt')
+        open(main, 'w').write('fun main() {\n    kotlin.io.println(%s)\n}\n' % call)
+        srcs.insert(0, main)  # sorts and comes first: it is the program's entry even when the test declares its own `fun main(args: Array<String>)`
         exe = os.path.join(work, 'a.out')
         t0 = time.time()
         try:

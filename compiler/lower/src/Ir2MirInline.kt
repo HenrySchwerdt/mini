@@ -34,6 +34,8 @@ internal fun Ir2Mir.inlineLambdaOf(e: IrExpression?): InlineLambda? = when (e) {
 internal fun Ir2Mir.coerceFlexible(v: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     if (v.type == t || v.type == TNothing) return v
     if (t == TUnit) return v
+    // an erased generic result (`fun <T> f(): T` called with T = Nothing) where Nothing is expected: it was evaluated and never returns
+    if (t == TNothing && v.type.isRef) return v
     if (v.type == TUnit && t.isRef) return unitAsRef(v, out)
     val x = if (v.isOwned() || (v is MirExpr.FieldGet && v.type.isRef)) tmpOf(v, out) else v
     return when {
@@ -85,7 +87,10 @@ private fun Ir2Mir.expandBody(fn: IrFunction, ret: MirType, at: IrElement, out: 
             is IrBlockBody -> for (s in b.statements) stmt(s, body)
             is IrExpressionBody -> {
                 val e = b.expression
-                if (res == null) stmt(e, body) else body += MirStmt.Assign(res, bindValue(e, ret, body))
+                if (res == null) stmt(e, body) else {
+                    val bv = bindValue(e, ret, body)
+                    body += if (bv.type == TNothing) MirStmt.Eval(bv) else MirStmt.Assign(res, bv)
+                }
             }
             else -> unsupported(fn, "inline function body")
         }
@@ -105,7 +110,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
     try {
         for ((i, tp) in callee.typeParameters.withIndex()) {
             val a = c.typeArguments.getOrNull(i)
-            if (a != null) typeSubst[tp] = a
+            if (a != null && tp.reified) typeSubst[tp] = a // a non-reified type parameter stays erased (an unchecked cast to it must not check)
         }
         val params = callee.parameters
         for ((i, p) in params.withIndex()) {

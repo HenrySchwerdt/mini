@@ -14,7 +14,7 @@ fun BodyChecker.lambdaStandalone(e: LambdaExpr, expected: Type?): Type {
 fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSystem?): Type {
     val savedScope = scope
     val savedFlow = flow
-    val label = pendingLabel ?: lambdaLabel
+    val label = pendingLabel ?: lam.explicitLabel ?: lambdaLabel
     pendingLabel = null
     val probe = probeLambda
     probeLambda = false
