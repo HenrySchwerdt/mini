@@ -465,7 +465,10 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
     val key = "$tid:" + boundIdx.joinToString(",") + ":" + liftedCaps.size + ":" + ((e.type as? ClassType)?.args?.lastOrNull()?.type?.classFqName ?: "?") + (if (currentStrict) "s" else "")
     val shared = refClassCache[key]
     if (shared != null) return MirExpr.New(shared.first, bound + liftedCaps.map { MirExpr.Local(localOf(it, e)) }, shared.second)
-    val made = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, emptyList(), tid * 7919 + boundIdx.size) { _, args, capLocals, body ->
+    // a local function of Strict code reads Strict owners through its captures: like the captures of a lambda they are borrowed (the
+    // memory checker proved that the function value does not outlive them), counting them would release a freed object
+    val borrowedCaps = boundTypes.map { false } + liftedCaps.map { borrowedCapture(it) }
+    val made = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, borrowedCaps, tid * 7919 + boundIdx.size) { _, args, capLocals, body ->
         val actual = ArrayList<MirExpr>()
         var k = 0
         for ((i, p) in params.withIndex()) {
