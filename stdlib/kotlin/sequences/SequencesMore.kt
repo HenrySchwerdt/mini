@@ -487,13 +487,12 @@ public inline fun <T, V, M : MutableMap<in T, in V>> Sequence<T>.associateWithTo
     return destination
 }
 
-public inline fun <T, K> Sequence<T>.groupingBy(crossinline keySelector: (T) -> K): Grouping<T, K> {
-    val s = this
-    return object : Grouping<T, K> {
-        override fun sourceIterator(): Iterator<T> = s.iterator()
-        override fun keyOf(element: T): K = keySelector(element)
-    }
+private class SequenceGrouping<T, K>(private val source: Sequence<T>, private val keySelector: (T) -> K) : Grouping<T, K> {
+    override fun sourceIterator(): Iterator<T> = source.iterator()
+    override fun keyOf(element: T): K = keySelector(element)
 }
+
+public fun <T, K> Sequence<T>.groupingBy(keySelector: (T) -> K): Grouping<T, K> = SequenceGrouping(this, keySelector)
 
 public fun <T, R> Sequence<Pair<T, R>>.unzip(): Pair<List<T>, List<R>> {
     val listT = ArrayList<T>()

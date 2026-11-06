@@ -477,10 +477,9 @@ public fun StringBuilder(content: CharSequence): StringBuilder = StringBuilder(c
 
 public fun String.Companion.format(format: String, vararg args: Any?): String = format.format(*args)
 
-public inline fun <K> CharSequence.groupingBy(crossinline keySelector: (Char) -> K): Grouping<Char, K> {
-    val cs = this
-    return object : Grouping<Char, K> {
-        override fun sourceIterator(): Iterator<Char> = cs.iterator()
-        override fun keyOf(element: Char): K = keySelector(element)
-    }
+private class CharSequenceGrouping<K>(private val source: CharSequence, private val keySelector: (Char) -> K) : Grouping<Char, K> {
+    override fun sourceIterator(): Iterator<Char> = source.iterator()
+    override fun keyOf(element: Char): K = keySelector(element)
 }
+
+public fun <K> CharSequence.groupingBy(keySelector: (Char) -> K): Grouping<Char, K> = CharSequenceGrouping(this, keySelector)
