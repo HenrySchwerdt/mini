@@ -263,7 +263,7 @@ fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): 
         return safeCall(d, node, type) { rv ->
             val c2 = IrConstructorCall(k, nonNull)
             c2.typeArguments = info.typeArgs.map { irType(it) }
-            fillCallArgs(c2, k, info, rv, null, info.fn.name)
+            fillCallArgs(c2, k, info, rv, null, info.fn.owner?.name ?: info.fn.name)
             spillForSourceOrder(c2, k, info)
         }
     }
@@ -277,7 +277,7 @@ fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): 
         val oc = cs.outer
         if (oc != null) outer = receiverOfClass(oc)
     }
-    fillCallArgs(call, k, info, outer, null, info.fn.name)
+    fillCallArgs(call, k, info, outer, null, info.fn.owner?.name ?: info.fn.name)
     return spillForSourceOrder(call, k, info)
 }
 
@@ -540,7 +540,9 @@ fun Ast2Ir.binaryExpr(e: BinaryExpr): IrExpression {
         else -> null
     }
     val l = convert(e.left)
-    val rr = convert(e.right)
+    // `x myMap { return@myMap }`: the lambda argument of an infix call is labelled with the function name
+    val ru = unparen(e.right)
+    val rr = if (ru is LambdaExpr) lambdaExpr(ru, info.fn.name) else convert(e.right)
     return callOperator(info, l, listOf(rr), t, origin)
 }
 
