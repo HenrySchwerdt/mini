@@ -180,6 +180,7 @@ def run_test(a, tc):
     if pkg is None:
         res.update(status='skipped', reason='no-box')
         return res
+    declares_main = re.search(r'^\s*fun main\(\)', src, re.M) is not None
     work = tempfile.mkdtemp(prefix='kb-', dir=a.tmp)
     try:
         srcs = []
@@ -187,6 +188,8 @@ def run_test(a, tc):
             if not name.endswith('.kt'):
                 continue
             text = DIAG_MARKUP.sub('', text).replace('OPTIONAL_JVM_INLINE_ANNOTATION', '@kotlin.jvm.JvmInline')
+            if declares_main:  # `fun main()` of the test is a helper that box() calls: it must not be the harness's entry
+                text = re.sub(r'\bmain\(', 'main_(', text)
             fp = os.path.join(work, '%d_%s' % (i, os.path.basename(name)))
             open(fp, 'w').write(text)
             srcs.append(fp)

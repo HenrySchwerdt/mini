@@ -68,6 +68,8 @@ class Ir2Mir {
     internal val builtinInfos = HashMap<IrClass, ClassInfo>()
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val effectfulInit = HashMap<IrFile, Boolean>()
+    /** the invoke call whose result is not converted to its static type (the argument of an erased generic parameter of an inline function) */
+    internal var rawInvokeResult: IrCall? = null
     internal val typeSubst = HashMap<TypeParamSym, Type>()
     /** local `val x = unitReturningCall()`: no storage, every read is the Unit value */
     internal val unitVars = HashSet<IrValueDeclaration>()
