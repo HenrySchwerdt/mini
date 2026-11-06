@@ -53,6 +53,15 @@ fun allOverriddenOf(f: IrSimpleFunction, acc: MutableSet<IrSimpleFunction>) {
     if (acc.add(f)) for (o in f.overridden) allOverriddenOf(o, acc)
 }
 
+/** the declared (non-fake) functions a fake override stands for */
+private fun realFunsOf(f: IrSimpleFunction, acc: MutableSet<IrSimpleFunction>) {
+    if (!f.isFakeOverride || f.overridden.isEmpty()) {
+        acc.add(f)
+        return
+    }
+    for (o in f.overridden) realFunsOf(o, acc)
+}
+
 private fun minimalFuns(group: List<IrSimpleFunction>): List<IrSimpleFunction> {
     val out = ArrayList<IrSimpleFunction>()
     for (a in group) {
@@ -62,10 +71,26 @@ private fun minimalFuns(group: List<IrSimpleFunction>): List<IrSimpleFunction> {
             val s = HashSet<IrSimpleFunction>()
             allOverriddenOf(b, s)
             if (s.contains(a)) covered = true
+            else if (a.isFakeOverride) {
+                // an inherited fake override whose declarations are all overridden by b (diamond through a class and an interface)
+                val ra = HashSet<IrSimpleFunction>()
+                realFunsOf(a, ra)
+                var all = true
+                for (r in ra) if (r === b || !s.contains(r)) all = false
+                if (all) covered = true
+            }
         }
         if (!covered && !out.contains(a)) out.add(a)
     }
     return out
+}
+
+private fun realPropsOf(p: IrProperty, acc: MutableSet<IrProperty>) {
+    if (!p.isFakeOverride || p.overridden.isEmpty()) {
+        acc.add(p)
+        return
+    }
+    for (o in p.overridden) realPropsOf(o, acc)
 }
 
 private fun minimalProps(group: List<IrProperty>): List<IrProperty> {
@@ -75,6 +100,13 @@ private fun minimalProps(group: List<IrProperty>): List<IrProperty> {
         for (b in group) {
             if (a === b) continue
             if (propOverrides(b, a)) covered = true
+            else if (a.isFakeOverride) {
+                val ra = HashSet<IrProperty>()
+                realPropsOf(a, ra)
+                var all = true
+                for (r in ra) if (r === b || !propOverrides(b, r)) all = false
+                if (all) covered = true
+            }
         }
         if (!covered && !out.contains(a)) out.add(a)
     }
