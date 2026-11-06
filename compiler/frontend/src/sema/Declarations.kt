@@ -135,6 +135,7 @@ fun Sema.checkProp(p: PropSym) {
         ls.vars["field"] = fv
         gc.scope = ls
         val target = ReturnTarget(null, gt, null, false)
+        target.suspendAccessor = p.has("suspend")
         gc.targets.add(target)
         val body = g.body
         val t: Type

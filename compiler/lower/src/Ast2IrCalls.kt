@@ -119,6 +119,12 @@ fun Ast2Ir.propertyGetDot(sym: PropSym, r: ExprRec, t: Type, node: Ast): IrExpre
 fun Ast2Ir.callWithInfo(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExpression {
     val fn = info.fn
     if (info.isInvoke) return invokeCall(e, info, type, node)
+    if (fn.name == "currentContinuationIntrinsic" && fn.owner == null) {
+        // the continuation of the suspend function that contains the call (`suspend val coroutineContext`)
+        val cf = ctx?.fn
+        val cp = cf?.parameters?.lastOrNull()
+        if (cf != null && cf.isSuspend && cp != null) return getValue(cp)
+    }
     if (fn.kind == FunKind.CONSTRUCTOR) return constructorCall(e, info, type, node)
     if (fn.kind == FunKind.SYNTH && fn.owner == null && info.args.size == 1) {
         // `Iface { ... }`: the SAM constructor of a fun interface

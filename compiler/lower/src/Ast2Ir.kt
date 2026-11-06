@@ -826,6 +826,11 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         }
         if (isGetter) {
             f.returnType = type
+            // `suspend val x: T get() = ...`: the getter is a suspend function
+            if (m != null && m.has("suspend")) {
+                f.isSuspend = true
+                makeSuspend(f, type)
+            }
         } else {
             f.returnType = sema.unitType
             val sp = acc?.param

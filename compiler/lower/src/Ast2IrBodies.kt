@@ -525,7 +525,11 @@ fun Ast2Ir.buildAccessorBody(f: IrSimpleFunction, p: IrProperty, sym: PropSym, c
                 stmts.add(IrSetField(fld, recvExpr, getValue(value), sema.unitType))
             }
         }
-        IrBlockBody(stmts)
+        val ab = IrBlockBody(stmts)
+        if (f.isSuspend) {
+            if (f.isInline) f.suspendInlineTemplate = snapshotBody(f, ab)
+            lowerSuspendBody(f, ab)
+        } else ab
     }
 }
 

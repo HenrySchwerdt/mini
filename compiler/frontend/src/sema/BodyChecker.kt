@@ -9,6 +9,8 @@ class ReturnTarget(val label: String?, val expected: Type?, val fn: FunSym?, val
     var isSuspend = false
     /** a lambda passed for a non-noinline, non-crossinline function parameter of an `inline` function: it is expanded where it is called, so suspension points in it belong to the enclosing function */
     var inlinable = false
+    /** the getter of a `suspend val`: a suspend function without a [fn] */
+    var suspendAccessor = false
 }
 
 /**
@@ -70,6 +72,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             } else {
                 val f = t.fn
                 if (f != null && f.mods()?.has("suspend") == true) return
+                if (t.suspendAccessor) return
             }
             break
         }
