@@ -272,14 +272,6 @@ public fun <T> Sequence<T>.sortedWith(comparator: Comparator<in T>): Sequence<T>
 public fun <T, R : Comparable<R>> Sequence<T>.sortedBy(selector: (T) -> R?): Sequence<T> = LazyListSequence { this.toList().sortedBy(selector) }
 public fun <T, R : Comparable<R>> Sequence<T>.sortedByDescending(selector: (T) -> R?): Sequence<T> = LazyListSequence { this.toList().sortedByDescending(selector) }
 public fun <T> Sequence<T>.shuffled(): Sequence<T> = LazyListSequence { this.toList().shuffled() }
-public fun <T> Sequence<T>.chunked(size: Int): Sequence<List<T>> = LazyListSequence { this.toList().chunked(size) }
-public fun <T, R> Sequence<T>.chunked(size: Int, transform: (List<T>) -> R): Sequence<R> = LazyListSequence { this.toList().chunked(size).map(transform) }
-public fun <T> Sequence<T>.windowed(size: Int, step: Int = 1, partialWindows: Boolean = false): Sequence<List<T>> =
-    LazyListSequence { this.toList().windowed(size, step, partialWindows) }
-public fun <T, R> Sequence<T>.zipWithNext(transform: (a: T, b: T) -> R): Sequence<R> = LazyListSequence { this.toList().zipWithNext().map { p -> transform(p.first, p.second) } }
-public fun <T> Sequence<T>.zipWithNext(): Sequence<Pair<T, T>> = LazyListSequence { this.toList().zipWithNext() }
-public fun <T, R> Sequence<T>.runningFold(initial: R, operation: (acc: R, T) -> R): Sequence<R> = LazyListSequence { this.toList().runningFold(initial, operation) }
-public fun <T, R> Sequence<T>.scan(initial: R, operation: (acc: R, T) -> R): Sequence<R> = runningFold(initial, operation)
 
 private class ZipSequence<T, R, V>(private val a: Sequence<T>, private val b: Sequence<R>, private val f: (T, R) -> V) : Sequence<V> {
     override fun iterator(): Iterator<V> = ZipIterator(a.iterator(), b.iterator(), f)
