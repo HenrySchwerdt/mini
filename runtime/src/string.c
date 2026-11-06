@@ -66,37 +66,69 @@ char *mk_string_to_utf8(const MkString *s, size_t *out_length) {
 
 MkInt mk_string_length(const MkString *s) { return s ? s->length : 0; }
 
+/* The number of ASCII bytes at the start of [p, end): eight at a time while the high bits are clear. */
+static inline size_t ascii_prefix(const uint8_t *p, const uint8_t *end) {
+    const uint8_t *q = p;
+    while ((size_t)(end - q) >= 8) {
+        uint64_t w;
+        memcpy(&w, q, 8);
+        if (w & 0x8080808080808080ULL) break;
+        q += 8;
+    }
+    while (q < end && *q < 0x80) q++;
+    return (size_t)(q - p);
+}
+
 MkString *mk_string_from_utf8(const char *utf8, size_t length) {
     static const uint8_t empty_utf8 = 0;
     const uint8_t *begin = utf8 ? (const uint8_t *)utf8 : &empty_utf8;
     const uint8_t *end = begin + (utf8 ? length : 0);
     size_t units = 0;
     uint32_t cp, widest = 0;
+    /* source files and most data are mostly ASCII: runs of it are counted and copied in bulk, only the other characters are decoded */
     for (const uint8_t *p = begin; p < end;) {
-        p += mk_utf8_decode(p, end, &cp);
-        units += cp >= 0x10000 ? 2 : 1;
-        if (cp > widest) widest = cp;
+        size_t run = ascii_prefix(p, end);
+        p += run;
+        units += run;
+        if (p < end) {
+            p += mk_utf8_decode(p, end, &cp);
+            units += cp >= 0x10000 ? 2 : 1;
+            if (cp > widest) widest = cp;
+        }
     }
     if (widest < 256) {
         MkString *s = string_alloc8(units);
         uint8_t *out = (uint8_t *)(void *)s->chars;
         size_t i = 0;
         for (const uint8_t *p = begin; p < end;) {
-            p += mk_utf8_decode(p, end, &cp);
-            out[i++] = (uint8_t)cp;
+            size_t run = ascii_prefix(p, end);
+            if (run > 0) {
+                memcpy(out + i, p, run);
+                i += run;
+                p += run;
+            }
+            if (p < end) {
+                p += mk_utf8_decode(p, end, &cp);
+                out[i++] = (uint8_t)cp;
+            }
         }
         return s;
     }
     MkString *s = string_alloc(units);
     size_t i = 0;
     for (const uint8_t *p = begin; p < end;) {
-        p += mk_utf8_decode(p, end, &cp);
-        if (cp >= 0x10000) {
-            cp -= 0x10000;
-            s->chars[i++] = (MkChar)(0xD800 + (cp >> 10));
-            s->chars[i++] = (MkChar)(0xDC00 + (cp & 0x3FF));
-        } else {
-            s->chars[i++] = (MkChar)cp;
+        size_t run = ascii_prefix(p, end);
+        for (size_t k = 0; k < run; k++) s->chars[i++] = (MkChar)p[k];
+        p += run;
+        if (p < end) {
+            p += mk_utf8_decode(p, end, &cp);
+            if (cp >= 0x10000) {
+                cp -= 0x10000;
+                s->chars[i++] = (MkChar)(0xD800 + (cp >> 10));
+                s->chars[i++] = (MkChar)(0xDC00 + (cp & 0x3FF));
+            } else {
+                s->chars[i++] = (MkChar)cp;
+            }
         }
     }
     return s;

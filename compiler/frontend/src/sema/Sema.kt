@@ -44,13 +44,14 @@ class Sema {
 
     // ---- loading -----------------------------------------------------------------------------------------------
 
-    fun addFile(path: String, text: String, declOnly: Boolean = false): FileInfo {
-        val r = parseKotlinUnquoted(text)
-        val f = FileInfo(path, text, r.file, r.file.packageName ?: "")
+    fun addFile(path: String, text: String, declOnly: Boolean = false, parsed: KtFile? = null): FileInfo {
+        val r = if (parsed == null) parseKotlinUnquoted(text) else null
+        val tree = parsed ?: r!!.file
+        val f = FileInfo(path, text, tree, tree.packageName ?: "")
         f.declOnly = declOnly
         f.index = files.size
         files.add(f)
-        for (e in r.errors) diags.add(Diag(path, e.offset, "syntax error: " + e.message))
+        if (r != null) for (e in r.errors) diags.add(Diag(path, e.offset, "syntax error: " + e.message))
         collector.collectFile(f)
         return f
     }
