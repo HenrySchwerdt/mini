@@ -166,6 +166,8 @@ class FunSym(name: String, val decl: FunDecl?, val owner: ClassSym?, val file: F
     var synthOwnerOverride: ClassSym? = null
     var invokeArity = 0
     var bodyChecked = false
+    /** the signature part of a deferred stub function is done (see isLazyStubFun) */
+    var stubSigChecked = false
     var invokeSuspend = false
     /** the default values of the overridden functions were copied to [params] (see BodyChecker.inheritDefaults) */
     var defaultsInherited = false

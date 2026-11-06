@@ -132,10 +132,9 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrGetObjectValue -> {
         val c = e.classOwner
         if (c.kotlinFqName == "kotlin.Unit") MirExpr.UnitValue
-        else if (isPrimitiveCompanion(c.kotlinFqName)) MirExpr.NullConst(anyNullable)
         else if (c in classInfos) MirExpr.ObjectGet(info(c).cName, typeOf(c))
         // the companion object of a primitive class (`val x: Any? = Int`): a non-null object without members
-        else if (c.isCompanion && (c.parent as? IrClass)?.kotlinFqName in PRIMITIVES) unitInstance()
+        else if (isPrimitiveCompanion(c.kotlinFqName) || (c.isCompanion && (c.parent as? IrClass)?.kotlinFqName in PRIMITIVES)) unitInstance()
         else unsupported(e, "object reference '${c.kotlinFqName}'")
     }
     is IrSetValue, is IrSetField, is IrWhileLoop, is IrDoWhileLoop, is IrInstanceInitializerCall, is IrDelegatingConstructorCall ->

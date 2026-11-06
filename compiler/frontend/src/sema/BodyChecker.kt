@@ -44,6 +44,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     // ---- small helpers ---------------------------------------------------------------------------------------------
 
     fun record(node: Ast, type: Type, callee: Sym?): ExprRec {
+        if (callee is FunSym && sema.isLazyStubFun(callee)) sema.checkFun(callee)
         val isNew = rec.get(node) == null
         val r = rec.put(node, if (type is IntLiteralType) ops.literalDefault(type) else type, callee)
         if (isNew && callee is FunSym && node is CallExpr && (callee.invokeSuspend || callee.mods()?.has("suspend") == true)) checkSuspendContext(node.start, callee)
@@ -155,7 +156,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
             }
             is FunDecl -> {
                 val f = sema.declSyms[d] as? FunSym
-                if (f != null) sema.checkFun(f)
+                if (f != null) { if (sema.isLazyStubFun(f)) sema.checkStubFunSignature(f) else sema.checkFun(f) }
             }
             is PropertyDecl -> {
                 val p = sema.declSyms[d] as? PropSym
@@ -204,10 +205,14 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         }
     }
 
-    fun checkFunBody(f: FunSym) {
+    /**
+     * [part]: 0 = everything, 1 = only what a declaration needs without its body (the default values of the parameters, for a
+     * function of a stub whose body is deferred, see [isLazyStubFun]), 2 = only the body (the rest was done by part 1).
+     */
+    fun checkFunBody(f: FunSym, part: Int = 0) {
         val d = f.decl ?: return
         sema.ensureSig(f)
-        checkMatmulOperator(f, d)
+        if (part != 2) checkMatmulOperator(f, d)
         val bodyOrNull = d.body
         sema.ensureSig(f)
         scope = functionScope(f)
@@ -216,7 +221,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
         if (bodyOrNull != null) AstWalk.capturedAssigned(bodyOrNull, names)
         capturedNames = names
         // default values of parameters (also of abstract and interface functions, which have no body)
-        for (p in d.params) {
+        if (part != 2) for (p in d.params) {
             val dv = p.default
             if (dv != null) {
                 val pt = paramType(f, p.name)
@@ -224,6 +229,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
                 expectCompatible(dv, t, pt)
             }
         }
+        if (part == 1) return
         val body = bodyOrNull ?: return
         if (file.declOnly && !StubRules.keepsBody(d)) return
         val declared = if (d.returnType != null || !d.expressionBody) f.returnType else null
