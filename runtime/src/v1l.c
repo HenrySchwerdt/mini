@@ -42,7 +42,7 @@ MkObject *mk_catch(void) {
 _Noreturn void mk_report_uncaught(void) {
     MkObject *e = mk_catch();
     mk_runtime_flush();
-    const MkString *text = e != NULL ? mk_to_string(e) : NULL;
+    const MkString *text = e != NULL ? mk_throwable_virtual_to_string(e) : NULL;
     fputs("Exception in thread \"main\" ", stderr);
     if (text != NULL) {
         size_t len;
