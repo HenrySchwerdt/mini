@@ -406,11 +406,11 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
         "EQEQEQ" -> BinaryOp.IdEq
         else -> unsupported(c, "compiler intrinsic '$name'")
     }
-    if ((op == BinaryOp.Eq || op == BinaryOp.IdEq) && args.size == 2 && args.any { it.type.classFqName == "kotlin.Unit" }) {
+    if ((op == BinaryOp.Eq || op == BinaryOp.IdEq) && args.size == 2 && args.any { it.type.classFqName == "kotlin.Unit" && !it.type.nullable }) {
         // `foo() == Unit`: the Unit value is the Unit object (the call runs first)
         val nv = ArrayList<MirExpr>()
         for (a in args) {
-            if (a.type.classFqName == "kotlin.Unit") {
+            if (a.type.classFqName == "kotlin.Unit" && !a.type.nullable) {
                 if (a !is IrGetObjectValue) stmt(a, out)
                 nv += unitInstance()
             } else nv += tmpOfPlain(value(a, out), out)

@@ -6,6 +6,8 @@ fun foo() { log += "foo;" }
 
 fun any(): Any = Unit
 
+fun nu(b: Boolean): Unit? = if (b) Unit else null
+
 fun main() {
     println(foo() == Unit)
     println(Unit == foo())
@@ -16,4 +18,8 @@ fun main() {
     val x: Any? = foo()
     println(x == Unit)
     println(foo() === Unit)
+    println(nu(true) == Unit)
+    println(nu(false) == Unit)
+    println(nu(false) == null)
+    println(nu(true) == null)
 }
