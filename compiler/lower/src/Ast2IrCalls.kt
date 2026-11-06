@@ -67,6 +67,15 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
         val info = r.call ?: fail(e, "call without resolution")
         return callWithInfo(sel, info, irType(r.type), e)
     }
+    val cref = unparen(e.receiver)
+    if (sel is NameExpr && sel.name == "name" && cref is CallableRefExpr && r.callee == null && r.target == null) {
+        // the reference is evaluated (a bound receiver has side effects), its name is a constant
+        val stmts = ArrayList<IrStatement>()
+        stmts.add(coerceToUnit(convert(e.receiver)))
+        val str = sema.stringType
+        stmts.add(IrConst(str, cref.name))
+        return IrBlock(stmts, irType(str), null)
+    }
     // property / enum entry / object
     val sym = r.callee
     val t = irType(r.type)
@@ -100,6 +109,7 @@ fun Ast2Ir.propertyGetDot(sym: PropSym, r: ExprRec, t: Type, node: Ast): IrExpre
         val cc = findMember(callee, if (d != null) d else access?.ext)
         val ir = IrCall(cc, inner)
         ir.origin = "GET_PROPERTY"
+        markSuperAccess(ir, d)
         fillAccessorArgs(ir, cc, disp, ext, null)
         ir
     }
@@ -145,6 +155,15 @@ fun Ast2Ir.callWithInfo(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrE
     return buildCall(callee, info, inner, dv, xv, node, label, d)
 }
 
+/** `super.p` / `super<C>.p`: the accessor call is not virtual */
+fun Ast2Ir.markSuperAccess(call: IrCall, use: RecvUse?) {
+    val ux = use?.expr ?: return
+    if (unparen(ux) !is SuperExpr) return
+    val st = recvStaticType(use!!)
+    val sc = if (st != null) classOf(st) else null
+    if (sc != null) call.superQualifier = irClass(sc)
+}
+
 fun Ast2Ir.recvStaticType(u: RecvUse): Type? {
     val t = u.type
     if (t != null) return t
@@ -177,7 +196,55 @@ fun Ast2Ir.buildCall(
     }
     fillCallArgs(call, callee, info, dispatch, ext, label)
     call.typeArguments = info.typeArgs.map { irType(it) }
-    return call
+    return spillForSourceOrder(call, callee, info)
+}
+
+/**
+ * Named arguments are evaluated in the order they are written, not in the order of the parameters
+ * (`f(b = g(), a = h())` calls `g` first). When the two orders differ, the arguments with effects (and the receivers, which come
+ * first) are evaluated into temporaries in source order before the call.
+ */
+fun Ast2Ir.spillForSourceOrder(call: IrFunctionAccessExpression, callee: IrFunction, info: CallInfo): IrExpression {
+    var any = false
+    for (a in info.args) if (a.name != null) any = true
+    if (!any) return call
+    val srcOf = HashMap<Int, Int>()   // index in call.arguments -> position in the source
+    var regular = 0
+    for ((idx, p) in callee.parameters.withIndex()) {
+        if (p.kind != IrParameterKind.Regular) continue
+        var first = -1
+        for ((i, a) in info.args.withIndex()) if (info.paramOfArg[i] == regular && a.expr != null) { first = i; break }
+        if (first >= 0 && call.arguments.getOrNull(idx) != null) srcOf[idx] = first
+        regular++
+    }
+    var last = -1
+    var ordered = true
+    for (idx in callee.parameters.indices) {
+        val sp = srcOf[idx] ?: continue
+        if (sp < last) ordered = false
+        last = sp
+    }
+    if (ordered) return call
+    fun needsSpill(e: IrExpression): Boolean = when (e) {
+        is IrConst, is IrFunctionExpression, is IrFunctionReference, is IrPropertyReference, is IrVararg, is IrClassReference -> false
+        is IrGetValue -> (e.owner as? IrVariable)?.isVar == true
+        else -> true
+    }
+    val order = ArrayList<Int>()
+    for ((idx, p) in callee.parameters.withIndex()) if (p.kind != IrParameterKind.Regular && call.arguments.getOrNull(idx) != null) order.add(idx)
+    val regs = srcOf.keys.sortedBy { srcOf[it]!! }
+    order.addAll(regs)
+    val stmts = ArrayList<IrStatement>()
+    for (idx in order) {
+        val a = call.arguments[idx] ?: continue
+        if (!needsSpill(a)) continue
+        val t = newTemp("arg", a.type, a)
+        stmts.add(t)
+        call.arguments[idx] = getValue(t)
+    }
+    if (stmts.isEmpty()) return call
+    stmts.add(call)
+    return IrBlock(stmts, call.type, "ARG_ORDER")
 }
 
 fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrExpression {
@@ -194,7 +261,7 @@ fun Ast2Ir.constructorCall(e: CallExpr, info: CallInfo, type: Type, node: Ast): 
         if (oc != null) outer = receiverOfClass(oc)
     }
     fillCallArgs(call, k, info, outer, null, info.fn.name)
-    return call
+    return spillForSourceOrder(call, k, info)
 }
 
 /** a delegating constructor call (`super(...)`, `this(...)`) with the arguments [argExprs] of the declaration */

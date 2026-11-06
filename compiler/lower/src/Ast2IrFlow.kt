@@ -53,6 +53,7 @@ fun Ast2Ir.assignExpr(e: BinaryExpr): IrExpression {
             val cc = findMember(callee, access?.dispatch ?: access?.ext)
             val ir = IrCall(cc, unit)
             ir.origin = "EQ"
+            markSuperAccess(ir, access?.dispatch)
             fillAccessorArgs(ir, cc, disp, ext, convert(value))
             ir
         }
@@ -586,12 +587,18 @@ fun Ast2Ir.returnExpr(e: ReturnExpr): IrExpression {
 }
 
 fun Ast2Ir.findLoop(label: String?, at: Ast): IrLoop {
-    val c = ctx!!
-    if (label == null) {
-        if (c.loops.isEmpty()) fail(at, "break / continue outside of a loop")
-        return c.loops[c.loops.size - 1]
+    // `break` / `continue` in the lambda of an inline function target the loops of the enclosing function
+    var c = ctx
+    while (c != null) {
+        if (label == null) {
+            if (c.loops.isNotEmpty()) return c.loops[c.loops.size - 1]
+        } else {
+            for (i in c.loops.indices.reversed()) if (c.loops[i].label == label) return c.loops[i]
+        }
+        if (!c.isLambda) break
+        c = c.parent
     }
-    for (i in c.loops.indices.reversed()) if (c.loops[i].label == label) return c.loops[i]
+    if (label == null) fail(at, "break / continue outside of a loop")
     fail(at, "unknown loop label " + label)
 }
 

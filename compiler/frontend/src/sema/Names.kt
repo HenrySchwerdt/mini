@@ -406,6 +406,16 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
 
 fun BodyChecker.dotExpr(e: DotExpr, expected: Type?): Type {
     val sel = e.selector
+    // `::f.name`, `x::f.name`: the name of the referenced member (KCallable.name), a constant
+    var nr = e.receiver
+    while (nr is ParenExpr) nr = nr.inner
+    if (sel is NameExpr && sel.name == "name" && nr is CallableRefExpr) {
+        val rt = expr(e.receiver, null)
+        if (rt !is ErrType) {
+            record(e, sema.stringType, null)
+            return sema.stringType
+        }
+    }
     val recv = resolveReceiver(e.receiver, if (sel is NameExpr) sel.name else null)
     if (recv == null) {
         // still check call arguments so that nested expressions get their records

@@ -233,7 +233,7 @@ MkInt mk_hash_code(MkObject *o) {
 
 bool mk_equals(MkObject *a, MkObject *b) {
     if (a == NULL) return b == NULL;
-    if (a == b) return true;
+    /* no identity shortcut: `a.equals(a)` must call a user-defined equals (it may return false) */
     if (b == NULL) return false;
     const MkTypeInfo *t = a->type;
     if (t == &mk_type_String) return b->type == t && mk_string_equals((MkString *)a, (MkString *)b);

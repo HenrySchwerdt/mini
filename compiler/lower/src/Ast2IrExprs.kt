@@ -421,6 +421,15 @@ fun Ast2Ir.currentAccessorField(): IrField? {
 
 fun Ast2Ir.currentThisOf(f: IrField): IrExpression? {
     if (f.isStatic) return null
+    // the accessor that owns the field (`field` may be used in a lambda inside it: the lambda captures the accessor's receiver)
+    var c = ctx
+    while (c != null) {
+        val fn = c.fn
+        if (fn is IrSimpleFunction && fn.correspondingProperty?.backingField === f) {
+            for (p in fn.parameters) if (p.kind == IrParameterKind.DispatchReceiver) return IrGetValue(p, p.type, null)
+        }
+        c = c.parent
+    }
     val fn = ctx?.fn ?: return null
     for (p in fn.parameters) if (p.kind == IrParameterKind.DispatchReceiver) return IrGetValue(p, p.type, null)
     return null

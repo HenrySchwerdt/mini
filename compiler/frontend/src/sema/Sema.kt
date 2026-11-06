@@ -581,6 +581,16 @@ class Sema {
             val a = classNamed("kotlin.Annotation")
             if (a != null) out.add(ClassType(a, emptyList(), false))
         }
+        // kotlin.text.StringBuilder is a CharSequence (its length / get / subSequence are the members; the standard library
+        // source does not say so because a compiler without this rule has to build it)
+        if (c.name == "StringBuilder" && c.pkg == "kotlin.text" && c.outer == null) {
+            val csc = classNamed("kotlin.CharSequence")
+            if (csc != null) {
+                var has = false
+                for (t in out) if (t is ClassType && t.cls === csc) has = true
+                if (!has) out.add(ClassType(csc, emptyList(), false))
+            }
+        }
         c.supertypes = out
         c.supertypeState = 2
     }

@@ -162,19 +162,28 @@ internal fun Ir2Mir.throwStmt(s: IrThrow, out: MutableList<MirStmt>) {
     out += MirStmt.Throw(v)
 }
 
-/** Runs the `finally` blocks entered since depth [downTo] (innermost first), before leaving through a jump. */
-internal fun Ir2Mir.runFinalizers(downTo: Int, out: MutableList<MirStmt>) {
-    if (finallyStack.size <= downTo) return
-    val saved = finallyStack
-    val entries = saved.drop(downTo)
-    try {
-        for (i in entries.indices.reversed()) {
-            finallyStack = ArrayList(saved.subList(0, downTo + i))
-            stmt(entries[i], out)
-        }
-    } finally {
-        finallyStack = saved
-    }
+/** One `try ... finally` being converted: jumps out of its protected region are collected here (see [leaveThrough]). */
+internal class FinCtx(val fin: IrExpression, val label: MirLabel, val pending: MirLocal) {
+    val jumps = ArrayList<FinJump>()
+    /** declarations (values of `return`s) that must be visible after the protected region */
+    val decls = ArrayList<MirStmt>()
+}
+
+internal class FinJump(val id: Int, val downTo: Int, val emit: (MutableList<MirStmt>) -> Unit)
+
+/**
+ * A jump (`return`, `break`, `continue`, return from an expanded inline function) that leaves the `try ... finally` statements
+ * entered since depth [downTo]. The jump does not run the finalizer inside the protected region (an exception of the finalizer
+ * would then be caught by the `catch` clauses and by the catch-all of the same `try`): it records which jump it is, leaves the
+ * region, and the finalizer runs after it, followed by the jump ([jump], emitted where the enclosing statement is converted).
+ */
+internal fun Ir2Mir.leaveThrough(downTo: Int, out: MutableList<MirStmt>, jump: (MutableList<MirStmt>) -> Unit) {
+    if (finallyStack.size <= downTo) { jump(out); return }
+    val ctx = finallyStack[finallyStack.size - 1]
+    val id = ctx.jumps.size + 1
+    ctx.jumps += FinJump(id, downTo, jump)
+    out += MirStmt.Assign(ctx.pending, MirExpr.IntConst(id))
+    out += MirStmt.Break(ctx.label)
 }
 
 internal fun Ir2Mir.tryValue(t: IrTry, out: MutableList<MirStmt>, asStatement: Boolean = false): MirExpr {
@@ -189,7 +198,11 @@ internal fun Ir2Mir.tryValue(t: IrTry, out: MutableList<MirStmt>, asStatement: B
     }
 
     val fin = t.finallyExpression
-    if (fin != null) finallyStack.add(fin)
+    var ctx: FinCtx? = null
+    if (fin != null) {
+        ctx = FinCtx(fin, MirLabel(labelCounter++), MirLocal(localCounter++, "pending", TInt))
+        finallyStack.add(ctx)
+    }
     val inner = ArrayList<MirStmt>()
     val body = ArrayList<MirStmt>()
     branch(t.tryResult, body)
@@ -217,8 +230,20 @@ internal fun Ir2Mir.tryValue(t: IrTry, out: MutableList<MirStmt>, asStatement: B
         handler += MirStmt.Declare(ex, MirExpr.CaughtException(ex.type))
         stmt(fin, handler)
         handler += MirStmt.Throw(MirExpr.Local(ex))
-        out += MirStmt.Try(inner, listOf(MirCatch(ex.type, handler)))
+        val protectedTry = MirStmt.Try(inner, listOf(MirCatch(ex.type, handler)))
+        if (ctx!!.jumps.isEmpty()) out += protectedTry
+        else {
+            // a jump leaves the protected region through `break`; the finalizer then runs outside of it
+            out += MirStmt.Declare(ctx.pending, MirExpr.IntConst(0))
+            out += ctx.decls
+            out += MirStmt.Loop(ctx.label, listOf(protectedTry, MirStmt.Break(ctx.label)))
+        }
         stmt(fin, out)
+        for (j in ctx.jumps) {
+            val b = ArrayList<MirStmt>()
+            leaveThrough(j.downTo, b, j.emit)
+            out += MirStmt.If(MirExpr.Binary(BinaryOp.Eq, MirExpr.Local(ctx.pending), MirExpr.IntConst(j.id)), b, emptyList())
+        }
     }
     return if (res != null) MirExpr.Local(res) else if (type == TNothing) MirExpr.Unreachable(TNothing) else MirExpr.UnitValue
 }
