@@ -180,6 +180,14 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
             if (bound != null) for ((k, p) in target.parameters.withIndex()) {
                 if (p.kind == IrParameterKind.DispatchReceiver) { call.arguments[k] = bound; break }
             }
+        } else if (rv == null && sym.isExtension && target.parameters.any { it.kind == IrParameterKind.ExtensionReceiver } && (rec(e)?.type as? ClassType)?.args?.size == sym.params.size + 1) {
+            // `::f` of an extension function `A.f` written where `A` is an implicit receiver: bound to it
+            val rt = sym.receiver
+            val rcls = if (rt != null) classOf(rt) else null
+            val bound = if (rcls != null) implicitMemberReceiver(rcls, e) else null
+            if (bound != null) for ((k, p) in target.parameters.withIndex()) {
+                if (p.kind == IrParameterKind.ExtensionReceiver) { call.arguments[k] = bound; break }
+            }
         } else if (rv != null && (objQ != null || !isClassQualifier(rv))) {
             val bound = if (objQ != null) IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)) else convert(rv)
             var k = 0
@@ -200,6 +208,13 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val objQ = if (rv != null) objectQualifier(rv, r) else null
         if (objQ != null) ref.arguments.add(IrGetObjectValue(objQ, irType(objQ.thisReceiver?.type ?: sema.anyType)))
         else if (rv != null && !isClassQualifier(rv)) ref.arguments.add(convert(rv))
+        else if (rv == null && sym.owner == null && sym.isExtension && !isClassRefTarget(e)) {
+            // `::p` of an extension property `A.p` written where `A` is an implicit receiver: bound to it
+            val rt = sym.receiver
+            val rcls = if (rt != null) classOf(rt) else null
+            val bound = if (rcls != null) implicitMemberReceiver(rcls, e) else null
+            if (bound != null) ref.arguments.add(bound)
+        }
         else if (rv == null && sym.owner != null && !isClassRefTarget(e)) ref.arguments.add(implicitMemberReceiver(sym.owner, e) ?: implicitReceiver(RecvRef(sym.owner, null, false), e))
         return ref
     }

@@ -216,6 +216,8 @@ class RefCand(val sym: Sym, val params: List<Type>, val ret: Type, val tps: List
     /** `Obj::member` of an object: bound to the object */
     var objBound = false
     var objType: Type? = null
+    /** the scope group the candidate came from (a `::f` without receiver): the innermost group wins */
+    var level = 0
 }
 
 internal fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<RefCand>) {
@@ -245,7 +247,17 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     val cands = ArrayList<RefCand>()
     val rcv = e.receiver
     if (rcv == null) {
-        for (g in unqualifiedGroups(name)) for (c in g) funRefCand(c, false, cands)
+        var gi = 0
+        for (g in unqualifiedGroups(name)) {
+            for (c in g) {
+                val er0 = c.extRecv
+                if (c.extRef != null && er0 != null && !extFits(c.fn, er0)) continue
+                val before = cands.size
+                funRefCand(c, c.extRef != null, cands)
+                for (k in before until cands.size) cands[k].level = gi
+            }
+            gi++
+        }
         val r = resolveSimpleName(name)
         if (r != null && r.sym is PropSym && r.kind == NameRes.VALUE) {
             val p = r.sym
@@ -374,7 +386,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 }
             }
             if (!ok) continue
-        } else if (cands.size > 1) {
+        } else if (cands.any { it !== c && it.level == c.level }) {
             continue
         }
         chosen = c

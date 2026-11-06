@@ -18,7 +18,23 @@ class Outer {
     fun test3(): List<String> = A(3).run { listOf("a").map(::twice) }
 }
 
+class P {
+    val v = 7
+    fun m() = "m"
+    fun t0() = (::m).let { it() } + (::pExt).let { it() } + (::pProp).let { it() }
+    inner class Q {
+        fun m() = "q"
+        fun t() = (::m).let { it() } + (::pExt).let { it() } + (::pProp).let { it() }
+    }
+}
+
+fun P.pExt() = "e"
+val P.pProp: Int get() = v * 2
+
 fun main() {
+    println(P().t0())
+    println(P().Q().t())
+    with(P()) { println((::pExt).let { it() } + (::m).let { it() }) }
     with(A(10)) {
         println(listOf(1, 2).map(::foo))
         val f = ::foo
