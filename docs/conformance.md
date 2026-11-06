@@ -402,6 +402,67 @@ The per-round tables above were measured on the branches alone (5a: 5425, 5b: 53
 The combined merge also fixed a regression found by CI: a non-reified type argument that is a C pointer (`memScoped { f() }` returning
 `CPointer<..>?`) is substituted in the inline expansion again, so the LLVM C API backend compiles itself.
 
+## Sixth round (a) (branch claude/conformance-6a)
+
+Targets: the `compile-error` and `ice` buckets of round 5 (226 + 32 tests), mostly frontend / sema fixes plus a few small lowering fixes. A parallel branch
+(6b) works on runtime failures and crashes. `results.json` / `summary.md` come from a full harness run (5709 passed) over the tree one commit before the last one, followed by a `--retest` of everything that did not pass on the final tree (it also fixes the one regression the full run found, `fir/localInvokeExtension`: a parameter `encode: W.(T) -> Unit` must win over the member extension `encode` of the enclosing object) and a re-run of a sample of the passing tests in the touched areas (`box/fir`, `smartCasts`, `extensionFunctions`, `callableReference`, `closures`, `funInterface`, `sam`, `operatorConventions`, `typealias`, `inference`, `functions`, `objects`, `innerNested`, `delegation`, `when`, `casts`; 932 applicable tests: 869 pass, none of them regressed, 36 are among the fixed ones). The wall time in `summary.md` is that of the retest.
+
+| | after round 5 | round 6 (a) |
+|---|---:|---:|
+| **pass (all applicable tests)** | **5614 (94.02%)** | **5711 (95.65%)** |
+| compile-error | 226 | 130 |
+| ice | 32 | 27 |
+| runtime-fail | 84 | 86 |
+| crash | 13 | 14 |
+| timeout | 2 | 3 |
+
+Fixes, grouped by cause (every group has a test in `compiler/testdata`, named `conformance6a_*`, plus the box tests named here):
+
+1. **`invoke` on values the callee name denotes** (`conformance6a_invoke_objects`, `conformance6a_invoke_values`; about 30 tests). `A(42)` where `A` is an object, a class with a
+   companion object, a nested class with a companion, or a typealias of an object (`invokeOnObject1`, `invokeOnClassObject1/2`, `invokeOnClassObjectOfNestedClass1/2`,
+   `typeAliasObjectCallable`, `implicitInvokeInCompanionObjectWithFunctionalArgument`, and the six `selfReferenceToCompanionObject*` tests that called `Host.ok()` through the
+   companion's `invoke`), `operator fun A.invoke()` extensions on objects, enum entries `A.ONE(42)` / imported `ONE(42)` (`invokeOnEnum1/2`, `invokeOnImportedEnum1/2`), extension
+   properties of function type (`4.ext()`, `kt1892`; the extension property with the most specific receiver wins: `D.attr` over `C.attr`, `kt3772`), a member property of an object with an extension
+   `invoke` (`kt24209`), member extension `invoke` on expressions (`A()()`, `extensionInvokeOnExpr`, `kt14201_2`) and `recv.(fn)(args)` (`1.(fun Int.() = this + 1)()`, `A.(foo)()`:
+   `executionOrder`, `kt4228`, `functionExpression*`, `functionLiteralExpression`). The sema now falls back to "the callee is a value": `valueInvokeGroups` in `Calls.kt`; the lowering
+   keeps the dispatch receiver of a member-extension `invoke` next to the function value (`Ast2IrCalls.invokeCall`).
+2. **Member extensions applied to implicit receivers** (`kt3285`, `kt17725`, `kt52432`, `kt6382`, `traitWithPrivateExtension`, `innerNested/extensionFun`, `objects/privateExtensionFromInitializer_kt4543`): `fun NoiseMaker.playWith()` declared in a class and called as
+   `playWith()` inside a lambda with receiver `NoiseMaker`, or with `this` smart cast to the declaring class: the dispatch receiver (a class or lambda receiver) and the extension receiver
+   (any implicit receiver) are paired (`addReceiverGroups`).
+3. **Default values and argument binding.** Constructor default values see the parameters before them (`class A(val i: Int, val j: Int = i)`, data classes, enum constructors, inner classes: `kt2270`,
+   `defaults10`, `innerWithDefaultArgument`, `constructorWithDefaultParam`); `a[i] = v` / `a[i] += v` where `set` has a defaulted or `vararg` parameter before the value (`set` binds the value to its last
+   parameter, `callOperator` passes the bound arguments: the six `set is not resolved` ICEs `incWithDefaults`, `kt16520`, `plusAssignWithDefaults`, `classVarargGetSet*`); a vararg given by name does
+   not swallow the next positional argument (`mixedNamedPosition/varargs*`); a function that a superclass implements and an interface gives default values for (`class C : I, Impl()`: `funInTraitChain`,
+   `implementedByFake*`, `defaultsFromFakeOverride`, `withDefaultParameters`).
+4. **SAM conversion of function values and typealiases.** A value of function type is accepted where a fun interface is expected (`run1(f)`, also nullable: `isNull(nullableFun())`, `nullableSam`,
+   `lambdaRuntimeConversion`, `mangledSamWrappers*`; the sema subtype rule in `TypeOps.sub`, the lowering wraps a nullable value so that `null` stays `null`); the SAM constructor of a generic fun interface
+   behind a typealias (`StringConsumer { }`: `funInterfaceTypealias`); constructors behind generic aliases with explicit type arguments (`ST<String>(...)`: `genericTypeAliasConstructor2`), inner classes behind aliases
+   (`outer.OI(...)`), star projections through an alias (`AddLastDesc<*>`: `objectLiteralConstructor`), a bare generic alias in `is` / `as` (`typeAliasAsBareType`).
+5. **Types.** `kotlin.Comparator<in T>`, `kotlin.ConcurrentModificationException`, `another.Outer()`: a package with a one-segment name qualifies a type (`nonTrivialProjectionInSuperType`, `kt10143`);
+   a generic class written without type arguments in `is` / `as` / `when (x) { is A -> }` takes them from the subject (`class B<out U> : C<Nothing, U>()` against `C<Int, String>`: `kt10934`,
+   `inferredTypeParameters`); a function type with a receiver is interchangeable with the one that takes it as its first parameter (`test1(b)`; `kt13312` still fails in the lowering).
+6. **Contracts.** `require(x is T)`, `check(c)`, `requireNotNull(x)`, `checkNotNull(x)` and the simple user contracts `contract { returns() implies p }` / `implies (p != null)` give smart casts after
+   the call (`contracts/require`, `contractForCast`, `conformance6a_alias_contract`).
+7. **Integer literals with an expected `Long`.** `val a: Long = 2147483647 + 1`, `-(1 shl 31)`, `const val h: Long = 60 * 60 * 1000`: a tree of unsuffixed literals is computed in Int and converted
+   (`overflowLong`, `longOverflow`, `literalToLongConversion`; the sema types the tree `Long`, the lowering folds the constant, `evalConst` knows the bit operators).
+8. **Nothing and Unit as values** (lowering): `"" + break`, `null?.toString()`, `null?.run { return }`, `p.toString()` with `p: Nothing`, `a == b` with Nothing operands, `x ?: 0` with `x: Nothing?`
+   (`breakFromOuter`, `innerLoopWithStack`, `popSizes`, `tryFinally1`, `kt5493`, `kt47279`, `divisionByZero`, `eqeq`; `conformance6a_nothing`). A Unit temporary is evaluated for its effect (no local of type Unit).
+9. **Enum classes with secondary constructors only** (`noPrimaryConstructor`; the call of `Enum()` is a no-op); nested and inner classes of superclasses are in scope (`instantiateInDerived*`);
+   the harness picks the top-level `fun box()` over a member of that name (`properRecapturingInClass`, 6 tests: harness only).
+
+Measurements: hello world is still 23552 bytes; `minic check examples/hello.kt` takes 0.39-0.43 s (0.35-0.43 s before the round, same machine, noisy: the stdlib is unchanged).
+
+Validation of the final sources: `compiler/bootstrap.sh` (stage2 == stage3), `compiler/bootstrap.sh --backend=llvm-api` (stage2 == stage3) with `repl-session.sh` on its stage3, the full `mini test` (exit 0),
+`scripts/test-e2e.sh` with the default suites plus `llvm` and `llvm-leak` (1162 passed, 0 failed, 1 skipped), `scripts/strict-corpus.sh --run`
+(111 ok) and the bootstrap with the 0.9.0 release as stage0 (`scripts/ci-stage0.sh`) all pass.
+
+Still open (largest first): classes that extend `Number` (about 10 tests: `numberToChar/*`, `equalityForBoxesOf...`, the `Number` runtime does not call the user's `toInt`), builder inference with
+postponed type variables (`kt53478`, `kt63733`, `pclaRoot*`, `kt47744`, `specialCallsWithLambdas`), function types as supertypes and `kotlin.Function` (`suspendFunctionAsSupertype*`, `asFunKSmall`,
+`implIsNotFunction`), suspend conversion of function values to suspend fun interfaces (`chainedFunSuspendConversion...`, `intersectionTypeTo...`), annotation instances (7 tests),
+adapted callable references (`referenceToVarargWithDefaults`, `unitCoercionOverloads`, `conversionCombinations`, `::foo.name` of a value), `do { var y } while (y < 10)` (the condition sees the body's
+variables: needs a lowering change), `super` inside the delegation expression of an object literal (`kt11634*`), imported member extensions of objects (`useImportedMember*`), `Unit` fields of data
+classes (`unitComponent`), closures in local functions with default values (`kt47073_nested`, `nestedInnerClass`, `kt20651_inlineLambda`), unsigned `sumOf` / vararg conversions (`arrays`, `varargsOfUnsignedTypes`).
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

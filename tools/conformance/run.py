@@ -113,10 +113,12 @@ def split_files(src):
 
 
 def box_package(files):
-    for _, text in files:
-        if re.search(r'^\s*(?:(?:public|internal|private)\s+)?(?:(?:inline|suspend|tailrec|operator)\s+)*fun\s+box\s*\(\s*\)', text, re.M):
-            m = re.search(r'^\s*package\s+([\w.`]+)', text, re.M)
-            return m.group(1) if m else ''
+    # a top-level `fun box()` (no indentation) wins over a member named box (properRecapturingInClass)
+    for indent in (r'', r'\s*'):
+        for _, text in files:
+            if re.search(r'^' + indent + r'(?:(?:public|internal|private)\s+)?(?:(?:inline|suspend|tailrec|operator)\s+)*fun\s+box\s*\(\s*\)', text, re.M):
+                m = re.search(r'^\s*package\s+([\w.`]+)', text, re.M)
+                return m.group(1) if m else ''
     return None
 
 
