@@ -67,6 +67,15 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
         val info = r.call ?: fail(e, "call without resolution")
         return callWithInfo(sel, info, irType(r.type), e)
     }
+    val cref = unparen(e.receiver)
+    if (sel is NameExpr && sel.name == "name" && cref is CallableRefExpr && r.callee == null && r.target == null) {
+        // the reference is evaluated (a bound receiver has side effects), its name is a constant
+        val stmts = ArrayList<IrStatement>()
+        stmts.add(coerceToUnit(convert(e.receiver)))
+        val str = sema.stringType
+        stmts.add(IrConst(str, cref.name))
+        return IrBlock(stmts, irType(str), null)
+    }
     // property / enum entry / object
     val sym = r.callee
     val t = irType(r.type)
