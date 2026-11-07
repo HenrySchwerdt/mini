@@ -258,6 +258,13 @@ void mk_release(MkObject *object) {
         mk_cycles_hooks.release_armed(object, flags); /* (object.c, below: only linked with the collector) */
         return;
     }
+#if MK_SMALL_ALLOC
+    /* strings and boxed Ints (the temporaries of every collection loop) have no dispose and own a small block: free it directly */
+    if ((object->type == &mk_type_String || object->type == &mk_type_Int) && !(flags & MK_FLAG_PREFIXED)) {
+        mk_small_free_object(object);
+        return;
+    }
+#endif
     free_dead(object, false, false);
 }
 

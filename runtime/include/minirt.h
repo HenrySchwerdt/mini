@@ -420,6 +420,10 @@ extern const MkTypeInfo mk_type_Float;
 extern const MkTypeInfo mk_type_Byte;
 extern const MkTypeInfo mk_type_Short;
 extern const MkTypeInfo mk_type_Char;
+typedef struct MkBoxIntCell { MkObject header; MkInt value; } MkBoxIntCell;
+extern MkBoxIntCell *volatile mk_int_box_cache; /* shared immortal boxes of -128..1023 (NULL until the first is made): mk_box_int's fast path, inline */
+#define MK_INT_BOX_CACHE_LO (-128)
+#define MK_INT_BOX_CACHE_COUNT 1152
 MkObject *mk_box_int(MkInt value); /* refcount 1 */
 MkObject *mk_box_long(MkLong value);
 MkObject *mk_box_boolean(MkBoolean value);
@@ -460,6 +464,16 @@ MkBoolean mk_string_is_double(const MkString *s); /* Java Double.parseDouble syn
 MkDouble mk_string_parse_double(const MkString *s);
 
 /* Growable UTF-16 buffer behind kotlin.text.StringBuilder (an opaque heap object). */
+/* The layout of the builder (runtime/src/v1s.c owns it; the C prelude of generated code appends a narrow character inline). */
+typedef struct MkSb {
+    MkObject header;
+    void *data;      /* uint8_t[capacity] when narrow, MkChar[capacity] when wide */
+    MkInt length;
+    MkInt capacity;  /* in characters */
+    MkInt wide;
+    MkString *backing; /* NULL, or the string whose characters `data` is (see mk_sb_to_string); the builder owns one reference */
+    MkChar inline_chars[];
+} MkSb;
 MkObject *mk_sb_new(void);
 void mk_sb_append_string(MkObject *sb, const MkString *s);
 void mk_sb_append_char(MkObject *sb, MkChar c);
