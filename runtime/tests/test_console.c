@@ -47,7 +47,6 @@ int main(void) {
     s->chars[0] = 'o';
     s->chars[1] = 'k';
     mk_println_int(mk_string_length(s));
-    mk_println_int(mk_string_length(NULL));
     mk_println_string(s);
     mk_release(&s->header);
     return 0;

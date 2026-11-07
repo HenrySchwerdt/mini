@@ -91,7 +91,6 @@ int main(void) {
     s = U("\xF0\x9F\x98\x80"); /* 31*0xD83D + 0xDE00 */
     CHECK_EQ_INT(mk_string_hash(s), 31 * 0xD83D + 0xDE00);
     mk_release(&s->header);
-    CHECK_EQ_INT(mk_string_hash(NULL), 0);
 
     /* equals */
     MkString *a = U("same"), *b = U("same"), *c = U("diff"), *d = U("sam");

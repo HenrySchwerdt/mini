@@ -8,8 +8,7 @@ array cast of another element type: ClassCastException
 array cast to a supertype: ClassCastException
 1
 array cast to an out type: ok
-0
-array cast of null slots: ok
+array cast of null slots: NullPointerException
 1
 nullable slots are fine: ok
 store through a generic view: ClassCastException

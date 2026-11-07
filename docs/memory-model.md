@@ -1346,6 +1346,7 @@ which run under AddressSanitizer + LeakSanitizer in the `leak` and `llvm-leak` s
 | Gap | Root cause | Fix | Test |
 |---|---|---|---|
 | **Heap pollution is type confusion.** `listOf<Any>(1) as List<String>` followed by `l[0].length` read the boxed Int as a String (length and characters taken from a foreign layout: garbage output, out-of-bounds reads); the same for a generic field (`Box<T>.v`), `T` results, lambda parameters and `Array<String>` (reified arrays, below) | the conversion of an erased value (`Any?`) to the type it has at the use (`adaptResult`, `convertFromErased`, `coerceFlexible`, unboxing from `Any`) was a C-level retyping (`CastMode.Unchecked`) | it is a **checked cast** (`CastMode.Checked`, `erasedCastMode`) like the `checkcast` the JVM inserts at the use: `ClassCastException` (`NullPointerException` for a `null` that is not allowed). `Any` itself, the common case, costs nothing; same-class values pass the inline type-pointer compare | `generic_pollution_cce` |
+| **Heap pollution with `null` was a null dereference.** `arrayOfNulls<String>(n) as Array<String>` (or `listOf<String?>(null) as List<String>`, a generic field, a `T` result) passes the cast like on the JVM, then `a[0].length` read `0` (a `String` is read through a runtime helper that mapped `NULL` to the empty string) and `a[0].v` / `a[0].f()` of a class read or called through a null pointer | the retyping of an erased value to a non-null type (`Cast(..., Unchecked)`) was not told from a smart cast: nothing knew the value could be `null` | the retyping is `CastMode.Erased`; the `NullGuard` MIR pass puts a `NotNull` (a `NullPointerException`) where such a value is dereferenced or passed where a non-null value is expected, and `mk_string_length` / `mk_string_hash` of `NULL` are fatal (`mk_string_get_char` raises). See the section below | `polluted_null_npe` |
 | **A non-null property read before it is initialized dereferenced the zero of the allocation** (`open class Base { init { show() } }`, `class D : Base() { val s = "x"; override fun show() { s.length } }`; two `object`s or files that read each other's properties while they initialize). Strings silently read as `""`/`"null"`, other classes were a null dereference | the field of a non-null type is assumed to hold a value | reads of such a field are null-checked (`NullPointerException`, like the JVM) when the field can still be unset while code of its class runs: classes whose initialization lets `this` out (`initLeaksThis`: a member call with the implicit receiver, `this` passed or captured in a property initializer, `init` block or constructor, in the class or one of its superclasses), fields of `object`s and top-level properties that have a non-constant initializer. Other classes pay nothing (`Ir2MirInitSafety.kt`) | `uninit_field_npe` |
 | **Huge arrays**: `IntArray(Int.MAX_VALUE)` on a machine that cannot supply the memory wrote the length into a null block; on a 32-bit target (wasm32) `elem * length` wrapped to a small block and later accesses were out of bounds | `array_new` neither checked the size computation nor the result of the allocator | overflow-checked size, a failed allocation is the fatal `OutOfMemoryError` (like `string too long`) | (needs an unreasonable allocation; the check is in `runtime/src/v1l.c`) |
 | **`list.addAll(list)` never ended** (the loop re-read the size of the list it was growing and ran until the storage was exhausted) | `ArrayList.addAll` iterated with the live size | the element count is taken once before the copy | `list_addall_self` |
@@ -1384,7 +1385,7 @@ without such a parameter) records `Any?`. It enters an `Array<C>` type only at a
 element type is a checked cast (`mk_array_cast` / `mk_array_is`, also `is`, `as?`, smart casts, erased generic results and fields):
 `ClassCastException` unless the tags are equal (or, for `out`, the recorded type is a subtype). So `arrayOf<Any>(1) as Array<String>` fails at the
 cast like on the JVM, and `fun <T> mk(): Array<T> = arrayOfNulls<Any?>(1) as Array<T>` fails where its caller reads the result as `Array<String>`.
-Like the JVM, nullability is not part of the class of an array: `arrayOfNulls<String>(n) as Array<String>` and `Array<String> as Array<String?>` pass (a `null` passes every erased cast, as in `checkcast`; the check of the element type is the only one made). The JVM then throws a `NullPointerException` where the `null` is dereferenced (`a[0].length`); here that dereference of a non-null typed `String` is not checked and reads as the empty string (known gap, the same for `listOf<String?>(null) as List<String>` and `l[0].length`).
+Like the JVM, nullability is not part of the class of an array: `arrayOfNulls<String>(n) as Array<String>` and `Array<String> as Array<String?>` pass (a `null` passes every erased cast, as in `checkcast`; the check of the element type is the only one made). The `null` is then caught where it is dereferenced, like on the JVM (`a[0].length` is a `NullPointerException`; see "Null values behind a non-null type" below).
 An *empty* array passes every array cast (nothing can be read from or stored into it, so no element can be confused; the frontend infers `arrayOf()` without an expected type as `Array<Any?>`). `CastElim` removes the cast when the operand type already proves it (`Array<String>` to `Array<out Any>`, to `Array<T>`).
 
 **Deliberate differences from the JVM** (all are failures of a cast the JVM would let through and fail later, or not at all):
@@ -1392,33 +1393,79 @@ An *empty* array passes every array cast (nothing can be read from or stored int
 Stores through a generic view fail
 with `ClassCastException` instead of `ArrayStoreException`. Test: `array_reified`.
 
+### Null values behind a non-null type (`NullGuard`)
+
+A value of a non-null type can be `null` only where the program converted an *erased* value (an element of a generic container, a generic
+result or field, an element of a reified array) to that type: the conversion is the `checkcast` of the JVM, which lets `null` pass (so
+`val s: String = nullAsT()` and `println(a[0])`, `"x" + a[0]`, `a[0] == "x"` work with the `null`), and the JVM throws a
+`NullPointerException` where the value is dereferenced. The lowering marks such a conversion `CastMode.Erased` (`erasedCast`, `arrayRead`);
+the pass `NullGuard` (`compiler/backend/src/opt/NullGuard.kt`, run on every module, also with `-Xno-mir-opt`) then follows the *tainted*
+values (the marked conversion, a local assigned one, a conditional of them) and wraps a tainted value in `NotNull` where it is
+- the receiver of a field read or write, a virtual or interface call, `String.length` / `[]` / `hashCode` / `substring`, or an operand
+  of a runtime function that reads it;
+- passed to a parameter of a non-null type (the JVM checks the parameters of a public function the same way), stored in a field of a
+  non-null type, returned from a function of a non-null return type, thrown, or stored into an array whose element type is not
+  null (such an array never holds a `null`, below).
+Uses that accept `null` are not checked: `==`, string templates and concatenation, `println`, `is`, a nullable or `Any?` parameter, a local
+that is only passed on. Deliberate differences from the JVM, all in programs that already hold a polluted `null`: a polluted `null` is
+checked when it is *returned*, passed as an argument or stored into a non-null field or array instead of where the callee dereferences it
+(a function that returns it would otherwise hand the caller a value nobody can see being null), and `s.toString()` of a polluted `String`
+prints `null` instead of throwing.
+
+Cost. A tainted value is tested once (a check makes the *value* known to be non-null for the rest of the straight-line code: copies of a
+local share it; a branch or loop that is left forgets what was checked in it). A local that is only ever dereferenced is tested where it is
+defined when nothing observable happens before its first use (no call, store, throw, `try`), so the loop that reads it does not test it again.
+The reads of an array that cannot hold a `null` are not tested at all: the arrays a function creates itself with non-null elements
+(`mk_array_new_of(..., nullable = 0)`), copies of such a local and the parameters of functions that are only called directly with such
+arrays; an array that came through a cast, a field or a call result is not followed and its reads are tested. That is sound because a
+`null` cannot get into an array that was created without null elements: a store of a value that may be `null` through a view that allows it
+(`Array<String> as Array<String?>`, then `b[0] = null`) goes through `mk_array_store_obj`, which compares it with the element type recorded
+at creation (`NullPointerException`), and a tainted value stored through a non-null view is checked by `NullGuard`.
+The runtime helpers keep a last line of defence: `mk_string_length` and `mk_string_hash` of `NULL` abort with `NullPointerException`
+(they used to return 0), `mk_string_get_char` raises it.
+
 ### Cost of the checks
 
 Measured with `valgrind --tool=callgrind` (instructions of the whole run, clang -O2, C backend, x86-64, scaled-down workloads of `bench/*`
-so that callgrind finishes) against the compiler and runtime of `origin/main` (4e13fc6); "text" is the `text` section of the linked
-program, which includes the runtime (about 1.7 KB for the new array functions and checks). The checks are emitted inline
-(`CEmitter.castInline`: null test and type-pointer compare of the fast path, the throw is out of line and cold; a leaf class is one compare,
-an interface remembers the type that last passed), the unbox of a box checks type and null itself (no second cast in front of it),
-`CastElim` (`cast-elim` MIR pass) drops casts whose operand type already proves the target, reified arrays remove the check of every
-`Array<C>` read, and the null check of an `object` / top-level property is only emitted when user code can run before it is assigned
-(`Ir2MirInitSafety.firstNonSimpleInit`: initializers that are constants, strings, or stdlib calls on such values run no user code).
+so that callgrind finishes; the five last rows are small programs of one construct each) with the compiler and runtime of three states:
+`pre` = main before the memory-safety work of PR #79 (7dfec43), `#79` = main with it (320cfb8), and this branch (the checked erased
+casts, reified arrays, the unset-field checks and the null guards of this section). "text" is the `text` section of the linked program,
+which includes the runtime (the new array functions and checks are about 1.7 KB of it; the rest of the growth is the extra
+`MkTypeInfo.elem` pointer of every type info and the checks of #79). The checks are emitted inline (`CEmitter.castInline`: null test and
+type-pointer compare of the fast path, the throw is out of line and cold; a leaf class is one compare, an interface remembers the type that
+last passed), the unbox of a box checks type and null itself (no second cast in front of it), `CastElim` (`cast-elim` MIR pass) drops casts
+whose operand type already proves the target, reified arrays remove the check of every `Array<C>` read, the null guards of `NullGuard`
+exit the function from a cold block that does not continue (a guard whose failure path falls through, with a test of the pending exception,
+keeps the optimizer from hoisting the length and the elements of the array out of the loop and from unrolling it: +13 % on `nbody` at first),
+and the null check of an `object` / top-level property is only emitted when user code can run before it is assigned
+(`Ir2MirInitSafety.firstNonSimpleInit`: initializers that are constants, strings, parameters, stdlib calls on such values, or constructors of
+program classes that only assign their fields from such values run no user code).
 
-| Program | main | this branch | delta | text size |
-|---|---|---|---|---|
-| bench/binarytrees (depth 14) | 629.5 M | 640.8 M | +1.8 % | +2.9 % |
-| bench/nbody (500 k steps) | 330.9 M | 329.3 M | -0.5 % | +2.1 % |
-| bench/fannkuch, spectralnorm, mandelbrot, strbuild | | | 0.0 % | +2.9 % |
-| bench/json | 194.5 M | 195.4 M | +0.5 % | +2.5 % |
-| bench/wordcount | 924.0 M | 901.2 M | -2.5 % | +2.9 % |
-| `ArrayList<String>` iteration and indexing | 124.02 M | 124.03 M | 0.0 % | +2.8 % |
-| `HashMap<String, Int>` lookups | 764.3 M | 713.3 M | -6.7 % | +2.4 % |
-| generic class fields, lambdas over collections | 720.0 M | 615.0 M | -14.6 % | +2.8 % |
-| `object` / top-level property reads in a loop (one top-level `Node` forces the guard) | 560.3 M | 600.3 M | +7.1 % | +3.1 % |
-| `Array<Shape>` reads (index loop and `for`) | 221.59 M | 221.60 M | 0.0 % | +2.9 % |
+| Program | pre #79 | #79 (main) | this branch | vs pre | vs #79 | text vs pre |
+|---|---|---|---|---|---|---|
+| bench/binarytrees (depth 14) | 619.91 M | 631.20 M | 629.59 M | +1.6 % | -0.3 % | +3.9 % |
+| bench/nbody (500 k steps) | 330.92 M | 323.39 M | 323.39 M | -2.3 % | 0.0 % | +3.3 % |
+| bench/fannkuch (9) | 176.90 M | 176.90 M | 176.90 M | 0.0 % | 0.0 % | +3.9 % |
+| bench/spectralnorm (500) | 225.55 M | 225.55 M | 225.55 M | 0.0 % | 0.0 % | +4.0 % |
+| bench/mandelbrot (500) | 106.44 M | 106.44 M | 106.44 M | 0.0 % | 0.0 % | +4.0 % |
+| bench/strbuild | 536.96 M | 536.96 M | 535.95 M | -0.2 % | -0.2 % | +3.9 % |
+| bench/json | 194.07 M | 195.20 M | 197.11 M | +1.6 % | +1.0 % | +3.6 % |
+| bench/wordcount | 957.60 M | 921.75 M | 918.52 M | -4.1 % | -0.4 % | +3.9 % |
+| bench/graph (20 k nodes) | 110.01 M | 109.88 M | 109.43 M | -0.5 % | -0.4 % | +3.6 % |
+| `ArrayList<String>` iteration and indexing | 271.57 M | 268.58 M | 256.58 M | -5.5 % | -4.5 % | +3.5 % |
+| `HashMap<String, Int>` lookups | 957.09 M | 864.07 M | 861.07 M | -10.0 % | -0.3 % | +3.3 % |
+| generic class fields, lambdas over collections | 1498.52 M | 1342.33 M | 1345.34 M | -10.2 % | +0.2 % | +3.7 % |
+| `object` / top-level property reads in a loop (one top-level `Node`) | 680.28 M | 720.28 M | 680.28 M | 0.0 % | -5.6 % | +4.0 % |
+| `Array<Shape>` reads (index loop and `for`) | 221.60 M | 221.60 M | 221.60 M | 0.0 % | 0.0 % | +4.0 % |
 
-The savings on the collection programs come from the runtime (`HashMap.get`, `type_is`) and the inline checks replacing the call of
-`mk_checked_cast`. The reads of an `Array<SomeClass>` that cost +14 % on `nbody` before reified arrays are free now (nbody is within noise of main, 0.5 % below it). The one remaining cost is the guard of top-level properties
-that can be read before their initializer ran (a program with a top-level `Node` and a loop reading properties).
+Everything is within 2 % of the state before #79 (the largest cost is `binarytrees`, +1.6 %: `check(n.right!!)` has the same code as before,
+but the cold exit of the null test of `!!` costs two more saved registers in the recursive function). The savings on the collection programs
+come from the runtime (`HashMap.get`, `type_is`) and the inline checks replacing the call of `mk_checked_cast`. The reads of an
+`Array<SomeClass>` are free where the array is created by the function itself or passed only such arrays (`nbody`: `bodies` is made in
+`main` and passed down; `Array<Shape>` above); an array that came through a cast, a field or a call result tests every element it reads
+once per value (the test is the two instructions `test`/`je`; the loop over `bodies` read through a field would pay 2 per element). The
+one cost of #79 that remained, the guard of top-level properties that can be read before their initializer ran, is gone for a program whose
+initializers only construct simple objects (`val top = Node(7)`); it stays for a top-level initializer that runs user code.
 
 Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-range index as a fatal
 `StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
