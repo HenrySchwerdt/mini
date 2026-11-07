@@ -731,6 +731,23 @@ Per category with a change (pass / applicable, 6a + 6b vs this round):
 
 Remaining: builder inference (`pclaRoot*`, `kt53478`, `kt63733`, `kt51988`), adapted references with `vararg` and defaults, member references to companion members, the inline-class ICEs (`inlineClasses/*`), `Nothing`-typed parameters in bridges, `signedToUnsignedConversions` (`@ImplicitIntegerCoercion`), `objectIntrinsics/objects` (`Enum` as a value), the `MultiDollarInterpolation` lexer cases and a few linking failures.
 
+## Eighth round (a) (branch claude/conformance-8a)
+
+Starting point: 5838 / 5953 (74 compile-error, 15 ice). Result: 5852 / 5953 (98.30 %), 63 compile-error, 15 ice, no test that passed before fails now.
+What remains is a long tail of single tests (about 90 different causes), see `summary.md`.
+
+| fix | tests |
+|---|---:|
+| `a[i] = { ... }` / `a[i] = label@{ ... }`: the lambda is analysed against the value parameter of `operator set` (`resolveOperator` takes the postponed argument) | 1 |
+| `kotlin.test`: `assertFailsWith(KClass, message, block)` (compares the class of the exception) | 2 |
+| special bridges (`contains`, `indexOf`, `containsKey`, ...) of an override that takes `Nothing` answer "not found" instead of throwing a `ClassCastException` | 3 |
+| a value of a class that is a function type (`object : () -> Unit`) where a fun interface is expected: SAM conversion (`TypeOps.sub`, `Ast2IrCalls`) | 1 |
+| `x?.f { g(x) }`: the arguments of a safe call see the receiver as not null (`dotExpr`) | 3 (inline classes named `UInt`, builder inference) |
+| constants of the enclosing object in annotation arguments of a function's parameters (`Declarations.checkFun` sets the function scope) | 1 |
+| harness: `<!EVALUATED{IR}("...")!>` markup of the IR interpreter tests is removed like the diagnostic markup | 3 |
+
+Regression test: `compiler/testdata/conformance8a_misc.kt`.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
