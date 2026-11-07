@@ -183,12 +183,20 @@ internal fun Ir2Mir.ownFields(c: IrClass): List<IrField> = c.declarations.flatMa
 
 internal fun Ir2Mir.registerMembers(info: ClassInfo) {
     val c = info.ir
+    val taken = HashSet<String>()
     for (f in classFunctions(c)) {
         if (f.isFakeOverride) continue
         if (isEnumSpecial(c, f)) continue // values(), valueOf(), entries
         checkFunctionShape(f, member = true)
         val params = f.parameters.filter { it.kind != IrParameterKind.DispatchReceiver }.map { mirType(it.type, it) }
-        functionNames[f] = Mangling.method(info.cName, f.name, params)
+        var mn = Mangling.method(info.cName, f.name, params)
+        // `fun String.f()` next to `fun f(s: String)`: same erased signature, different Kotlin functions
+        if (!taken.add(mn)) {
+            var k = 1
+            while (!taken.add(Mangling.method(info.cName, f.name + "\$x" + k, params))) k++
+            mn = Mangling.method(info.cName, f.name + "\$x" + k, params)
+        }
+        functionNames[f] = mn
     }
     for (k in c.declarations.filterIsInstance<IrConstructor>()) {
         val hidden = if (c.kind == IrClassKind.ENUM_CLASS || isEnumBody(c)) listOf(TString, TInt) else emptyList()
