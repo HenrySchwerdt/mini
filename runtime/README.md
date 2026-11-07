@@ -164,7 +164,7 @@ the UTF-16 unit as UTF-8 (a lone surrogate becomes U+FFFD). `mk_flush` flushes
 stdout. `mk_panic_string` is `mk_panic` with a Kotlin string. A NULL string prints
 as `null`. `mk_string_alloc(MkInt)` returns a string whose characters the caller
 fills in (currently zeroed, but unspecified by contract); `mk_string_length`
-returns 0 for NULL.
+and `mk_string_hash` of NULL are a fatal `NullPointerException` (the compiler checks polluted values before).
 
 stdout is fully buffered (64 KiB, set on first use or in `main`), flushed by
 `main` before returning and by `mk_panic`. `mk_panic` prints `fatal: <message>`

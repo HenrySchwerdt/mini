@@ -175,7 +175,7 @@ class LlvmEmitterTest {
             assertTrue("call zeroext i16 @mk_string_char_at" in atBody, "cold path must preserve runtime panic behavior\n$atBody")
             assertTrue("phi i16" in atBody, atBody)
             assertTrue("icmp eq ptr" in lenBody, lenBody)
-            assertTrue("call i32 @mk_string_length" in lenBody, "null must preserve the runtime's zero result\n$lenBody")
+            assertTrue("call i32 @mk_string_length" in lenBody, "null must take the runtime, which traps with a NullPointerException\n$lenBody")
             assertTrue("phi i32" in lenBody, lenBody)
             assertFalse("mk_pending_exception" in atBody || "mk_pending_exception" in lenBody, ll)
         }

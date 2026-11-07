@@ -9,8 +9,7 @@ generic interface: ClassCastException
 array element: ClassCastException
 map value: ClassCastException
 lambda parameter: ClassCastException
-0
-null element: ok
+null element: NullPointerException
 13
 subclass is fine: ok
 1

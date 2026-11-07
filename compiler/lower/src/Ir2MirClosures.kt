@@ -350,9 +350,10 @@ internal fun erasedCastMode(to: MirType): MirExpr.CastMode =
 internal fun Ir2Mir.erasedCast(v: MirExpr, to: MirType): MirExpr {
     if (to === TNull) return MirExpr.Cast(v, to, MirExpr.CastMode.Unchecked)
     val mode = erasedCastMode(to)
-    if (mode != MirExpr.CastMode.Checked) return MirExpr.Cast(v, to, mode)
-    val r = if (to === TString) MirExpr.Cast(MirExpr.Cast(v, TNString, mode), to, MirExpr.CastMode.Unchecked)
-        else if (to is TObject && !to.nullable) MirExpr.Cast(MirExpr.Cast(v, to.copy(nullable = true), mode), to, MirExpr.CastMode.Unchecked)
+    // a value retyped to a non-null type may still be null: [NullGuard] checks it where it is dereferenced
+    if (mode != MirExpr.CastMode.Checked) return MirExpr.Cast(v, to, if (to is TObject && !to.nullable) MirExpr.CastMode.Erased else mode)
+    val r = if (to === TString) MirExpr.Cast(MirExpr.Cast(v, TNString, mode), to, MirExpr.CastMode.Erased)
+        else if (to is TObject && !to.nullable) MirExpr.Cast(MirExpr.Cast(v, to.copy(nullable = true), mode), to, MirExpr.CastMode.Erased)
         else MirExpr.Cast(v, to, mode)
     erasedChecks[r] = v
     return r

@@ -8,6 +8,7 @@ import mini.backend.WasmGlue
 import mini.backend.MirLink
 import mini.backend.MirModule
 import mini.backend.MirOpt
+import mini.backend.NullGuard
 import mini.backend.MirOptions
 import mini.backend.MirReader
 import mini.backend.MirFunction
@@ -381,7 +382,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         val deps = all.filter { it.name != library.name }
         val input = mlibObjectInput(library, deps)
         val ir = LlvmEmitter.emit(
-            input.module, rcOpt = rcOpt, target = LlvmTarget.WASM32,
+            NullGuard.run(input.module), rcOpt = rcOpt, target = LlvmTarget.WASM32,
             externalClassNames = input.externalClassNames,
             exportedClassNames = input.exportedClassNames,
             externalFunctionSignatures = input.externalFunctions,
@@ -434,7 +435,8 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         reportFrontend(e, name, diag)
         throw DriverExit(1)
     }
-    val module = if (separateMlibs || wasmLib) unoptimized else MirOpt.run(unoptimized, optOptions) { line -> errln(line) }
+    val guarded = NullGuard.run(unoptimized)
+    val module = if (separateMlibs || wasmLib) guarded else MirOpt.run(guarded, optOptions) { line -> errln(line) }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (optOptions.layoutStats) LayoutStats.report(module, if (wasm32) 4 else 8) { line -> errln(line) }
     if (wasmLib) {
@@ -648,7 +650,7 @@ private fun runRepl(
 private fun replLink(pool: List<MirModule>, module: MirModule): MirModule {
     val roots = ArrayList<String>()
     for (f in module.functions) roots.add(f.cName)   // everything an input defines stays: later inputs call it
-    return MirLink.prune(MirLink.link(pool, module), roots)
+    return NullGuard.run(MirLink.prune(MirLink.link(pool, module), roots))
 }
 
 private fun declarationName(source: String): String? {

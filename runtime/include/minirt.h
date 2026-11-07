@@ -314,7 +314,7 @@ MkString *mk_string_alloc8(MkInt length);
  * fill in: their contents are unspecified. Panics when length < 0 or on
  * out-of-memory. */
 MkString *mk_string_alloc(MkInt length);
-MkInt mk_string_length(const MkString *string); /* 0 for NULL */
+MkInt mk_string_length(const MkString *string); /* NULL is a NullPointerException (fatal) */
 MkString *mk_string_concat(const MkString *left, const MkString *right);
 /* a + b + c ... in one allocation (a NULL operand is "null", like mk_string_concat) */
 MkString *mk_string_concat3(const MkString *a, const MkString *b, const MkString *c);

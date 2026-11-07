@@ -392,6 +392,7 @@ private class MirWriterImpl {
         MirExpr.CastMode.Unchecked -> "Unchecked"
         MirExpr.CastMode.Checked -> "Checked"
         MirExpr.CastMode.Safe -> "Safe"
+        MirExpr.CastMode.Erased -> "Erased"
     }
 
     fun expr(e: MirExpr) {
@@ -816,6 +817,7 @@ private class MirReaderImpl {
         "Unchecked" -> MirExpr.CastMode.Unchecked
         "Checked" -> MirExpr.CastMode.Checked
         "Safe" -> MirExpr.CastMode.Safe
+        "Erased" -> MirExpr.CastMode.Erased
         else -> fail("unknown cast mode '$s'")
     }
 

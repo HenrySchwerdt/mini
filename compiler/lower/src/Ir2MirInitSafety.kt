@@ -109,19 +109,27 @@ private fun isStdlibDecl(d: IrDeclaration): Boolean = Reachability.fileOf(d)?.is
 
 /**
  * An expression that cannot run user code or read a property of the program: constants, strings built from them and calls of stdlib
- * functions / constructors on such values (`IntArray(16)`, `ArrayList<Node>()`, `"a" + 1`, `listOf("x")`). A stdlib function that only gets
- * such values has no way to reach user code.
+ * functions / constructors on such values (`IntArray(16)`, `ArrayList<Node>()`, `"a" + 1`, `listOf("x")`), and constructors of classes of the
+ * program that only assign their fields from such values. A stdlib function that only gets such values has no way to reach user code.
  */
-private fun isSimpleInit(e: IrElement?): Boolean {
+private fun Ir2Mir.isSimpleInit(e: IrElement?): Boolean {
     when (e) {
         null -> return true
         is IrConst -> return true
+        is IrGetValue -> return true // a parameter or a local
         is IrStringConcatenation -> return e.arguments.all { isSimpleInit(it) }
         is IrTypeOperatorCall -> return isSimpleInit(e.argument)
         is IrVararg -> return e.elements.all { isSimpleInit(if (it is IrSpreadElement) it.expression else it as IrElement) }
         is IrGetObjectValue -> return isStdlibDecl(e.classOwner)
         is IrCall -> return e.superQualifier == null && isStdlibDecl(e.callee) && e.arguments.all { isSimpleInit(it) }
-        is IrConstructorCall -> return isStdlibDecl(e.callee) && e.arguments.all { isSimpleInit(it) }
+        is IrConstructorCall -> {
+            if (!e.arguments.all { isSimpleInit(it) }) return false
+            if (isStdlibDecl(e.callee)) return true
+            // a class of the program whose own initialization is as simple (`Node(7)` of `class Node(val x: Int)`): it runs no user code either
+            val c = e.callee.parent as? IrClass ?: return false
+            for (p in e.callee.parameters) if (p.hasDefault) return false // (the default of an omitted argument may run user code)
+            return c.kind == IrClassKind.CLASS && firstNonSimpleInit(c) == Int.MAX_VALUE
+        }
         else -> return false
     }
 }

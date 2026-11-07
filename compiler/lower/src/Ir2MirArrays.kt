@@ -83,7 +83,8 @@ internal fun Ir2Mir.arrayRead(k: ArrayKind, arr: MirExpr, idx: MirExpr, expected
     val raw = arrayGet(k, arr, idx)
     if (k.elem == null && trackedReadType(arr) == expected) {
         val v = if (raw.isOwned()) tmpOf(raw, out) else raw
-        return MirExpr.Cast(v, expected, MirExpr.CastMode.Unchecked)
+        // the element may be null when the array came through a cast (`arrayOfNulls<String>(n) as Array<String>`): NullGuard
+        return MirExpr.Cast(v, expected, if (expected === TString || (expected is TObject && !expected.nullable)) MirExpr.CastMode.Erased else MirExpr.CastMode.Unchecked)
     }
     return adaptResult(raw, expected, at, out)
 }
