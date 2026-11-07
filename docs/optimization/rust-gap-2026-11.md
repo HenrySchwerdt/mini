@@ -73,3 +73,22 @@ Mini / Rust wall time went from 1.31 to 1.04 (fannkuch) and from 1.32 to 1.10 (s
 * `mini test` (compiler/): 79 passed. `scripts/test-e2e.sh` default: 939 passed, 0 failed, 1 skipped; `--suite llvm --suite llvm-leak
   --suite llvm-api`: 736 passed. `scripts/strict-corpus.sh --run`: ok=111, no false positives or negatives, no wrong code.
   `scripts/check-purity.sh` ok. The runtime is unchanged.
+
+## Update: nbody closed (`claude/perf-8`, array scalar replacement)
+
+`Array<Body>` was the whole gap: Rust's `[Body; 5]` lives in registers after full unrolling, Mini's was five heap objects behind a
+pointer array. The new MIR pass `array-sroa` (opt/ArraySroa.kt, docs/mir-opt.md) inlines the calls that take a non-escaping
+constant-length `arrayOf(...)`, unrolls the constant-bound loops that index it, and replaces `a[k]` by the element locals, so the
+existing scalar replacement removes the five objects too. Any remaining use of the array (stored, returned, non-constant index, later
+`a[k] = v`) leaves the function untouched. A second fix: constructors are now visited before the allocation sites that `new` them,
+so `val rng = Rng(42)` in `main` is scalar-replaced too (wordcount, graph).
+
+Measured with `CC=clang` (this container's `cc` is gcc 13, which spills badly on the unrolled nbody loop: 2.5 s; clang and the LLVM
+backend do not), callgrind Ir of the full runs:
+
+| benchmark | Rust Ir (G) | Mini Ir before (G) | Mini Ir after (G) | wall before / after / Rust (s, median of 7) |
+|---|---:|---:|---:|---|
+| nbody | 9.03 | 16.15 | 9.00 | 1.18 / 1.02 / 0.97 (about 1.0x Rust) |
+| wordcount | 9.51 | 14.21 | 14.41 (+1.4%: clang codegen of the `x / 26` loop once the Rng object became locals; one allocation less) | 2.8 / 2.7 / 1.3 |
+
+All other benchmark programs generate byte-identical C (graph changes like wordcount: the `Lcg` object becomes locals).
