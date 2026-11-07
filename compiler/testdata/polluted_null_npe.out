@@ -10,6 +10,12 @@ Int unbox: NullPointerException
 for loop: NullPointerException
 for loop string: NullPointerException
 field write: NullPointerException
+6
+shared parameter: NullPointerException
+nullable view store: NullPointerException
+nullable view store string: NullPointerException
+5
+nullable view store ok: ok
 list string: NullPointerException
 list class: NullPointerException
 list call: NullPointerException
@@ -44,5 +50,4 @@ safe call: ok
 elvis: ok
 5
 filled: ok
-copied
-copy: ok
+copy: NullPointerException

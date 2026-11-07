@@ -16,6 +16,7 @@ fun attempt(name: String, f: () -> Unit) {
 }
 
 fun lenOf(s: String): Int = s.length
+fun total(a: Array<Box>): Int { var t = 0; for (i in 0 until a.size) t += a[i].v; return t }
 fun first(a: Array<String>): String = a[0]
 fun keep(s: String?): String? = s
 fun <T : Any> firstOf(a: Array<T>): T = a[0]
@@ -35,6 +36,13 @@ fun main() {
     attempt("for loop") { val a = arrayOfNulls<Box>(2) as Array<Box>; for (b in a) println(b.v) }
     attempt("for loop string") { val a = arrayOfNulls<String>(2) as Array<String>; for (s in a) println(s.length) }
     attempt("field write") { val a = arrayOfNulls<Box>(2) as Array<Box>; val h = Holder("x", Box(1)); h.b = a[0]; println("stored") }
+
+    // an array of non-null elements that is also called with a polluted one: the parameter is checked on every call
+    attempt("shared parameter") { println(total(Array(3) { Box(it + 1) })); println(total(arrayOfNulls<Box>(3) as Array<Box>)) }
+    // a null stored through a view that allows it into an array of non-null elements
+    attempt("nullable view store") { val a = Array(2) { Box(it) }; val b = a as Array<Box?>; b[0] = null; println(a[0].v) }
+    attempt("nullable view store string") { val a = Array(2) { "s" + it }; val b = a as Array<String?>; b[1] = null; println(a[1].length) }
+    attempt("nullable view store ok") { val a = arrayOfNulls<Box>(2); a[0] = Box(5); a[1] = null; println(a[0]?.v) }
 
     // erased generics
     attempt("list string") { val l = listOf<String?>(null) as List<String>; println(l[0].length) }
@@ -63,5 +71,6 @@ fun main() {
     attempt("safe call") { val a = arrayOfNulls<String>(2) as Array<String?>; println(a[0]?.length) }
     attempt("elvis") { val a = arrayOfNulls<String>(2) as Array<String?>; println(a[0]?.length ?: -1) }
     attempt("filled") { val a = arrayOfNulls<String>(2) as Array<String>; a[0] = "ab"; a[1] = "cde"; println(a[0].length + a[1].length) }
+    // (the JVM stores the null here; an array of non-null elements here must never hold one, so the store fails instead of a later read)
     attempt("copy") { val a = arrayOfNulls<String>(2) as Array<String>; val b = arrayOfNulls<String>(2) as Array<String>; b[0] = a[0]; println("copied") }
 }
