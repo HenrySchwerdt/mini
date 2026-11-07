@@ -3,14 +3,22 @@ struct kc_Box {
     MkObject header;
     MkObject * f_value;
 };
+#if UINTPTR_MAX == 0xffffffffffffffffu
+_Static_assert(sizeof(struct kc_Box) == 24, "object layout");
+_Static_assert(offsetof(struct kc_Box, f_value) == 16, "object layout");
+#endif
+static void kc_Box_trace(MkObject *self, void (*fn)(MkObject *, void *), void *ctx) {
+    struct kc_Box *o = (struct kc_Box *)self;
+    fn((MkObject *)o->f_value, ctx);
+}
 static void kc_Box_dispose(MkObject *self) {
     struct kc_Box *o = (struct kc_Box *)self;
     MKH_REL(o->f_value);
 }
 static void *const kc_Box_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code};
-static const MkTypeInfo kc_Box_ti = {"Box", sizeof(struct kc_Box), &mk_type_Any, kc_Box_dispose, kc_Box_vt, 3, NULL, 0};
+static const MkTypeInfo kc_Box_ti = {"Box", sizeof(struct kc_Box), &mk_type_Any, kc_Box_dispose, kc_Box_vt, 3, NULL, 0, kc_Box_trace};
 /* Box.get */
-MkObject * kc_Box_Mget(MkObject * v_this_0) {
+MKH_STATIC MkObject * kc_Box_Mget(MkObject * v_this_0) {
     {
         MkObject * r = (((struct kc_Box *)v_this_0)->f_value);
         MKH_RETAIN(r);

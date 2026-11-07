@@ -4,6 +4,10 @@ struct kc__x0024closure0 {
     MkObject header;
     MkInt f_c0;
 };
+#if UINTPTR_MAX == 0xffffffffffffffffu
+_Static_assert(sizeof(struct kc__x0024closure0) == 24, "object layout");
+_Static_assert(offsetof(struct kc__x0024closure0, f_c0) == 16, "object layout");
+#endif
 static void *const kc__x0024closure0_it0[] = {(void *)kc__x0024closure0_Minvoke_AQLmk_Any_E};
 static void *const kc__x0024closure0_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code, (void *)kc__x0024closure0_it0};
-static const MkTypeInfo kc__x0024closure0_ti = {"adder.<lambda>$0", sizeof(struct kc__x0024closure0), &mk_type_Any, NULL, kc__x0024closure0_vt, 4, kc__x0024closure0_ifs, 1};
+static const MkTypeInfo kc__x0024closure0_ti = {"adder.<lambda>$0", sizeof(struct kc__x0024closure0), &mk_type_Any, NULL, kc__x0024closure0_vt, 4, kc__x0024closure0_ifs, 1, NULL};
