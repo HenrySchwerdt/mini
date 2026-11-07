@@ -264,6 +264,8 @@ fun Sema.checkClass(c: ClassSym) {
         }
         bc.scope = hs
         for (p in pc.primaryParams) bc.checkAnnotations(p.mods)
+        // a default value sees the parameters before it: `class A(val i: Int, val j: Int = i)`
+        bc.scope = superCallScope(c)
         for (p in pc.primaryParams) {
             val dv = p.default
             if (dv != null) {

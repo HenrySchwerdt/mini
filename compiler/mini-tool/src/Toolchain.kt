@@ -42,12 +42,34 @@ class Toolchain(
             out += "--lib"; out += stdlibMlib
             for (l in libs) { out += "--lib"; out += l }
             out += "--compiler-id"; out += compilerId(p)
+            out += stubCacheArgs(p)
             if (declarationOnly.isNotEmpty()) { out += "--stdlib"; out += declarationOnly }
         } else {
             out += "--stdlib"
             out += stdlibFiles(p)
             out += declarationOnly
         }
+        return out
+    }
+
+    /**
+     * The stub cache of minic-native (docs/mlib.md, "Stub cache"): the parsed declarations of the `.mlib` files are kept in a directory
+     * between runs. `MINI_STUB_CACHE=off` (or 0, no, false) turns it off, `verify` also checks every use against a fresh parse; the
+     * directory is `MINI_CACHE_DIR`, else `$XDG_CACHE_HOME/mini`, else `~/.cache/mini`. The key includes the size and time of the compiler binary.
+     */
+    private fun stubCacheArgs(p: Platform): List<String> {
+        val mode = p.env("MINI_STUB_CACHE") ?: ""
+        if (mode == "off" || mode == "0" || mode == "no" || mode == "false") return emptyList()
+        var dir = p.env("MINI_CACHE_DIR") ?: ""
+        if (dir.isEmpty()) {
+            val xdg = p.env("XDG_CACHE_HOME") ?: ""
+            val home = p.homeDir() ?: ""
+            dir = if (xdg.isNotEmpty()) Paths.join(xdg, "mini") else if (home.isNotEmpty()) Paths.join(home, ".cache/mini") else ""
+        }
+        val st = p.stat(minic) ?: return emptyList()
+        if (dir.isEmpty()) return emptyList()
+        val out = arrayListOf("--stub-cache", dir, "--stub-cache-id", compilerId(p) + "-" + st.size + "-" + st.modifiedMillis)
+        if (mode == "verify") out += "--stub-cache-verify"
         return out
     }
 
@@ -158,6 +180,10 @@ class Toolchain(
         }
         for (d in dirs) { cmd += "-I"; cmd += d }
         cmd += if (release) "-O2" else "-g"
+        // Linux release builds: a section per function and datum, no unwind tables (the runtime archive is built the same way), so
+        // that the linker can drop what the program never calls and leave out the symbol table (scripts/minic.sh does the same)
+        val sizeLink = release && p.os == "linux"
+        if (sizeLink) cmd += listOf("-ffunction-sections", "-fdata-sections", "-fno-unwind-tables", "-fno-asynchronous-unwind-tables")
         // C files of the packages (`c-sources`): their directories are include paths too, so `@file:CInclude("x.h")` finds the header
         for (cs in cSources) {
             val d = Paths.parent(cs) ?: continue
@@ -168,6 +194,7 @@ class Toolchain(
         cmd += listOf(runtimeLib, "-o", out)
         if (p.os == "windows") cmd += "-Wl,/include:wmain" else cmd += "-lm"
         cmd += links
+        if (sizeLink) cmd += sizeLinkFlag(p)
         val cr = p.exec(Exec(cmd))
         p.remove(cFile)
         if (cr.exitCode != 0 || cr.startError != null) {
@@ -177,12 +204,17 @@ class Toolchain(
         return ExecResult(0, r.stdout + cr.stdout, r.stderr + cr.stderr, r.millis + cr.millis)
     }
 
+    /** The linker options of a Linux release executable: drop unreferenced sections, and the symbol table unless MINI_KEEP_SYMBOLS is set. */
+    private fun sizeLinkFlag(p: Platform): String =
+        if (p.env("MINI_KEEP_SYMBOLS")?.isNotEmpty() == true) "-Wl,--gc-sections" else "-Wl,--gc-sections,--strip-all"
+
     /** Builds directly to a native object and links it with the system compiler, without writing generated C. */
     private fun compileLlvmApi(p: Platform, sources: List<String>, declarationOnly: List<String>, out: String, werror: Boolean, release: Boolean, cSources: List<String>, libs: List<String>): ExecResult {
         val args = ArrayList<String>()
         args += listOf("--backend=llvm-api", "--opt=" + if (release) "O2" else "O0", "--exe", out, "--cc", cc)
         if (werror) args += "-Werror"
         args += "--link-arg"; args += runtimeLib
+        if (release && p.os == "linux") { args += "--link-arg"; args += sizeLinkFlag(p) }
         val includeDirs = ArrayList<String>()
         includeDirs += include
         for (s in cSources) Paths.parent(s)?.let { if (it !in includeDirs) includeDirs += it }

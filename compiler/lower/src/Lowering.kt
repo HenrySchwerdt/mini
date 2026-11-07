@@ -6,7 +6,7 @@ import mini.backend.memory.MemoryReport
 import mini.frontend.sema.*
 
 /** A source file handed to the lowering: user files first, then the standard library files. */
-class LowerInput(val path: String, val text: String, val isStdlib: Boolean, val isLib: Boolean = false, val summaries: String = "")
+class LowerInput(val path: String, val text: String, val isStdlib: Boolean, val isLib: Boolean = false, val summaries: String = "", val parsed: mini.frontend.KtFile? = null)
 
 /** A problem found while analysing the sources (syntax or type error), as `file:line:col: error: message`. */
 class LowerDiagnostics(val messages: List<String>, val diags: List<FrontDiag> = emptyList()) : Exception(messages.joinToString("\n"))
@@ -26,7 +26,7 @@ fun buildIr(inputs: List<LowerInput>): IrModule {
     val sorted = ArrayList<LowerInput>(inputs)
     sorted.sortBy { it.path }
     for (i in sorted) {
-        srcs.add(SourceInput(i.path, i.text, i.isLib))
+        srcs.add(SourceInput(i.path, i.text, i.isLib, i.parsed))
         if (!i.isStdlib) user.add(i.path)
         if (i.isLib) lib.add(i.path)
     }

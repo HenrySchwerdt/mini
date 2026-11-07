@@ -587,6 +587,13 @@ fun Ast2Ir.withReceivers(
 fun Ast2Ir.safeCall(recv: RecvUse, node: Ast, resultType: Type, build: (IrExpression) -> IrExpression): IrExpression {
     val rexpr = convert(recv.expr!!)
     val tmpType = rexpr.type
+    if (tmpType.classFqName == "kotlin.Nothing") {
+        // `null?.f()`: the receiver is always null, the call never happens
+        val dead = ArrayList<IrStatement>()
+        dead.add(rexpr)
+        dead.add(nullConst())
+        return IrBlock(dead, irType(ops.makeNullable(resultType)), "SAFE_CALL")
+    }
     val tmp = newTemp("safe_receiver", tmpType, rexpr)
     val nn = irType(ops.makeNotNull(tmpType))
     val value: IrExpression = IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, nn, getValue(tmp), nn)

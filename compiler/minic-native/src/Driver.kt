@@ -51,6 +51,7 @@ import mini.lower.validateMlibFailures
  *   minic-native --check [--brief] [-Werror] <user.kt>... [--stdlib <stdlib.kt>...]
  *   wasm library: --target=wasm32 --emit=wasm-lib --emit-ll <lib.ll> [--emit-js <lib.mjs> [--wasm-file <lib.wasm>]] [--emit-dts <lib.d.ts>] <user.kt>... [--stdlib ...]
  *                (a module without entry point that exports the `@WasmExport` functions; WasmLib.kt, website/guide/wasm-library.md)
+ *   stub cache:  [--stub-cache <dir> [--stub-cache-id <compiler build id>] [--stub-cache-verify]]   keeps the parse of the --lib stubs between runs (StubCache.kt)
  *   libraries:   [--lib <x.mlib>]...   declarations from the stubs and code from the MIR of precompiled libraries (docs/mlib.md)
  *                --emit-mlib <out.mlib> [--name <n>] [--lib-version <v>] [--compiler-id <id>] [--no-memory-check] <user.kt>...   builds a library from the files
  *                --target=wasm32 --mlib-object <x.mlib> --emit-mlib-object-ll <out.ll> [--lib <dependency.mlib>]... emits one library's wasm object IR
@@ -173,6 +174,9 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     var libVersion = "0.0.0"
     var compilerId = ""
     val libPaths = ArrayList<String>()
+    var stubCacheDir: String? = null
+    var stubCacheId = ""
+    var stubCacheVerify = false
     var firstName: String? = null
     var i = 0
     while (i < args.size) {
@@ -293,6 +297,13 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
             else if (a == "--lib-version") libVersion = v
             else compilerId = v
             i += 2
+        } else if (a == "--stub-cache" || a == "--stub-cache-id") {
+            if (i + 1 >= args.size) throw UsageError("missing value for " + a + "\n" + USAGE)
+            if (a == "--stub-cache") stubCacheDir = args[i + 1] else stubCacheId = args[i + 1]
+            i += 2
+        } else if (a == "--stub-cache-verify") {
+            stubCacheVerify = true
+            i += 1
         } else if (a == "--no-memory-check") {
             noMemCheck = true
             i += 1
@@ -338,13 +349,24 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     if (!repl && libraryLlOut == null && (firstName == null || (!check && !wasmLib && output == null && mirOut == null && llOut == null && exe == null && cOut == null && !run && mlibOut == null))) throw UsageError(USAGE)
     val name: String = firstName ?: ""
     val libs = ArrayList<Mlib>()
+    val stubCacheRoot = stubCacheDir
+    val stubCache = if (stubCacheRoot != null && libPaths.isNotEmpty()) StubCache(stubCacheRoot, stubCacheId, stubCacheVerify) else null
     for (lp in libPaths) {
         val text = try {
             readTextFile(lp)
         } catch (e: IllegalStateException) {
             throw MlibError("cannot read library " + lp + ": no such file or not readable")
         }
-        libs.add(MlibFormat.read(text, lp))
+        if (stubCache == null) {
+            libs.add(MlibFormat.read(text, lp))
+        } else {
+            // the stub cache (StubCache.kt): the parse of the stubs comes from the cache directory. The content hash of the library is
+            // only checked when the cache did not have it, or when the whole library is going to be used (not for --check).
+            val lib = MlibFormat.read(text, lp, false)
+            val hit = stubCache.prepare(lib)
+            if (!hit || !check) MlibFormat.verify(lib, lp)
+            libs.add(lib)
+        }
     }
     val ordered = MlibFormat.order(libs, compilerId)
     if (libraryLlOut != null) {

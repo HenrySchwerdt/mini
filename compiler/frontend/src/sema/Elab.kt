@@ -13,7 +13,7 @@ fun BodyChecker.fillReceivers(info: CallInfo, recv: RecvInfo?, callee: Expr) {
     val cand = info.cand ?: return
     val fn = info.fn
     val isInvoke = fn.name == "invoke" && !(callee is NameExpr && callee.name == "invoke") &&
-        (fn.kind == FunKind.FUNCTION_INVOKE || cand.invokeVar != null || cand.invokeProp != null || callee !is NameExpr || cand.dispatchRef != null)
+        (fn.kind == FunKind.FUNCTION_INVOKE || cand.invokeVar != null || cand.invokeProp != null || callee !is NameExpr || cand.dispatchRef != null || cand.extRef != null || cand.invokeCallee)
     if (isInvoke) {
         info.isInvoke = true
         val v = cand.invokeVar
@@ -25,10 +25,12 @@ fun BodyChecker.fillReceivers(info: CallInfo, recv: RecvInfo?, callee: Expr) {
             val pr = cand.invokePropRecv
             if (pr != null) info.dispatch = RecvUse(null, false, pr, null)
             else if (recv is ValueRecv) info.dispatch = RecvUse(recv.expr, recv.safe, null, recv.type)
-        } else if (cand.dispatchRef != null && callee is NameExpr) {
-            info.dispatch = RecvUse(null, false, cand.dispatchRef, null)
-        } else if (callee !is NameExpr) {
+        } else if (cand.invokeCallee || callee !is NameExpr) {
             info.invokeValue = RecvUse(callee, false, null, null)
+            // a member extension `operator fun A.invoke()`: the dispatch receiver is the implicit receiver of the declaring class
+            if (cand.dispatchRef != null && fn.receiver != null) info.dispatch = RecvUse(null, false, cand.dispatchRef, null)
+        } else if ((cand.dispatchRef != null || cand.extRef != null) && callee is NameExpr) {
+            info.dispatch = RecvUse(null, false, cand.dispatchRef ?: cand.extRef, null)
         } else if (recv is ValueRecv) {
             info.invokeValue = RecvUse(recv.expr, recv.safe, null, recv.type)
         }

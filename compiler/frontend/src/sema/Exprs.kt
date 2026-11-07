@@ -34,14 +34,14 @@ private fun BodyChecker.expr0(e: Expr, expected: Type?): Type {
         is BinaryExpr -> return binary(e, expected)
         is IsExpr -> {
             val t = expr(e.expr, null)
-            val target = sema.resolveType(e.type, scope)
+            val target = resolveIsType(e.type, fin(t))
             val r = record(e, sema.booleanType, null)
             r.target = target
             return sema.booleanType
         }
         is AsExpr -> {
-            expr(e.expr, null)
-            val target = sema.resolveType(e.type, scope)
+            val st = expr(e.expr, null)
+            val target = resolveIsType(e.type, fin(st))
             val t = if (e.safe) target.withNullable(true) else target
             if (!e.safe) {
                 // after `x as T` the value is known to have type T
@@ -299,6 +299,33 @@ fun BodyChecker.implicitReceivers(narrow: Boolean = true): List<ImplRecv> {
     return out
 }
 
+/**
+ * The type of an `is` / `as`: a generic class written without type arguments (`is A`, `as L`) takes them from the subject where its
+ * supertype fixes them (`class B<out U> : C<Nothing, U>()` checked against a `C<Int, String>`: `B<String>`), the others are stars.
+ */
+fun BodyChecker.resolveIsType(ref: TypeRef, subject: Type?): Type {
+    val saved = sema.bareTypeOk
+    sema.bareTypeOk = true
+    val target = sema.resolveType(ref, scope)
+    sema.bareTypeOk = saved
+    val u = if (ref is NullableType) ref.inner else ref
+    if (u !is UserType || u.segments[u.segments.size - 1].args.isNotEmpty()) return target
+    if (target !is ClassType || target.cls.typeParams.isEmpty() || subject !is ClassType) return target
+    val c = target.cls
+    val site = ops.asSuper(c.thisType(), subject.cls) ?: return target
+    val m = HashMap<TypeParamSym, Type>()
+    var i = 0
+    for (a in site.args) {
+        val sa = a.type
+        val x = if (i < subject.args.size) subject.args[i].type else null
+        if (sa is TypeParamType && x != null && c.typeParams.contains(sa.tp)) m[sa.tp] = x
+        i++
+    }
+    val args = ArrayList<TArg>()
+    for (tp in c.typeParams) args.add(TArg(m[tp], Variance.INV))
+    return ClassType(c, args, target.nullable)
+}
+
 fun BodyChecker.thisExpr(e: ThisExpr): Type {
     val rs = implicitReceivers(false)
     val lbl = e.label
@@ -363,8 +390,36 @@ fun operatorName(op: String): String? = when (op) {
     else -> null
 }
 
+/** an expression of unsuffixed integer literals, parentheses, unary signs and arithmetic (K2 computes it in Int and converts the result to an expected Long) */
+fun isIntLiteralTree(e0: Expr): Boolean {
+    val e = AstWalk.unparen(e0)
+    if (e is LiteralExpr) return e.kind == LitKind.INT && !e.text.endsWith("L") && !e.text.endsWith("u") && !e.text.endsWith("U")
+    if (e is PrefixExpr) return (e.op == "-" || e.op == "+") && isIntLiteralTree(e.expr)
+    if (e is BinaryExpr) {
+        val o = e.op
+        val arith = o == "+" || o == "-" || o == "*" || o == "/" || o == "%" || o == "shl" || o == "shr" || o == "ushr" || o == "and" || o == "or" || o == "xor"
+        return arith && isIntLiteralTree(e.left) && isIntLiteralTree(e.right)
+    }
+    return false
+}
+
+fun BodyChecker.expectsLong(expected: Type?): Boolean = expected is ClassType && !expected.nullable && expected.cls.fqName() == "kotlin.Long"
+
+/** `val a: Long = 2147483647 + 1`: the Int result of a literal expression is converted to the expected Long (the lowering folds the constant) */
+fun BodyChecker.literalTreeAsLong(e: Expr, t: Type): Type {
+    if (t is ClassType && t.cls.fqName() == "kotlin.Int") {
+        val r = rec.get(e)
+        if (r != null) {
+            r.type = sema.longType
+            return sema.longType
+        }
+    }
+    return t
+}
+
 fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
     val op = e.op
+    if (expected != null && expectsLong(expected) && e.op != "=" && isIntLiteralTree(e)) return literalTreeAsLong(e, binary(e, null))
     when (op) {
         "=" -> return assign(e)
         "+=", "-=", "*=", "/=", "%=", "@=" -> return compoundAssign(e)
@@ -531,6 +586,7 @@ fun BodyChecker.indexSetForIncDec(target: Expr, valueType: Type, at: Int): CallI
 }
 
 fun BodyChecker.prefix(e: PrefixExpr, expected: Type?): Type {
+    if ((e.op == "-" || e.op == "+") && expected != null && expectsLong(expected) && e.expr !is LiteralExpr && isIntLiteralTree(e)) return literalTreeAsLong(e, prefix(e, null))
     when (e.op) {
         "!" -> {
             val t = fin(expr(e.expr, sema.booleanType))
@@ -1265,7 +1321,7 @@ private fun BodyChecker.whenBody(e: WhenExpr, expected: Type?, top: Boolean): Ty
                     one = noFacts()
                 }
                 is WhenIsCond -> {
-                    val target = sema.resolveType(c.type, scope)
+                    val target = resolveIsType(c.type, subjType)
                     one = noFacts()
                     if (subjKey != null) {
                         val f = FactAdd(subjKey.key, subjKey.root, target)

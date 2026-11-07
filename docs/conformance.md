@@ -403,6 +403,67 @@ The per-round tables above were measured on the branches alone (5a: 5425, 5b: 53
 The combined merge also fixed a regression found by CI: a non-reified type argument that is a C pointer (`memScoped { f() }` returning
 `CPointer<..>?`) is substituted in the inline expansion again, so the LLVM C API backend compiles itself.
 
+## Sixth round (a) (branch claude/conformance-6a)
+
+Targets: the `compile-error` and `ice` buckets of round 5 (226 + 32 tests), mostly frontend / sema fixes plus a few small lowering fixes. A parallel branch
+(6b) works on runtime failures and crashes. `results.json` / `summary.md` come from a full harness run (5709 passed) over the tree one commit before the last one, followed by a `--retest` of everything that did not pass on the final tree (it also fixes the one regression the full run found, `fir/localInvokeExtension`: a parameter `encode: W.(T) -> Unit` must win over the member extension `encode` of the enclosing object) and a re-run of a sample of the passing tests in the touched areas (`box/fir`, `smartCasts`, `extensionFunctions`, `callableReference`, `closures`, `funInterface`, `sam`, `operatorConventions`, `typealias`, `inference`, `functions`, `objects`, `innerNested`, `delegation`, `when`, `casts`; 932 applicable tests: 869 pass, none of them regressed, 36 are among the fixed ones). The wall time in `summary.md` is that of the retest.
+
+| | after round 5 | round 6 (a) |
+|---|---:|---:|
+| **pass (all applicable tests)** | **5614 (94.02%)** | **5711 (95.65%)** |
+| compile-error | 226 | 130 |
+| ice | 32 | 27 |
+| runtime-fail | 84 | 86 |
+| crash | 13 | 14 |
+| timeout | 2 | 3 |
+
+Fixes, grouped by cause (every group has a test in `compiler/testdata`, named `conformance6a_*`, plus the box tests named here):
+
+1. **`invoke` on values the callee name denotes** (`conformance6a_invoke_objects`, `conformance6a_invoke_values`; about 30 tests). `A(42)` where `A` is an object, a class with a
+   companion object, a nested class with a companion, or a typealias of an object (`invokeOnObject1`, `invokeOnClassObject1/2`, `invokeOnClassObjectOfNestedClass1/2`,
+   `typeAliasObjectCallable`, `implicitInvokeInCompanionObjectWithFunctionalArgument`, and the six `selfReferenceToCompanionObject*` tests that called `Host.ok()` through the
+   companion's `invoke`), `operator fun A.invoke()` extensions on objects, enum entries `A.ONE(42)` / imported `ONE(42)` (`invokeOnEnum1/2`, `invokeOnImportedEnum1/2`), extension
+   properties of function type (`4.ext()`, `kt1892`; the extension property with the most specific receiver wins: `D.attr` over `C.attr`, `kt3772`), a member property of an object with an extension
+   `invoke` (`kt24209`), member extension `invoke` on expressions (`A()()`, `extensionInvokeOnExpr`, `kt14201_2`) and `recv.(fn)(args)` (`1.(fun Int.() = this + 1)()`, `A.(foo)()`:
+   `executionOrder`, `kt4228`, `functionExpression*`, `functionLiteralExpression`). The sema now falls back to "the callee is a value": `valueInvokeGroups` in `Calls.kt`; the lowering
+   keeps the dispatch receiver of a member-extension `invoke` next to the function value (`Ast2IrCalls.invokeCall`).
+2. **Member extensions applied to implicit receivers** (`kt3285`, `kt17725`, `kt52432`, `kt6382`, `traitWithPrivateExtension`, `innerNested/extensionFun`, `objects/privateExtensionFromInitializer_kt4543`): `fun NoiseMaker.playWith()` declared in a class and called as
+   `playWith()` inside a lambda with receiver `NoiseMaker`, or with `this` smart cast to the declaring class: the dispatch receiver (a class or lambda receiver) and the extension receiver
+   (any implicit receiver) are paired (`addReceiverGroups`).
+3. **Default values and argument binding.** Constructor default values see the parameters before them (`class A(val i: Int, val j: Int = i)`, data classes, enum constructors, inner classes: `kt2270`,
+   `defaults10`, `innerWithDefaultArgument`, `constructorWithDefaultParam`); `a[i] = v` / `a[i] += v` where `set` has a defaulted or `vararg` parameter before the value (`set` binds the value to its last
+   parameter, `callOperator` passes the bound arguments: the six `set is not resolved` ICEs `incWithDefaults`, `kt16520`, `plusAssignWithDefaults`, `classVarargGetSet*`); a vararg given by name does
+   not swallow the next positional argument (`mixedNamedPosition/varargs*`); a function that a superclass implements and an interface gives default values for (`class C : I, Impl()`: `funInTraitChain`,
+   `implementedByFake*`, `defaultsFromFakeOverride`, `withDefaultParameters`).
+4. **SAM conversion of function values and typealiases.** A value of function type is accepted where a fun interface is expected (`run1(f)`, also nullable: `isNull(nullableFun())`, `nullableSam`,
+   `lambdaRuntimeConversion`, `mangledSamWrappers*`; the sema subtype rule in `TypeOps.sub`, the lowering wraps a nullable value so that `null` stays `null`); the SAM constructor of a generic fun interface
+   behind a typealias (`StringConsumer { }`: `funInterfaceTypealias`); constructors behind generic aliases with explicit type arguments (`ST<String>(...)`: `genericTypeAliasConstructor2`), inner classes behind aliases
+   (`outer.OI(...)`), star projections through an alias (`AddLastDesc<*>`: `objectLiteralConstructor`), a bare generic alias in `is` / `as` (`typeAliasAsBareType`).
+5. **Types.** `kotlin.Comparator<in T>`, `kotlin.ConcurrentModificationException`, `another.Outer()`: a package with a one-segment name qualifies a type (`nonTrivialProjectionInSuperType`, `kt10143`);
+   a generic class written without type arguments in `is` / `as` / `when (x) { is A -> }` takes them from the subject (`class B<out U> : C<Nothing, U>()` against `C<Int, String>`: `kt10934`,
+   `inferredTypeParameters`); a function type with a receiver is interchangeable with the one that takes it as its first parameter (`test1(b)`; `kt13312` still fails in the lowering).
+6. **Contracts.** `require(x is T)`, `check(c)`, `requireNotNull(x)`, `checkNotNull(x)` and the simple user contracts `contract { returns() implies p }` / `implies (p != null)` give smart casts after
+   the call (`contracts/require`, `contractForCast`, `conformance6a_alias_contract`).
+7. **Integer literals with an expected `Long`.** `val a: Long = 2147483647 + 1`, `-(1 shl 31)`, `const val h: Long = 60 * 60 * 1000`: a tree of unsuffixed literals is computed in Int and converted
+   (`overflowLong`, `longOverflow`, `literalToLongConversion`; the sema types the tree `Long`, the lowering folds the constant, `evalConst` knows the bit operators).
+8. **Nothing and Unit as values** (lowering): `"" + break`, `null?.toString()`, `null?.run { return }`, `p.toString()` with `p: Nothing`, `a == b` with Nothing operands, `x ?: 0` with `x: Nothing?`
+   (`breakFromOuter`, `innerLoopWithStack`, `popSizes`, `tryFinally1`, `kt5493`, `kt47279`, `divisionByZero`, `eqeq`; `conformance6a_nothing`). A Unit temporary is evaluated for its effect (no local of type Unit).
+9. **Enum classes with secondary constructors only** (`noPrimaryConstructor`; the call of `Enum()` is a no-op); nested and inner classes of superclasses are in scope (`instantiateInDerived*`);
+   the harness picks the top-level `fun box()` over a member of that name (`properRecapturingInClass`, 6 tests: harness only).
+
+Measurements: hello world is still 23552 bytes; `minic check examples/hello.kt` takes 0.39-0.43 s (0.35-0.43 s before the round, same machine, noisy: the stdlib is unchanged).
+
+Validation of the final sources: `compiler/bootstrap.sh` (stage2 == stage3), `compiler/bootstrap.sh --backend=llvm-api` (stage2 == stage3) with `repl-session.sh` on its stage3, the full `mini test` (exit 0),
+`scripts/test-e2e.sh` with the default suites plus `llvm` and `llvm-leak` (1162 passed, 0 failed, 1 skipped), `scripts/strict-corpus.sh --run`
+(111 ok) and the bootstrap with the 0.9.0 release as stage0 (`scripts/ci-stage0.sh`) all pass.
+
+Still open (largest first): classes that extend `Number` (about 10 tests: `numberToChar/*`, `equalityForBoxesOf...`, the `Number` runtime does not call the user's `toInt`), builder inference with
+postponed type variables (`kt53478`, `kt63733`, `pclaRoot*`, `kt47744`, `specialCallsWithLambdas`), function types as supertypes and `kotlin.Function` (`suspendFunctionAsSupertype*`, `asFunKSmall`,
+`implIsNotFunction`), suspend conversion of function values to suspend fun interfaces (`chainedFunSuspendConversion...`, `intersectionTypeTo...`), annotation instances (7 tests),
+adapted callable references (`referenceToVarargWithDefaults`, `unitCoercionOverloads`, `conversionCombinations`, `::foo.name` of a value), `do { var y } while (y < 10)` (the condition sees the body's
+variables: needs a lowering change), `super` inside the delegation expression of an object literal (`kt11634*`), imported member extensions of objects (`useImportedMember*`), `Unit` fields of data
+classes (`unitComponent`), closures in local functions with default values (`kt47073_nested`, `nestedInnerClass`, `kt20651_inlineLambda`), unsigned `sumOf` / vararg conversions (`arrays`, `varargsOfUnsignedTypes`).
+
 ## Sixth round (b) (branch claude/conformance-6b): runtime-fail and crash
 
 The round owns the two buckets that are wrong code: the program compiles and runs but gives the wrong result (runtime-fail, 84) or dies from a
@@ -479,6 +540,110 @@ Still open in the two buckets (41 + 7):
   (`coercionToUnitWithDefaults`, `funInterface/equality/*`), the special bridges of `Collection` / `Map` implementations over `null`
   (`specialBuiltins/*`, `bridges/special*`, `overrideAbstractSetMethod`: JVM semantics of the stub bridges), `substitutelambdaExtensionReceiverType`
   (builder inference), `releaseIntercepted`, `suspendFunctionIsAs`, `unitSafeCall`, `kt44429`, `kt7017`, the context receiver overloads.
+
+## Sixth round combined (6a + 6b)
+
+The two branches of round 6 merged (`claude/conformance-6b` contains origin/main with 6a): one full harness pass over the combined tree (`results.json`, `summary.md`). The 19 `genericSafeCasts` tests are skipped as `non-default-flag` (6b), so the denominator is 5953 (6a alone: 5971). Compared test by test, nothing that passed in 6a or 6b alone fails in the merge; the only three tests that passed in 6a alone and are not counted now (`basics/kt7972`, `basics/unchecked_cast11`, `bridges/test22`) are the `non-default-flag` skips.
+
+| | 6a alone | 6b alone | 6a + 6b |
+|---|---:|---:|---:|
+| applicable | 5971 | 5953 | 5953 |
+| **pass** | **5711 (95.65%)** | **5653 (94.96%)** | **5745 (96.51%)** |
+| compile-error | 130 | 219 | 129 |
+| ice | 27 | 31 | 26 |
+| runtime-fail | 86 | 41 | 42 |
+| crash | 14 | 7 | 8 |
+| timeout | 3 | 2 | 3 |
+
+Per category (first two path components; categories with at least one failure in any of the three runs; pass / applicable):
+
+| category | 6a alone | 6b alone | 6a + 6b |
+|---|---:|---:|---:|
+| box/inlineClasses | 711 / 732 | 709 / 732 | 711 / 732 |
+| box/callableReference | 185 / 202 | 187 / 202 | 187 / 202 |
+| box/coroutines | 425 / 446 | 431 / 446 | 432 / 446 |
+| box/casts | 42 / 52 | 42 / 51 | 42 / 51 |
+| box/specialBuiltins | 11 / 20 | 11 / 20 | 11 / 20 |
+| box/funInterface | 26 / 36 | 24 / 36 | 29 / 36 |
+| box/inference | 39 / 46 | 37 / 46 | 39 / 46 |
+| box/primitiveTypes | 84 / 91 | 84 / 91 | 84 / 91 |
+| box/annotations | 3 / 9 | 3 / 9 | 3 / 9 |
+| box/builderInference | 64 / 70 | 64 / 70 | 64 / 70 |
+| box/involvesIrInterpreter | 26 / 33 | 28 / 33 | 28 / 33 |
+| box/closures | 102 / 106 | 102 / 106 | 102 / 106 |
+| box/controlStructures | 206 / 212 | 204 / 212 | 208 / 212 |
+| box/localClasses | 36 / 40 | 36 / 40 | 36 / 40 |
+| boxInline/callableReference | 44 / 48 | 43 / 48 | 44 / 48 |
+| boxInline/innerClasses | 4 / 8 | 4 / 8 | 4 / 8 |
+| box/basics | 26 / 39 | 25 / 28 | 25 / 28 |
+| box/enum | 78 / 81 | 77 / 81 | 78 / 81 |
+| box/extensionFunctions | 25 / 28 | 22 / 28 | 25 / 28 |
+| box/fir | 9 / 12 | 9 / 12 | 9 / 12 |
+| box/initializers | 17 / 21 | 18 / 21 | 18 / 21 |
+| box/lower | 6 / 9 | 6 / 9 | 6 / 9 |
+| box/objects | 105 / 108 | 98 / 108 | 105 / 108 |
+| box/topLevelInitializtion | 0 / 3 | 0 / 3 | 0 / 3 |
+| box/arrays | 90 / 92 | 89 / 92 | 90 / 92 |
+| box/bridges | 84 / 91 | 83 / 85 | 83 / 85 |
+| box/dataObjects | 1 / 3 | 1 / 3 | 1 / 3 |
+| box/ieee754 | 35 / 38 | 36 / 38 | 36 / 38 |
+| box/inline | 45 / 49 | 46 / 49 | 47 / 49 |
+| box/ranges | 817 / 819 | 817 / 819 | 817 / 819 |
+| box/sam | 6 / 8 | 6 / 8 | 6 / 8 |
+| box/secondaryConstructors | 28 / 30 | 28 / 30 | 28 / 30 |
+| box/strings | 29 / 31 | 29 / 31 | 29 / 31 |
+| box/unsignedTypes | 38 / 40 | 38 / 40 | 38 / 40 |
+| box/volatile | 0 / 2 | 0 / 2 | 0 / 2 |
+| boxInline/annotations | 0 / 2 | 0 / 2 | 0 / 2 |
+| boxInline/complex | 6 / 8 | 6 / 8 | 6 / 8 |
+| boxInline/nonLocalReturns | 81 / 83 | 81 / 83 | 81 / 83 |
+| boxInline/private | 10 / 12 | 10 / 12 | 10 / 12 |
+| box/binaryOp | 19 / 20 | 17 / 20 | 19 / 20 |
+| box/builtinStubMethods | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/collections | 4 / 5 | 4 / 5 | 4 / 5 |
+| box/controlflow | 18 / 19 | 18 / 19 | 18 / 19 |
+| box/dataClasses | 46 / 50 | 48 / 50 | 49 / 50 |
+| box/defaultArguments | 75 / 77 | 67 / 77 | 76 / 77 |
+| box/delegatedProperty | 46 / 48 | 47 / 48 | 47 / 48 |
+| box/diagnostics | 50 / 51 | 41 / 51 | 50 / 51 |
+| box/fieldRename | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/function | 35 / 36 | 32 / 36 | 35 / 36 |
+| box/innerNested | 48 / 49 | 46 / 49 | 48 / 49 |
+| box/nothingValue | 1 / 2 | 1 / 2 | 1 / 2 |
+| box/objectIntrinsics | 0 / 1 | 0 / 1 | 0 / 1 |
+| box/operatorConventions | 31 / 33 | 31 / 33 | 32 / 33 |
+| box/package | 9 / 10 | 9 / 10 | 9 / 10 |
+| box/properties | 86 / 88 | 86 / 88 | 87 / 88 |
+| box/regressions | 62 / 63 | 59 / 63 | 62 / 63 |
+| box/statics | 7 / 8 | 7 / 8 | 7 / 8 |
+| box/stringTrim | 0 / 1 | 0 / 1 | 0 / 1 |
+| box/super | 33 / 35 | 34 / 35 | 34 / 35 |
+| box/suspendConversion | 2 / 3 | 2 / 3 | 2 / 3 |
+| box/vararg | 15 / 17 | 15 / 17 | 16 / 17 |
+| box/when | 91 / 92 | 90 / 92 | 91 / 92 |
+| boxInline/anonymousObject | 93 / 94 | 91 / 94 | 93 / 94 |
+| boxInline/defaultValues | 70 / 71 | 70 / 71 | 70 / 71 |
+| boxInline/noInline | 6 / 7 | 6 / 7 | 6 / 7 |
+| boxInline/reified | 23 / 24 | 23 / 24 | 23 / 24 |
+| boxInline/suspend | 69 / 70 | 69 / 70 | 69 / 70 |
+| box/argumentOrder | 15 / 16 | 16 / 16 | 16 / 16 |
+| box/boxingOptimization | 39 / 39 | 38 / 39 | 39 / 39 |
+| box/classes | 115 / 115 | 113 / 115 | 115 / 115 |
+| box/constants | 12 / 12 | 11 / 12 | 12 / 12 |
+| box/contracts | 16 / 16 | 14 / 16 | 16 / 16 |
+| box/delegation | 12 / 12 | 11 / 12 | 12 / 12 |
+| box/elvis | 9 / 9 | 8 / 9 | 9 / 9 |
+| box/functions | 98 / 98 | 91 / 98 | 98 / 98 |
+| box/increment | 25 / 26 | 24 / 26 | 26 / 26 |
+| box/mixedNamedPosition | 4 / 4 | 2 / 4 | 4 / 4 |
+| box/multiDecl | 62 / 64 | 64 / 64 | 64 / 64 |
+| box/propertyCallableReference | 6 / 7 | 7 / 7 | 7 / 7 |
+| box/smartCasts | 29 / 29 | 27 / 29 | 29 / 29 |
+| box/traits | 33 / 33 | 32 / 33 | 33 / 33 |
+| box/typealias | 21 / 21 | 16 / 21 | 21 / 21 |
+| box/unaryOp | 4 / 4 | 3 / 4 | 4 / 4 |
+| box/unit | 13 / 13 | 12 / 13 | 13 / 13 |
+| boxInline/argumentOrder | 10 / 12 | 12 / 12 | 12 / 12 |
 
 ## Results
 

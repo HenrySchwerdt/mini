@@ -30,6 +30,8 @@ fun BodyChecker.propBaseType(p: PropSym, subst: Map<TypeParamSym, Type>): Type =
 
 /** extension properties named [name] applicable to [recv] (top-level scopes) */
 fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
+    var best: NameRes? = null
+    var bestRecv: Type? = null
     for (g in sema.topLevel(file, name)) {
         for (x in g) {
             if (x is PropSym && x.decl?.receiver != null) {
@@ -41,12 +43,17 @@ fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
                 if (cs.addSub(recv, ops.substitute(r, m))) {
                     cs.fixAll()
                     val t = cs.resolveFixed(ops.substitute(sema.typeOfProp(x), m))
-                    return NameRes(x, t, null, NameRes.VALUE)
+                    // several applicable extension properties: the one with the most specific receiver (`D.attr` over `C.attr`)
+                    val br = bestRecv
+                    if (best == null || (br != null && x.typeParams.isEmpty() && ops.isSubtype(r, br) && !ops.isSubtype(br, r))) {
+                        best = NameRes(x, t, null, NameRes.VALUE)
+                        bestRecv = if (x.typeParams.isEmpty()) r else null
+                    }
                 }
             }
         }
     }
-    return null
+    return best
 }
 
 /** extension properties declared as members of the classes of the implicit receivers */
@@ -503,6 +510,8 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         }
     }
     val groups: List<List<Candidate>>
+    aliasTypeArgs = typeArgs
+    var preRes: CallRes? = null
     var safe = false
     var name: String? = null
     if (callee is NameExpr) {
@@ -541,12 +550,41 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
     } else {
         // (expr)(args): invoke on the value
         val ct = fin(expr(callee, null))
+        val ft0 = ops.asFunType(ct) ?: ct
+        if (recv != null && ft0 is FunType && ft0.receiver != null && (recv is ValueRecv || (recv is ClassRecv && (recv.cls.isObject || recv.cls.companion != null)))) {
+            // `1.(fun Int.() = this + 1)()`, `A.(foo)()`: the function value (an expression in parentheses) is called with the receiver in front
+            val ru: RecvUse
+            val rtype: Type
+            if (recv is ValueRecv) {
+                ru = RecvUse(recv.expr, recv.safe, null, recv.type)
+                rtype = if (recv.safe) ops.makeNotNull(recv.type) else recv.type
+            } else {
+                val oc = if ((recv as ClassRecv).cls.isObject) recv.cls else recv.cls.companion!!
+                ru = RecvUse(null, false, RecvRef(oc, null, true), null)
+                rtype = oc.thisType()
+            }
+            val a2 = ArrayList<Arg>()
+            val ra = Arg(null, null, false)
+            ra.type = rtype
+            a2.add(ra)
+            a2.addAll(args)
+            preRes = resolveCallGroups(node, listOf(invokeCandidates(ft0)), a2, typeArgs, expected, false)
+            val inf = preRes?.info
+            if (inf != null) {
+                inf.isInvoke = true
+                inf.recvAsFirstArg = true
+                inf.invokeValue = RecvUse(callee, false, null, null)
+                inf.dispatch = ru
+            }
+        }
         val ig = ArrayList<List<Candidate>>()
         ig.add(invokeCandidates(ct))
+        implicitMemberExtGroup("invoke", ct, ig)
         extensionGroups("invoke", ct, ig)
         groups = ig
     }
-    var res = resolveCallGroups(node, groups, args, typeArgs, expected, false)
+    aliasTypeArgs = null
+    var res = preRes ?: resolveCallGroups(node, groups, args, typeArgs, expected, false)
     if (res == null && recv is ValueRecv && name != null) {
         // `recv.f(args)` where `f` is a variable of type `Recv.(args) -> R`
         val vr = resolveSimpleName(name)
@@ -595,6 +633,11 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
             }
         }
     }
+    if (res == null && callee is NameExpr && name != null && (recv == null || recv is ClassRecv || recv is ValueRecv)) {
+        // `ONE(42)`, `A.ONE(42)`, `x.attr { }`: the name is a value with an `invoke`
+        val vg = valueInvokeGroups(callee, recv)
+        if (vg != null) res = resolveCallGroups(node, vg, args, typeArgs, expected, true)
+    }
     if (res == null) {
         err(e.start, "unresolved call '" + (name ?: "<expr>") + "'")
         return ErrType("unresolved call " + (name ?: ""))
@@ -615,7 +658,65 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         val er = record(e, t, res.callee)
         er.call = cinfo
     }
+    val cfn = res.callee
+    if (cinfo != null && cfn is FunSym && cfn.kind == FunKind.NORMAL) contractFacts(cfn, cinfo)
     return t
+}
+
+/** the argument expression bound to the parameter named [name] */
+fun argForParam(fn: FunSym, info: CallInfo, name: String): Expr? {
+    var i = 0
+    while (i < info.args.size && i < info.paramOfArg.size) {
+        val j = info.paramOfArg[i]
+        if (j >= 0 && j < fn.params.size && fn.params[j].name == name) return info.args[i].expr
+        i++
+    }
+    return null
+}
+
+/**
+ * Smart casts after a call that returns normally: `require(x is T)` / `check(c)` / `requireNotNull(x)` of the standard library, and the
+ * simple forms `contract { returns() implies p }` / `contract { returns() implies (p != null) }` declared by the user.
+ */
+fun BodyChecker.contractFacts(fn: FunSym, info: CallInfo) {
+    if (fn.owner == null && fn.file != null && fn.file!!.pkg == "kotlin") {
+        val n = fn.name
+        if (n == "require" || n == "check") {
+            val a = argForParam(fn, info, "value")
+            if (a != null) flow.addAll(condFacts(a).onTrue)
+        } else if (n == "requireNotNull" || n == "checkNotNull") {
+            val a = argForParam(fn, info, "value")
+            if (a != null) flow.addAll(nonNullFacts(a))
+        }
+        return
+    }
+    val d = fn.decl ?: return
+    val b = d.body
+    if (b !is BlockExpr || b.stmts.isEmpty()) return
+    val s0 = b.stmts[0]
+    if (s0 !is CallExpr) return
+    val cn = s0.callee
+    if (cn !is NameExpr || cn.name != "contract" || s0.lambdas.size != 1) return
+    val lam = s0.lambdas[0]
+    if (lam !is LambdaExpr) return
+    for (st in lam.body) {
+        if (st !is BinaryExpr || st.op != "implies") continue
+        val l = st.left
+        if (l !is CallExpr) continue
+        val lc = l.callee
+        if (lc !is NameExpr || lc.name != "returns" || (l.args != null && l.args!!.isNotEmpty())) continue
+        val r = AstWalk.unparen(st.right)
+        var pn: String? = null
+        var nn = false
+        if (r is NameExpr) pn = r.name
+        else if (r is BinaryExpr && r.op == "!=" && r.left is NameExpr && isNullLiteral(r.right)) {
+            pn = (r.left as NameExpr).name
+            nn = true
+        }
+        if (pn == null) continue
+        val ae = argForParam(fn, info, pn) ?: continue
+        if (nn) flow.addAll(nonNullFacts(ae)) else flow.addAll(condFacts(ae).onTrue)
+    }
 }
 
 fun BodyChecker.completeLiteralArg2(a: Arg, pts: List<Type?>, i: Int) {
@@ -646,12 +747,18 @@ fun BodyChecker.classGroups(c: ClassSym, name: String): List<List<Candidate>> {
         groups.clear()
         groups.addAll(memberAndExtensionGroups(c.thisType(), name, false))
         val onc = sema.nestedClassifier(c, name, 0)
-        if (onc is ClassSym) groups.add(ctorCandidates(onc))
+        if (onc is ClassSym) {
+            groups.add(ctorCandidates(onc))
+            groups.addAll(objectInvokeGroups(onc))
+        }
         return groups
     }
     if (st.isNotEmpty()) groups.add(st)
     val nc = sema.nestedClassifier(c, name, 0)
-    if (nc is ClassSym) groups.add(ctorCandidates(nc))
+    if (nc is ClassSym) {
+        groups.add(ctorCandidates(nc))
+        groups.addAll(objectInvokeGroups(nc))
+    }
     val comp = c.companion
     if (comp != null) groups.addAll(memberAndExtensionGroups(comp.thisType(), name, false))
     return groups

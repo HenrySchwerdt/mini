@@ -71,6 +71,12 @@ STD="$(find "$ROOT/stdlib" -name '*.kt' | LC_ALL=C sort | tr '\n' ' ')"
 if [ "${E2E_STDLIB:-mlib}" = mlib ] && [ -f "$NATIVE/lib/stdlib.mlib" ]; then
     STDMODE=mlib
     echo "--lib $NATIVE/lib/stdlib.mlib --compiler-id $(cat "$NATIVE/VERSION" 2>/dev/null || echo unknown)" > "$W/stdlib.txt"
+    # E2E_STUB_CACHE=off: no stub cache; verify: every use is also checked against a fresh parse; default: the cache is on (in the work directory)
+    case "${E2E_STUB_CACHE:-on}" in
+        off) ;;
+        verify) echo "--stub-cache $W/stubcache --stub-cache-id e2e --stub-cache-verify" >> "$W/stdlib.txt" ;;
+        *) echo "--stub-cache $W/stubcache --stub-cache-id e2e" >> "$W/stdlib.txt" ;;
+    esac
 else
     STDMODE=source
     echo "--stdlib $STD" > "$W/stdlib.txt"
@@ -405,6 +411,57 @@ t_mlib_chain() {
     return 0
 }
 
+# the stub cache (docs/mlib.md): the parsed stubs of the libraries are kept in a directory. The output must not depend on it (cold, warm,
+# verified against a fresh parse, and off give the same C and the same diagnostics), a library that changed or a compiler of another
+# build must not read old entries, and a damaged, truncated or unwritable cache is never an error
+t_mlib_stubcache() {
+    [ "$STDMODE" = mlib ] || return 77
+    local d="$W/mlib-stubcache"; mkdir -p "$d"
+    local S="$NATIVE/lib/stdlib.mlib" V; V="$(cat "$NATIVE/VERSION" 2>/dev/null || echo unknown)"
+    printf 'package a\n\nfun twice(f: (Int) -> Int, x: Int): Int = f(f(x))\nval k = 1\n' > "$d/a.kt"
+    printf 'import a.*\n\nfun main() {\n    println(twice({ it + 1 }, k))\n    println(listOf(3, 1, 2).sorted().joinToString("-"))\n}\n' > "$d/m.kt"
+    printf 'import a.*\n\nfun main() { val x: Int = twice({ it }, k).toString() }\n' > "$d/bad.kt"
+    "$MINIC" --emit-mlib "$d/a.mlib" --name a --compiler-id "$V" --lib "$S" "$d/a.kt" > "$d/log" 2>&1 || { echo "a.mlib failed:"; head "$d/log"; return 1; }
+    local L=(--lib "$S" --lib "$d/a.mlib" --compiler-id "$V")
+    local C=(--stub-cache "$d/cache" --stub-cache-id t1)
+    "$MINIC" -o "$d/off.c" "$d/m.kt" "${L[@]}" > "$d/off.log" 2>&1 || { echo "no cache failed:"; head "$d/off.log"; return 1; }
+    "$MINIC" -o "$d/cold.c" "$d/m.kt" "${L[@]}" "${C[@]}" > "$d/cold.log" 2>&1 || { echo "cold cache failed:"; head "$d/cold.log"; return 1; }
+    local n; n="$(ls "$d/cache" | wc -l | tr -d ' ')"
+    [ "$n" = 2 ] || { echo "expected one cache file per library (2), found $n"; return 1; }
+    "$MINIC" -o "$d/warm.c" "$d/m.kt" "${L[@]}" "${C[@]}" > "$d/warm.log" 2>&1 || { echo "warm cache failed:"; head "$d/warm.log"; return 1; }
+    "$MINIC" -o "$d/verify.c" "$d/m.kt" "${L[@]}" "${C[@]}" --stub-cache-verify > "$d/verify.log" 2>&1 || { echo "verified cache failed:"; head "$d/verify.log"; return 1; }
+    for v in cold warm verify; do
+        cmp -s "$d/off.c" "$d/$v.c" || { echo "the C of the $v run differs from the run without a cache"; return 1; }
+    done
+    # diagnostics are the same with and without the cache
+    "$MINIC" --check "$d/bad.kt" "${L[@]}" > "$d/bad-off.log" 2>&1 && { echo "the error was not reported"; return 1; }
+    "$MINIC" --check "$d/bad.kt" "${L[@]}" "${C[@]}" > "$d/bad-on.log" 2>&1 && { echo "the error was not reported with the cache"; return 1; }
+    cmp -s "$d/bad-off.log" "$d/bad-on.log" || { echo "diagnostics differ with the cache:"; diff "$d/bad-off.log" "$d/bad-on.log" | head; return 1; }
+    # another compiler build (the id) does not read the entries: they are rewritten under the new key
+    local before; before="$(cat "$d"/cache/* | cksum)"
+    "$MINIC" --check "$d/m.kt" "${L[@]}" --stub-cache "$d/cache" --stub-cache-id t2 > "$d/log" 2>&1 || { echo "another id failed:"; head "$d/log"; return 1; }
+    [ "$before" != "$(cat "$d"/cache/* | cksum)" ] || { echo "a different compiler build id did not change the cache entries"; return 1; }
+    # a library that changed under the same name: the program sees the new declarations
+    printf 'package a\n\nfun twice(f: (Int) -> Int, x: Int): Int = f(f(x))\nfun thrice(x: Int): Int = x * 3\nval k = 1\n' > "$d/a2.kt"
+    printf 'import a.*\n\nfun main() { println(thrice(k)) }\n' > "$d/m2.kt"
+    "$MINIC" --check "$d/m2.kt" "${L[@]}" "${C[@]}" > "$d/log" 2>&1 && { echo "thrice exists in the old library"; return 1; }
+    "$MINIC" --emit-mlib "$d/a.mlib" --name a --compiler-id "$V" --lib "$S" "$d/a2.kt" > "$d/log" 2>&1 || { echo "a.mlib (2) failed:"; head "$d/log"; return 1; }
+    "$MINIC" --check "$d/m2.kt" "${L[@]}" "${C[@]}" > "$d/log" 2>&1 || { echo "the changed library was not seen through the cache:"; head "$d/log"; return 1; }
+    # damaged entries: truncated, garbage, a stub text that no longer matches; none is an error, all are rewritten
+    local f
+    for f in "$d"/cache/*; do
+        local good; good="$(cksum < "$f")"
+        head -c 5000 "$f" > "$f.cut" && mv "$f.cut" "$f"
+        "$MINIC" --check "$d/m2.kt" "${L[@]}" "${C[@]}" > "$d/log" 2>&1 || { echo "a truncated cache entry broke the build:"; head "$d/log"; return 1; }
+        [ "$(cksum < "$f")" = "$good" ] || { echo "a truncated cache entry was not rewritten"; return 1; }
+        echo "junk junk junk" > "$f"
+        "$MINIC" --check "$d/m2.kt" "${L[@]}" "${C[@]}" > "$d/log" 2>&1 || { echo "a garbage cache entry broke the build:"; head "$d/log"; return 1; }
+        [ "$(cksum < "$f")" = "$good" ] || { echo "a garbage cache entry was not rewritten"; return 1; }
+    done
+    "$MINIC" --check "$d/m2.kt" "${L[@]}" --stub-cache /proc/mini-no-such-dir/cache --stub-cache-id t1 > "$d/log" 2>&1 || { echo "an unwritable cache directory broke the build:"; head "$d/log"; return 1; }
+    return 0
+}
+
 # object layout across precompiled libraries (docs/memory-model.md, "Object layout"): a class chain whose levels live in two libraries and
 # the program (a subclass fills the tail padding of its superclass; an exception chain; a data class) must lay out identically in library
 # mode and in source mode, and the fields of all levels must stay independent
@@ -557,7 +614,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_summaries t_mlib_layout run_with_timeout
+export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -591,7 +648,7 @@ stress_progs() { find "$TESTDATA/stress" -maxdepth 1 -name '*.kt' 2>/dev/null | 
 want_suite stress-leak && for f in $(stress_progs); do add stress-leak "$(basename "$f" .kt)" "t_c $f asan"; done
 want_suite stress-llvm-leak && for f in $(stress_progs); do add stress-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
-want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
+want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib stubCache t_mlib_stubcache; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; add multifile classChainAcrossFiles t_multifile_layout; }
 
 if [ -n "$FILTER" ]; then grep -F -- "$FILTER" "$LISTFILE" > "$LISTFILE.f" || true; mv "$LISTFILE.f" "$LISTFILE"; fi
