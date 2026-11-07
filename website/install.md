@@ -136,7 +136,7 @@ $env:PATH = "$env:USERPROFILE\.mini-windows\bin;$env:PATH"
 mini.exe --version
 ```
 
-The standalone script downloads the latest Windows release ZIP, verifies its entry in `SHA256SUMS`, and installs it into a **new** `%USERPROFILE%\.mini-windows` directory. No Git clone, JDK, or compiler bootstrap is needed to install the release. It refuses to overwrite an existing installation and does not change persistent PATH settings. Pass `-Prefix <new-directory>` or `-Version 0.9.0` to the downloaded script to choose a destination or pin a release.
+The standalone script downloads the latest Windows release ZIP, verifies its entry in `SHA256SUMS`, and installs it into a **new** `%USERPROFILE%\.mini-windows` directory. No Git clone, JDK, or compiler bootstrap is needed to install the release. It refuses to overwrite an existing installation and does not change persistent PATH settings. Pass `-Prefix <new-directory>` or `-Version 0.10.0` to the downloaded script to choose a destination or pin a release.
 
 **Windows 0.9.0 packages use the LLVM API by default and include `mini repl`**. Use `mini run --backend c` for the C fallback. Building native programs requires Visual Studio 2022 C++ build tools with the LLVM Clang component and a Windows SDK; open Developer PowerShell for Visual Studio when building. The LLVM development SDK is not needed to run the installed compiler. The Unix `minic` shell wrapper is not included on Windows. The older 0.8.0 Windows package uses the C backend without REPL support.
 
