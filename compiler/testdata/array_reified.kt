@@ -11,6 +11,7 @@ class Holder<T>(val items: Array<T>) {
 
 fun <T> same(a: Array<T>): Array<T> = a
 fun <T> bad(): Array<T> = arrayOfNulls<Any?>(1) as Array<T>
+fun count(a: Array<String>): Int = a.size
 fun joined(vararg xs: String): String = xs[0] + xs[xs.size - 1]
 
 fun attempt(name: String, f: () -> Unit) {
@@ -64,4 +65,12 @@ fun main() {
     attempt("as?") { val o: Any = arrayOf("a"); println((o as? Array<Int>) == null); println((o as? Array<String>)!![0].length) }
     attempt("list of arrays") { val l = listOf(arrayOf("a"), arrayOf("bb")); println(l[1][0].length) }
     attempt("array in a generic box") { val b = Holder(arrayOf(Sq(1))); println(b.items[0].n) }
+    attempt("arrayOf without arguments") { println(count(arrayOf()) + count(emptyArray()) + count(arrayOf<String>())) }
+    attempt("empty arrays have no element to confuse") { val a = arrayOf<Any>() as Array<String>; println(a.size) }
+    try {
+        val a = arrayOf<Any>("x") as Array<String>
+        println(a.size)
+    } catch (e: ClassCastException) {
+        println(e.message)
+    }
 }

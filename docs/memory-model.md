@@ -1384,7 +1384,7 @@ without such a parameter) records `Any?`. It enters an `Array<C>` type only at a
 element type is a checked cast (`mk_array_cast` / `mk_array_is`, also `is`, `as?`, smart casts, erased generic results and fields):
 `ClassCastException` unless the tags are equal (or, for `out`, the recorded type is a subtype). So `arrayOf<Any>(1) as Array<String>` fails at the
 cast like on the JVM, and `fun <T> mk(): Array<T> = arrayOfNulls<Any?>(1) as Array<T>` fails where its caller reads the result as `Array<String>`.
-`CastElim` removes the cast when the operand type already proves it (`Array<String>` to `Array<out Any>`, to `Array<T>`).
+An *empty* array passes every array cast (nothing can be read from or stored into it, so no element can be confused; the frontend infers `arrayOf()` without an expected type as `Array<Any?>`). `CastElim` removes the cast when the operand type already proves it (`Array<String>` to `Array<out Any>`, to `Array<T>`).
 
 **Deliberate differences from the JVM** (all are failures of a cast the JVM would let through and fail later, or not at all):
 `arrayOf(Sq(1)) as Array<Shape>` is a `ClassCastException` (it would allow a store of a `Circle` into a `Sq` array; the JVM throws at that store);
@@ -1406,7 +1406,7 @@ an interface remembers the type that last passed), the unbox of a box checks typ
 | Program | main | this branch | delta | text size |
 |---|---|---|---|---|
 | bench/binarytrees (depth 14) | 629.5 M | 640.8 M | +1.8 % | +2.9 % |
-| bench/nbody (500 k steps) | 330.9 M | 323.4 M | -2.3 % | +2.1 % |
+| bench/nbody (500 k steps) | 330.9 M | 329.3 M | -0.5 % | +2.1 % |
 | bench/fannkuch, spectralnorm, mandelbrot, strbuild | | | 0.0 % | +2.9 % |
 | bench/json | 194.5 M | 195.4 M | +0.5 % | +2.5 % |
 | bench/wordcount | 924.0 M | 901.2 M | -2.5 % | +2.9 % |
@@ -1417,7 +1417,7 @@ an interface remembers the type that last passed), the unbox of a box checks typ
 | `Array<Shape>` reads (index loop and `for`) | 221.59 M | 221.60 M | 0.0 % | +2.9 % |
 
 The savings on the collection programs come from the runtime (`HashMap.get`, `type_is`) and the inline checks replacing the call of
-`mk_checked_cast`. The reads of an `Array<SomeClass>` that cost +14 % on `nbody` before reified arrays are free now (nbody is within noise of main, 2 % below it). The one remaining cost is the guard of top-level properties
+`mk_checked_cast`. The reads of an `Array<SomeClass>` that cost +14 % on `nbody` before reified arrays are free now (nbody is within noise of main, 0.5 % below it). The one remaining cost is the guard of top-level properties
 that can be read before their initializer ran (a program with a top-level `Node` and a loop reading properties).
 
 Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-range index as a fatal

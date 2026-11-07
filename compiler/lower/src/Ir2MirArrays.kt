@@ -148,6 +148,10 @@ private fun Ir2Mir.fillWith(kind: ArrayKind, arr: MirExpr, init: IrExpression, a
 
 /** `arrayOf`, `intArrayOf`, ..., `arrayOfNulls`, `emptyArray`, and `contentToString`. */
 internal fun Ir2Mir.arrayFunction(c: IrCall, name: String, pkg: String, out: MutableList<MirStmt>): MirExpr? {
+    // `arrayOf()` without arguments: the vararg is omitted, the array is empty but still records the element type of the call
+    if (pkg == "kotlin" && name == "arrayOf" && c.arguments.size == 1 && c.arguments[0] == null) {
+        return newObjectArray(MirExpr.IntConst(0), createdArrayType(mirType(c.type, c)))
+    }
     val a = c.arguments.map { it ?: return null }
     val expected = mirType(c.type, c)
     if (pkg == "kotlin") {

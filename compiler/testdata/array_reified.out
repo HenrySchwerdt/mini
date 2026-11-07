@@ -61,3 +61,8 @@ as?: ok
 list of arrays: ok
 1
 array in a generic box: ok
+0
+arrayOf without arguments: ok
+0
+empty arrays have no element to confuse: ok
+class kotlin.Array<kotlin.Any> cannot be cast to class kotlin.Array<kotlin.String>

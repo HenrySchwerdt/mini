@@ -567,8 +567,19 @@ MkObject *mk_array_cast(MkObject *object, const MkTypeInfo *elem, MkInt flags) {
         if ((flags & 4) == 0) mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
         return NULL;
     }
+    /* an empty array has no element to read or store: it can be viewed with any element type (the one the frontend inferred for `arrayOf()` need not match) */
+    if (mk_is_object_array_type(object->type) && ((const MkArray *)object)->length == 0) return object;
     if (!mk_array_is(object, elem, flags)) {
-        mk_raise_class_cast(object, &MkObjectArray_ti);
+        char buf[320];
+        if (mk_is_object_array_type(object->type)) {
+            const MkTypeInfo *have = object->type->elem;
+            const MkTypeInfo *want = array_tag(elem, flags & 1);
+            snprintf(buf, sizeof buf, "class kotlin.Array<%s%s> cannot be cast to class kotlin.Array<%s%s%s>", tag_type(have)->name, tag_nullable(have) ? "?" : "",
+                     (flags & 2) ? "out " : "", tag_type(want)->name, tag_nullable(want) ? "?" : "");
+            mk_raise(&MkClassCastException_ti, buf);
+        } else {
+            mk_raise_class_cast(object, &MkObjectArray_ti);
+        }
         return NULL;
     }
     return object;
