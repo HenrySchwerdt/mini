@@ -83,8 +83,10 @@ existing scalar replacement removes the five objects too. Any remaining use of t
 `a[k] = v`) leaves the function untouched. A second fix: constructors are now visited before the allocation sites that `new` them,
 so `val rng = Rng(42)` in `main` is scalar-replaced too (wordcount, graph).
 
-Measured with `CC=clang` (this container's `cc` is gcc 13, which spills badly on the unrolled nbody loop: 2.5 s; clang and the LLVM
-backend do not), callgrind Ir of the full runs:
+Measured with clang (callgrind Ir of the full runs). `minic` now prefers clang over `cc` (which is gcc 13 here). gcc 13 -O2 first made
+the unrolled nbody loop 2x slower (2.5 s): its partial redundancy elimination stretches the live ranges of the 35 scalars and the register
+allocator spills most of them. `-fno-tree-pre` (added by scripts/minic.sh and `mini` for gcc only) removes that: gcc nbody is 16.45 G Ir
+before, 13.80 G after (wall 1.2-1.4 s both ways, within noise), and the other benchmarks are neutral to slightly faster with the flag.
 
 | benchmark | Rust Ir (G) | Mini Ir before (G) | Mini Ir after (G) | wall before / after / Rust (s, median of 7) |
 |---|---:|---:|---:|---|
@@ -92,3 +94,24 @@ backend do not), callgrind Ir of the full runs:
 | wordcount | 9.51 | 14.21 | 14.41 (+1.4%: clang codegen of the `x / 26` loop once the Rng object became locals; one allocation less) | 2.8 / 2.7 / 1.3 |
 
 All other benchmark programs generate byte-identical C (graph changes like wordcount: the `Lcg` object becomes locals).
+
+The wordcount +1.4% was left alone: once `Rng.s` is a local, clang proves less about the sign of `(a * b) / 50000` and divides by 26 with a
+signed instead of an unsigned sequence (about 10 more instructions per iteration). Proving the dividend non-negative needs a range
+analysis of the Long-to-Int narrowing chain in MIR, which is not cheap; wall time is the same within noise.
+
+Full table, median of 5 (s), clang old / new, gcc old / new, Rust:
+
+| benchmark | clang old | clang new | gcc old | gcc new | Rust |
+|---|---:|---:|---:|---:|---:|
+| binarytrees | 1.28 | 1.28 | 1.31 | 1.31 | 1.38 |
+| nbody | 1.30 | 1.00 | 1.24 | 1.41 | 0.99 |
+| fannkuch | 2.65 | 2.65 | 2.50 | 2.50 | 2.35 |
+| spectralnorm | 1.35 | 1.35 | 1.62 | 1.62 | 1.28 |
+| mandelbrot | 1.05 | 1.05 | 1.00 | 1.00 | 0.97 |
+| wordcount | 2.54 | 2.68 | 2.59 | 2.39 | 1.39 |
+| strbuild | 0.78 | 0.78 | 0.75 | 0.75 | 0.65 |
+| json | 1.02 | 1.02 | 1.03 | 1.03 | 0.74 |
+| graph | 1.80 | 1.57 | 1.99 | 1.96 | 0.67 |
+
+(Programs whose generated C is unchanged show the same binary twice; the machine is noisy, +-10%: the same gcc nbody binary measured
+1.19 to 1.39 s.)

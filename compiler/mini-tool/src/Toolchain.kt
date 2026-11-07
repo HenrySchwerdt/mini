@@ -180,6 +180,8 @@ class Toolchain(
         }
         for (d in dirs) { cmd += "-I"; cmd += d }
         cmd += if (release) "-O2" else "-g"
+        // gcc: partial redundancy elimination makes it spill the fully scalarized code (array scalar replacement) badly (scripts/minic.sh)
+        if (release && ccName.contains("gcc") && !ccName.contains("clang")) cmd += "-fno-tree-pre"
         // Linux release builds: a section per function and datum, no unwind tables (the runtime archive is built the same way), so
         // that the linker can drop what the program never calls and leave out the symbol table (scripts/minic.sh does the same)
         val sizeLink = release && p.os == "linux"
