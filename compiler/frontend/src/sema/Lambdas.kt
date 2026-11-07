@@ -267,7 +267,10 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             cands.add(rc)
         }
     } else {
-        val ri = resolveReceiver(rcv, null)
+        val ri0 = resolveReceiver(rcv, null)
+        // `Obj::Nested` where `Nested` is a class declared in the object: a reference to its constructor, not a bound member of the object
+        val ro = (ri0 as? ValueRecv)?.type as? ClassType
+        val ri: RecvInfo? = if (ro != null && ro.cls.isObject && ro.cls.nested[name] != null && members.funsNamed(ro, name).isEmpty()) ClassRecv(ro.cls) else ri0
         if (ri is ClassRecv) {
             var ct = ri.cls.thisType()
             if (e.typeArgs.isNotEmpty() && e.typeArgs.size == ct.args.size) {
