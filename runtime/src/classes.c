@@ -17,14 +17,14 @@ typedef struct MkBoxByte { MkObject header; MkByte value; } MkBoxByte;
 typedef struct MkBoxShort { MkObject header; MkShort value; } MkBoxShort;
 typedef struct MkBoxChar { MkObject header; MkChar value; } MkBoxChar;
 
-const MkTypeInfo mk_type_Int = {"kotlin.Int", sizeof(MkBoxInt), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo mk_type_Long = {"kotlin.Long", sizeof(MkBoxLong), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo mk_type_Boolean = {"kotlin.Boolean", sizeof(MkBoxBoolean), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo mk_type_Double = {"kotlin.Double", sizeof(MkBoxDouble), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo mk_type_Float = {"kotlin.Float", sizeof(MkBoxFloat), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo mk_type_Byte = {"kotlin.Byte", sizeof(MkBoxByte), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo mk_type_Short = {"kotlin.Short", sizeof(MkBoxShort), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo mk_type_Char = {"kotlin.Char", sizeof(MkBoxChar), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo mk_type_Int = {"kotlin.Int", sizeof(MkBoxInt), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo mk_type_Long = {"kotlin.Long", sizeof(MkBoxLong), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo mk_type_Boolean = {"kotlin.Boolean", sizeof(MkBoxBoolean), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo mk_type_Double = {"kotlin.Double", sizeof(MkBoxDouble), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo mk_type_Float = {"kotlin.Float", sizeof(MkBoxFloat), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo mk_type_Byte = {"kotlin.Byte", sizeof(MkBoxByte), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo mk_type_Short = {"kotlin.Short", sizeof(MkBoxShort), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo mk_type_Char = {"kotlin.Char", sizeof(MkBoxChar), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
 
 /* Boxes of small values are shared and immortal (static): no allocation, no reference counting, like the box caches of the
  * JVM and Kotlin/Native (the identity of a box is unspecified). The tables are made on first use and published with a CAS. */

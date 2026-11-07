@@ -10,7 +10,7 @@ static void dispose_node(MkObject *s) {
     disposed++;
     mk_free_owned(((Node *)s)->child);
 }
-static const MkTypeInfo T_Node = {"Node", sizeof(Node), &mk_type_Any, dispose_node, 0, 0, 0, 0, NULL};
+static const MkTypeInfo T_Node = {"Node", sizeof(Node), &mk_type_Any, dispose_node, 0, 0, 0, 0, NULL, NULL};
 
 static void check_handles(void) {
     int64_t heap = mk_heap_allocator_h();
