@@ -97,7 +97,12 @@ char *mk_string_to_utf8(const MkString *s, size_t *out_length) {
     return out;
 }
 
-MkInt mk_string_length(const MkString *s) { return s ? s->length : 0; }
+/* A null String that reaches here is a polluted value (heap pollution, see docs/memory-model.md): the dereference is a NullPointerException.
+ * The compiler checks such values before (NullGuard), so this is the last line of defence, not the way a program is expected to fail. */
+MkInt mk_string_length(const MkString *s) {
+    if (s == NULL) mk_panic("NullPointerException");
+    return s->length;
+}
 
 /* The number of ASCII bytes at the start of [p, end): eight at a time while the high bits are clear. */
 static inline size_t ascii_prefix(const uint8_t *p, const uint8_t *end) {
@@ -377,13 +382,12 @@ bool mk_string_equals(const MkString *a, const MkString *b) {
 
 MkInt mk_string_hash(const MkString *s) {
     uint32_t h = 0;
-    if (s != NULL) {
-        if (mk_string_is_latin1(s)) {
-            const uint8_t *b = mk_string_bytes(s);
-            for (MkInt i = 0; i < s->length; i++) h = h * 31u + b[i];
-        } else {
-            for (MkInt i = 0; i < s->length; i++) h = h * 31u + s->chars[i];
-        }
+    if (s == NULL) mk_panic("NullPointerException");
+    if (mk_string_is_latin1(s)) {
+        const uint8_t *b = mk_string_bytes(s);
+        for (MkInt i = 0; i < s->length; i++) h = h * 31u + b[i];
+    } else {
+        for (MkInt i = 0; i < s->length; i++) h = h * 31u + s->chars[i];
     }
     return (MkInt)h; /* two's-complement wraparound, like the JVM */
 }
