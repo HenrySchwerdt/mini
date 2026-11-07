@@ -358,7 +358,17 @@ fun BodyChecker.superExpr(e: SuperExpr): Type {
         if (r.isCompanion) continue
         if (e.label != null && c.name != e.label) continue // `super@Outer.f()`
         val ta = e.typeArg
-        if (ta != null) return sema.resolveType(ta, scope)
+        if (ta != null) {
+            // `super<B>.f()` for a generic `B` written without arguments: the supertype `B<Int>` of the class
+            if (ta is UserType && ta.segments.size == 1 && ta.segments[0].args.isEmpty()) {
+                val bc = sema.lookupClassifier(scope, ta.segments[0].name) as? ClassSym
+                if (bc != null && bc.typeParams.isNotEmpty()) {
+                    sema.ensureSupertypes(c)
+                    for (st in c.supertypes) if (st is ClassType && st.cls === bc) return st
+                }
+            }
+            return sema.resolveType(ta, scope)
+        }
         sema.ensureSupertypes(c)
         val sc = sema.superclassOf(c)
         // unqualified `super` of a class with interfaces: the member is looked up in all of its direct supertypes (the superclass first)
@@ -1158,8 +1168,12 @@ fun BodyChecker.doWhile(e: DoWhileExpr): Type {
     if (body != null) loopKill(body, e.cond)
     val base = flow
     flow = base.copy()
-    if (body != null) loopBody(body)
+    // the condition sees the variables declared in the body block
+    val savedScope = scope
+    if (body is BlockExpr) newLocal()
+    if (body != null) { if (body is BlockExpr) blockNode(body, null, false) else loopBody(body) }
     expr(e.cond, sema.booleanType)
+    scope = savedScope
     flow = base
     loopKill(e.cond, null)
     if (body != null) loopKill(body, null)

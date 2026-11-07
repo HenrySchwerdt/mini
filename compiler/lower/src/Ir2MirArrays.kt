@@ -136,7 +136,12 @@ internal fun Ir2Mir.varargArray(e: IrVararg, kind: ArrayKind, out: MutableList<M
     val vals = ArrayList<Pair<MirExpr, Boolean>>()
     for (el in e.elements) {
         when (el) {
-            is IrSpreadElement -> vals += local(operands(listOf(el.expression), out)[0], out) to true
+            is IrSpreadElement -> {
+                val sv = local(operands(listOf(el.expression), out)[0], out)
+                // (a spread unsigned array is its storage array)
+                val uc = unsignedArrayClass(sv.type)
+                vals += (if (uc != null) MirExpr.FieldGet(sv, uc.first.cName, "storage", arrayType(uc.third)) else sv) to true
+            }
             is IrExpression -> {
                 val v = operands(listOf(el), out)[0]
                 val cv = coerceFlexible(v, et, e, out)
@@ -170,6 +175,11 @@ internal fun Ir2Mir.varargArray(e: IrVararg, kind: ArrayKind, out: MutableList<M
 
 internal fun Ir2Mir.varargValue(e: IrVararg, out: MutableList<MirStmt>): MirExpr {
     val t = mirType(e.type, e)
+    // `vararg us: UInt` is a UIntArray: a value class over the array of the underlying type
+    unsignedArrayClass(t)?.let { (info, ctor, rk) ->
+        val storage = varargArray(e, rk, out)
+        return tmpOf(MirExpr.New(functionNames[ctor]!!, listOf(storage), t as TObject), out)
+    }
     val kind = arrayKindOf(t) ?: unsupported(e, "vararg of type $t")
     return varargArray(e, kind, out)
 }
@@ -231,8 +241,24 @@ private fun Ir2Mir.adaptOrCoerce(e: MirExpr, t: MirType, at: IrElement, out: Mut
 }
 
 /** The empty array passed for a `vararg` parameter without arguments. */
+/** The class, its `(storage: XArray)` constructor and the array kind of an unsigned array type (`UIntArray`): a value class over a primitive array, null for any other type. */
+internal fun Ir2Mir.unsignedArrayClass(t: MirType): Triple<ClassInfo, IrConstructor, ArrayKind>? {
+    if (t !is TObject || arrayKindOf(t) != null) return null
+    val info = classInfos.values.firstOrNull { it.cName == t.cName && it.ir.isValue && it.qualified.startsWith("kotlin.U") && it.qualified.endsWith("Array") } ?: return null
+    for (k in info.ir.declarations.filterIsInstance<IrConstructor>()) {
+        if (k.parameters.size != 1) continue
+        val kind = arrayKindOfFq(k.parameters[0].type.classFqName) ?: continue
+        if (functionNames[k] != null) return Triple(info, k, kind)
+    }
+    return null
+}
+
 internal fun Ir2Mir.emptyVararg(p: IrValueParameter, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     val t = mirType(p.type, p)
+    unsignedArrayClass(t)?.let { (info, ctor, rk) ->
+        val storage = tmpOf(MirExpr.RuntimeCall("mk_array_new_${rk.suffix}", listOf(MirExpr.IntConst(0)), arrayType(rk)), out)
+        return tmpOf(MirExpr.New(functionNames[ctor]!!, listOf(storage), t as TObject), out)
+    }
     val kind = arrayKindOf(t) ?: unsupported(at, "vararg parameter of type $t")
     return tmpOf(MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(MirExpr.IntConst(0)), arrayType(kind)), out)
 }

@@ -163,7 +163,10 @@ class PropertyDecl(
 class BackingFieldDecl(val mods: Modifiers?, val type: TypeRef?, val initializer: Expr?) : Ast()
 
 /** [source]: the property the entry reads in a name-based destructuring (`(val a = prop) = x`) */
-class DestructEntry(val mods: Modifiers?, val isVar: Boolean, val name: String, val type: TypeRef?, val source: String? = null) : Ast()
+class DestructEntry(val mods: Modifiers?, val isVar: Boolean, val name: String, val type: TypeRef?, val source: String? = null) : Ast() {
+    /** written as the backticked name `_`: a variable, not the unused-entry marker (not part of the stub cache: only user code) */
+    var quoted = false
+}
 
 /** `val (a, b) = x`, `val [a, b] = x` and the short forms `(val a, val b) = x` / `[val a, val b] = x` */
 class DestructuringDecl(

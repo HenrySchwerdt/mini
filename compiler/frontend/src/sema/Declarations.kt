@@ -269,7 +269,7 @@ fun Sema.checkClass(c: ClassSym) {
         for (p in pc.primaryParams) {
             val dv = p.default
             if (dv != null) {
-                val pt = pc.params[pc.primaryParams.indexOf(p)].let { it.varargElement ?: it.type }
+                val pt = pc.params[pc.primaryParams.indexOf(p)].let { it.type }
                 bc.expr(dv, pt)
             }
         }
@@ -283,7 +283,7 @@ fun Sema.checkClass(c: ClassSym) {
         } else if (s is SuperDelegate) {
             // `class C(a: I) : I by a`: the delegate expression sees the primary constructor parameters
             val dc = BodyChecker(this, file)
-            dc.scope = initializerScope(c, true)
+            dc.scope = if (c.isAnonymous) superCallScope(c) else initializerScope(c, true)
             dc.expr(s.delegate, resolveType(s.type, hs))
         }
     }
@@ -350,7 +350,7 @@ fun Sema.checkSecondary(c: ClassSym, f: FunSym, m: SecondaryCtor) {
     i = 0
     for (p in m.params) {
         val dv = p.default
-        if (dv != null) bc.expr(dv, f.params[i].varargElement ?: f.params[i].type)
+        if (dv != null) bc.expr(dv, f.params[i].type)
         i++
     }
     val del = m.delegation

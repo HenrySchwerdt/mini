@@ -141,7 +141,17 @@ fun Ast2Ir.buildFunctionBody(fn: IrSimpleFunction, sym: FunSym): IrBody? {
 }
 
 /** the context a member of a local class continues in (the function the class was declared in) */
-fun Ast2Ir.localClassCtx(c: IrClass): BodyCtx? = localClassCtxs[c]
+fun Ast2Ir.localClassCtx(c: IrClass): BodyCtx? {
+    // an inner class of a local class (`object { inner class Y { val y = x } }`) sees the context of the function around the local class
+    var k: IrClass? = c
+    while (k != null) {
+        val bc = localClassCtxs[k]
+        if (bc != null) return bc
+        if (!k.isInner) break
+        k = k.parent as? IrClass
+    }
+    return null
+}
 
 fun Ast2Ir.functionBody(fn: IrFunction, body: Expr, expressionBody: Boolean): IrBody {
     val stmts = ArrayList<IrStatement>()
@@ -166,6 +176,13 @@ private fun Ast2Ir.coerceUnitValue(e: IrExpression): IrExpression = e
 
 /** converts [e] for a position that expects [expected] (return values, initialisers): inserts the implicit coercions */
 fun Ast2Ir.convertWithExpected(e: Expr, expected: Type?): IrExpression {
+    // `[a, b]` (an annotation parameter default): the array of the expected type, built like the elements of `arrayOf(a, b)`
+    if (e is CollectionLiteral && expected != null) {
+        val elems = ArrayList<IrVarargElement>()
+        for (x in e.elements) elems.add(convert(x))
+        val et = (expected as? ClassType)?.args?.firstOrNull()?.type ?: expected
+        return IrVararg(et, elems, expected)
+    }
     val ir = convert(e)
     return ir
 }
@@ -237,7 +254,7 @@ fun Ast2Ir.localDestructuring(d: DestructuringDecl): IrStatement {
 fun Ast2Ir.destructureInto(entries: List<DestructEntry>, tmp: IrVariable, out: ArrayList<IrStatement>) {
     var i = 1
     for (e in entries) {
-        if (e.name == "_") {
+        if (e.name == "_" && !e.quoted) {
             // an unused entry: no componentN call and no variable
             i++
             continue
@@ -272,6 +289,8 @@ fun Ast2Ir.irLocalFunction(sym: FunSym): IrSimpleFunction {
     fn.parent = enclosingParent()
     // the body is built now: it sees the variables of the enclosing function
     val body = fn.body
+    // the default values see the enclosing context too (`fun nested(x: T = k)` reads a member of the enclosing class)
+    for (p in fn.parameters) p.defaultValue
     return fn
 }
 
