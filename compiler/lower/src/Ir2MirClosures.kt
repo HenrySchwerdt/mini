@@ -543,9 +543,14 @@ internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: Ir
     if (cName != null) return MirExpr.Call(cName, args, mirType(target.returnType, target))
     // builtin members and functions the backend knows (`String::length`, `Int::plus`, `Any::toString`): an ordinary call of the arguments
     // (a reference to a generic function with its type arguments, `::arrayOfNulls` as `(Int) -> Array<String?>`: the call knows them, like the element type of an array)
-    val known = typeArgs.isNotEmpty() && typeArgs.all { it != null } && resultType != null
+    // (`::arrayOfNulls` against `(Int) -> Array<String?>`: T is not recorded, the result type says it)
+    val targs = if (target.name == "arrayOfNulls" && (typeArgs.isEmpty() || typeArgs.any { it == null })) {
+        val el = ((resultType as? ClassType)?.args?.firstOrNull())?.type
+        if (el != null) listOf<Type?>(el) else typeArgs
+    } else typeArgs
+    val known = targs.isNotEmpty() && targs.all { it != null } && resultType != null
     val call = IrCall(target, if (known) resultType!! else target.returnType)
-    if (known) call.typeArguments = typeArgs
+    if (known) call.typeArguments = targs
     for ((i, p) in target.parameters.withIndex()) {
         val tp = IrValueParameter("\$ref$i", p.type, p.kind, i)
         tp.parent = target

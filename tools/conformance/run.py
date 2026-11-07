@@ -135,7 +135,7 @@ def kotlin_test_sources():
         t = open(os.path.join(HERE, '..', '..', 'compiler', 'mini-tool', 'src', 'TestCommand.kt'), encoding='utf-8').read()
         for k in ('ANNOTATIONS', 'SOURCE'):
             m = re.search(r'const val %s = """(.*?)"""' % k, t, re.S)
-            _KT[k] = m.group(1).replace("${'$'}", '$')
+            _KT[k] = m.group(1).replace("${'$'}", '$').replace('${"kotlin.reflect"}', 'kotlin.reflect')
     return _KT['ANNOTATIONS'], _KT['SOURCE']
 
 

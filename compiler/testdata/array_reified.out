@@ -8,7 +8,8 @@ array cast of another element type: ClassCastException
 array cast to a supertype: ClassCastException
 1
 array cast to an out type: ok
-array cast of null slots: ClassCastException
+0
+array cast of null slots: ok
 1
 nullable slots are fine: ok
 store through a generic view: ClassCastException
@@ -22,7 +23,8 @@ array of unknown element type: ClassCastException
 copyOf: ok
 4
 copyOf with room: ok
-copyOf with room is nullable: ClassCastException
+3
+copyOf with room is nullable: ok
 3
 copyOfRange: ok
 3

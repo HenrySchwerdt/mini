@@ -110,7 +110,7 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         out += MirStmt.Eval(r)
         return MirExpr.Unreachable(TNothing)
     }
-    return r
+    return guardUnsetGetterResult(c, r, out)
 }
 
 internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {

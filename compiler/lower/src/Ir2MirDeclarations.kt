@@ -218,7 +218,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 return
             }
             if (t == TUnit || t == TNothing) unsupported(s, "variable '${s.name}' of type $t")
-            if (s.name.endsWith("_safe_receiver")) s.initializer?.let { if (it is IrGetField || it is IrCall) unguardedReads.add(it) }
+            if (s.name.endsWith("_safe_receiver")) s.initializer?.let { markUnguarded(it) }
             val init0 = s.initializer?.let { bindValue(it, t, out) }
             // an initializer of type Nothing (`val x: Int = null!!`) never completes: the variable is declared without a value
             val init = if (init0 != null && init0.type == TNothing) null else init0
@@ -273,7 +273,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
         is IrGetObjectValue -> {
             if (s.classOwner.kotlinFqName != "kotlin.Unit") discard(value(s, out), out)
         }
-        is IrCall -> if (isNoWhenBranch(s)) out += MirStmt.Panic("NoWhenBranchMatchedException") else out += MirStmt.Eval(call(s, out))
+        is IrCall -> if (isNoWhenBranch(s)) out += MirStmt.Panic("NoWhenBranchMatchedException") else call(s, out).let { out += MirStmt.Eval(erasedChecks[it] ?: it) } // (a discarded result is not checked: the JVM casts where a value is used)
         is IrExpression -> discard(value(s, out), out)
         else -> unsupported(s, describe(s))
     }
@@ -281,7 +281,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
 
 internal fun Ir2Mir.discard(v: MirExpr, out: MutableList<MirStmt>) {
     if (v is MirExpr.Local || v === MirExpr.UnitValue) return
-    out += MirStmt.Eval(v)
+    out += MirStmt.Eval(erasedChecks[v] ?: v)
 }
 
 /** The synthetic `else` branch of an exhaustive `when` without `else`. */
@@ -459,4 +459,16 @@ internal fun Ir2Mir.enumRefersToOwnEntries(c: IrClass): Boolean {
         else if (d !is IrSimpleFunction) w.visit(d)
     }
     return found
+}
+
+/** The reads that produce the value of [e], an initializer of a safe-call receiver (`z?.b?.c`: the inner `z?.b` is a block of a `when`): see [Ir2Mir.unguardedReads]. */
+internal fun Ir2Mir.markUnguarded(e: IrExpression, depth: Int = 0) {
+    if (depth > 8) return
+    when (e) {
+        is IrGetField, is IrCall -> unguardedReads.add(e)
+        is IrBlock -> if (e.origin == "SAFE_CALL") (e.statements.lastOrNull() as? IrExpression)?.let { markUnguarded(it, depth + 1) }
+        is IrWhen -> for (b in e.branches) markUnguarded(b.result, depth + 1)
+        is IrTypeOperatorCall -> markUnguarded(e.argument, depth + 1)
+        else -> {}
+    }
 }

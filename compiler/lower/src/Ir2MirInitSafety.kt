@@ -266,3 +266,38 @@ private fun constructorAssigns(owner: IrClass, ctor: IrConstructor, f: IrField, 
     }
     return false
 }
+
+private fun Ir2Mir.inheritsFrom(c: IrClass, p: IrClass, depth: Int = 0): Boolean {
+    if (c === p) return true
+    if (depth > 32) return false
+    for (t in c.superTypes) {
+        val s = t.classOrNull ?: continue
+        if (s !== c && inheritsFrom(s, p, depth + 1)) return true
+    }
+    return false
+}
+
+/**
+ * The call [c] of a getter that can be overridden (so it is not inlined as a field read) of a non-null property whose class, or a subclass, lets `this` out
+ * of its initialization: its result is checked against null here, because the default getters of such classes do not check (a read of the property as
+ * the receiver of a safe call, `z?.b?.c`, must see the null like the JVM does; a read that uses the value is a `NullPointerException`).
+ */
+internal fun Ir2Mir.guardUnsetGetterResult(c: IrCall, v: MirExpr, out: MutableList<MirStmt>): MirExpr {
+    val callee = c.callee
+    if (callee.correspondingProperty == null || !callee.name.startsWith("<get-") || callee.modality == IrModality.FINAL) return v
+    if (c in unguardedReads) return v
+    val t = v.type
+    if (!(t === TString || t is TObject && !t.nullable)) return v
+    val kt = c.type
+    if (kt.isMarkedNullable() || !(kt is ClassType || kt is FunType)) return v
+    val p = callee.parent as? IrClass ?: return v
+    if (p !in classInfos) return v
+    val need = getterGuardCache.getOrPut(p) { classInfos.keys.any { initLeaksThis(it) && inheritsFrom(it, p) } }
+    return if (need) MirExpr.NotNull(if (v.isOwned()) tmpOf(v, out) else v) else v
+}
+
+/** The read of [f] in its own default getter (a getter that can be overridden): the callers check ([guardUnsetGetterResult]). */
+internal fun Ir2Mir.inOwnOverridableGetter(f: IrField): Boolean {
+    val fn = currentFunction as? IrSimpleFunction ?: return false
+    return fn.origin == "DEFAULT_PROPERTY_ACCESSOR" && fn.modality != IrModality.FINAL && fn.correspondingProperty?.backingField === f
+}

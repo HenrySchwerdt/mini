@@ -112,7 +112,7 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
         val f = e.field
         val r = e.receiver
         val raw = if (r == null) staticFieldGet(f, e) else fieldGet(operands(listOf(r), out)[0], f)
-        if (e in unguardedReads) raw else guardUnsetField(raw, f)
+        if (e in unguardedReads || inOwnOverridableGetter(f)) raw else guardUnsetField(raw, f)
     }
     is IrStringConcatenation -> stringConcat(e, out)
     is IrFunctionExpression -> lambdaValue(e, out)
