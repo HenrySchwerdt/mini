@@ -111,5 +111,22 @@ static inline void mk_small_free_object(MkObject *object) {
     mk_small_free(object, cls); /* overwrites the type word with the free-list link */
 }
 
+/* A reference counted object of `size` bytes (<= MK_SMALL_MAX) for a type that is never a cycle collection candidate and whose
+ * bytes the caller writes in full (strings): no zeroing, no call. NULL when the block cannot be had (take mk_alloc_sized_plain). */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline MkObject *mk_small_new_plain(const MkTypeInfo *type, size_t size, uint32_t flags) {
+    size_t cls = mk_small_class(size);
+    MkObject *object = (MkObject *)mk_small_alloc(cls);
+    if (object == NULL) return NULL;
+    MK_STAT_SMALL(MK_SMALL_STAT_SMALL, 0);
+    MK_STAT_ALLOC(cls * MK_SMALL_GRAN);
+    object->type = type;
+    object->refcount = 1;
+    object->flags = ((uint32_t)cls << SMALL_CLASS_SHIFT) | flags;
+    return object;
+}
+
 #endif /* MK_SMALL_ALLOC */
 #endif

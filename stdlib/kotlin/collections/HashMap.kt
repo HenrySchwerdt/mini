@@ -114,6 +114,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         if (key != null && key === lastKey) return lastNode
         val n = refArrayLength(table)
         if (n == 0) return null
+        if (key is String) return findStringNode(key, n)
         val hash = spread(key)
         var e = slot((n - 1) and hash)
         while (e != null) {
@@ -125,6 +126,30 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
                     lastNode = e
                 }
                 return e
+            }
+            e = e.next
+        }
+        return null
+    }
+
+    // The String keys (the common case): the hash and the comparison are called directly, not through the type dispatch of hashCode / equals.
+    @ReturnsBorrowed
+    private fun findStringNode(key: String, n: Int): HashNode<K, V>? {
+        val h = key.hashCode()
+        val hash = h xor (h ushr 16)
+        var e = slot((n - 1) and hash)
+        while (e != null) {
+            if (e.hash == hash) {
+                val k: Any? = e.key
+                val ks: String? = if (k is String) k else null
+                if (ks != null && ks == key) {
+                    // (written by a read: only while single threaded, see findNode)
+                    if (!mini.internal.threadsActive()) {
+                        lastKey = key
+                        lastNode = e
+                    }
+                    return e
+                }
             }
             e = e.next
         }
