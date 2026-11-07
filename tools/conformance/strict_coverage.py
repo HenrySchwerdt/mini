@@ -200,6 +200,9 @@ def one(a, run, tc):
         r = {'name': name, 'verdict': v, 'cls': c, 'cause': cause}
         if v != 'accepted':
             r['codes'] = sorted({d.get('code') or '-' for d in diags if d.get('severity') == 'error'})
+            first = next((d for d in diags if d.get('severity') == 'error'), None)
+            if first:
+                r['first'] = '%s:%s %s | %s' % (os.path.basename(first.get('file') or ''), first.get('line'), first.get('message'), first.get('label'))
         return r
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -217,6 +220,7 @@ def main():
     ap.add_argument('--timeout', type=int, default=120)
     ap.add_argument('--tmp', default=os.environ.get('TMPDIR', '/tmp'))
     ap.add_argument('--list', action='store_true')
+    ap.add_argument('--only', action='append', help='only programs whose name contains this (repeatable)')
     ap.add_argument('--json')
     a = ap.parse_args()
     run = load_run()
@@ -227,6 +231,8 @@ def main():
         progs += programs_samples()
     if a.set in ('conformance', 'all'):
         progs += programs_conformance(a, run)
+    if a.only:
+        progs = [p for p in progs if any(o in p[0] for o in a.only)]
     with ThreadPoolExecutor(a.jobs) as ex:
         results = list(ex.map(lambda tc: one(a, run, tc), progs))
     if a.json:
@@ -255,7 +261,7 @@ def main():
     if a.list:
         print()
         for r in results:
-            print('%s\t%s\t%s\t%s' % (r['name'], r['verdict'], r['cls'], r['cause']))
+            print('%s\t%s\t%s\t%s\t%s' % (r['name'], r['verdict'], r['cls'], r['cause'], r.get('first', '')))
 
 
 if __name__ == '__main__':

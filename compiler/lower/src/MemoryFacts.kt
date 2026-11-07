@@ -442,6 +442,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         if (interop && mapType(f.returnType).tracked) retAnnot = MAnnot(null, pos(f))
         // a result of generic type (`fun <T> first(xs: Box<T>): T`) is a reference some argument keeps alive, not a fresh allocation: a loan
         if (retAnnot.owned == null && retAnnot.borrowed == null && f.returnType is TypeParamType) retAnnot = MAnnot(null, pos(f))
+        // a Strict method that only ever returns its own receiver (`fun add(x: Int): Builder { ...; return this }`, `operator fun inc() = this`)
+        // returns a loan of the receiver: the caller already owns the object, a second owner would be a double free
+        if (retAnnot.owned == null && retAnnot.borrowed == null && mode == MemMode.Strict && cls != null && f is IrSimpleFunction &&
+            f.modality == IrModality.FINAL && f.overridden.isEmpty() && mapType(f.returnType).tracked && returnsOnlyReceiver(f)
+        ) retAnnot = MAnnot(null, pos(f))
         val parent = f.parent
         val fq = if (parent is IrFile) parent.packageFqName + "." + name
         else (if (cls != null) cls.kotlinFqName else "") + "." + name
@@ -476,6 +481,34 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             m.virtualTargets = { overridersOf(f).map { funOf(it) } }
         }
         return m
+    }
+
+    /** Does every `return` of [f] (and its expression body) yield the dispatch receiver itself, and is there at least one? */
+    private fun returnsOnlyReceiver(f: IrSimpleFunction): Boolean {
+        val recv = f.parameters.firstOrNull { it.kind == IrParameterKind.DispatchReceiver } ?: return false
+        fun isThis(x: IrExpression): Boolean = when (x) {
+            is IrGetValue -> x.owner === recv
+            is IrTypeOperatorCall -> x.operator == IrTypeOperator.IMPLICIT_CAST && isThis(x.argument)
+            else -> false
+        }
+        var found = 0
+        var other = false
+        val w = object : IrWalker() {
+            override fun visit(e: IrElement) {
+                if (e is IrFunctionExpression || e is IrClass) return
+                if (e is IrReturn && e.returnTarget === f) {
+                    if (isThis(e.value)) found++ else other = true
+                }
+                visitChildren(e)
+            }
+        }
+        val b = f.body
+        if (b is IrExpressionBody) {
+            if (isThis(b.expression)) found++ else w.visit(b.expression)
+        } else if (b is IrBlockBody) {
+            for (st in b.statements) w.visit(st)
+        } else return false
+        return found > 0 && !other
     }
 
     private fun ctorType(ctor: IrConstructor): MType {
