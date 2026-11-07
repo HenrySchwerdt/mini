@@ -390,7 +390,9 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         }
         val mc = classOf(cls)
         val display = fq.substring(fq.lastIndexOf('.') + 1)
-        return if (mc.mode == MemMode.Strict && fileOf(cls) != null) MType(TK.Strict, nullable, mc, null, fq, display)
+        // enum constants and objects are immortal singletons: nothing to own, free or move (`for (e in values()) if (..) return e`)
+        val singleton = cls.kind == IrClassKind.ENUM_CLASS || cls.kind == IrClassKind.ENUM_ENTRY || cls.kind == IrClassKind.OBJECT
+        return if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton) MType(TK.Strict, nullable, mc, null, fq, display)
         else MType(TK.Managed, nullable, mc, null, fq, display)
     }
 
@@ -758,6 +760,10 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     if (e.operator == IrTypeOperator.INSTANCEOF || e.operator == IrTypeOperator.NOT_INSTANCEOF) {
                         return opaque(e.type, e, listOf(expr(e.argument, out)))
                     }
+                    // a value cast (or smart cast after `is String`) to String or a primitive is never a Strict object: not tracked
+                    // (`if (key is String) { lastKey = key }` in a lookup cache of `Any?` keys is no store of the caller's object)
+                    val ct = mapType(e.type)
+                    if (ct.tk == TK.Str || ct.tk == TK.Prim) return opaque(e.type, e, listOf(expr(e.argument, out)))
                     return expr(e.argument, out)
                 }
                 is IrCall -> return call(e, out)
