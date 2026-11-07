@@ -143,7 +143,13 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
     bool zeroed = false;
 #if MK_SMALL_ALLOC
     if (allocator == &default_allocator || allocator == &heap_allocator) {
-        block = malloc(total); /* too large for the size classes */
+        /* too large for the size classes. A big block comes from calloc: libc maps fresh pages (already zero) and skips the memset */
+        if (total >= ((size_t)128 << 10)) {
+            block = calloc(1, total);
+            zeroed = true;
+        } else {
+            block = malloc(total);
+        }
         MK_STAT_SMALL(MK_SMALL_STAT_LARGE, 0);
     } else
 #endif
