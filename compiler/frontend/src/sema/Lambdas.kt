@@ -335,8 +335,63 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             }
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, ct, ext)
-            for (g in ext) for (c in g) if (extFits(c.fn, ct)) funRefCand(c, false, cands)
+            for (g in ext) for (c in g) if (extFits(c.fn, ct)) {
+                val before = cands.size
+                funRefCand(if (objBound) Candidate(c.fn, c.subst, null) else c, objBound, cands)
+                // `Obj::ext` of an object: the extension is bound to the object
+                if (objBound) for (k in before until cands.size) {
+                    cands[k].objBound = true
+                    cands[k].objType = ct
+                }
+            }
             for (lf in localExtensionFuns(name)) if (extFits(lf, ct)) funRefCand(Candidate(lf, HashMap(), null), false, cands)
+            // `A::f` where `f` is a member of the companion object of `A` (or inherited by it): the reference is bound to the companion
+            // (a member, an extension or, when no function type is expected to choose, anything else of `A` takes precedence)
+            val compCls = ri.cls.companion
+            if (compCls != null && !objBound && (cands.isEmpty() || ef != null)) {
+                val comp = compCls.thisType()
+                for (m in members.funsNamed(comp, name)) {
+                    val fn = m.fn
+                    if (fn.decl?.receiver != null) continue
+                    sema.ensureSig(fn)
+                    val ps = ArrayList<Type>()
+                    for (p in fn.params) ps.add(ops.substitute(p.type ?: ErrType("param"), m.subst))
+                    val frc = RefCand(fn, ps, ops.substitute(sema.returnTypeOf(fn), m.subst), fn.typeParams, m.subst)
+                    frc.objBound = true
+                    frc.objType = comp
+                    cands.add(frc)
+                }
+                for (mp in members.propsNamed(comp, name)) {
+                    if (mp.prop.receiver != null) continue
+                    val rc = RefCand(mp.prop, emptyList(), ops.substitute(sema.typeOfProp(mp.prop), mp.subst), emptyList(), mp.subst)
+                    rc.isProp = true
+                    rc.mutable = mp.prop.isVar
+                    rc.objBound = true
+                    rc.objType = comp
+                    cands.add(rc)
+                }
+                // extensions of the companion's type (`fun A.ext()` with `companion object : A()`)
+                val xcomp = extensionProp(name, comp)
+                val xcs = xcomp?.sym
+                if (xcs is PropSym) {
+                    val rc = RefCand(xcs, emptyList(), xcomp.type, emptyList(), HashMap())
+                    rc.isProp = true
+                    rc.mutable = xcs.isVar
+                    rc.objBound = true
+                    rc.objType = comp
+                    cands.add(rc)
+                }
+                val cext = ArrayList<List<Candidate>>()
+                extensionGroups(name, comp, cext)
+                for (g in cext) for (c in g) if (extFits(c.fn, comp)) {
+                    val before = cands.size
+                    funRefCand(Candidate(c.fn, c.subst, null), true, cands)
+                    for (k in before until cands.size) {
+                        cands[k].objBound = true
+                        cands[k].objType = comp
+                    }
+                }
+            }
         } else if (ri is ValueRecv) {
             val vt = ri.type
             for (m in members.funsNamed(vt, name)) {

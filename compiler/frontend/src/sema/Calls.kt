@@ -877,71 +877,38 @@ fun BodyChecker.receiverClassFits(c: Candidate): Boolean {
     return true
 }
 
-fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, typeArgs: List<Type>?) {
-    // with exactly one binding candidate, its parameter types are the expected types of the arguments
-    var single: Candidate? = null
-    var count = 0
+fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, typeArgs: List<Type>?, expected: Type? = null) {
+    // the parameter types of the binding candidates are the expected types of the arguments (several candidates: where they agree)
+    val cands = ArrayList<Candidate>()
     for (g in groups) {
-        var found = 0
         for (c in g) {
             val params = paramsOf(c)
-            if (bindArgs(params, args) != null && receiverClassFits(c)) {
-                found++
-                if (single == null) single = c
-            }
+            if (bindArgs(params, args) != null && receiverClassFits(c)) cands.add(c)
         }
-        if (found > 0) {
-            count = found
-            break
-        }
+        if (cands.isNotEmpty()) break
     }
     var expectedOf: Array<Type?> = arrayOfNulls(args.size)
-    if (count == 1 && single != null) {
-        val params = paramsOf(single)
-        val b = bindArgs(params, args)
-        if (b != null) {
-            val tps = typeParamsOf(single.fn)
-            // type parameters the receiver already determines are known for the arguments
-            val cs = ConstraintSystem(sema)
-            val m = HashMap<TypeParamSym, Type>()
-            m.putAll(single.subst)
-            if (typeArgs != null && typeArgs.isNotEmpty() && typeArgs.size == tps.size && typeArgs.none { it === INFER_TYPE }) {
-                // explicit type arguments (`listOf<ULong>(1u)`): they are the expectation of the arguments
-                var j = 0
-                for (tp in tps) {
-                    m[tp] = typeArgs[j]
-                    j++
+    if (cands.size == 1) {
+        expectedOf = argExpectations(cands[0], args, typeArgs, expected)
+    } else if (cands.size > 1 && expected != null && cands.size <= 4) {
+        // overloads that all take the argument as a bare type parameter (`listOf(x)`, `listOf(vararg x)`): the expected type of the call decides for all of them
+        var all: Array<Type?>? = null
+        for (c in cands) {
+            val ex = argExpectations(c, args, typeArgs, expected)
+            val prev = all
+            if (prev == null) {
+                all = ex
+            } else {
+                var k = 0
+                while (k < prev.size) {
+                    val a = prev[k]
+                    val b = ex[k]
+                    if (a != null && (b == null || !(ops.isSubtype(a, b) && ops.isSubtype(b, a)))) prev[k] = null
+                    k++
                 }
-            } else if (tps.isNotEmpty()) {
-                cs.addVariables(if (single.subst.isEmpty()) tps else tps.filter { !single.subst.containsKey(it) }, m)
-                val fr = single.fn.receiver
-                val er = single.extRecv
-                if (fr != null && er != null) cs.addSub(er, ops.substitute(fr, m))
-                for (v in cs.vars) if (v.lower.isNotEmpty() || v.equal.isNotEmpty()) cs.fix(v)
-            }
-            var i = 0
-            while (i < args.size) {
-                val p = params[b.paramOfArg[i]]
-                val raw = if (p.isVararg && !args[i].spread) (p.varargElement ?: p.type) else p.type
-                if (raw != null) {
-                    val t = cs.resolveFixed(ops.substitute(raw, m))
-                    // parameter types that still mention unsolved type parameters give no expectation
-                    if (!cs.hasVars(t)) {
-                        expectedOf[i] = t
-                    } else if (t is VarType && !t.nullable) {
-                        // a bare type variable: its declared upper bound is the expectation
-                        for (u in t.v.upper) {
-                            val ur = cs.resolveFixed(u)
-                            if (!cs.hasVars(ur)) {
-                                expectedOf[i] = ur
-                                break
-                            }
-                        }
-                    }
-                }
-                i++
             }
         }
+        if (all != null) expectedOf = all
     }
     var i = 0
     while (i < args.size) {
@@ -954,6 +921,60 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
         }
         i++
     }
+}
+
+/** The expected types of the arguments of a call of [single]: its parameter types, as far as no unsolved type parameter is left in them. */
+fun BodyChecker.argExpectations(single: Candidate, args: List<Arg>, typeArgs: List<Type>?, expected: Type?): Array<Type?> {
+    val expectedOf: Array<Type?> = arrayOfNulls(args.size)
+    val params = paramsOf(single)
+    val b = bindArgs(params, args) ?: return expectedOf
+    val tps = typeParamsOf(single.fn)
+    // type parameters the receiver already determines are known for the arguments
+    val cs = ConstraintSystem(sema)
+    val m = HashMap<TypeParamSym, Type>()
+    m.putAll(single.subst)
+    if (typeArgs != null && typeArgs.isNotEmpty() && typeArgs.size == tps.size && typeArgs.none { it === INFER_TYPE }) {
+        // explicit type arguments (`listOf<ULong>(1u)`): they are the expectation of the arguments
+        var j = 0
+        for (tp in tps) {
+            m[tp] = typeArgs[j]
+            j++
+        }
+    } else if (tps.isNotEmpty()) {
+        cs.addVariables(if (single.subst.isEmpty()) tps else tps.filter { !single.subst.containsKey(it) }, m)
+        val fr = single.fn.receiver
+        val er = single.extRecv
+        if (fr != null && er != null) cs.addSub(er, ops.substitute(fr, m))
+        // the expected type of the call bounds the type parameters of the result (`val l: List<Box<Any?>> = listOf(Box(0))`)
+        if (expected != null && single.invokeType == null && single.fn.kind != FunKind.CONSTRUCTOR && !ops.isNothing(expected)) {
+            val rt = ops.substitute(sema.returnTypeOf(single.fn), m)
+            if (rt is ClassType && cs.hasVars(rt)) cs.addSub(rt, expected)
+        }
+        for (v in cs.vars) if (v.lower.isNotEmpty() || v.equal.isNotEmpty()) cs.fix(v)
+    }
+    var i = 0
+    while (i < args.size) {
+        val p = params[b.paramOfArg[i]]
+        val raw = if (p.isVararg && !args[i].spread) (p.varargElement ?: p.type) else p.type
+        if (raw != null) {
+            val t = cs.resolveFixed(ops.substitute(raw, m))
+            // parameter types that still mention unsolved type parameters give no expectation
+            if (!cs.hasVars(t)) {
+                expectedOf[i] = t
+            } else if (t is VarType && !t.nullable) {
+                // a bare type variable: its declared upper bound is the expectation
+                for (u in t.v.upper) {
+                    val ur = cs.resolveFixed(u)
+                    if (!cs.hasVars(ur)) {
+                        expectedOf[i] = ur
+                        break
+                    }
+                }
+            }
+        }
+        i++
+    }
+    return expectedOf
 }
 
 fun mentionsTypeParams(t: Type, tps: List<TypeParamSym>): Boolean {
@@ -1008,7 +1029,7 @@ fun BodyChecker.resolveCallGroups(
     expected: Type?,
     analyzed: Boolean,
 ): CallRes? {
-    if (!analyzed) analyzeArgs(args, groups, typeArgs)
+    if (!analyzed) analyzeArgs(args, groups, typeArgs, expected)
     for (g in groups) {
         val ok = ArrayList<Attempt>()
         for (c in g) {
@@ -1105,7 +1126,10 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
     while (i < args.size) {
         val a = args[i]
         if (a.postponed) {
-            val pt = cs.resolveFixed(att.argParam[i] ?: ErrType("param"))
+            val pt0 = cs.resolveFixed(att.argParam[i] ?: ErrType("param"))
+            // `Container<in Element>.add(arg: T)`: a lambda is converted to the lower bound of the captured type
+            val capLb = if (pt0 is CapType && pt0.arg.variance == Variance.IN) pt0.arg.type else null
+            val pt: Type = if (capLb != null && (capLb is FunType || (capLb is ClassType && capLb.cls.isFunInterface))) capLb else pt0
             val e = a.expr!!
             val u = unwrapPostponed(e)
             var expectedFun: FunType? = null

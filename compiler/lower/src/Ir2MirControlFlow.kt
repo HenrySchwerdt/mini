@@ -18,7 +18,7 @@ internal fun Ir2Mir.whileLoop(s: IrWhileLoop, out: MutableList<MirStmt>) {
     loopLabels[s] = label
     loopFinallyDepth[s] = finallyStack.size
     val pre = ArrayList<MirStmt>()
-    val cond = value(s.condition, pre)
+    val cond = loopCondition(value(s.condition, pre))
     val body = ArrayList<MirStmt>()
     if (pre.isEmpty()) {
         flattenBody(s.body, body)
@@ -31,6 +31,9 @@ internal fun Ir2Mir.whileLoop(s: IrWhileLoop, out: MutableList<MirStmt>) {
     }
 }
 
+/** `while (break)`: a condition that never completes is a placeholder without a C value */
+private fun loopCondition(c: MirExpr): MirExpr = if (c is MirExpr.Unreachable && c.type == TNothing) MirExpr.Unreachable(TBoolean) else c
+
 internal fun Ir2Mir.doWhileLoop(s: IrDoWhileLoop, out: MutableList<MirStmt>) {
     val label = MirLabel(labelCounter++)
     loopLabels[s] = label
@@ -38,7 +41,7 @@ internal fun Ir2Mir.doWhileLoop(s: IrDoWhileLoop, out: MutableList<MirStmt>) {
     val body = ArrayList<MirStmt>()
     flattenBody(s.body, body)
     val pre = ArrayList<MirStmt>()
-    val cond = value(s.condition, pre)
+    val cond = loopCondition(value(s.condition, pre))
     out += MirStmt.DoWhile(label, body, pre, cond)
 }
 

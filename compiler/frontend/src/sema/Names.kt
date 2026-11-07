@@ -197,7 +197,7 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
         }
     }
     // classifiers (objects, companions as qualifiers)
-    val c = sema.lookupClassifier(scope, name)
+    val c = sema.lookupClassifier(scope, name, true)
     if (c is ClassSym) return valueOfClass(c)
     if (c is TypeAliasSym) {
         val et = sema.expandAlias(c)
@@ -630,7 +630,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
                 inf.isInvoke = true
                 inf.recvAsFirstArg = true
                 val s0 = vr?.sym
-                if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) inf.invokeProp = s0
+                if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) { inf.invokeProp = s0; inf.invokePropRef = vr?.dispatch }
                 inf.dispatch = RecvUse(recv.expr, recv.safe, null, recv.type)
             }
         }
@@ -654,7 +654,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
                     inf.isInvoke = true
                     inf.recvAsFirstArg = true
                     val s0 = vr?.sym
-                    if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) inf.invokeProp = s0
+                    if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) { inf.invokeProp = s0; inf.invokePropRef = vr?.dispatch }
                     inf.dispatch = RecvUse(null, false, r.ref, null)
                 }
                 if (res != null) break

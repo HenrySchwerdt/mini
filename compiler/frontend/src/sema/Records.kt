@@ -56,6 +56,8 @@ class CallInfo(val fn: FunSym, val typeArgs: List<Type>, val args: List<Arg>, va
     /** `v(args)` / `a.v(args)` on a value of function type or with an `invoke` operator: the value (a name, property or expression) */
     var invokeValue: RecvUse? = null
     var invokeProp: PropSym? = null
+    /** `recv.p(args)` with a member property `p` of function type with receiver: the implicit receiver `p` is read from */
+    var invokePropRef: RecvRef? = null
     var invokeVar: VarSym? = null
     /** the super type of `super.f()` / `super<T>.f()` */
     var superType: Type? = null

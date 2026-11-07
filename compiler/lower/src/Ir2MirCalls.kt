@@ -94,8 +94,8 @@ internal fun Ir2Mir.defaultValueOf(callee: IrFunction, i: Int, p: IrValueParamet
 
 /** Like [tmpOf] but only when needed for primitives (constants stay inline in the argument list). */
 internal fun Ir2Mir.tmpOfPlain(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
-    if (v.type == TUnit && v !== MirExpr.UnitValue) {
-        out += MirStmt.Eval(v)
+    if (v.type == TUnit) {
+        if (v !== MirExpr.UnitValue) out += MirStmt.Eval(v)
         return MirExpr.UnitValue
     }
     val t = newTemp(v.type)
