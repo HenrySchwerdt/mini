@@ -51,6 +51,11 @@ struct MkTypeInfo {
     const MkTypeInfo *const *interfaces; /* implemented interfaces, may be NULL */
     size_t interface_count;
     MkTraceFn trace;           /* NULL: instances cannot be part of a reference cycle (not cycle collection candidates) */
+    /* Object arrays only (docs/memory-model.md, "Reified object arrays"): the element type the array was created with, as a
+     * tag: the element's type info with bit 0 set when the elements may be null. NULL is `Any?` (an array created where the
+     * element type is not known, and the base `MkObjectArray_ti`); every other object array has its own type info (interned by
+     * mk_array_new_of) whose `super` is MkObjectArray_ti, so `is Array<*>` is the ordinary super walk. */
+    const MkTypeInfo *elem;
 };
 
 /* Every heap or stack object starts with this header. */
@@ -669,6 +674,16 @@ typedef struct MkArray {
 extern const MkTypeInfo MkObjectArray_ti, MkIntArray_ti, MkLongArray_ti, MkDoubleArray_ti, MkFloatArray_ti, MkByteArray_ti, MkShortArray_ti, MkBooleanArray_ti,
     MkCharArray_ti;
 MkObject *mk_array_new_obj(MkInt length);
+/* Reified object arrays: the array remembers its element type (a tag, see MkTypeInfo.elem). `Array<T>` values statically typed with a
+ * known element class are read without a check; the check happens where an array enters such a type (mk_array_cast / mk_array_is)
+ * and on stores through a view that does not know the element type (mk_array_store_obj). */
+MkObject *mk_array_new_of(MkInt length, const MkTypeInfo *elem, MkInt nullable); /* elem == NULL: Any? */
+MkObject *mk_array_new_like(const MkObject *source, MkInt length, MkInt nullable);  /* same element type as `source` (copyOf, plus, ...), optionally with null slots */
+/* flags: 1 = the elements may be null, 2 = covariant view (`Array<out E>`: the recorded element type may be a subtype), 4 = the result may be null. */
+MkObject *mk_array_cast(MkObject *object, const MkTypeInfo *elem, MkInt flags);  /* ClassCastException / NullPointerException (pending) */
+MkBoolean mk_array_is(const MkObject *object, const MkTypeInfo *elem, MkInt flags);
+void mk_array_store_obj(MkObject *array, MkInt index, MkObject *value);          /* set_obj plus the element type check (ClassCastException) */
+static inline bool mk_is_object_array_type(const MkTypeInfo *t) { return t == &MkObjectArray_ti || t->super == &MkObjectArray_ti; }
 MkObject *mk_array_new_int(MkInt length);
 MkObject *mk_array_new_long(MkInt length);
 MkObject *mk_array_new_double(MkInt length);

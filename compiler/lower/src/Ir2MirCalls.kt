@@ -130,6 +130,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         unsupported(c, "$name of a type that is not an enum class")
     }
     memoryApiCall(c, owner, out)?.let { return it }
+    // `arrayOf` / `emptyArray` are made here, not called: the array records the element type of the call (docs/memory-model.md, "Reified object arrays")
+    if (parent is IrFile && parent.packageFqName == "kotlin" && (name == "arrayOf" || name == "emptyArray")) arrayFunction(c, name, "kotlin", out)?.let { return it }
 
     if (isFunctionInvoke(owner)) return invokeFunctionValue(c, out)
     // inline functions with a body (user code, or stdlib code compiled from source) are expanded in place
@@ -630,7 +632,7 @@ internal fun Ir2Mir.comparableCompareTo(c: IrCall, out: MutableList<MirStmt>): M
 /** `values()`, `valueOf(String)` and `entries` of an enum class (generated functions, see Ir2MirClasses). */
 internal fun Ir2Mir.enumSpecialCall(c: IrCall, enumClass: IrClass, fname: String, out: MutableList<MirStmt>): MirExpr {
     val inf = info(enumClass)
-    val arrType = arrayType(arrayKindOfFq("kotlin.Array")!!)
+    val arrType = enumArrayType(inf)
     return when (fname) {
         "values" -> MirExpr.Call(inf.cName + "_values", emptyList(), arrType)
         "<get-entries>" -> {

@@ -933,6 +933,7 @@ object CEmitter {
 
         fun castInline(e: MirExpr.Cast): String? {
             val to = e.to
+            if (to is TObject && to.elem != null) return null // an array with a known element type: mk_array_cast
             if (to is TObject && to.cName == ANY_CNAME) {
                 if (to.nullable) return null
                 return inlineGuard(e, e.operand, { "$it == NULL" }, { "(void)mk_checked_nn($it);" }, { "(MkObject *)$it" })
@@ -1021,7 +1022,7 @@ object CEmitter {
                 is MirExpr.Box -> "mk_box_${boxName(e.operand.type)}(${expr(e.operand)})"
                 is MirExpr.Unbox -> unboxInline(e) ?: "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
                 is MirExpr.Cast -> (if (e.mode == MirExpr.CastMode.Checked) castInline(e) else null) ?: cast(e)
-                is MirExpr.IsInstance -> "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
+                is MirExpr.IsInstance -> arrayIs(e) ?: "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
                 is MirExpr.NotNull -> notNullInline(e) ?: "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
@@ -1131,13 +1132,25 @@ object CEmitter {
                     if (cType(e.operand.type) == cType(to)) s else "((${cType(to)})$s)"
                 }
                 MirExpr.CastMode.Checked -> {
+                    if (to is TObject && to.elem != null) return "((${cType(to)})mk_array_cast(${obj(e.operand)}, &${typeInfoOf(arrayElemTypeInfoType(to.elem!!))}, ${arrayCastFlags(to)}))"
                     // everything is an Any: only the null check is left (the erased `as E` of every generic getter)
                     if (to is TObject && to.cName == ANY_CNAME) return if (to.nullable) "((MkObject *)${obj(e.operand)})" else "((MkObject *)mkh_nn(${obj(e.operand)}))"
                     val fn = if (to.isNullableRef()) "mkh_cc" else "mkh_cast_nn"
                     "((${cType(to)})$fn(${obj(e.operand)}, &${typeInfoOf(to)}))"
                 }
-                MirExpr.CastMode.Safe -> "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
+                MirExpr.CastMode.Safe -> if (to is TObject && to.elem != null) {
+                    val t = "mkc${tmpCounter++}"
+                    "({ MkObject *$t = ${obj(e.operand)}; (${cType(to)})(mk_array_is($t, &${typeInfoOf(arrayElemTypeInfoType(to.elem!!))}, ${arrayCastFlags(to)}) ? $t : NULL); })"
+                } else "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
             }
+        }
+
+        /** `x is Array<E>` for an array type with a known element type. */
+        fun arrayIs(e: MirExpr.IsInstance): String? {
+            val t = e.target
+            if (t !is TObject) return null
+            val el = t.elem ?: return null
+            return "mk_array_is((const MkObject *)${expr(e.operand)}, &${typeInfoOf(arrayElemTypeInfoType(el))}, ${arrayCastFlags(t)})"
         }
 
         /** A class (not an interface) as the target of an `is` test: only the superclass chain of the object's type can contain it. */

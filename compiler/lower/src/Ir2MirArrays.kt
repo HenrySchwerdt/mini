@@ -42,8 +42,70 @@ private val anyN = TObject("kotlin.Any", ANY_CNAME, true)
 internal fun Ir2Mir.arrayGet(k: ArrayKind, arr: MirExpr, idx: MirExpr): MirExpr =
     MirExpr.RuntimeCall("mk_array_get_${k.suffix}", listOf(arr, idx), k.elem ?: anyN)
 
-internal fun Ir2Mir.arraySet(k: ArrayKind, arr: MirExpr, idx: MirExpr, v: MirExpr): MirExpr =
-    MirExpr.RuntimeCall("mk_array_set_${k.suffix}", listOf(arr, idx, v), TUnit)
+/**
+ * A store into an array. An object array whose type knows its element type exactly (or an array just created here, [fresh]) needs no check:
+ * the value has the static element type, which is the element type the array was created with. Through any other view (`Array<T>` of a
+ * generic function, a nested array, `Array<*>`) the array may have been created for a more specific element type, so the store checks the
+ * value against it (`mk_array_store_obj`, the ArrayStoreException of the JVM, here a ClassCastException).
+ */
+internal fun Ir2Mir.arraySet(k: ArrayKind, arr: MirExpr, idx: MirExpr, v: MirExpr, fresh: Boolean = false): MirExpr {
+    val t = arr.type as? TObject
+    val exact = t != null && t.elem != null && !t.elemOut
+    val name = if (k.elem == null && !fresh && !exact) "mk_array_store_obj" else "mk_array_set_${k.suffix}"
+    return MirExpr.RuntimeCall(name, listOf(arr, idx, v), TUnit)
+}
+
+/** The static type of an object array created here: exact knowledge of its element type, never `out`, never null. */
+internal fun createdArrayType(t: MirType): TObject {
+    val o = t as? TObject
+    val base = if (o != null && o.cName == ARRAY_CNAME) o else arrayType(ARRAY_KINDS[5])
+    return base.copy(nullable = false, elemOut = false)
+}
+
+/** A new object array of type [t] (see [createdArrayType]): it records the element type of [t], or `Any?` when [t] does not know it. */
+internal fun newObjectArray(len: MirExpr, t: TObject): MirExpr {
+    val el = t.elem ?: return MirExpr.RuntimeCall("mk_array_new_obj", listOf(len), t)
+    return MirExpr.RuntimeCall(
+        "mk_array_new_of",
+        listOf(len, MirExpr.TypeInfoOf(arrayElemTypeInfoType(el)), MirExpr.IntConst(if (arrayElemNullable(el)) 1 else 0)),
+        t,
+    )
+}
+
+/** The type of the value `Array<E>.get` yields when the array type knows its elements (no check needed), or null when a check is needed. */
+private fun trackedReadType(arr: MirExpr): MirType? {
+    val el = (arr.type as? TObject)?.elem ?: return null
+    return if (el is TObject || el === TString || el === TNString || el is TBoxed) el else null
+}
+
+/** `arr[idx]` converted to [expected]: a plain retyping when the array type knows its element type (the invariant of [TObject.elem]), else a checked cast. */
+internal fun Ir2Mir.arrayRead(k: ArrayKind, arr: MirExpr, idx: MirExpr, expected: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
+    val raw = arrayGet(k, arr, idx)
+    if (k.elem == null && trackedReadType(arr) == expected) {
+        val v = if (raw.isOwned()) tmpOf(raw, out) else raw
+        return MirExpr.Cast(v, expected, MirExpr.CastMode.Unchecked)
+    }
+    return adaptResult(raw, expected, at, out)
+}
+
+/**
+ * The array to take the element type from for `arrayOfNulls<T>(n)` in a function with a type parameter T that is not known here: the
+ * function's own `Array<T>` / `Array<out T>` parameter (or receiver), as `Arrays.copyOf` does on the JVM. Null when there is none.
+ */
+private fun Ir2Mir.likeSource(typeArg: Type?): MirExpr? {
+    val tp = (substituted(typeArg ?: return null) as? TypeParamType)?.tp ?: return null
+    val f = currentFunction ?: return null
+    for (p in f.parameters) {
+        val pt = p.type as? ClassType ?: continue
+        if (arrayKindOfFq(pt.classFqName)?.elem != null || arrayKindOfFq(pt.classFqName) == null) continue
+        val a = pt.args.getOrNull(0)?.type as? TypeParamType ?: continue
+        if (a.tp !== tp) continue
+        val l = locals[p] ?: continue
+        if (p in closure.boxed) continue
+        return MirExpr.Local(l)
+    }
+    return null
+}
 
 internal fun Ir2Mir.arrayLength(arr: MirExpr): MirExpr = MirExpr.RuntimeCall("mk_array_length", listOf(arr), TInt)
 
@@ -56,7 +118,7 @@ internal fun Ir2Mir.arrayMember(c: IrCall, name: String, kind: ArrayKind, out: M
     val v = operands(args, out)
     val expected = mirType(c.type, c)
     return when (name) {
-        "get" -> adaptResult(arrayGet(kind, v[0], v[1]), expected, c, out)
+        "get" -> arrayRead(kind, v[0], v[1], expected, c, out)
         "set" -> arraySet(kind, v[0], v[1], coerceFlexible(v[2], kind.elem ?: anyN, c, out))
         "<get-size>" -> arrayLength(v[0])
         "hashCode" -> MirExpr.RuntimeCall("mk_hash_code", listOf(asAny(v[0])), TInt)
@@ -69,7 +131,7 @@ internal fun Ir2Mir.arrayMember(c: IrCall, name: String, kind: ArrayKind, out: M
 internal fun Ir2Mir.arrayConstructor(c: IrConstructorCall, kind: ArrayKind, out: MutableList<MirStmt>): MirExpr {
     val args = c.arguments.map { it ?: unsupported(c, "omitted argument") }
     val size = operands(listOf(args[0]), out)[0]
-    val arr = tmpOf(MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(size), arrayType(kind)), out)
+    val arr = tmpOf(if (kind.elem == null) newObjectArray(size, createdArrayType(mirType(c.type, c))) else MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(size), arrayType(kind)), out)
     if (args.size == 2) fillWith(kind, arr, args[1], c, out)
     return arr
 }
@@ -80,7 +142,7 @@ private fun Ir2Mir.fillWith(kind: ArrayKind, arr: MirExpr, init: IrExpression, a
     val i = MirLocal(localCounter++, "i", TInt)
     val body = ArrayList<MirStmt>()
     val v = callFunctionArg(init, listOf(MirExpr.Local(i)), kind.elem ?: anyN, at, body)
-    body += MirStmt.Eval(arraySet(kind, arr, MirExpr.Local(i), coerceFlexible(v, kind.elem ?: anyN, at, body)))
+    body += MirStmt.Eval(arraySet(kind, arr, MirExpr.Local(i), coerceFlexible(v, kind.elem ?: anyN, at, body), true))
     out += MirStmt.ForRange(label, i, MirExpr.IntConst(0), arrayLength(arr), null, true, false, body)
 }
 
@@ -103,9 +165,18 @@ internal fun Ir2Mir.arrayFunction(c: IrCall, name: String, pkg: String, out: Mut
         }
         if (kind != null) {
             return when (name) {
-                "arrayOfNulls" -> MirExpr.RuntimeCall("mk_array_new_obj", listOf(operands(a, out)[0]), arrayType(kind))
-                "emptyArray" -> MirExpr.RuntimeCall("mk_array_new_obj", listOf(MirExpr.IntConst(0)), arrayType(kind))
-                else -> varargArray(a[0] as? IrVararg ?: return null, kind, out)
+                "arrayOfNulls" -> {
+                    val n = operands(a, out)[0]
+                    val t = createdArrayType(expected)
+                    // `arrayOfNulls<T>(n)` of a generic function (T not known here): an array like the function's own Array<T> (T? : with null slots)
+                    val like = if (t.elem == null) likeSource(c.typeArguments.getOrNull(0)) else null
+                    if (like != null) {
+                        val nullable = if (c.typeArguments.getOrNull(0)?.isMarkedNullable() == true) 1 else 0
+                        MirExpr.RuntimeCall("mk_array_new_like", listOf(like, n, MirExpr.IntConst(nullable)), t)
+                    } else newObjectArray(n, t)
+                }
+                "emptyArray" -> newObjectArray(MirExpr.IntConst(0), createdArrayType(expected))
+                else -> varargArray(a[0] as? IrVararg ?: return null, kind, if (kind.elem == null) createdArrayType(expected) else null, out)
             }
         }
     }
@@ -129,7 +200,7 @@ internal fun Ir2Mir.arrayFunction(c: IrCall, name: String, pkg: String, out: Mut
 }
 
 /** The array built for a `vararg` argument or an `arrayOf(...)` call, with spread elements. */
-internal fun Ir2Mir.varargArray(e: IrVararg, kind: ArrayKind, out: MutableList<MirStmt>): MirExpr {
+internal fun Ir2Mir.varargArray(e: IrVararg, kind: ArrayKind, objType: TObject?, out: MutableList<MirStmt>): MirExpr {
     val et = kind.elem ?: anyN
     val hasSpread = e.elements.any { it is IrSpreadElement }
     // evaluate the elements in order
@@ -149,9 +220,9 @@ internal fun Ir2Mir.varargArray(e: IrVararg, kind: ArrayKind, out: MutableList<M
     }
     var len: MirExpr = MirExpr.IntConst(vals.count { !it.second })
     for ((v, spread) in vals) if (spread) len = MirExpr.Binary(BinaryOp.Add, len, arrayLength(v))
-    val arr = tmpOf(MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(len), arrayType(kind)), out)
+    val arr = tmpOf(if (objType != null) newObjectArray(len, objType) else MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(len), arrayType(kind)), out)
     if (!hasSpread) {
-        for ((i, p) in vals.withIndex()) out += MirStmt.Eval(arraySet(kind, arr, MirExpr.IntConst(i), p.first))
+        for ((i, p) in vals.withIndex()) out += MirStmt.Eval(arraySet(kind, arr, MirExpr.IntConst(i), p.first, true))
     } else {
         val pos = MirLocal(localCounter++, "pos", TInt)
         out += MirStmt.Declare(pos, MirExpr.IntConst(0))
@@ -160,7 +231,7 @@ internal fun Ir2Mir.varargArray(e: IrVararg, kind: ArrayKind, out: MutableList<M
                 out += MirStmt.Eval(MirExpr.RuntimeCall("mk_array_copy_into", listOf(arr, MirExpr.Local(pos), v), TUnit))
                 out += MirStmt.Assign(pos, MirExpr.Binary(BinaryOp.Add, MirExpr.Local(pos), arrayLength(v)))
             } else {
-                out += MirStmt.Eval(arraySet(kind, arr, MirExpr.Local(pos), v))
+                out += MirStmt.Eval(arraySet(kind, arr, MirExpr.Local(pos), v, true))
                 out += MirStmt.Assign(pos, MirExpr.Binary(BinaryOp.Add, MirExpr.Local(pos), MirExpr.IntConst(1)))
             }
         }
@@ -171,7 +242,7 @@ internal fun Ir2Mir.varargArray(e: IrVararg, kind: ArrayKind, out: MutableList<M
 internal fun Ir2Mir.varargValue(e: IrVararg, out: MutableList<MirStmt>): MirExpr {
     val t = mirType(e.type, e)
     val kind = arrayKindOf(t) ?: unsupported(e, "vararg of type $t")
-    return varargArray(e, kind, out)
+    return varargArray(e, kind, if (kind.elem == null) createdArrayType(t) else null, out)
 }
 
 /**
@@ -214,7 +285,8 @@ internal fun Ir2Mir.arrayForLoop(
     val idx = MirLocal(localCounter++, "idx", TInt)
     val inner = ArrayList<MirStmt>()
     val xt = mirType(loopVar.type, loopVar)
-    val elem = adaptOrCoerce(arrayGet(kind, arr, MirExpr.Local(idx)), xt, b, inner)
+    val elem = if (kind.elem == null && trackedReadType(arr) == xt) arrayRead(kind, arr, MirExpr.Local(idx), xt, b, inner)
+    else adaptOrCoerce(arrayGet(kind, arr, MirExpr.Local(idx)), xt, b, inner)
     val xl = MirLocal(localCounter++, loopVar.name, xt)
     locals[loopVar] = xl
     inner += MirStmt.Declare(xl, elem)
@@ -233,5 +305,5 @@ private fun Ir2Mir.adaptOrCoerce(e: MirExpr, t: MirType, at: IrElement, out: Mut
 internal fun Ir2Mir.emptyVararg(p: IrValueParameter, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     val t = mirType(p.type, p)
     val kind = arrayKindOf(t) ?: unsupported(at, "vararg parameter of type $t")
-    return tmpOf(MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(MirExpr.IntConst(0)), arrayType(kind)), out)
+    return tmpOf(if (kind.elem == null) newObjectArray(MirExpr.IntConst(0), createdArrayType(t)) else MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(MirExpr.IntConst(0)), arrayType(kind)), out)
 }

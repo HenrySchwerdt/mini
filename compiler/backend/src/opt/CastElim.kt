@@ -31,6 +31,7 @@ internal class CastElim(module: MirModule) : MirTransform() {
 
     private fun cannotFail(from: MirType, to: MirType): Boolean {
         if (from.isNullableRef() && !to.isNullableRef()) return false
+        if (from is TObject && to is TObject && from.cName == ARRAY_CNAME && to.cName == ARRAY_CNAME) return arrayCastCannotFail(from, to)
         if (from is TObject && to is TObject) return isSub(from.cName, to.cName)
         if ((from === TString || from === TNString) && (to === TString || to === TNString)) return true
         return false

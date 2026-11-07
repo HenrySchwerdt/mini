@@ -1,0 +1,63 @@
+1
+exact: ok
+2
+out view: ok
+3
+loop: ok
+array cast of another element type: ClassCastException
+array cast to a supertype: ClassCastException
+1
+array cast to an out type: ok
+array cast of null slots: ClassCastException
+1
+nullable slots are fine: ok
+store through a generic view: ClassCastException
+x
+1
+generic store of the right type: ok
+1
+generic result: ok
+array of unknown element type: ClassCastException
+1
+copyOf: ok
+4
+copyOf with room: ok
+copyOf with room is nullable: ClassCastException
+3
+copyOfRange: ok
+3
+plus: ok
+2
+plus array: ok
+3
+toTypedArray: ok
+3
+sliceArray: ok
+2
+reversedArray: ok
+1
+sortedArray: ok
+4
+boxed Int: ok
+2
+Array constructor: ok
+0
+emptyArray: ok
+GREEN
+REDGREEN
+enum values: ok
+acc
+vararg: ok
+pq
+spread: ok
+3
+nested: ok
+true true false false
+is: ok
+true
+1
+as?: ok
+2
+list of arrays: ok
+1
+array in a generic box: ok

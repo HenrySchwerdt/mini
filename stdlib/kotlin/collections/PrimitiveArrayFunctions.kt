@@ -123,12 +123,7 @@ public fun ByteArray.toSet(): Set<Byte> = toMutableList().toSet()
 public fun ByteArray.toMutableSet(): MutableSet<Byte> = toMutableList().toMutableSet()
 public fun ByteArray.toHashSet(): HashSet<Byte> = HashSet<Byte>(toList())
 
-public fun ByteArray.toTypedArray(): Array<Byte> {
-    val r = arrayOfNulls<Byte>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Byte>
-}
+public fun ByteArray.toTypedArray(): Array<Byte> = Array<Byte>(size) { this[it] }
 
 public fun ByteArray.first(): Byte {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")
@@ -610,12 +605,7 @@ public fun ShortArray.toSet(): Set<Short> = toMutableList().toSet()
 public fun ShortArray.toMutableSet(): MutableSet<Short> = toMutableList().toMutableSet()
 public fun ShortArray.toHashSet(): HashSet<Short> = HashSet<Short>(toList())
 
-public fun ShortArray.toTypedArray(): Array<Short> {
-    val r = arrayOfNulls<Short>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Short>
-}
+public fun ShortArray.toTypedArray(): Array<Short> = Array<Short>(size) { this[it] }
 
 public fun ShortArray.first(): Short {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")
@@ -1097,12 +1087,7 @@ public fun IntArray.toSet(): Set<Int> = toMutableList().toSet()
 public fun IntArray.toMutableSet(): MutableSet<Int> = toMutableList().toMutableSet()
 public fun IntArray.toHashSet(): HashSet<Int> = HashSet<Int>(toList())
 
-public fun IntArray.toTypedArray(): Array<Int> {
-    val r = arrayOfNulls<Int>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Int>
-}
+public fun IntArray.toTypedArray(): Array<Int> = Array<Int>(size) { this[it] }
 
 public fun IntArray.first(): Int {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")
@@ -1584,12 +1569,7 @@ public fun LongArray.toSet(): Set<Long> = toMutableList().toSet()
 public fun LongArray.toMutableSet(): MutableSet<Long> = toMutableList().toMutableSet()
 public fun LongArray.toHashSet(): HashSet<Long> = HashSet<Long>(toList())
 
-public fun LongArray.toTypedArray(): Array<Long> {
-    val r = arrayOfNulls<Long>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Long>
-}
+public fun LongArray.toTypedArray(): Array<Long> = Array<Long>(size) { this[it] }
 
 public fun LongArray.first(): Long {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")
@@ -2071,12 +2051,7 @@ public fun DoubleArray.toSet(): Set<Double> = toMutableList().toSet()
 public fun DoubleArray.toMutableSet(): MutableSet<Double> = toMutableList().toMutableSet()
 public fun DoubleArray.toHashSet(): HashSet<Double> = HashSet<Double>(toList())
 
-public fun DoubleArray.toTypedArray(): Array<Double> {
-    val r = arrayOfNulls<Double>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Double>
-}
+public fun DoubleArray.toTypedArray(): Array<Double> = Array<Double>(size) { this[it] }
 
 public fun DoubleArray.first(): Double {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")
@@ -2558,12 +2533,7 @@ public fun FloatArray.toSet(): Set<Float> = toMutableList().toSet()
 public fun FloatArray.toMutableSet(): MutableSet<Float> = toMutableList().toMutableSet()
 public fun FloatArray.toHashSet(): HashSet<Float> = HashSet<Float>(toList())
 
-public fun FloatArray.toTypedArray(): Array<Float> {
-    val r = arrayOfNulls<Float>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Float>
-}
+public fun FloatArray.toTypedArray(): Array<Float> = Array<Float>(size) { this[it] }
 
 public fun FloatArray.first(): Float {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")
@@ -3045,12 +3015,7 @@ public fun CharArray.toSet(): Set<Char> = toMutableList().toSet()
 public fun CharArray.toMutableSet(): MutableSet<Char> = toMutableList().toMutableSet()
 public fun CharArray.toHashSet(): HashSet<Char> = HashSet<Char>(toList())
 
-public fun CharArray.toTypedArray(): Array<Char> {
-    val r = arrayOfNulls<Char>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Char>
-}
+public fun CharArray.toTypedArray(): Array<Char> = Array<Char>(size) { this[it] }
 
 public fun CharArray.first(): Char {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")
@@ -3502,12 +3467,7 @@ public fun BooleanArray.toSet(): Set<Boolean> = toMutableList().toSet()
 public fun BooleanArray.toMutableSet(): MutableSet<Boolean> = toMutableList().toMutableSet()
 public fun BooleanArray.toHashSet(): HashSet<Boolean> = HashSet<Boolean>(toList())
 
-public fun BooleanArray.toTypedArray(): Array<Boolean> {
-    val r = arrayOfNulls<Boolean>(size)
-    var i = 0
-    while (i < size) { r[i] = this[i]; i++ }
-    return r as Array<Boolean>
-}
+public fun BooleanArray.toTypedArray(): Array<Boolean> = Array<Boolean>(size) { this[it] }
 
 public fun BooleanArray.first(): Boolean {
     if (isEmpty()) throw NoSuchElementException("Array is empty.")

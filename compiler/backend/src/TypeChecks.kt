@@ -40,6 +40,7 @@ internal object TypeChecks {
             val tests = ArrayList<MirExpr.IsInstance>()
             scanStatements(function.body, tests)
             for (test in tests) {
+                if ((test.target as? TObject)?.elem != null) continue // an array with a known element type: mk_array_is, not a class test
                 val localExpr = test.operand as? MirExpr.Local
                 if (localExpr != null) {
                     val local = localExpr.local

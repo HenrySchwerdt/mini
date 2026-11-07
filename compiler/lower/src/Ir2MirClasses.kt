@@ -546,13 +546,16 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
 
 // ---- enum values() / valueOf() ----------------------------------------------------------------------------
 
+/** `Array<E>` of an enum class E: the array `values()` makes records E as its element type. */
+internal fun Ir2Mir.enumArrayType(info: ClassInfo): TObject = arrayType(arrayKindOfFq("kotlin.Array")!!).copy(elem = typeOf(info.ir))
+
 internal fun Ir2Mir.enumValues(info: ClassInfo): MirFunction = inFreshFunction {
-    val arrType = arrayType(arrayKindOfFq("kotlin.Array")!!)
+    val arrType = enumArrayType(info)
     val entries = enumEntries(info.ir)
     val out = ArrayList<MirStmt>()
-    val arr = tmpOf(MirExpr.RuntimeCall("mk_array_new_obj", listOf(MirExpr.IntConst(entries.size)), arrType), out)
+    val arr = tmpOf(newObjectArray(MirExpr.IntConst(entries.size), arrType), out)
     for (i in entries.indices) {
-        out += MirStmt.Eval(arraySet(arrayKindOfFq("kotlin.Array")!!, arr, MirExpr.IntConst(i), enumGet(info, i)))
+        out += MirStmt.Eval(arraySet(arrayKindOfFq("kotlin.Array")!!, arr, MirExpr.IntConst(i), enumGet(info, i), true))
     }
     out += MirStmt.Return(arr)
     MirFunction(info.qualified + ".values", info.cName + "_values", emptyList(), arrType, out)

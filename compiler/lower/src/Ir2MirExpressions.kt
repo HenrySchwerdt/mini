@@ -197,6 +197,10 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             val v = value(e.argument, out)
             val target = mirType(e.type, e)
             if (v.type == target || v.type == TNothing) return v
+            val vt = v.type
+            if (vt.isRef && target is TObject && target.elem != null && !(vt is TObject && vt.cName == ARRAY_CNAME && arrayCastCannotFail(vt, target))) {
+                return MirExpr.Cast(v, target, erasedCastMode(target)) // a smart cast to an array type that knows its element type: the test that justified it may have been made on another view
+            }
             if (v.type.isRef && target.isRef) return MirExpr.Cast(v, target, MirExpr.CastMode.Unchecked)
             if (v.type.isRef && v.type !is TBoxed && target.isPrimitive) {
                 return unboxCast(v, target, MirExpr.CastMode.Unchecked)
@@ -263,6 +267,11 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     }
     if (from is TObject && from.cName == ANY_CNAME && to.isPrimitive) {
         return unboxCast(e, to, MirExpr.CastMode.Checked)
+    }
+    // an array that enters a type that knows the element type of its array (`Array<String>`): the element type is checked (docs/memory-model.md,
+    // "Reified object arrays"); a view that knows less (an upcast: `Array<String>` as `Array<out Any>` or `Array<T>`) is a plain retyping
+    if (from.isRef && to is TObject && to.elem != null && !e.isOwned() && !(from is TObject && from.cName == ARRAY_CNAME && arrayCastCannotFail(from, to))) {
+        return MirExpr.Cast(e, to, erasedCastMode(to))
     }
     if (from.isRef && to.isRef) return e // C-level retyping is done by the emitter
     // a generic result (`T` = Unit, an `Any?` at run time) where Unit is expected: the callers discard the value

@@ -58,7 +58,8 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
     val ptrClass = t.classOrNull
     if (ptrClass != null && isPtrClass(ptrClass)) return TPtr(nullable)
     functionArity(t)?.let { return functionInterface(it).let { f -> if (nullable) f.copy(nullable = true) else f } }
-    arrayKindOfFq(n)?.let { return arrayType(it, nullable) }
+    val arrKind = arrayKindOfFq(n)
+    if (arrKind != null) return arrayTypeOf(arrKind, t, nullable, at)
     return when (n) {
         "kotlin.String" -> if (nullable) TNString else TString
         "kotlin.Unit" -> if (nullable || at is IrValueParameter || at is IrField) anyNullable else TUnit // a Unit parameter or field holds null
@@ -73,6 +74,34 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
             else if (c != null && (c in classInfos || builtinOf(c) != null)) typeOf(c, nullable) else unsupported(at, "type '${n ?: t}'")
         }
     }
+}
+
+/**
+ * What an `Array<E>` type knows about the element type its array was created with (see [TObject.elem]): the element's MIR type
+ * and whether the view is covariant (`Array<out E>`), or null when the element type is not one of a class, interface, `String` or a boxed
+ * primitive, or is not known: a type parameter that is not substituted (the array may have been created for any subtype), a nested array,
+ * a star or contravariant projection.
+ */
+internal fun Ir2Mir.arrayTypeOf(k: ArrayKind, t: Type, nullable: Boolean, at: IrElement): TObject {
+    val plain = arrayType(k, nullable)
+    if (k.elem != null || t !is ClassType || t.args.isEmpty()) return plain
+    val arg = t.args[0]
+    val et = arg.type
+    if (et == null || arg.variance == Variance.IN || substituted(et) is TypeParamType) return plain
+    val m: MirType? = try {
+        mirType(et, at)
+    } catch (e: UnsupportedConstruct) {
+        null
+    }
+    val tracked = when (m) {
+        null -> false
+        is TObject -> arrayKindOf(m) == null
+        TString, TNString -> true
+        is TBoxed -> m.prim !is TInline
+        TInt, TLong, TBoolean, TDouble, TChar, TByte, TShort, TFloat -> true
+        else -> false
+    }
+    return if (tracked) plain.copy(elem = m, elemOut = arg.variance == Variance.OUT) else plain
 }
 
 /** The erasure of a type parameter: its first supported bound, else `Any?`. */

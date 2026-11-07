@@ -193,8 +193,36 @@ data class TObject(
     val cName: String,
     val nullable: Boolean,
     val isInterface: Boolean = false,
+    /**
+     * Only for `kotlin.Array` ([ARRAY_CNAME]): the element type the array is known to have at run time (docs/memory-model.md, "Reified
+     * object arrays"): a class, interface, `String` or boxed primitive (`TInt` standing for a non-null `Int`; nullability is the
+     * element's own). Every array value of this type refers to an array created with exactly this element type ([elemOut] false) or
+     * one whose element type is a subtype ([elemOut]: `Array<out E>`), so reading an element needs no check. Null: nothing is known
+     * (a type parameter, a nested array, a function type, `Array<*>`): reads check, stores check against the recorded element type.
+     */
+    val elem: MirType? = null,
+    val elemOut: Boolean = false,
 ) : MirType(if (nullable) "$qualifiedName?" else qualifiedName) {
     val typeInfo: String get() = if (cName == ANY_CNAME) "mk_type_Any" else "${cName}_ti"
+}
+
+const val ARRAY_CNAME = "MkObjectArray"
+
+/** The type whose type info stands for the element type [e] of a reified array (a primitive: its box). */
+fun arrayElemTypeInfoType(e: MirType): MirType = if (e.isPrimitive) TBoxed(e) else e
+
+/** Whether the elements of an array with element type [e] may be null. */
+fun arrayElemNullable(e: MirType): Boolean = e === TNString || e is TBoxed || (e is TObject && e.nullable)
+
+/** The `flags` argument of `mk_array_cast` / `mk_array_is` for the array type [t] (which has an element type): 1 nullable elements, 2 covariant, 4 nullable result. */
+fun arrayCastFlags(t: TObject): Int = (if (arrayElemNullable(t.elem!!)) 1 else 0) or (if (t.elemOut) 2 else 0) or (if (t.nullable) 4 else 0)
+
+/** True when the checked cast from the array type [from] to the array type [to] cannot fail (same element knowledge, or [to] knows nothing). */
+fun arrayCastCannotFail(from: TObject, to: TObject): Boolean {
+    if (to.elem == null) return true
+    if (from.elem == null) return false
+    if (from.elem == to.elem) return from.elemOut == to.elemOut || (!from.elemOut && to.elemOut)
+    return false
 }
 
 /**
