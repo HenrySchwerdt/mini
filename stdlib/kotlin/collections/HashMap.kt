@@ -18,28 +18,28 @@ import mini.internal.refArraySetOwned
 
 internal open class HashNode<K, V>(
     val hash: Int,
-    override val key: K,
-    override var value: V,
+    final override val key: K,
+    final override var value: V,
     var next: HashNode<K, V>?,
 ) : MutableMap.MutableEntry<K, V> {
-    override fun setValue(newValue: V): V {
+    final override fun setValue(newValue: V): V {
         val old = value
         value = newValue
         return old
     }
 
     @kotlin.internal.NoHeapEffects
-    override fun equals(other: Any?): Boolean {
+    final override fun equals(other: Any?): Boolean {
         if (other === this) return true
         if (other !is Map.Entry<*, *>) return false
         return key == other.key && value == other.value
     }
 
     @kotlin.internal.NoHeapEffects
-    override fun hashCode(): Int = (key?.hashCode() ?: 0) xor (value?.hashCode() ?: 0)
+    final override fun hashCode(): Int = (key?.hashCode() ?: 0) xor (value?.hashCode() ?: 0)
 
     @kotlin.internal.NoHeapEffects
-    override fun toString(): String = "$key=$value"
+    final override fun toString(): String = "$key=$value"
 }
 
 // A LinkedHashMap's node: the plain node plus the insertion-order links (a plain HashMap's node is 16 bytes smaller).
@@ -59,9 +59,10 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     internal val linked: Boolean
 
     // The node of the last String key that was found (`map[k]` followed by `map[k] = v`, the counting idiom, hashes and compares the key
-    // once). Both are strong references (the key's identity then means its contents: strings are immutable); cleared where a node is unlinked.
+    // once). The key is a strong reference (its identity then means its contents: strings are immutable); the node is not owned (the table owns
+    // it), which is safe because both are cleared wherever a node is unlinked (removeNode, clear).
     private var lastKey: Any? = null
-    private var lastNode: HashNode<K, V>? = null
+    @mini.memory.Borrowed private var lastNode: HashNode<K, V>? = null
 
     public constructor() {
         linked = false
