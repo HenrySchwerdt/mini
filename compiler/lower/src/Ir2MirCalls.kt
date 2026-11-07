@@ -146,7 +146,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     // an inline member inherited through a fake override (`B().baz<T>()` where `A` declares `inline fun <reified T> baz()`): expand the real one
     if (owner.isInline && owner.isFakeOverride && owner.body == null) {
         val real = resolveFake(owner)
-        if (real !== owner && real.isInline && real.body != null && functionNames[real] != null) return inlineCall(c, real, out)
+        if (real !== owner && real.isInline && real.body != null && functionNames[real] != null && real.typeParameters.any { it.reified }) return inlineCall(c, real, out)
     }
 
     // lambda-lifted local function

@@ -645,6 +645,30 @@ Per category (first two path components; categories with at least one failure in
 | box/unit | 13 / 13 | 12 / 13 | 13 / 13 |
 | boxInline/argumentOrder | 10 / 12 | 12 / 12 | 12 / 12 |
 
+## Seventh round (b) (branch claude/conformance-7b): runtime-fail and crash
+
+Starting point: main after 6a + 6b, 5745 / 5953 (runtime-fail 42, crash 8). Regression tests: `compiler/testdata/conf7b_*.kt`.
+
+Fixed by cause:
+
+* sema: a lambda whose result is `Nothing` does not fix the result type variable (`doCall({ return x }, { y })`, non-local `return` through `finally`).
+* `Number` members on a primitive-substituted reified receiver box it first (`k42000_1`); casts `as` / `as?` `Unit`, `as (T & Any)`;
+  a `when` subject smart-cast to `Float` / `Double` by a failed branch.
+* special bridges (`contains`, `indexOf`, `remove`, `get` ...): an argument the override cannot take answers `false` / `-1` / `null`.
+* inner classes of unboxed value classes keep the `$outer` field unboxed (`kt27705`, `kt27706`); inner classes of local classes read the captured variables of the outer instance.
+* file-level initialisers: only the file of `main` runs before it; a function of a file whose initialisers run program code starts it.
+  Field initializers that only store the default value are dropped.
+* fake-override inline members with reified type parameters are expanded from the real function; the delegate of an object literal is checked in the scope around it;
+  `@LowPriorityInOverloadResolution` candidates only win alone; a callable reference converted to a fun interface shares the equals class of the reference.
+* a member `fun f(s: String)` next to an extension `fun String.f()` (same erased signature) get distinct symbols (`captureExtensionReceiver`, was a crash).
+* harness: a test that declares `fun main()` as a helper is renamed so that it does not become the entry.
+
+Result: **5745 -> 5778 of 5953 (97.06%)** (runtime-fail 42 -> 21, crash 8 -> 0, ice 26, compile-error 126, timeout 2), no test that passed on main fails.
+
+Still open (runtime-fail): `failInInitializer1/2` (exception inside a lazily started file initialiser must become `ExceptionInInitializerError`), boxed identity of small ints / constant
+strings (`static_smallIntIdentity`, `stringTrim`), equality of adapted references with defaults, `nothingValueException`, `inheritFromAbstractMutableListInt`,
+suspend `releaseIntercepted` / `unitSafeCall` / `suspendFunctionIsAs`, context-receiver overloads, `functionsDifferInTypeParameterBounds2`, `ieee754` smart casts with numeric promotion.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
