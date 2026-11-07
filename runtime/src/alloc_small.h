@@ -70,6 +70,14 @@ static inline void *mk_small_alloc(size_t cls) {
         t->count[cls]--;
         return b;
     }
+    size_t sz = cls * MK_SMALL_GRAN;
+    size_t align = sz & (~sz + 1u); /* the alignment a block of this size is carved at, see mk_small_carve */
+    if (align > 64) align = 64;
+    unsigned char *p = t->bump;
+    if (((uintptr_t)p & (align - 1)) == 0 && (size_t)(t->end - p) >= sz) { /* the common case: the bump pointer is aligned already */
+        t->bump = p + sz;
+        return p;
+    }
     return mk_small_carve(cls);
 }
 
