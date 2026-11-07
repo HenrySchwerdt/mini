@@ -167,7 +167,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isCs else MirExpr.Unary(UnaryOp.Not, isCs)
             }
             val inst = if (target is TBoxed) target else if (target.isPrimitive) TBoxed(target) else target.nonNull()
-            var test: MirExpr = MirExpr.IsInstance(v, inst)
+            var test: MirExpr = if (target == TUnit) MirExpr.Binary(BinaryOp.IdEq, asAny(v), unitInstance()) else MirExpr.IsInstance(v, inst)
             // `x is T?` (also a reified T substituted by a nullable type, `null.foo<A?>()`): null is an instance
             val top = e.typeOperand
             if ((top.isMarkedNullable() || (top is TypeParamType && substitutedNullable(top))) && v.type.isRef) {
@@ -243,6 +243,8 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     if (e is MirExpr.Unreachable && e.type == TNothing && to != TNothing && to != TUnit) return MirExpr.Unreachable(to)
     if (e.type == to || e.type == TNothing) return e
     val from = e.type
+    // a value that is always null (type `Nothing?`) where a primitive or Nothing is expected: the code is dead
+    if (from === TNull && (to.isPrimitive || to == TNothing)) return MirExpr.Unreachable(to)
     if (isNumericType(from) && isNumericType(to)) return MirExpr.Convert(e, to)
     // the Unit value in a generic position (`Result.success(Unit)`, a `Continuation<Unit>`) is null, like the result of a Unit lambda
     if (e is MirExpr.Local && from == TUnit && to.isRef) return MirExpr.NullConst(to)
@@ -290,6 +292,7 @@ internal fun Ir2Mir.toStringExpr(e: MirExpr, at: IrElement, out: MutableList<Mir
     val call = when (e.type) {
         TString -> return e
         TUnit -> return MirExpr.StringConst("kotlin.Unit")
+        TNothing -> return MirExpr.Unreachable(TString)
         TInt -> MirExpr.RuntimeCall("mk_string_from_int", listOf(e), TString)
         TLong -> MirExpr.RuntimeCall("mk_string_from_long", listOf(e), TString)
         TDouble -> MirExpr.RuntimeCall("mk_string_from_double", listOf(e), TString)
@@ -314,7 +317,8 @@ internal fun Ir2Mir.stringConcat(e: IrStringConcatenation, out: MutableList<MirS
     // the pieces as strings; neighbouring constants are joined here
     val parts = ArrayList<MirExpr>()
     for (v in vals) {
-        val s = toStringExpr(v, e, out)
+        val s = if (e.arrayContent && arrayKindOf(v.type) != null) tmpOf(MirExpr.RuntimeCall("mk_array_content_to_string", listOf(v), TString), out)
+        else toStringExpr(v, e, out)
         val last = if (parts.isEmpty()) null else parts[parts.size - 1]
         if (last is MirExpr.StringConst && s is MirExpr.StringConst) parts[parts.size - 1] = MirExpr.StringConst(last.value + s.value)
         else parts.add(s)

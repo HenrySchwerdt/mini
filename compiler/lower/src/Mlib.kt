@@ -35,7 +35,10 @@ class MlibError(message: String) : Exception(message)
 
 class MlibDep(val name: String, val hash: String)
 
-class MlibStub(val path: String, val text: String)
+class MlibStub(val path: String, val text: String) {
+    /** The parse of [text], when the stub cache has it (see [StubCache]); the analysis then does not parse the stub. */
+    var parsed: mini.frontend.KtFile? = null
+}
 
 /** A function of the library that the backend cannot lower (a construct it does not support); a program that reaches it fails with [message]. */
 class MlibFailure(val cName: String, val message: String)
@@ -350,13 +353,17 @@ object MlibFormat {
             }
         }
         if (mir == null) throw MlibError("$origin: damaged library (no MIR section)")
-        if (verify) {
-            val actual = hashOf(name, version, compilerId, deps, stubs, mir, failures, summaries)
-            if (actual != hash) {
-                throw MlibError("$origin: content hash mismatch (header says $hash, content is $actual); the file is damaged or was edited, rebuild it")
-            }
+        val lib = Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures, summaries)
+        if (verify) verify(lib, origin)
+        return lib
+    }
+
+    /** Checks the content hash of [lib] against its header ([read] with `verify = false` leaves that to the caller). */
+    fun verify(lib: Mlib, origin: String) {
+        val actual = hashOf(lib.name, lib.version, lib.compilerId, lib.deps, lib.stubs, lib.mir, lib.failures, lib.summaries)
+        if (actual != lib.hash) {
+            throw MlibError("$origin: content hash mismatch (header says ${lib.hash}, content is $actual); the file is damaged or was edited, rebuild it")
         }
-        return Mlib(name, version, compilerId, tag, deps, stubs, mir, hash, failures, summaries)
     }
 
     /**
@@ -403,7 +410,7 @@ fun libInputs(libs: List<Mlib>): List<LowerInput> {
     for (l in libs) {
         var first = true
         for (s in l.stubs) {
-            out.add(LowerInput(s.path, s.text, true, true, if (first) l.summaries else ""))
+            out.add(LowerInput(s.path, s.text, true, true, if (first) l.summaries else "", s.parsed))
             first = false
         }
     }

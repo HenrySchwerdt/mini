@@ -156,6 +156,12 @@ fun Ast2Ir.evalConst(e0: Expr): Any? {
                     "*" -> a * b
                     "/" -> if (b == 0) null else a / b
                     "%" -> if (b == 0) null else a % b
+                    "shl" -> a shl b
+                    "shr" -> a shr b
+                    "ushr" -> a ushr b
+                    "and" -> a and b
+                    "or" -> a or b
+                    "xor" -> a xor b
                     else -> null
                 }
             }

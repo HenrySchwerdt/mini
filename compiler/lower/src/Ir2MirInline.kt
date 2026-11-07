@@ -116,8 +116,11 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
             if (a != null && (tp.reified || mirType(a, c).isInteropScalar)) typeSubst[tp] = a
         }
         val params = callee.parameters
+        // the arguments of the call come first, the default values of the omitted parameters are evaluated after them (in parameter order)
+        for (pass in 0..1) {
         for ((i, p) in params.withIndex()) {
             val arg = c.arguments.getOrNull(i)
+            if ((arg == null) != (pass == 1)) continue
             val lam = if (arg != null && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlineLambdaOf(arg) else null
             if (lam != null) {
                 inlineLambdaParams[p] = lam
@@ -135,6 +138,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
             val l = MirLocal(localCounter++, p.name.ifEmpty { "p$i" }, t)
             out += MirStmt.Declare(l, v)
             locals[p] = l
+        }
         }
         val ret = mirType(callee.returnType, callee)
         val r = expandBody(callee, ret, c, out)

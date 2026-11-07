@@ -279,7 +279,8 @@ internal fun Ir2Mir.arrayForLoop(
 
     val arrExpr = operands(listOf(recvIr), out)[0]
     val kind = arrayKindOf(arrExpr.type) ?: return false
-    val arr = local(arrExpr, out)
+    // the array is evaluated once: a `var` array assigned in the loop body does not change the loop (KT-21354)
+    val arr = if (arrExpr is MirExpr.Local && (recvIr as? IrGetValue)?.let { (it.owner as? IrVariable)?.isVar == true } == true) tmpOf(arrExpr, out) else local(arrExpr, out)
     loopLabels[loop] = label
     loopFinallyDepth[loop] = finallyStack.size
     val idx = MirLocal(localCounter++, "idx", TInt)

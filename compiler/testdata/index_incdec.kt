@@ -28,6 +28,7 @@ fun main() {
     k[2]++
     ++k[2]
     k[0]--
+    // (the prefix form reads the element again for its value, like K2: KT-42077)
     println("${k.c[0]} ${k.c[2]} reads=${k.reads}")
     // the index expression is evaluated once
     val box = IntArray(1)

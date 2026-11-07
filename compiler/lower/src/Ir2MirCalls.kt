@@ -94,6 +94,10 @@ internal fun Ir2Mir.defaultValueOf(callee: IrFunction, i: Int, p: IrValueParamet
 
 /** Like [tmpOf] but only when needed for primitives (constants stay inline in the argument list). */
 internal fun Ir2Mir.tmpOfPlain(v: MirExpr, out: MutableList<MirStmt>): MirExpr {
+    if (v.type == TUnit && v !== MirExpr.UnitValue) {
+        out += MirStmt.Eval(v)
+        return MirExpr.UnitValue
+    }
     val t = newTemp(v.type)
     out += MirStmt.Declare(t, v)
     return MirExpr.Local(t)
@@ -133,6 +137,11 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     // `arrayOf` / `emptyArray` are made here, not called: the array records the element type of the call (docs/memory-model.md, "Reified object arrays")
     if (parent is IrFile && parent.packageFqName == "kotlin" && (name == "arrayOf" || name == "emptyArray")) arrayFunction(c, name, "kotlin", out)?.let { return it }
 
+    if (parent is IrClass && parent.kotlinFqName == "kotlin.Nothing") {
+        // a member called on a value of type Nothing (`null?.toString()`, `p.toString()` with `p: Nothing`): the receiver never completes
+        for (a in c.arguments) if (a != null) stmt(a, out)
+        return MirExpr.Unreachable(TNothing)
+    }
     if (isFunctionInvoke(owner)) return invokeFunctionValue(c, out)
     // inline functions with a body (user code, or stdlib code compiled from source) are expanded in place
     if (owner.isInline && owner.body != null && (functionNames[owner] != null || parent !is IrClass)) return inlineCall(c, owner, out)
@@ -387,6 +396,7 @@ internal fun Ir2Mir.consoleCall(c: IrCall, name: String, args: List<IrExpression
         TChar -> MirExpr.RuntimeCall("mk_println_char", listOf(v), TUnit)
         TFloat -> MirExpr.RuntimeCall("mk_println_float", listOf(v), TUnit)
         TByte, TShort -> MirExpr.RuntimeCall("mk_println_int", listOf(MirExpr.Convert(v, TInt)), TUnit)
+        TNothing -> v // the argument never completes
         else -> if (v.type.isRef || v.type is TInline) MirExpr.RuntimeCall("mk_println_string", listOf(toStringExpr(v, c, out)), TUnit)
         else unsupported(c, "println of a value of type ${v.type}")
     }
@@ -425,7 +435,8 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
     if (v.size != 2) unsupported(c, "compiler intrinsic '$name'")
     val ta = v[0].type
     val tb = v[1].type
-    if (ta == TUnit || ta == TNothing) unsupported(c, "comparison of $ta")
+    if (ta == TNothing || tb == TNothing) return MirExpr.Unreachable(TBoolean)
+    if (ta == TUnit) unsupported(c, "comparison of $ta")
     if (op == BinaryOp.Eq && ta is TInline && ta == tb && ta.rep.repr != TDouble && ta.rep.repr != TFloat && hasSyntheticEquals(ta)) {
         return MirExpr.Binary(BinaryOp.Eq, retag(v[0], ta.rep.repr), retag(v[1], ta.rep.repr))
     }
@@ -448,6 +459,11 @@ internal fun Ir2Mir.irBuiltin(c: IrCall, name: String, args: List<IrExpression>,
             val sameValue = MirExpr.Binary(BinaryOp.AndAnd, bothNonNull, MirExpr.Binary(BinaryOp.Eq, value(a), value(b)))
             return if (ta is TBoxed && tb is TBoxed) MirExpr.Binary(BinaryOp.OrOr, MirExpr.Binary(BinaryOp.AndAnd, isNull(a), isNull(b)), sameValue) else sameValue
         }
+    }
+    // `a == b` of two values whose static type is a type parameter (substituted by Double / Float in an inline expansion): `equals`, not IEEE 754
+    if (op == BinaryOp.Eq && name == "EQEQ" && ta == tb && (ta == TDouble || ta == TFloat) &&
+        args.any { val fq = it.type.classFqName; fq != "kotlin.Double" && fq != "kotlin.Float" }) {
+        return refEquality(op, boxIfPrim(v[0], c, out), boxIfPrim(v[1], c, out), c, out)
     }
     if (op == BinaryOp.Eq || op == BinaryOp.IdEq) {
         if (ta.isRef || tb.isRef) return refEquality(op, v[0], v[1], c, out)
