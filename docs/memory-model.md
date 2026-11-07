@@ -1346,6 +1346,7 @@ which run under AddressSanitizer + LeakSanitizer in the `leak` and `llvm-leak` s
 | Gap | Root cause | Fix | Test |
 |---|---|---|---|
 | **Heap pollution is type confusion.** `listOf<Any>(1) as List<String>` followed by `l[0].length` read the boxed Int as a String (length and characters taken from a foreign layout: garbage output, out-of-bounds reads); the same for a generic field (`Box<T>.v`), `T` results, lambda parameters and `Array<String>` (reified arrays, below) | the conversion of an erased value (`Any?`) to the type it has at the use (`adaptResult`, `convertFromErased`, `coerceFlexible`, unboxing from `Any`) was a C-level retyping (`CastMode.Unchecked`) | it is a **checked cast** (`CastMode.Checked`, `erasedCastMode`) like the `checkcast` the JVM inserts at the use: `ClassCastException` (`NullPointerException` for a `null` that is not allowed). `Any` itself, the common case, costs nothing; same-class values pass the inline type-pointer compare | `generic_pollution_cce` |
+| **Heap pollution with `null` was a null dereference.** `arrayOfNulls<String>(n) as Array<String>` (or `listOf<String?>(null) as List<String>`, a generic field, a `T` result) passes the cast like on the JVM, then `a[0].length` read `0` (a `String` is read through a runtime helper that mapped `NULL` to the empty string) and `a[0].v` / `a[0].f()` of a class read or called through a null pointer | the retyping of an erased value to a non-null type (`Cast(..., Unchecked)`) was not told from a smart cast: nothing knew the value could be `null` | the retyping is `CastMode.Erased`; the `NullGuard` MIR pass puts a `NotNull` (a `NullPointerException`) where such a value is dereferenced or passed where a non-null value is expected, and `mk_string_length` / `mk_string_hash` of `NULL` are fatal (`mk_string_get_char` raises). See the section below | `polluted_null_npe` |
 | **A non-null property read before it is initialized dereferenced the zero of the allocation** (`open class Base { init { show() } }`, `class D : Base() { val s = "x"; override fun show() { s.length } }`; two `object`s or files that read each other's properties while they initialize). Strings silently read as `""`/`"null"`, other classes were a null dereference | the field of a non-null type is assumed to hold a value | reads of such a field are null-checked (`NullPointerException`, like the JVM) when the field can still be unset while code of its class runs: classes whose initialization lets `this` out (`initLeaksThis`: a member call with the implicit receiver, `this` passed or captured in a property initializer, `init` block or constructor, in the class or one of its superclasses), fields of `object`s and top-level properties that have a non-constant initializer. Other classes pay nothing (`Ir2MirInitSafety.kt`) | `uninit_field_npe` |
 | **Huge arrays**: `IntArray(Int.MAX_VALUE)` on a machine that cannot supply the memory wrote the length into a null block; on a 32-bit target (wasm32) `elem * length` wrapped to a small block and later accesses were out of bounds | `array_new` neither checked the size computation nor the result of the allocator | overflow-checked size, a failed allocation is the fatal `OutOfMemoryError` (like `string too long`) | (needs an unreasonable allocation; the check is in `runtime/src/v1l.c`) |
 | **`list.addAll(list)` never ended** (the loop re-read the size of the list it was growing and ran until the storage was exhausted) | `ArrayList.addAll` iterated with the live size | the element count is taken once before the copy | `list_addall_self` |
@@ -1384,13 +1385,44 @@ without such a parameter) records `Any?`. It enters an `Array<C>` type only at a
 element type is a checked cast (`mk_array_cast` / `mk_array_is`, also `is`, `as?`, smart casts, erased generic results and fields):
 `ClassCastException` unless the tags are equal (or, for `out`, the recorded type is a subtype). So `arrayOf<Any>(1) as Array<String>` fails at the
 cast like on the JVM, and `fun <T> mk(): Array<T> = arrayOfNulls<Any?>(1) as Array<T>` fails where its caller reads the result as `Array<String>`.
-Like the JVM, nullability is not part of the class of an array: `arrayOfNulls<String>(n) as Array<String>` and `Array<String> as Array<String?>` pass (a `null` passes every erased cast, as in `checkcast`; the check of the element type is the only one made). The JVM then throws a `NullPointerException` where the `null` is dereferenced (`a[0].length`); here that dereference of a non-null typed `String` is not checked and reads as the empty string (known gap, the same for `listOf<String?>(null) as List<String>` and `l[0].length`).
+Like the JVM, nullability is not part of the class of an array: `arrayOfNulls<String>(n) as Array<String>` and `Array<String> as Array<String?>` pass (a `null` passes every erased cast, as in `checkcast`; the check of the element type is the only one made). The `null` is then caught where it is dereferenced, like on the JVM (`a[0].length` is a `NullPointerException`; see "Null values behind a non-null type" below).
 An *empty* array passes every array cast (nothing can be read from or stored into it, so no element can be confused; the frontend infers `arrayOf()` without an expected type as `Array<Any?>`). `CastElim` removes the cast when the operand type already proves it (`Array<String>` to `Array<out Any>`, to `Array<T>`).
 
 **Deliberate differences from the JVM** (all are failures of a cast the JVM would let through and fail later, or not at all):
 `arrayOf(Sq(1)) as Array<Shape>` is a `ClassCastException` (it would allow a store of a `Circle` into a `Sq` array; the JVM throws at that store);
 Stores through a generic view fail
 with `ClassCastException` instead of `ArrayStoreException`. Test: `array_reified`.
+
+### Null values behind a non-null type (`NullGuard`)
+
+A value of a non-null type can be `null` only where the program converted an *erased* value (an element of a generic container, a generic
+result or field, an element of a reified array) to that type: the conversion is the `checkcast` of the JVM, which lets `null` pass (so
+`val s: String = nullAsT()` and `println(a[0])`, `"x" + a[0]`, `a[0] == "x"` work with the `null`), and the JVM throws a
+`NullPointerException` where the value is dereferenced. The lowering marks such a conversion `CastMode.Erased` (`erasedCast`, `arrayRead`);
+the pass `NullGuard` (`compiler/backend/src/opt/NullGuard.kt`, run on every module, also with `-Xno-mir-opt`) then follows the *tainted*
+values (the marked conversion, a local assigned one, a conditional of them) and wraps a tainted value in `NotNull` where it is
+- the receiver of a field read or write, a virtual or interface call, `String.length` / `[]` / `hashCode` / `substring`, or an operand
+  of a runtime function that reads it;
+- passed to a parameter of a non-null type (the JVM checks the parameters of a public function the same way), stored in a field of a
+  non-null type, returned from a function of a non-null return type, thrown, or stored into an array whose element type is not
+  null (such an array never holds a `null`, below).
+Uses that accept `null` are not checked: `==`, string templates and concatenation, `println`, `is`, a nullable or `Any?` parameter, a local
+that is only passed on. Deliberate differences from the JVM, all in programs that already hold a polluted `null`: a polluted `null` is
+checked when it is *returned*, passed as an argument or stored into a non-null field or array instead of where the callee dereferences it
+(a function that returns it would otherwise hand the caller a value nobody can see being null), and `s.toString()` of a polluted `String`
+prints `null` instead of throwing.
+
+Cost. A tainted value is tested once (a check makes the *value* known to be non-null for the rest of the straight-line code: copies of a
+local share it; a branch or loop that is left forgets what was checked in it). A local that is only ever dereferenced is tested where it is
+defined when nothing observable happens before its first use (no call, store, throw, `try`), so the loop that reads it does not test it again.
+The reads of an array that cannot hold a `null` are not tested at all: the arrays a function creates itself with non-null elements
+(`mk_array_new_of(..., nullable = 0)`), copies of such a local and the parameters of functions that are only called directly with such
+arrays; an array that came through a cast, a field or a call result is not followed and its reads are tested. That is sound because a
+`null` cannot get into an array that was created without null elements: a store of a value that may be `null` through a view that allows it
+(`Array<String> as Array<String?>`, then `b[0] = null`) goes through `mk_array_store_obj`, which compares it with the element type recorded
+at creation (`NullPointerException`), and a tainted value stored through a non-null view is checked by `NullGuard`.
+The runtime helpers keep a last line of defence: `mk_string_length` and `mk_string_hash` of `NULL` abort with `NullPointerException`
+(they used to return 0), `mk_string_get_char` raises it.
 
 ### Cost of the checks
 
