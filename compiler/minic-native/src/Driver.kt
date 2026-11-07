@@ -382,7 +382,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         val deps = all.filter { it.name != library.name }
         val input = mlibObjectInput(library, deps)
         val ir = LlvmEmitter.emit(
-            input.module, rcOpt = rcOpt, target = LlvmTarget.WASM32,
+            NullGuard.run(input.module), rcOpt = rcOpt, target = LlvmTarget.WASM32,
             externalClassNames = input.externalClassNames,
             exportedClassNames = input.exportedClassNames,
             externalFunctionSignatures = input.externalFunctions,
@@ -650,7 +650,7 @@ private fun runRepl(
 private fun replLink(pool: List<MirModule>, module: MirModule): MirModule {
     val roots = ArrayList<String>()
     for (f in module.functions) roots.add(f.cName)   // everything an input defines stays: later inputs call it
-    return MirLink.prune(MirLink.link(pool, module), roots)
+    return NullGuard.run(MirLink.prune(MirLink.link(pool, module), roots))
 }
 
 private fun declarationName(source: String): String? {
