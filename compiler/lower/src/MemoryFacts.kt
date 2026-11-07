@@ -392,7 +392,9 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val display = fq.substring(fq.lastIndexOf('.') + 1)
         // enum constants and objects are immortal singletons: nothing to own, free or move (`for (e in values()) if (..) return e`)
         val singleton = cls.kind == IrClassKind.ENUM_CLASS || cls.kind == IrClassKind.ENUM_ENTRY || cls.kind == IrClassKind.OBJECT
-        return if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton) MType(TK.Strict, nullable, mc, null, fq, display)
+        // a value class around a plain value (`value class Id(val n: Int)`) is a value: copies have no identity to own, free or move
+        val plainValue = cls.isValue && mc.fields.all { !it.type.tracked }
+        return if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton && !plainValue) MType(TK.Strict, nullable, mc, null, fq, display)
         else MType(TK.Managed, nullable, mc, null, fq, display)
     }
 
