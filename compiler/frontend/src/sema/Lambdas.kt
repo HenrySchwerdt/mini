@@ -111,7 +111,9 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     flow = savedFlow
     var ret: Type
     val expRet = ef?.ret
-    if (expRet != null && ops.isUnit(cs?.resolveFixed(expRet) ?: expRet)) {
+    val expRetFixed = if (expRet != null) (cs?.resolveFixed(expRet) ?: expRet) else null
+    // (`() -> Unit?` takes any value of the lambda body: `{ null }` is no Unit lambda)
+    if (expRetFixed != null && ops.isUnit(expRetFixed) && !expRetFixed.nullable) {
         ret = sema.unitType
     } else {
         val types = ArrayList<Type>()

@@ -4,6 +4,8 @@
 // type variables (`foldl(0) { e: Int, acc: Long -> ... }`), overloads that differ in type parameter bounds, `break` / `continue` in
 // anonymous functions passed to inline functions, a member of two bounds with different result types, a function interface with a
 // receiver.
+import kotlin.coroutines.*
+
 enum class E { I, J }
 
 object Holder {
@@ -67,6 +69,10 @@ class PQ : P, Q {
     override fun foo() = "four"
 }
 
+class Susp : suspend () -> Unit {
+    override suspend fun invoke() {}
+}
+
 fun interface WithReceiver {
     fun String.twice(): String
 }
@@ -112,6 +118,9 @@ fun main() {
     println(n)
 
     println(both(PQ()))
+    val nullClosure: () -> Unit? = { null }
+    println(nullClosure() == null)
+    println((Susp() is SuspendFunction0<*>).toString() + " " + (Susp() is SuspendFunction1<*, *>))
     val w = WithReceiver { this + this }
     with(w) { println("ab".twice()) }
 }
