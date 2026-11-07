@@ -696,12 +696,18 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
             val lb = pt.arg.type
             return pt.arg.variance == Variance.IN && lb != null && (lb is FunType || (lb is ClassType && lb.cls.isFunInterface)) && shapeOk(arg, lb)
         }
-        return pt is TypeParamType
+        // a rigid type parameter (the enclosing function's own `T`) is no target of a lambda: `transform { }` with a local `transform: (T) -> R` falls through to the extension
+        return false
     }
     if (u is CallableRefExpr && u.name != "class" && u.receiver == null && pt is FunType) {
         // `f(::g)` with overloads of `f` over different function arities: the reference must have the arity of the parameter type
         val cands = ArrayList<RefCand>()
-        for (g in unqualifiedGroups(u.name)) for (c in g) funRefCand(c, false, cands)
+        for (g in unqualifiedGroups(u.name)) for (c in g) {
+            // an extension of an implicit receiver (`with(a) { call(::ext) }`) is bound to it: the receiver is no parameter
+            val er0 = c.extRecv
+            if (c.extRef != null && er0 != null && !extFits(c.fn, er0)) continue
+            funRefCand(c, c.extRef != null, cands)
+        }
         if (cands.isEmpty()) return true
         val want = pt.params.size + (if (pt.receiver != null) 1 else 0)
         for (c in cands) {
@@ -823,6 +829,23 @@ fun BodyChecker.moreSpecific(a: Attempt, b: Attempt, args: List<Arg>): Boolean {
     return true
 }
 
+/** are the context parameters of [f] available at the call site: an implicit receiver or a variable of the type of each */
+fun BodyChecker.contextsInScope(f: FunSym): Boolean {
+    val cps = f.decl?.mods?.contextParams ?: return true
+    for (cp in cps) {
+        val t = if (cp.type != null) sema.resolveType(cp.type, sema.funScope(f)) else return false
+        var found = implicitReceivers().any { ops.isSubtype(it.type, t) }
+        var s: Scope? = scope
+        while (!found && s != null) {
+            // (a context parameter of the enclosing function: a parameter without a declaration of its own)
+            if (s is LocalScope) for (v in s.vars.values) { val vt = v.type; if (v.isParam && v.decl == null && v.name != "it" && vt != null && ops.isSubtype(vt, t)) found = true }
+            s = s.parent
+        }
+        if (!found) return false
+    }
+    return true
+}
+
 fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt {
     if (ok.size == 1) return ok[0]
     val maximal = ArrayList<Attempt>()
@@ -838,6 +861,12 @@ fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt 
         if (best) maximal.add(a)
     }
     var pool: List<Attempt> = if (maximal.isEmpty()) ok else maximal
+    if (pool.size > 1 && pool.any { it.cand.fn.decl?.mods?.contextParams?.isNotEmpty() == true }) {
+        // overloads that differ in their context parameters (`foo()` and `context(Scope) foo()`): the contextual one when its contexts are in scope
+        val withCtx = pool.filter { it.cand.fn.decl?.mods?.contextParams?.isNotEmpty() == true && contextsInScope(it.cand.fn) }
+        val without = pool.filter { it.cand.fn.decl?.mods?.contextParams?.isNotEmpty() != true }
+        if (withCtx.isNotEmpty()) pool = withCtx else if (without.isNotEmpty()) pool = without
+    }
     if (pool.size > 1) {
         // non-generic over generic
         val ng = ArrayList<Attempt>()

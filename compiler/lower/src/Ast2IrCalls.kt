@@ -78,6 +78,15 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
         stmts.add(IrConst(str, if (rsym is FunSym && rsym.kind == FunKind.CONSTRUCTOR) "<init>" else cref.name))
         return IrBlock(stmts, irType(str), null)
     }
+    if (sel is NameExpr && sel.name == "name" && cref !is CallableRefExpr && r.callee == null && r.target == null && r.type.classFqName == "kotlin.String") {
+        // `r.name` of a function value: the closure class of a reference carries the name (stdlib `functionObjectName`)
+        val fn = sema.packageInfo("kotlin").funs["functionObjectName"]?.firstOrNull()
+        if (fn != null) {
+            val call = IrCall(functionFor(fn, null), irType(sema.stringType))
+            call.arguments.add(convert(e.receiver))
+            return call
+        }
+    }
     if (sel is NameExpr && sel.name == "name" && r.callee is PropSym) {
         // `E.A.name` is a constant (K2 evaluates it): the enum class is not initialized for it
         val entry = rec(cref)?.callee
@@ -341,6 +350,7 @@ fun Ast2Ir.fillCallArgs(
     label: String?,
 ) {
     var regular = 0
+    var ctxIdx = 0
     val subst = HashMap<TypeParamSym, Type>()
     if (info != null) {
         val tps = if (info.fn.kind == FunKind.CONSTRUCTOR) info.fn.owner!!.typeParams else info.fn.typeParams
@@ -360,7 +370,12 @@ fun Ast2Ir.fillCallArgs(
                 inlineArgument = false
                 regular++
             }
-            IrParameterKind.Context -> call.arguments.add(contextArgument(p, subst))
+            IrParameterKind.Context -> {
+                // a context parameter of the enclosing function, else the implicit receiver the checker found (`with(scope) { f() }`)
+                val rr = info?.contextRecvs?.getOrNull(ctxIdx)
+                call.arguments.add(contextArgument(p, subst) ?: if (rr != null) implicitReceiver(rr, null) else null)
+                ctxIdx++
+            }
         }
     }
 }

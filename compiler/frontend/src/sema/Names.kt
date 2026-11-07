@@ -481,6 +481,11 @@ fun BodyChecker.dotExpr(e: DotExpr, expected: Type?): Type {
         if (sel is CallExpr) skipCall(sel)
         return ErrType("unresolved receiver")
     }
+    // `r.name` of a function value (a callable reference held in a variable): the name of the referenced function, a String
+    if (sel is NameExpr && sel.name == "name" && recv is ValueRecv && !e.safe && (recv.type is FunType || (recv.type as? ClassType)?.cls?.let { it.fnArity >= 0 && it.name.startsWith("KFunction") } == true)) {
+        record(e, sema.stringType, null)
+        return sema.stringType
+    }
     var info: RecvInfo = recv
     if (recv is ValueRecv) info = ValueRecv(recv.type, recv.expr, e.safe)
     if (sel is NameExpr) {
@@ -703,6 +708,23 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
         er.call = cinfo
     }
     val cfn = res.callee
+    if (cinfo != null && cfn is FunSym) {
+        val cps = cfn.decl?.mods?.contextParams
+        if (cps != null && cps.isNotEmpty()) {
+            // `with(scope) { f() }` for `context(Scope) fun f()`: the implicit receiver is the context argument
+            val refs = ArrayList<RecvRef?>()
+            for (cp in cps) {
+                val ct = cp.type
+                var found: RecvRef? = null
+                if (ct != null) {
+                    val want = sema.resolveType(ct, sema.funScope(cfn))
+                    for (r in implicitReceivers()) if (ops.isSubtype(r.type, want)) { found = r.ref; break }
+                }
+                refs.add(found)
+            }
+            cinfo.contextRecvs = refs
+        }
+    }
     if (cinfo != null && cfn is FunSym && cfn.kind == FunKind.NORMAL) contractFacts(cfn, cinfo)
     return t
 }

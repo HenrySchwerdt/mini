@@ -128,7 +128,7 @@ private class CleanupPass(val u: UseScan) : MirTransform() {
     private fun resolve(l: MirLocal): MirExpr? {
         var r = alias[l.id] ?: return null
         var guard = 0
-        while (r is MirExpr.Local && guard < 50) {
+        while (r is MirExpr.Local && guard <= alias.size) {
             val n = alias[r.local.id] ?: break
             r = n
             guard++

@@ -31,6 +31,17 @@ class Members(private val sema: Sema) {
             i++
         }
         val sb = StringBuilder(f.name)
+        // context parameters distinguish overloads (`foo()` and `context(Scope) foo()`)
+        val cps = f.decl?.mods?.contextParams
+        if (cps != null && cps.isNotEmpty()) {
+            sb.append("ctx[")
+            for (cp in cps) {
+                val ct = cp.type
+                if (ct != null) sb.append(renderType(sema.resolveType(ct, f.scope)))
+                sb.append(',')
+            }
+            sb.append(']')
+        }
         sb.append('(')
         val r = f.receiver
         if (r != null) sb.append(renderType(sema.ops.substitute(r, m))).append('.')
