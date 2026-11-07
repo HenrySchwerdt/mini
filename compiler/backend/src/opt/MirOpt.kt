@@ -46,6 +46,16 @@ object MirOpt {
             if (options.stats) report("cast-elim: " + ce.removed + " checked casts that cannot fail")
             m = MirModule(m.sourceName, fs, m.classes, m.externs, m.includes, m.links, m.wasmExports)
         }
+        if (options.on("array-len")) {
+            val st = IntArray(1)
+            m = ArrayLen.run(m, st)
+            if (options.stats) report("array-len: " + st[0] + " array locals with a cached length")
+            if (options.on("range-check")) {
+                val rs = IntArray(1)
+                m = RangeCheck.run(m, rs)
+                if (options.stats) report("range-check: " + rs[0] + " loops versioned with unchecked array accesses")
+            }
+        }
         return m
     }
 }

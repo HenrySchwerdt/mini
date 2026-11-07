@@ -1,0 +1,20 @@
+36
+0
+0
+sum oob
+2,3,4,5,6,7,8,8
+shift oob 3,4,5,6,7,8,8,8
+6,5,4,3,2,1,0
+reverse oob 6,5,4,3,2,1,0
+reverse neg ok
+30
+0
+incl oob
+incl neg oob
+4
+24.0
+dist oob
+0,0,0,3,4,5,6,0,0,0
+fill oob 0,0,0,3,4,5,6,0,8,9
+fill neg oob 0,0,0,3,4,5,6,0,8,9
+touch oob log=0123 flags=true,true,true

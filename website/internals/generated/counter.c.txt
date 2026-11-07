@@ -1,10 +1,8 @@
 /* prototypes */
-MkInt kt_fib_AI(MkInt v_n_0);
+MKH_STATIC MkInt kt_fib_AI(MkInt v_n_0);
 void mkh_user_main(void);
-MkInt kc_Counter_M_x003Cget_x002Dn_x003E(MkObject * v_this_0);
-void kc_Counter_M_x003Cset_x002Dn_x003E_AI(MkObject * v_this_0, MkInt v__x003Cset_x002D_x003F_x003E_1);
-MkInt kc_Counter_Minc(MkObject * v_this_0);
-void kc_Counter_C_AI(MkObject * v_this_0, MkInt v_n_1);
+MKH_STATIC MkInt kc_Counter_Minc(MkObject * v_this_0);
+MKH_STATIC void kc_Counter_C_AI(MkObject * v_this_0, MkInt v_n_1);
 
 /* classes */
 /* class Counter */
@@ -12,17 +10,21 @@ struct kc_Counter {
     MkObject header;
     MkInt f_n;
 };
+#if UINTPTR_MAX == 0xffffffffffffffffu
+_Static_assert(sizeof(struct kc_Counter) == 24, "object layout");
+_Static_assert(offsetof(struct kc_Counter, f_n) == 16, "object layout");
+#endif
 static void *const kc_Counter_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code};
-static const MkTypeInfo kc_Counter_ti = {"Counter", sizeof(struct kc_Counter), &mk_type_Any, NULL, kc_Counter_vt, 3, NULL, 0};
+static const MkTypeInfo kc_Counter_ti = {"Counter", sizeof(struct kc_Counter), &mk_type_Any, NULL, kc_Counter_vt, 3, NULL, 0, NULL};
 
 MKH_FN MkObject *kc_Counter_C_AI_new(MkInt a0) {
-    MkObject *o = mk_alloc(&kc_Counter_ti);
+    MkObject *o = mk_alloc_plain(&kc_Counter_ti);
     kc_Counter_C_AI(o, a0);
     return o;
 }
 
 /* fib */
-MkInt kt_fib_AI(MkInt v_n_0) {
+MKH_STATIC MkInt kt_fib_AI(MkInt v_n_0) {
     MkInt v_tmp_2 = 0;
     if (v_n_0 < 2) {
         v_tmp_2 = v_n_0;
@@ -38,22 +40,17 @@ void mkh_user_main(void) {
     MkObject * v_c_1 = NULL;
     v_c_1 = kc_Counter_C_AI_new(0);
     mk_println_int(kt_fib_AI(10));
-    mk_println_int(kc_Counter_Minc(v_c_1));
+    MkInt v_tmp_4 = (((struct kc_Counter *)v_c_1)->f_n);
+    ((struct kc_Counter *)(v_c_1))->f_n = (MkInt)((uint32_t)v_tmp_4 + (uint32_t)1);
+    MkInt v_tmp_2 = (((struct kc_Counter *)v_c_1)->f_n);
+    MKH_REL(v_c_1);
+    v_c_1 = NULL;
+    mk_println_int(v_tmp_2);
     MKH_REL(v_c_1);
 }
 
-/* Counter.<get-n> */
-MkInt kc_Counter_M_x003Cget_x002Dn_x003E(MkObject * v_this_0) {
-    return (((struct kc_Counter *)v_this_0)->f_n);
-}
-
-/* Counter.<set-n> */
-void kc_Counter_M_x003Cset_x002Dn_x003E_AI(MkObject * v_this_0, MkInt v__x003Cset_x002D_x003F_x003E_1) {
-    ((struct kc_Counter *)(v_this_0))->f_n = v__x003Cset_x002D_x003F_x003E_1;
-}
-
 /* Counter.inc */
-MkInt kc_Counter_Minc(MkObject * v_this_0) {
+MKH_STATIC MkInt kc_Counter_Minc(MkObject * v_this_0) {
     MkObject * v_tmp_2 = NULL;
     v_tmp_2 = v_this_0;
     MkInt v_tmp_1 = (((struct kc_Counter *)v_this_0)->f_n);
@@ -62,7 +59,7 @@ MkInt kc_Counter_Minc(MkObject * v_this_0) {
 }
 
 /* Counter.<init> */
-void kc_Counter_C_AI(MkObject * v_this_0, MkInt v_n_1) {
+MKH_STATIC void kc_Counter_C_AI(MkObject * v_this_0, MkInt v_n_1) {
     ((struct kc_Counter *)(v_this_0))->f_n = v_n_1;
 }
 
