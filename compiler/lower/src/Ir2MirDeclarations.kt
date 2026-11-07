@@ -355,9 +355,43 @@ internal fun Ir2Mir.instanceInitializer(s: IrInstanceInitializerCall, out: Mutab
     }
 }
 
+private fun isDefaultInit(e: IrExpression, t: MirType): Boolean {
+    if (e is IrConst) return isDefaultValue(e.value, t)
+    // `0.toByte()`, `0.toChar()`: a conversion of a zero constant
+    if (e is IrCall && e.arguments.size == 1) {
+        val a = e.arguments[0] as? IrConst ?: return false
+        val v = a.value
+        val zero = (v is Int && v == 0) || (v is Long && v == 0L) || (v is Double && v.toRawBits() == 0L)
+        if (!zero) return false
+        return when (e.callee.name) {
+            "toByte" -> t === TByte
+            "toShort" -> t === TShort
+            "toChar" -> t === TChar
+            "toInt" -> t === TInt
+            "toLong" -> t === TLong
+            "toFloat" -> t === TFloat
+            "toDouble" -> t === TDouble
+            else -> false
+        }
+    }
+    return false
+}
+
+private fun isDefaultValue(v: Any?, t: MirType): Boolean = when (v) {
+    null -> t === TString || t === TNString || t is TObject || t is TBoxed
+    is Int -> v == 0 && (t === TInt || t === TByte || t === TShort)
+    is Long -> v == 0L && t === TLong
+    is Boolean -> !v && t === TBoolean
+    is Double -> v.toRawBits() == 0L && (t === TDouble || t === TFloat)
+    is Char -> v.code == 0 && t === TChar
+    else -> false
+}
+
 internal fun Ir2Mir.initField(self: MirExpr, f: IrField, out: MutableList<MirStmt>) {
     val e = f.initializer?.expression ?: return
     val ft = mirType(f.type, f)
+    // an initializer that stores the default value is dropped (as on the JVM): a superclass constructor may have set the field already
+    if (isDefaultInit(e, ft)) return
     out += MirStmt.SetField(self, fieldOwner(f).cName, f.name, ft, bindValue(e, ft, out))
 }
 

@@ -291,9 +291,10 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
     val ret = mirType(fn.returnType, fn)
     val rt = e.refTarget
     var refKey: String? = null
-    if (rt != null && sam == null) {
+    if (rt != null) {
         val tid = refTargetIds.getOrPut(rt) { refTargetIds.size + 1 }
-        refKey = "L$tid:" + e.refShape + ":" + caps.size + (if (currentStrict) "s" else "")
+        // a reference converted to a fun interface (`id(::f)`): equal to another conversion of the same reference to the same interface
+        refKey = "L$tid:" + e.refShape + ":" + caps.size + (if (currentStrict) "s" else "") + (if (sam != null) "#" + info(sam.iface).cName else "")
         val shared = refClassCache[refKey]
         if (shared != null) return MirExpr.New(shared.first, caps.map { MirExpr.Local(localOf(it, e)) }, shared.second)
     }
@@ -418,6 +419,8 @@ internal fun Ir2Mir.invokeFunctionValue(c: IrCall, out: MutableList<MirStmt>): M
         out += MirStmt.Eval(call)
         return if (expected == TUnit) MirExpr.UnitValue else MirExpr.Unreachable(TNothing)
     }
+    // the argument of a generic parameter of an inline function (`takeT(f())` with `f: () -> Int` that holds null): the value stays boxed
+    if (c === rawInvokeResult) return tmpOf(call, out)
     return adaptResult(tmpOf(call, out), expected, c, out)
 }
 

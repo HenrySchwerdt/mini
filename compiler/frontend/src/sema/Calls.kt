@@ -984,6 +984,22 @@ fun mentionsTypeParams(t: Type, tps: List<TypeParamSym>): Boolean {
     }
 }
 
+private fun hasLowPriority(m: Modifiers?): Boolean {
+    if (m == null) return false
+    for (i in m.items) {
+        if (i !is AnnotationMod) continue
+        val t = i.annotation.type
+        if (t is UserType && t.segments.lastOrNull()?.name == "LowPriorityInOverloadResolution") return true
+    }
+    return false
+}
+
+private fun isLowPriority(f: FunSym): Boolean {
+    if (hasLowPriority(f.decl?.mods)) return true
+    if (f.secondary != null) return hasLowPriority(f.secondary!!.mods)
+    return f.isPrimary && hasLowPriority(f.owner?.decl?.primaryCtor?.mods)
+}
+
 fun BodyChecker.resolveCallGroups(
     node: Ast,
     groups: List<List<Candidate>>,
@@ -1000,7 +1016,9 @@ fun BodyChecker.resolveCallGroups(
             if (a != null) ok.add(a)
         }
         if (ok.isNotEmpty()) {
-            val pick = if (ok.size > 1) byLambdaResult(ok, args) else ok
+            // `@LowPriorityInOverloadResolution`: such a candidate only wins when it is the only applicable one
+            val ranked = if (ok.size > 1) ok.filter { !isLowPriority(it.cand.fn) }.ifEmpty { ok } else ok
+            val pick = if (ranked.size > 1) byLambdaResult(ranked, args) else ranked
             val best = chooseMostSpecific(pick, args)
             return completeCall(best, args, expected)
         }
@@ -1104,7 +1122,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     // result variables that the other arguments determine exactly (`getOrPut(k) { HashSet() }`) are known too
                     val rv = ArrayList<TypeVariable>()
                     cs.unfixedVars(cs.resolveFixed(expectedFun.ret), rv)
-                    for (v in rv) if (v.equal.isNotEmpty() || v.lower.isNotEmpty()) cs.fix(v)
+                    for (v in rv) if (v.equal.isNotEmpty() || v.lower.any { !ops.isNothing(it) }) cs.fix(v) // a lower bound of Nothing (the first lambda returns non-locally) determines nothing
                     val ef = cs.resolveFixed(expectedFun) as FunType
                     inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
                     pendingLabel = postponedLabel(e)

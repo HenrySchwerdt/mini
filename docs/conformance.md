@@ -645,6 +645,30 @@ Per category (first two path components; categories with at least one failure in
 | box/unit | 13 / 13 | 12 / 13 | 13 / 13 |
 | boxInline/argumentOrder | 10 / 12 | 12 / 12 | 12 / 12 |
 
+## Seventh round (b) (branch claude/conformance-7b): runtime-fail and crash
+
+Starting point: main after 6a + 6b, 5745 / 5953 (runtime-fail 42, crash 8). Regression tests: `compiler/testdata/conf7b_*.kt`.
+
+Fixed by cause:
+
+* sema: a lambda whose result is `Nothing` does not fix the result type variable (`doCall({ return x }, { y })`, non-local `return` through `finally`).
+* `Number` members on a primitive-substituted reified receiver box it first (`k42000_1`); casts `as` / `as?` `Unit`, `as (T & Any)`;
+  a `when` subject smart-cast to `Float` / `Double` by a failed branch.
+* special bridges (`contains`, `indexOf`, `remove`, `get` ...): an argument the override cannot take answers `false` / `-1` / `null`.
+* inner classes of unboxed value classes keep the `$outer` field unboxed (`kt27705`, `kt27706`); inner classes of local classes read the captured variables of the outer instance.
+* file-level initialisers: only the file of `main` runs before it; a function of a file whose initialisers run program code starts it.
+  Field initializers that only store the default value are dropped.
+* fake-override inline members with reified type parameters are expanded from the real function; the delegate of an object literal is checked in the scope around it;
+  `@LowPriorityInOverloadResolution` candidates only win alone; a callable reference converted to a fun interface shares the equals class of the reference.
+* a member `fun f(s: String)` next to an extension `fun String.f()` (same erased signature) get distinct symbols (`captureExtensionReceiver`, was a crash).
+* harness: a test that declares `fun main()` as a helper is renamed so that it does not become the entry.
+
+Result: before this round (6a+6b main) 5745, 7b alone 5778 (runtime-fail 42 -> 21, crash 8 -> 0); merged with 7a (main 5808): **5838 of 5953 (98.07%)** (compile-error 74, ice 15, runtime-fail 23, crash 1, timeout 2), compared test by test with main: no test that passed there fails.
+
+Still open (runtime-fail): `failInInitializer1/2` (exception inside a lazily started file initialiser must become `ExceptionInInitializerError`), boxed identity of small ints / constant
+strings (`static_smallIntIdentity`, `stringTrim`), equality of adapted references with defaults, `nothingValueException`, `inheritFromAbstractMutableListInt`,
+suspend `releaseIntercepted` / `unitSafeCall` / `suspendFunctionIsAs`, context-receiver overloads, `functionsDifferInTypeParameterBounds2`, `ieee754` smart casts with numeric promotion.
+
 ## Seventh round (a) (branch claude/conformance-7a)
 
 Targets: the `compile-error` / `ice` buckets left by round 6a (frontend and lowering fixes). `results.json` / `summary.md` come from a full harness run on the tree merged with origin/main (6a + 6b + stub cache), followed by a `--retest` of everything that did not pass, after fixing the two regressions the full run found (a backticked `` `_` `` destructuring entry is a variable, the plain `_` is not: `DestructEntry.quoted`). Compared test by test with the main results: no test that passed there fails now, 63 more pass.

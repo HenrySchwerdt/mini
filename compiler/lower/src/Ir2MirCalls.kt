@@ -60,7 +60,7 @@ internal fun Ir2Mir.callArgs(
             var cur: MirLocal = lv.local
             while (k != null && k.isInner) {
                 val oc = k.parent as? IrClass ?: break
-                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                val l = MirLocal(localCounter++, "outer", outerType(oc))
                 out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
                 val ot = oc.thisReceiver
                 if (ot != null) { saved += ot to locals[ot]; locals[ot] = l }
@@ -145,6 +145,11 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     if (isFunctionInvoke(owner)) return invokeFunctionValue(c, out)
     // inline functions with a body (user code, or stdlib code compiled from source) are expanded in place
     if (owner.isInline && owner.body != null && (functionNames[owner] != null || parent !is IrClass)) return inlineCall(c, owner, out)
+    // an inline member inherited through a fake override (`B().baz<T>()` where `A` declares `inline fun <reified T> baz()`): expand the real one
+    if (owner.isInline && owner.isFakeOverride && owner.body == null) {
+        val real = resolveFake(owner)
+        if (real !== owner && real.isInline && real.body != null && functionNames[real] != null && real.typeParameters.any { it.reified }) return inlineCall(c, real, out)
+    }
 
     // lambda-lifted local function
     liftedFns[owner]?.let { l ->
@@ -180,7 +185,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
             else -> null
         }
         if (kind != null) {
-            val recv = operands(listOf(c.arguments[0]!!), out)[0]
+            // a receiver of type T (reified, substituted by Long in an inline expansion) is a primitive here
+            val recv = boxIfPrim(operands(listOf(c.arguments[0]!!), out)[0], c, out)
             return MirExpr.RuntimeCall("mk_checked_number_to_" + kind.displayName.lowercase(), listOf(asAny(recv)), kind)
         }
     }
