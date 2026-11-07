@@ -39,7 +39,7 @@ internal fun Ir2Mir.operands(args: List<IrExpression>, out: MutableList<MirStmt>
                 val r = results[j]
                 if (r is MirExpr.IntConst || r is MirExpr.LongConst || r is MirExpr.DoubleConst ||
                     r is MirExpr.BooleanConst || r is MirExpr.CharConst || r is MirExpr.StringConst ||
-                    r is MirExpr.NullConst
+                    r is MirExpr.NullConst || r.type == TUnit || r.type == TNothing
                 ) continue
                 val t = newTemp(r.type)
                 out.add(insertAt++, MirStmt.Declare(t, r))
@@ -195,6 +195,8 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             var v = value(e.argument, out)
             val target = mirType(e.type, e)
             val safe = e.operator == IrTypeOperator.SAFE_CAST
+            // `throw ... as String`, `return x as T`: the operand never completes (a `Nothing` placeholder has no C value)
+            if (v is MirExpr.Unreachable && v.type == TNothing) return MirExpr.Unreachable(target)
             // `x as Unit` / `x as? Unit` written with the class itself: the value must be the Unit object
             if (e.typeOperand !is TypeParamType && e.typeOperand.classFqName == "kotlin.Unit" && v.type != TUnit && v.type != TNothing) {
                 val av = if (v.type.isPrimitive) coerceOperand(v, anyNullable, e, out) else v

@@ -134,6 +134,7 @@ class Ir2Mir {
         }
         // local and anonymous classes (declared inside function bodies)
         val localCounts = HashMap<String, Int>()
+        val localNames = HashSet<String>()
         for (lc in closure.localClasses) {
             if (lc.file.isLib) continue
             setFile(lc.file)
@@ -141,7 +142,13 @@ class Ir2Mir {
             localCounts[lc.enclosing] = n
             val nm = lc.cls.name.let { if (it.startsWith("<")) "" + n else it }
             val pkg = lc.file.packageFqName
-            collectClass(lc.cls, pkg, listOf(lc.enclosing + "$" + nm), lc.file)
+            // two local classes of one name in one function (or enum entry bodies of the same name in two enums) must not share a C name
+            var full = lc.enclosing + "$" + nm
+            if (!localNames.add(pkg + "/" + full)) {
+                full = lc.enclosing + "$" + n + "$" + nm
+                localNames.add(pkg + "/" + full)
+            }
+            collectClass(lc.cls, pkg, listOf(full), lc.file)
         }
         // pass 2: names of all functions
         for ((file, f) in tops) {

@@ -714,6 +714,24 @@ fun BodyChecker.invalidate(target: Expr) {
     }
 }
 
+/** `a[i] = v`: the type of the value parameter of the only member `set` of [recvT] that takes [n] arguments (null when unclear) */
+fun BodyChecker.setValueExpectation(recvT: Type, n: Int): Type? {
+    var found: Type? = null
+    var count = 0
+    for (m in members.funsNamed(recvT, "set")) {
+        val fn = m.fn
+        if (fn.decl?.receiver != null) continue
+        sema.ensureSig(fn)
+        if (fn.params.size != n) continue
+        if (fn.typeParams.isNotEmpty()) return null
+        val pt = fn.params[n - 1].type ?: return null
+        found = ops.substitute(pt, m.subst)
+        count++
+    }
+    val f = found
+    return if (count == 1 && f != null && f !is ErrType) f else null
+}
+
 fun BodyChecker.assign(e: BinaryExpr): Type {
     val l = AstWalk.unparen(e.left)
     if (l is IndexExpr) {
@@ -721,7 +739,7 @@ fun BodyChecker.assign(e: BinaryExpr): Type {
         val idx = ArrayList<Type>()
         for (i in l.indices) idx.add(expr(i, null))
         val post = isPostponedExpr(e.right)
-        val vt = if (post) sema.nullableAny else expr(e.right, null)
+        val vt = if (post) sema.nullableAny else expr(e.right, setValueExpectation(recvT, idx.size + 1))
         val all = ArrayList<Type>()
         all.addAll(idx)
         all.add(vt)

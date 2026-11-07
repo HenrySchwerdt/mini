@@ -132,6 +132,11 @@ internal fun Ir2Mir.arrayMember(c: IrCall, name: String, kind: ArrayKind, out: M
 internal fun Ir2Mir.arrayConstructor(c: IrConstructorCall, kind: ArrayKind, out: MutableList<MirStmt>): MirExpr {
     val args = c.arguments.map { it ?: unsupported(c, "omitted argument") }
     val size = operands(listOf(args[0]), out)[0]
+    // `Array(n, return x)`: the initializer never completes, the array is never made
+    if (args.size == 2 && args[1].type.classFqName == "kotlin.Nothing") {
+        stmt(args[1], out)
+        return MirExpr.Unreachable(mirType(c.type, c))
+    }
     val arr = tmpOf(if (kind.elem == null) newObjectArray(size, createdArrayType(mirType(c.type, c))) else MirExpr.RuntimeCall("mk_array_new_${kind.suffix}", listOf(size), arrayType(kind)), out)
     if (args.size == 2) fillWith(kind, arr, args[1], c, out)
     return arr

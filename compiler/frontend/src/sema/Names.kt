@@ -207,7 +207,14 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
 }
 
 fun BodyChecker.nameExpr(e: NameExpr, expected: Type?): Type {
-    val r = resolveSimpleName(e.name)
+    var r = resolveSimpleName(e.name)
+    // a class that is no value (no object, no companion) used as an expression yields to a lower-priority one of the same name
+    // (`C` of a star import behind a private enum `C` of the file)
+    val rc = r?.classifier
+    if (r != null && r.kind == NameRes.CLASS && rc != null && !rc.isObject && rc.companion == null) {
+        val alt = sema.lookupClassifier(scope, e.name, true)
+        if (alt is ClassSym && alt !== rc && (alt.isObject || alt.companion != null)) r = valueOfClass(alt)
+    }
     if (r == null) {
         err(e.start, "unresolved reference '" + e.name + "'")
         return ErrType("unresolved " + e.name)
@@ -441,6 +448,15 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
             return res.type
         }
         is PkgRecv -> {
+            // `a.x`: a top-level property of the package `a`
+            val pl = sema.packages[recv.name]?.props?.get(name)
+            if (pl != null) for (x in pl) {
+                if (x.decl?.receiver == null) {
+                    val tp = sema.typeOfProp(x)
+                    record(node, tp, x)
+                    return tp
+                }
+            }
             err(sel.start, "unresolved reference '" + name + "'")
             return ErrType("pkg")
         }
@@ -630,7 +646,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
                 inf.isInvoke = true
                 inf.recvAsFirstArg = true
                 val s0 = vr?.sym
-                if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) inf.invokeProp = s0
+                if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) { inf.invokeProp = s0; inf.invokePropRef = vr?.dispatch }
                 inf.dispatch = RecvUse(recv.expr, recv.safe, null, recv.type)
             }
         }
@@ -654,7 +670,7 @@ fun BodyChecker.callExpr(e: CallExpr, recv: RecvInfo?, expected: Type?, node: As
                     inf.isInvoke = true
                     inf.recvAsFirstArg = true
                     val s0 = vr?.sym
-                    if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) inf.invokeProp = s0
+                    if (s0 is VarSym) inf.invokeVar = s0 else if (s0 is PropSym) { inf.invokeProp = s0; inf.invokePropRef = vr?.dispatch }
                     inf.dispatch = RecvUse(null, false, r.ref, null)
                 }
                 if (res != null) break
