@@ -89,13 +89,13 @@ private open class ScopeCoroutine<T>(parentContext: CoroutineContext, private va
     protected open fun finalCause(cause: Throwable): Throwable = cause
 }
 
-public suspend fun <T> coroutineScope(block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
+public suspend fun <T> coroutineScope(@mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
     val c = ScopeCoroutine<T>(cont.context, cont)
     block.startCoroutine(c, c)
 }
 
 /** Like [coroutineScope], but a failing child does not cancel the scope or the other children. */
-public suspend fun <T> supervisorScope(block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
+public suspend fun <T> supervisorScope(@mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
     val c = SupervisorScopeCoroutine<T>(cont.context, cont)
     block.startCoroutine(c, c)
 }
@@ -161,14 +161,14 @@ private class TimeoutCoroutine<T>(parentContext: CoroutineContext, caller: Conti
 }
 
 /** Runs [block]; when it takes longer than [millis] milliseconds it is cancelled and a [TimeoutCancellationException] is thrown. */
-public suspend fun <T> withTimeout(millis: Long, block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
+public suspend fun <T> withTimeout(millis: Long, @mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
     val c = TimeoutCoroutine<T>(cont.context, cont, millis)
     val d = dispatcherOf(cont.context) ?: Dispatchers.Unconfined as CoroutineDispatcher
     c.arm(d)
     block.startCoroutine(c, c)
 }
 
-public suspend fun <T> withTimeoutOrNull(millis: Long, block: suspend CoroutineScope.() -> T): T? {
+public suspend fun <T> withTimeoutOrNull(millis: Long, @mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T? {
     try {
         return withTimeout(millis, block)
     } catch (e: TimeoutCancellationException) {

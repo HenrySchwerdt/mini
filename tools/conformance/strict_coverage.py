@@ -36,7 +36,8 @@ RULES = [
     ('M0106', None, 'a', 'individual free of a Scoped object'),
     ('M0107', None, 'a', 'release of a non-owned value'),
     ('M0108', None, 'a', 'wrong allocator when freeing'),
-    ('M0109', None, 'b', 'loan stored or returned as owned (missing @Owned / loan inference)'),
+    ('M0109', r'closure', 'b', 'closure over a loan is stored or returned'),
+    ('M0109', None, 'a', 'loan stored or returned as owned (needs @Owned or @Borrowed, spec 4.2)'),
     ('M0110', None, 'b', 'Strict value handed to Managed code that keeps it'),
     ('M0111', None, 'b', 'invalid ownership annotation'),
     ('M0112', None, 'b', 'owning value in escaping lambda'),
@@ -96,13 +97,13 @@ def classify(rc, diags, err):
         return 'other', 'x', 'frontend error in Strict only: ' + norm(other[0].get('message') or '')
     if not codes:
         return 'ice', 'c', 'failure without diagnostic'
-    # the first diagnostic decides the cause; a program with a (b) diagnostic anywhere counts as (b): fixing it is what is missing
+    # a program with a correct (a) rejection must change anyway, so the (a) diagnostic decides; (b) only when every diagnostic is a limitation
     best = None
     for d in codes:
         for code, rx, cls, cause in RULES:
-            if d['code'] == code and (rx is None or re.search(rx, d.get('message') or '')):
+            if d['code'] == code and (rx is None or re.search(rx, d.get('message') or '') or re.search(rx, d.get('label') or '')):
                 cand = (cls, cause, d)
-                if best is None or (cls == 'b' and best[0] == 'a'):
+                if best is None or (cls == 'a' and best[0] == 'b'):
                     best = cand
                 break
     if best is None:
