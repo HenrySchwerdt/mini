@@ -51,6 +51,18 @@ class Members(private val sema: Sema) {
             sb.append(',')
         }
         sb.append(')')
+        // overloads that differ only in the bounds of their type parameters (`<T : A>` and `<T : B>`) are different functions
+        for (tp in f.typeParams) {
+            sema.ensureBounds(tp)
+            val bs = tp.bounds.filter { !(it is ClassType && it.cls === sema.anyType.cls && it.nullable) }
+            if (bs.isEmpty()) { sb.append('|'); continue }
+            sb.append('<')
+            val rs = ArrayList<String>()
+            for (b in bs) rs.add(renderType(sema.ops.substitute(b, m)))
+            rs.sort()
+            for (r in rs) sb.append(r).append('&')
+            sb.append('>')
+        }
         return sb.toString()
     }
 
@@ -179,6 +191,16 @@ class Members(private val sema: Sema) {
                 if (prev != null) {
                     // a function inherited from a class and the same signature with default values from an interface (`class C : I, Impl()`): the defaults are visible
                     if (f.kind == FunKind.NORMAL && site.cls.isInterface && !hasParamDefaults(out[prev].fn) && hasParamDefaults(f)) out[prev] = MemberFun(f, m, site)
+                    else {
+                        // the same member of two unrelated bounds (`T : A, T : B` with `A.foo(): Any?` and `B.foo(): String`): the one with the more specific result type
+                        val pm = out[prev]
+                        val ps = pm.site
+                        if (ps != null && pm.fn !== f && !sema.ops.isSubtype(ps, site) && !sema.ops.isSubtype(site, ps)) {
+                            val pr = sema.ops.substitute(sema.returnTypeOf(pm.fn), pm.subst)
+                            val nr = sema.ops.substitute(sema.returnTypeOf(f), m)
+                            if (sema.ops.isSubtype(nr, pr) && !sema.ops.isSubtype(pr, nr)) out[prev] = MemberFun(f, m, site)
+                        }
+                    }
                     continue
                 }
                 keys[k] = out.size

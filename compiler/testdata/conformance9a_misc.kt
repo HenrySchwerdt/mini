@@ -3,6 +3,8 @@
 // call with T = Unit, `x is SuspendFunction0<*>` tells suspend lambdas and references from plain function objects, a fun interface whose
 // abstract method is `toString`, a companion's extension referenced through an implicit receiver, the same inline function expanded
 // inside its own lambda argument, unsigned array `sumOf`, `.name` of a function reference held in a value, context overloads.
+import kotlin.coroutines.*
+
 class Box<T>(val v: T)
 
 inline fun <T, R> Box<T>.transform(crossinline transform: Box<R>.(value: T) -> Unit): String = "extension"
@@ -92,6 +94,12 @@ fun refName(): String {
 
 class Scope(val name: String)
 
+// (a second implementation of Continuation: with BaseContinuation alone, `completion.context` devirtualizes to itself)
+class Plain : Continuation<Unit> {
+    override val context: CoroutineContext = EmptyCoroutineContext
+    override fun resumeWith(result: Result<Unit>) {}
+}
+
 class Ctx {
     fun foo(): String = "plain"
 
@@ -128,4 +136,5 @@ fun main() {
     val scope = Scope("s")
     val c = Ctx()
     println(c.foo() + " " + with(scope) { c.foo() })
+    println(Plain().context === EmptyCoroutineContext)
 }

@@ -856,6 +856,24 @@ fun BodyChecker.contextsInScope(f: FunSym): Boolean {
     return true
 }
 
+/** [a] has the same number of type parameters as [b] and its upper bounds are subtypes of the bounds of [b] at every position, strictly at one */
+fun BodyChecker.tpBoundsTighter(a: Attempt, b: Attempt): Boolean {
+    if (a.tps.size != b.tps.size) return false
+    var strict = false
+    var k = 0
+    while (k < a.tps.size) {
+        sema.ensureBounds(a.tps[k])
+        sema.ensureBounds(b.tps[k])
+        val ba = a.tps[k].bounds
+        val bb = b.tps[k].bounds
+        // every bound of b must be implied by one of a
+        for (x in bb) if (!ba.any { y -> ops.isSubtype(y, x) }) return false
+        if (ba.size > bb.size || ba.any { y -> bb.none { x -> ops.isSubtype(y, x) && ops.isSubtype(x, y) } }) strict = true
+        k++
+    }
+    return strict
+}
+
 fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt {
     if (ok.size == 1) return ok[0]
     val maximal = ArrayList<Attempt>()
@@ -876,6 +894,11 @@ fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt 
         val withCtx = pool.filter { it.cand.fn.decl?.mods?.contextParams?.isNotEmpty() == true && contextsInScope(it.cand.fn) }
         val without = pool.filter { it.cand.fn.decl?.mods?.contextParams?.isNotEmpty() != true }
         if (withCtx.isNotEmpty()) pool = withCtx else if (without.isNotEmpty()) pool = without
+    }
+    if (pool.size > 1 && pool.all { it.tps.isNotEmpty() }) {
+        // overloads that differ only in the bounds of their type parameters (`<T1, T2 : B>` over `<T1, T2>`): the one with the tighter bounds
+        val tight = pool.filter { a -> pool.all { b -> a === b || tpBoundsTighter(a, b) } }
+        if (tight.size == 1) return tight[0]
     }
     if (pool.size > 1) {
         // non-generic over generic
@@ -1186,6 +1209,15 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
             }
             if (u is LambdaExpr) {
                 if (expectedFun != null) {
+                    // the declared parameter types of the lambda bound the type variables of the expected ones (`foldl(0) { e: Int, acc: Long -> acc + e }`: A <: Long)
+                    if (u.params.isNotEmpty() && u.params.size == expectedFun.params.size) {
+                        var pk = 0
+                        for (lp in u.params) {
+                            val dty = lp.type
+                            if (dty != null && lp.names == null) cs.addSub(expectedFun.params[pk], sema.resolveType(dty, scope))
+                            pk++
+                        }
+                    }
                     cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
                     // result variables that the other arguments determine exactly (`getOrPut(k) { HashSet() }`) are known too
                     val rv = ArrayList<TypeVariable>()
