@@ -7,6 +7,7 @@ class InlinerStats {
     var functions = 0
     var exactDevirt = 0
     var scalarReplaced = 0
+    var arraysReplaced = 0
     var tExact = 0L
     var tExpand = 0L
     var tClean = 0L
@@ -43,6 +44,7 @@ object Inliner {
         st.doInline = options.on("inline")
         st.doSroa = options.on("sroa")
         st.doExact = options.on("exact-devirt")
+        st.doArraySroa = options.on("array-sroa")
         for (f in module.functions) st.visit(f.cName)
         val fs = ArrayList<MirFunction>(module.functions.size)
         for (f in module.functions) fs.add(st.done[f.cName] ?: f)
@@ -65,6 +67,7 @@ internal class InlineState(val module: MirModule, val stats: InlinerStats) {
     var doInline = true
     var doSroa = true
     var doExact = true
+    var doArraySroa = true
 
     init {
         for (f in module.functions) byName[f.cName] = f
@@ -88,6 +91,13 @@ internal class InlineState(val module: MirModule, val stats: InlinerStats) {
                 round++
                 var progress = false
                 val t0 = nanoTime()
+                if (doSroa && doArraySroa && round == 1 && ArraySroa.worthTrying(cur)) {
+                    val ar = ArraySroa(this, cur).run()
+                    if (ar != null) {
+                        cur = cur.withBody(Cleanup.run(ar, cur))
+                        progress = true
+                    }
+                }
                 val hs = HotScan()
                 hs.walk(cur.body)
                 val withNew = hs.hasNew
@@ -187,6 +197,7 @@ internal class CallCollector : MirVisitor() {
     val names = LinkedHashSet<String>()
     override fun visit(e: MirExpr) {
         if (e is MirExpr.Call) names.add(e.cName)
+        if (e is MirExpr.New) names.add(e.ctorCName)   // the constructor is inlined at the allocation site (scalar replacement)
     }
 }
 

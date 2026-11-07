@@ -37,16 +37,13 @@ MKH_STATIC MkInt kt_fib_AI(MkInt v_n_0) {
 
 /* main */
 void mkh_user_main(void) {
-    MkObject * v_c_1 = NULL;
-    v_c_1 = kc_Counter_C_AI_new(0);
+    MkInt v_n_5 = 0;
+    v_n_5 = 0;
     mk_println_int(kt_fib_AI(10));
-    MkInt v_tmp_4 = (((struct kc_Counter *)v_c_1)->f_n);
-    ((struct kc_Counter *)(v_c_1))->f_n = (MkInt)((uint32_t)v_tmp_4 + (uint32_t)1);
-    MkInt v_tmp_2 = (((struct kc_Counter *)v_c_1)->f_n);
-    MKH_REL(v_c_1);
-    v_c_1 = NULL;
+    MkInt v_tmp_4 = v_n_5;
+    v_n_5 = (MkInt)((uint32_t)v_tmp_4 + (uint32_t)1);
+    MkInt v_tmp_2 = v_n_5;
     mk_println_int(v_tmp_2);
-    MKH_REL(v_c_1);
 }
 
 /* Counter.inc */

@@ -119,7 +119,7 @@ Examples:
 
 Exit status: 0 success, 1 compile error, 2 usage error, 3 internal compiler error.
 Build backend: LLVM C API by default in API releases; use --backend=c for the C-emitter fallback.
-Environment: CC (system C compiler/linker, default: cc, clang or gcc), MINI_HOME (default: the directory above bin/),
+Environment: CC (system C compiler/linker, default: clang, cc or gcc), MINI_HOME (default: the directory above bin/),
              NO_COLOR (disable colors), TMPDIR.
 Documentation: $DOCS_URL
 EOF
@@ -138,7 +138,7 @@ Options:
     -g, --debug             use -O0; only the C fallback adds native debug symbols
     --emit-c <out.c>        keep the generated C file there
     --backend <name>        llvm-api (default for API releases) or c
-    --cc <compiler>         C compiler (default: \$CC, then cc, clang, gcc)
+    --cc <compiler>         C compiler (default: \$CC, then clang, cc, gcc)
     --backend <name>        llvm-api (default for API releases) or c
     -Werror                 memory-checker warnings fail the build
     --no-rc-opt             skip the reference-count optimization pass
@@ -160,7 +160,7 @@ Builds the program into a temporary directory, runs it and removes it. The exit 
 Options:
     -O0 -O1 -O2 -O3         optimization level (default -O1: shorter build, the program is usually short-lived)
     -g, --debug             use -O0; only the C fallback adds native debug symbols
-    --cc <compiler>         C compiler (default: \$CC, then cc, clang, gcc)
+    --cc <compiler>         C compiler (default: \$CC, then clang, cc, gcc)
     -Werror                 memory-checker warnings fail the build
     --no-rc-opt             skip the reference-count optimization pass
     -v, --verbose           print the commands that are run
@@ -528,11 +528,11 @@ find_cc() {
         first_word="${cc%% *}"
         if ! command -v "$first_word" >/dev/null 2>&1; then
             die "the C compiler '$first_word' (from $src) was not found" \
-                "check the spelling, or install it; leave CC unset to let minic pick cc, clang or gcc"
+                "check the spelling, or install it; leave CC unset to let minic pick clang, cc or gcc"
         fi
         return
     fi
-    for c in cc clang gcc; do
+    for c in clang cc gcc; do
         if command -v "$c" >/dev/null 2>&1; then cc="$c"; return; fi
     done
     case "$(uname -s)" in
@@ -545,7 +545,7 @@ find_cc() {
             else how="install clang or gcc with your package manager"
             fi ;;
     esac
-    die "no C compiler found (looked for cc, clang and gcc)" \
+    die "no C compiler found (looked for clang, cc and gcc)" \
         "minic translates Kotlin to C and needs a C compiler to produce the executable." \
         "install one:  $how" \
         "or point minic at yours:  CC=/path/to/compiler minic $cmd ...   (or --cc <compiler>)"
@@ -596,6 +596,10 @@ frontend build "$cfile"
 # -fno-math-errno: Kotlin has no errno, and the math builtins (sqrt) then compile to the instruction alone
 cflags="-std=c17 $opt -w -fno-math-errno $size_cflags"
 if [ "$debug" = 1 ]; then cflags="$cflags -g -fno-omit-frame-pointer"; fi
+# gcc only: partial redundancy elimination stretches the live ranges of the fully scalarized code (array scalar replacement, e.g. the
+# bench/nbody advance loop) until the register allocator spills most of it: 2x slower; without it gcc is as fast as before (and faster
+# on wordcount); clang does not have the problem
+if [ "$opt" != "-O0" ] && [ "$debug" = 0 ] && $cc -v 2>&1 | grep -q "^gcc version"; then cflags="$cflags -fno-tree-pre"; fi
 
 # libraries asked for by @file:CLink("name") travel in the generated C as `mini:link name`
 libs="$(sed -n 's|^/\* mini:link \(.*\) \*/$|-l\1|p' "$cfile" | tr '\n' ' ')"
