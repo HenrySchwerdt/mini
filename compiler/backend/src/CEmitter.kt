@@ -1126,7 +1126,7 @@ object CEmitter {
             "${cType(ret)} (*)(${(listOf("MkObject *") + params.map { cType(it) }).joinToString(", ")})"
 
         /** A class of the program that is not in the module: it was pruned because nothing creates it (a value class that is never boxed), no object has its type info. */
-        fun prunedClass(t: MirType): Boolean = t is TObject && t.cName.startsWith("kc_") && classes[t.cName] == null
+        fun prunedClass(t: MirType): Boolean = t is TObject && t.cName.startsWith("kc_") && (classes[t.cName]?.external ?: true)
 
         fun cast(e: MirExpr.Cast): String {
             val to = e.to

@@ -1384,12 +1384,12 @@ without such a parameter) records `Any?`. It enters an `Array<C>` type only at a
 element type is a checked cast (`mk_array_cast` / `mk_array_is`, also `is`, `as?`, smart casts, erased generic results and fields):
 `ClassCastException` unless the tags are equal (or, for `out`, the recorded type is a subtype). So `arrayOf<Any>(1) as Array<String>` fails at the
 cast like on the JVM, and `fun <T> mk(): Array<T> = arrayOfNulls<Any?>(1) as Array<T>` fails where its caller reads the result as `Array<String>`.
+Like the JVM, nullability is not part of the class of an array: `arrayOfNulls<String>(n) as Array<String>` and `Array<String> as Array<String?>` pass (a `null` passes every erased cast, as in `checkcast`; the check of the element type is the only one made). The JVM then throws a `NullPointerException` where the `null` is dereferenced (`a[0].length`); here that dereference of a non-null typed `String` is not checked and reads as the empty string (known gap, the same for `listOf<String?>(null) as List<String>` and `l[0].length`).
 An *empty* array passes every array cast (nothing can be read from or stored into it, so no element can be confused; the frontend infers `arrayOf()` without an expected type as `Array<Any?>`). `CastElim` removes the cast when the operand type already proves it (`Array<String>` to `Array<out Any>`, to `Array<T>`).
 
 **Deliberate differences from the JVM** (all are failures of a cast the JVM would let through and fail later, or not at all):
 `arrayOf(Sq(1)) as Array<Shape>` is a `ClassCastException` (it would allow a store of a `Circle` into a `Sq` array; the JVM throws at that store);
-`arrayOfNulls<String>(n) as Array<String>` is a `ClassCastException` (the nullability is part of the element tag, so a read of an
-`Array<String>` never meets `null`; use `Array<String>(n) { "" }`, or `requireNoNulls()` on a list). Stores through a generic view fail
+Stores through a generic view fail
 with `ClassCastException` instead of `ArrayStoreException`. Test: `array_reified`.
 
 ### Cost of the checks

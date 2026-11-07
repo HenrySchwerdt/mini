@@ -2095,7 +2095,7 @@ private class Lowering<V : Any, B : Any>(
             return b.select(c, o, b.constNull())
         }
         externTypeInfo(to)
-        val mode = if (e.mode == MirExpr.CastMode.Checked && to is TObject && to.cName.startsWith("kc_") && classes[to.cName] == null) MirExpr.CastMode.Unchecked else e.mode // (a class that was pruned: nothing creates it)
+        val mode = if (e.mode == MirExpr.CastMode.Checked && to is TObject && to.cName.startsWith("kc_") && (classes[to.cName]?.external ?: true)) MirExpr.CastMode.Unchecked else e.mode // (a class that was pruned: nothing creates it)
         return when (mode) {
             MirExpr.CastMode.Unchecked -> o
             MirExpr.CastMode.Checked -> {
