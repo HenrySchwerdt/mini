@@ -252,7 +252,7 @@ internal fun Ir2Mir.varargValue(e: IrVararg, out: MutableList<MirStmt>): MirExpr
     val t = mirType(e.type, e)
     // `vararg us: UInt` is a UIntArray: a value class over the array of the underlying type
     unsignedArrayClass(t)?.let { (info, ctor, rk) ->
-        val storage = varargArray(e, rk, out)
+        val storage = varargArray(e, rk, null, out)
         return tmpOf(MirExpr.New(functionNames[ctor]!!, listOf(storage), t as TObject), out)
     }
     val kind = arrayKindOf(t) ?: unsupported(e, "vararg of type $t")
