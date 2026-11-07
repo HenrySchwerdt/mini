@@ -20,7 +20,7 @@
 | **native-parity applicable** | **5953** |
 | **native-parity pass** | **5868 (98.57%)** |
 
-Wall time: 1939s.
+Wall time: 2245s.
 
 ## Skips
 
@@ -48,10 +48,10 @@ Wall time: 1939s.
 | 2 | compile-error | `unresolved callable reference '_'` | box/coroutines/suspendFunctionMethodReference.kt |
 | 1 | compile-error | `unresolved type '_'` | box/annotations/nestedClassesInAnnotations.kt |
 | 1 | timeout | `compile timeout` | box/arrays/primitiveArrays.kt |
-| 1 | runtime-fail | `box() returned: FAIL 1: kotlin.Any@450fa12d` | box/basics/unchecked_cast10.kt |
+| 1 | runtime-fail | `box() returned: FAIL 1: kotlin.Any@34d43a2d` | box/basics/unchecked_cast10.kt |
 | 1 | runtime-fail | `box() returned: OKOK` | box/binaryOp/eqNullableToPrimitiveWithSideEffects.kt |
 | 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: call without resolution (in function testTypeInfoOriginInsideLocalClass)` | box/builderInference/oneParameter/oneTypeVariable/oneTypeInfoOrigin/targetTypes/GenericLocalClassWithLeakingTypeParameter.kt |
-| 1 | runtime-fail | `Exception in thread "_" java.lang.Exception: ks1 == ks2 (same file, same SAM type): equals: <get-ks3>.<lambda>$N@fa07d32e != <get-ks3>.<lambda>$N@fa07d32f` | box/callableReference/funInterfaceConstructor/funInterfaceConstructorEquality.kt |
+| 1 | runtime-fail | `Exception in thread "_" java.lang.Exception: ks1 == ks2 (same file, same SAM type): equals: <get-ks3>.<lambda>$N@dc88ac2e != <get-ks3>.<lambda>$N@dc88ac2f` | box/callableReference/funInterfaceConstructor/funInterfaceConstructorEquality.kt |
 | 1 | compile-error | `0_test.kt: error: unsupported construct: type '_'` | box/callableReference/property/enumNameOrdinal.kt |
 | 1 | compile-error | `0_test.kt:N:N: error: unsupported construct: main function with unsupported parameters (only `_` and `_`)` | box/casts/kt53677.kt |
 | 1 | runtime-fail | `Exception in thread "_" java.lang.ClassCastException: class kotlin.Long cannot be cast to class kotlin.Int` | box/casts/objectToPrimitiveWithAssertion.kt |
