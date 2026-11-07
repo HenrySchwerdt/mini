@@ -273,7 +273,7 @@ class Lexer(private val src: String) {
                 // multi-dollar interpolation: `$$"..."` / `$$$"""..."""`
                 var k = 0
                 while (at(pos + k) == '$') k++
-                if (k >= 2 && at(pos + k) == '"') {
+                if (k >= 1 && at(pos + k) == '"') {
                     val rawStr = at(pos + k + 1) == '"' && at(pos + k + 2) == '"'
                     pos += k + (if (rawStr) 3 else 1)
                     emit(Tk.OPEN_QUOTE, s, pos)

@@ -1,7 +1,8 @@
 // Conformance round 8 (b): `while (break)` and `throw ... as T` (Nothing operands), `recv.prop(args)` where the property of
 // function type with receiver comes from an implicit receiver, a Unit value before an argument with side statements,
 // expected types for nested generic calls (`val l: List<Box<Any?>> = listOf(Box(0))`, `a[i] = Box(2)`), `A::member` of the
-// companion object, a lambda for an `in`-projected fun interface, same-named entry bodies of two enums.
+// companion object, a lambda for an `in`-projected fun interface, same-named entry bodies of two enums, `Array(n, return x)`,
+// `::Z` of a value class, an extension property named like a member, `pkg.property`, `$"..."` (one-dollar prefix).
 class Box<T>(val h: T)
 
 val boxes: ArrayList<Box<Any?>> = arrayListOf(Box(0))
@@ -81,6 +82,23 @@ enum class E2 {
     open fun f() = "E2"
 }
 
+@JvmInline
+value class Z(val x: Int)
+
+class Chars : CharSequence {
+    private val List<String>.length: Int
+        get() = size
+    override val length: Int
+        get() = 2
+    override fun get(index: Int): Char = if (index == 0) 'O' else 'K'
+    override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = this
+}
+
+fun arrayReturn(): String {
+    val test: Array<Int> = Array(42, return "returned")
+    return "not reached"
+}
+
 fun main() {
     println(breakInCondition())
     println(castOfThrow())
@@ -97,4 +115,9 @@ fun main() {
     test(c)
     println(c.last!!.invoke())
     println(E1.Y.f() + " " + E2.Y.f() + " " + E1.X.f() + " " + E2.X.f())
+    println(arrayReturn())
+    println(42.let(::Z).x)
+    println(Chars().length)
+    println(kotlin.math.E > 2.0)
+    println($"dollar ${h.foo(1)}")
 }

@@ -691,6 +691,11 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
             }
             return false
         }
+        if (pt is CapType) {
+            // `Container<in Element>.add(arg: T)`: a lambda has the shape of the lower bound
+            val lb = pt.arg.type
+            return pt.arg.variance == Variance.IN && lb != null && (lb is FunType || (lb is ClassType && lb.cls.isFunInterface)) && shapeOk(arg, lb)
+        }
         return pt is TypeParamType
     }
     if (u is CallableRefExpr && u.name != "class" && u.receiver == null && pt is FunType) {

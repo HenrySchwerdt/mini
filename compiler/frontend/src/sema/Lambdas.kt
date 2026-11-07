@@ -327,10 +327,13 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             val xp = extensionProp(name, ct)
             val xs = xp?.sym
             if (xs is PropSym) {
-                val rc = RefCand(xs, listOf(ct), xp.type, emptyList(), HashMap())
+                val rc = RefCand(xs, if (objBound) emptyList() else listOf(ct), xp.type, emptyList(), HashMap())
                 rc.isProp = true
                 rc.mutable = xs.isVar
-                rc.propReceiver = true
+                rc.propReceiver = !objBound
+                // `Obj::extProp` of an object: bound to the object
+                rc.objBound = objBound
+                if (objBound) rc.objType = ct
                 cands.add(rc)
             }
             val ext = ArrayList<List<Candidate>>()
