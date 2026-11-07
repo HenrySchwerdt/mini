@@ -129,7 +129,10 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
             }
             val t = mirType(p.type, p).let { if (it == TUnit) anyNullable else it } // a Unit argument of a generic parameter is null
             val v: MirExpr = if (arg != null) {
-                coerceFlexible(value(arg, out), t, c, out)
+                val saved = rawInvokeResult
+                if (t is TObject && t.cName == ANY_CNAME && arg is IrCall && isFunctionInvoke(arg.callee) && arg.type.classFqName != "kotlin.Unit") rawInvokeResult = arg
+                val av = try { value(arg, out) } finally { rawInvokeResult = saved }
+                coerceFlexible(av, t, c, out)
             } else {
                 val d = p.defaultValue?.expression
                 if (d == null && p.varargElementType != null) emptyVararg(p, c, out)

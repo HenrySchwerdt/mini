@@ -67,6 +67,9 @@ class Ir2Mir {
     internal var builtinMessageRoot: IrSimpleFunction? = null
     internal val builtinInfos = HashMap<IrClass, ClassInfo>()
     internal val facades = LinkedHashMap<IrFile, Facade>()
+    internal val effectfulInit = HashMap<IrFile, Boolean>()
+    /** the invoke call whose result is not converted to its static type (the argument of an erased generic parameter of an inline function) */
+    internal var rawInvokeResult: IrCall? = null
     internal val typeSubst = HashMap<TypeParamSym, Type>()
     /** local `val x = unitReturningCall()`: no storage, every read is the Unit value */
     internal val unitVars = HashSet<IrValueDeclaration>()
@@ -159,10 +162,17 @@ class Ir2Mir {
             setFile(file)
             val pkg = file.packageFqName
             var mf = convertFunction(f, functionNames[f]!!, (if (pkg.isEmpty()) "" else "$pkg.") + f.name, null)
-            if (mf.cName == Mangling.MAIN && facades.isNotEmpty()) {
-                // top-level property initialisers run before main
-                val force = facades.values.filter { !it.file.isLib }.map { MirStmt.Eval(MirExpr.ObjectGet(it.cName, it.type)) }
+            if (mf.cName == Mangling.MAIN) {
+                // the top-level property initialisers of the file of `main` run before it; the other files initialise on first access
+                // (as Kotlin/Native and the JVM do: a file whose properties are never read does not run its initialisers)
+                val force = (if (file.declarations.any { (it is IrProperty && it.backingField != null) || it is IrField }) listOf(facadeFor(file)) else emptyList())
+                    .map { MirStmt.Eval(MirExpr.ObjectGet(it.cName, it.type)) }
                 mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects)
+            }
+            else if (initializesWithEffects(file)) {
+                // a call of a function of a file whose property initialisers run program code starts the initialisation of the file
+                val fa = facadeFor(file)
+                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, listOf<MirStmt>(MirStmt.Eval(MirExpr.ObjectGet(fa.cName, fa.type))) + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects)
             }
             functions += mf
         }

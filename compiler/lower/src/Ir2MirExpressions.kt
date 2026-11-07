@@ -194,6 +194,22 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             var v = value(e.argument, out)
             val target = mirType(e.type, e)
             val safe = e.operator == IrTypeOperator.SAFE_CAST
+            // `x as Unit` / `x as? Unit` written with the class itself: the value must be the Unit object
+            if (e.typeOperand !is TypeParamType && e.typeOperand.classFqName == "kotlin.Unit" && v.type != TUnit && v.type != TNothing) {
+                val av = if (v.type.isPrimitive) coerceOperand(v, anyNullable, e, out) else v
+                val tv = tmpOf(asAny(av), out)
+                val isUnit = MirExpr.Binary(BinaryOp.IdEq, tv, unitInstance())
+                if (safe) {
+                    val res = newTemp(anyNullable)
+                    out += MirStmt.Declare(res, MirExpr.NullConst(anyNullable))
+                    out += MirStmt.If(isUnit, listOf(MirStmt.Assign(res, unitInstance())), emptyList())
+                    return MirExpr.Local(res)
+                }
+                val fail = ArrayList<MirStmt>()
+                fail += MirStmt.Throw(tmpOf(newBuiltin("MkClassCastException", MirExpr.StringConst("class is not kotlin.Unit")), fail))
+                out += MirStmt.If(MirExpr.Unary(UnaryOp.Not, isUnit), fail, emptyList())
+                return MirExpr.UnitValue
+            }
             // `value as T` with T = Unit (an inlined generic function): nothing to check, there is no Unit object
             if (target == TUnit) {
                 if (v is MirExpr.Call) out += MirStmt.Eval(v)
@@ -201,6 +217,11 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             }
             if (v.type == TUnit && target.isRef) v = unitAsRef(v, out) // `f() as Any` where f returns Unit
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
+            // `t as (T & Any)`: the only check of an erased type parameter is the one for null
+            val et = e.type
+            if (!safe && et is TypeParamType && et.definitelyNotNull && v.type.isRef && target.isRef && typeSubst[et.tp] == null) {
+                return MirExpr.Cast(MirExpr.NotNull(v), target, MirExpr.CastMode.Unchecked)
+            }
             if (target.isPrimitive) {
                 return unboxCast(v, target, MirExpr.CastMode.Checked)
             }

@@ -162,6 +162,9 @@ internal fun Ir2Mir.info(c: IrClass): ClassInfo = classInfos[c] ?: builtinInfos[
     ClassInfo(c, b.cName, b.qualified, null).also { builtinInfos[c] = it }
 } ?: error("unknown class ${c.name}")
 
+/** The type of the `$outer` field and of the outer instance of an inner class: an unboxed value class stays unboxed. */
+internal fun Ir2Mir.outerType(c: IrClass): MirType = inlineTypeOf(c) ?: typeOf(c)
+
 internal fun Ir2Mir.typeOf(c: IrClass, nullable: Boolean = false): TObject {
     val i = info(c)
     return TObject(i.qualified, i.cName, nullable, c.kind == IrClassKind.INTERFACE)
@@ -185,12 +188,20 @@ internal fun Ir2Mir.ownFields(c: IrClass): List<IrField> = c.declarations.flatMa
 
 internal fun Ir2Mir.registerMembers(info: ClassInfo) {
     val c = info.ir
+    val taken = HashSet<String>()
     for (f in classFunctions(c)) {
         if (f.isFakeOverride) continue
         if (isEnumSpecial(c, f)) continue // values(), valueOf(), entries
         checkFunctionShape(f, member = true)
         val params = f.parameters.filter { it.kind != IrParameterKind.DispatchReceiver }.map { mirType(it.type, it) }
-        functionNames[f] = Mangling.method(info.cName, f.name, params)
+        var mn = Mangling.method(info.cName, f.name, params)
+        // `fun String.f()` next to `fun f(s: String)`: same erased signature, different Kotlin functions
+        if (!taken.add(mn)) {
+            var k = 1
+            while (!taken.add(Mangling.method(info.cName, f.name + "\$x" + k, params))) k++
+            mn = Mangling.method(info.cName, f.name + "\$x" + k, params)
+        }
+        functionNames[f] = mn
     }
     for (k in c.declarations.filterIsInstance<IrConstructor>()) {
         val hidden = if (c.kind == IrClassKind.ENUM_CLASS || isEnumBody(c)) listOf(TString, TInt) else emptyList()
@@ -448,7 +459,7 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
     val ifaces = if (isInterface) allInterfaces(c).filter { it !== c } else allInterfaces(c)
     val hiddenFields = if (c.kind == IrClassKind.ENUM_CLASS) listOf(MirField("\$name", TString), MirField("\$ordinal", TInt)) else emptyList()
     val capFields = classCaptures(c).mapIndexed { i, v -> MirField("cap$i", capturedType(v), isStrictClass(c) && v !in closure.boxed && v.type.classOrNull?.let { k -> isStrictClass(k) } == true) }
-    val outerField = if (c.isInner) listOf(MirField("\$outer", typeOf(c.parent as IrClass))) else emptyList()
+    val outerField = if (c.isInner) listOf(MirField("\$outer", outerType(c.parent as IrClass))) else emptyList()
     val fields = if (isInterface) emptyList() else hiddenFields + outerField + capFields + ownFields(c).map { f ->
         MirField(f.name, mirType(f.type, f), isBorrowedField(f))
     }
@@ -528,6 +539,43 @@ private fun cKind(t: MirType): String = when {
 }
 
 
+private val collectionOwners = setOf("Collection", "MutableCollection", "List", "MutableList", "Set", "MutableSet", "Map", "MutableMap").map { "kotlin.collections.$it" }.toSet()
+private val mapOwners = setOf("kotlin.collections.Map", "kotlin.collections.MutableMap")
+
+/**
+ * The membership test of a "special bridge" (`contains`, `indexOf`, `lastIndexOf`, `remove`, `containsKey`, `containsValue`, `get` of a
+ * collection or map): the override takes the `E` / `K` / `V` of the implementing class, the interface method takes `Any?`, so the JVM
+ * bridge returns false / -1 / null for an argument the override cannot take. Null when [impl] needs no check (its parameter is `Any?`,
+ * an unbounded type parameter) or is not such a member. The test is true when the argument is acceptable.
+ */
+private fun Ir2Mir.specialBridgeCheck(impl: IrSimpleFunction, root: IrSimpleFunction, rp: List<MirType>, ip: List<MirType>): ((MirExpr) -> MirExpr)? {
+    if (impl.parameters.size != 2 || rp.size != 2 || ip.size != 2 || !rp[1].isRef) return null
+    val n = impl.name
+    val mapOnly = n == "containsKey" || n == "containsValue" || n == "get"
+    if (!mapOnly && n != "contains" && n != "indexOf" && n != "lastIndexOf" && n != "remove") return null
+    var owned = false
+    for (o in allOverridden(root)) {
+        val k = parentClass(o) ?: continue
+        if (if (mapOnly) k.kotlinFqName in mapOwners else k.kotlinFqName in collectionOwners) owned = true
+    }
+    if (!owned) return null
+    val t = ip[1]
+    val any = t is TObject && t.cName == ANY_CNAME
+    val nullable = (t is TObject && t.nullable) || t === TNString || t is TBoxed
+    if (any && nullable) return null
+    val inst: MirType = when {
+        t is TBoxed -> t
+        t.isPrimitive -> TBoxed(t)
+        t is TObject || t === TString || t === TNString -> t.nonNull()
+        else -> return null
+    }
+    return { a ->
+        val isNull = MirExpr.Binary(BinaryOp.IdEq, a, MirExpr.NullConst())
+        val test: MirExpr = if (any) MirExpr.Unary(UnaryOp.Not, isNull) else MirExpr.IsInstance(a, inst)
+        if (nullable) MirExpr.Binary(BinaryOp.OrOr, isNull, test) else test
+    }
+}
+
 /**
  * C name of the implementation of [impl] to store in a vtable / itable slot whose signature is that
  * of [root]. Generic code erases type parameters (`Any?`), so an override such as
@@ -542,13 +590,20 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
     val ip = impl.parameters.map { mirType(it.type, it) }
     val rr = mirType(root.returnType, root)
     val ir = mirType(impl.returnType, impl)
-    if (rp.size == ip.size && rp.indices.all { it == 0 || cKind(rp[it]) == cKind(ip[it]) } && cKind(rr) == cKind(ir)) return name
-    val bname = name + "_br" + rp.joinToString("") { Mangling.typeLetter(it) } + "_" + Mangling.typeLetter(rr)
+    val special = specialBridgeCheck(impl, root, rp, ip)
+    if (special == null && rp.size == ip.size && rp.indices.all { it == 0 || cKind(rp[it]) == cKind(ip[it]) } && cKind(rr) == cKind(ir)) return name
+    val bname = name + "_br" + rp.joinToString("") { Mangling.typeLetter(it) } + "_" + Mangling.typeLetter(rr) + (if (special != null) "_sp" else "")
     if (!bridgeCache.add(bname)) return bname
     val failures = libFailures
     val fn = try { inFreshFunction {
         val ps = rp.mapIndexed { i, t -> MirLocal(localCounter++, if (i == 0) "this" else "p$i", t) }
         val out = ArrayList<MirStmt>()
+        if (special != null) {
+            // the JVM's special bridge: an argument that is not of the parameter type of the override answers "not found"
+            val ok: MirExpr = special(MirExpr.Local(ps[1]))
+            val dflt: MirExpr = if (rr == TBoolean) MirExpr.BooleanConst(false) else if (rr == TInt) MirExpr.IntConst(-1) else MirExpr.NullConst(rr)
+            out += MirStmt.If(MirExpr.Unary(UnaryOp.Not, ok), listOf(MirStmt.Return(dflt)), emptyList())
+        }
         val args = ps.mapIndexed { i, p ->
             if (i == 0) MirExpr.Cast(MirExpr.Local(p), ip[0].let { if (it is TInline) inlineObjType(it, true) else it }, MirExpr.CastMode.Unchecked)
             else if (ip[i] == TNothing) {

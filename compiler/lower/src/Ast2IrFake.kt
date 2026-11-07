@@ -139,7 +139,8 @@ private fun Ast2Ir.delegateFields(c: IrClass, cs: ClassSym): List<DelegateField>
         f.parent = c
         f.isFinal = true
         val expr = s.delegate
-        f.initializerBuilder = { withCtx(initCtx(c)) { IrExpressionBody(convertWithExpected(expr, f.type)) } }
+        // the delegate of an object literal is written in the scope around it (`object : I by d(this)`: `this` is the enclosing receiver)
+        f.initializerBuilder = { withCtx((if (cs.isAnonymous) localClassCtx(c) else null) ?: initCtx(c)) { IrExpressionBody(convertWithExpected(expr, f.type)) } }
         out.add(DelegateField(t, f))
     }
     if (out.isEmpty()) return out
