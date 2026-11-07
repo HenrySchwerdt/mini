@@ -44,6 +44,7 @@ object Inliner {
         st.doInline = options.on("inline")
         st.doSroa = options.on("sroa")
         st.doExact = options.on("exact-devirt")
+        st.doArraySroa = options.on("array-sroa")
         for (f in module.functions) st.visit(f.cName)
         val fs = ArrayList<MirFunction>(module.functions.size)
         for (f in module.functions) fs.add(st.done[f.cName] ?: f)
@@ -66,6 +67,7 @@ internal class InlineState(val module: MirModule, val stats: InlinerStats) {
     var doInline = true
     var doSroa = true
     var doExact = true
+    var doArraySroa = true
 
     init {
         for (f in module.functions) byName[f.cName] = f
@@ -89,7 +91,7 @@ internal class InlineState(val module: MirModule, val stats: InlinerStats) {
                 round++
                 var progress = false
                 val t0 = nanoTime()
-                if (doSroa && round == 1 && ArraySroa.worthTrying(cur)) {
+                if (doSroa && doArraySroa && round == 1 && ArraySroa.worthTrying(cur)) {
                     val ar = ArraySroa(this, cur).run()
                     if (ar != null) {
                         cur = cur.withBody(Cleanup.run(ar, cur))
