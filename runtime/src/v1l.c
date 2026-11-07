@@ -690,6 +690,10 @@ const MkString *mk_array_content_to_string(const MkObject *array) {
 }
 
 MkChar mk_string_get_char(const MkString *string, MkInt index) {
+    if (string == NULL) {
+        mk_raise_npe();
+        return 0;
+    }
     if (index < 0 || index >= string->length) {
         char buf[96];
         snprintf(buf, sizeof buf, "Index %d out of bounds for length %d", (int)index, (int)string->length);

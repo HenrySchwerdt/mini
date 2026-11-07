@@ -424,6 +424,12 @@ sealed class MirExpr {
         Checked,
         /** `as?`: null on failure. `to` must be nullable. */
         Safe,
+        /**
+         * An erased value (an element of a generic container or of a reified array, a generic result) retyped to the non-null type it has at
+         * the use. Like `checkcast` it does not test for null: the value may be null (heap pollution), and [NullGuard] makes it throw a
+         * NullPointerException where it is dereferenced. Then the mode becomes [Unchecked]; the emitters treat both alike.
+         */
+        Erased,
     }
 
     /** Reference cast to [to]. Borrowed result (the same reference). */

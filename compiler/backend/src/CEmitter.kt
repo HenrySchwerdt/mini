@@ -942,24 +942,26 @@ object CEmitter {
          * the test is the only code of the fast path, the failing case raises and leaves the function right there (no load of the pending
          * exception after every check). Only when the exit path is short, like [arrayAccess].
          */
-        fun inlineGuard(e: MirExpr, operand: MirExpr, cond: (String) -> String, slow: (String) -> String, value: (String) -> String, post: (String) -> String = { "" }, decl: String = ""): String? {
+        fun inlineGuard(e: MirExpr, operand: MirExpr, cond: (String) -> String, slow: (String) -> String, value: (String) -> String, post: (String) -> String = { "" }, decl: String = "", alwaysRaises: Boolean = false): String? {
             val exit = exitStmt(0).replace("\n", " ").trim()
             if (exit.length > 260) return null
             val c = "mkc${tmpCounter++}"
-            val s = "({ $decl MkObject *$c = ${obj(operand)}; if (__builtin_expect(${cond(c)}, 0)) { ${slow(c)} if (mk_pending_exception != NULL) { $exit } ${post(c)} } ${value(c)}; })"
+            // when the slow path always raises, nothing continues after it: the compiler sees a cold exit, not a call in the middle of the loop that read the value
+            val after = if (alwaysRaises) "$exit" else "if (mk_pending_exception != NULL) { $exit } ${post(c)}"
+            val s = "({ $decl MkObject *$c = ${obj(operand)}; if (__builtin_expect(${cond(c)}, 0)) { ${slow(c)} $after } ${value(c)}; })"
             inlineChecked.add(e)
             return s
         }
 
         fun notNullInline(e: MirExpr.NotNull): String? =
-            inlineGuard(e, e.operand, { "$it == NULL" }, { "(void)mk_checked_nn($it);" }, { "(${cType(e.type)})$it" })
+            inlineGuard(e, e.operand, { "$it == NULL" }, { "(void)mk_checked_nn($it);" }, { "(${cType(e.type)})$it" }, alwaysRaises = true)
 
         fun castInline(e: MirExpr.Cast): String? {
             val to = e.to
             if (to is TObject && to.elem != null) return null // an array with a known element type: mk_array_cast
             if (to is TObject && to.cName == ANY_CNAME) {
                 if (to.nullable) return null
-                return inlineGuard(e, e.operand, { "$it == NULL" }, { "(void)mk_checked_nn($it);" }, { "(MkObject *)$it" })
+                return inlineGuard(e, e.operand, { "$it == NULL" }, { "(void)mk_checked_nn($it);" }, { "(MkObject *)$it" }, alwaysRaises = true)
             }
             val ti = "&${typeInfoOf(to)}"
             val nullable = to.isNullableRef()
@@ -1157,7 +1159,7 @@ object CEmitter {
         fun cast(e: MirExpr.Cast): String {
             val to = e.to
             return when (e.mode) {
-                MirExpr.CastMode.Unchecked -> {
+                MirExpr.CastMode.Unchecked, MirExpr.CastMode.Erased -> {
                     val s = expr(e.operand)
                     if (cType(e.operand.type) == cType(to)) s else "((${cType(to)})$s)"
                 }
@@ -1447,7 +1449,10 @@ MKH_FN MkInt mkh_ra_length(MkObject *a) {
 #define mk_ref_array_length(a) mkh_ra_length((a))
 
 /* Strings (minirt.h MkString): the length and the indexing of the common case are inline; NULL and a bad index take the runtime. */
-MKH_FN MkInt mkh_str_length(const MkString *s) { return s != NULL ? s->length : 0; }
+MKH_FN MkInt mkh_str_length(const MkString *s) {
+    if (__builtin_expect(s == NULL, 0)) return (mk_string_length)(s); /* a polluted null: the runtime traps with a NullPointerException */
+    return s->length;
+}
 MKH_FN MkChar mkh_str_char_at(const MkString *s, MkInt i) {
     if (__builtin_expect(s == NULL || (uint32_t)i >= (uint32_t)s->length, 0)) return (mk_string_char_at)(s, i);
     return mk_string_at(s, i);
