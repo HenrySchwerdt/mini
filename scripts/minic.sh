@@ -357,6 +357,32 @@ ice() {
     exit 3
 }
 
+# The stub cache (docs/mlib.md, "Stub cache"): the parsed declarations of lib/stdlib.mlib are kept in a directory between runs, so a
+# compile does not parse the standard library again. STUBARGS: the compiler options for it (one per line, like NATIVE_ARGS), empty when
+# it is off. MINIC_STUB_CACHE=off (or 0, no, false) turns it off, =verify also checks every use against a fresh parse; the directory is
+# MINIC_CACHE_DIR, else $XDG_CACHE_HOME/mini, else ~/.cache/mini. Its key includes the identity (size and time) of bin/minic-native, so a
+# different compiler never reads another one's entries; the output of the compiler does not depend on the cache.
+STUBARGS=""
+stub_cache_args() {
+    case "${MINIC_STUB_CACHE:-on}" in off|0|no|false|OFF|Off) return 0 ;; esac
+    scdir="${MINIC_CACHE_DIR:-}"
+    if [ -z "$scdir" ]; then
+        if [ -n "${XDG_CACHE_HOME:-}" ]; then scdir="$XDG_CACHE_HOME/mini"
+        elif [ -n "${HOME:-}" ]; then scdir="$HOME/.cache/mini"
+        else return 0; fi
+    fi
+    scid="$(stat -L -c '%s-%Y' "$NATIVE" 2>/dev/null || stat -L -f '%z-%m' "$NATIVE" 2>/dev/null)" || return 0
+    [ -n "$scid" ] || return 0
+    STUBARGS="--stub-cache
+$scdir
+--stub-cache-id
+$VERSION-$scid"
+    if [ "${MINIC_STUB_CACHE:-}" = verify ]; then STUBARGS="$STUBARGS
+--stub-cache-verify"; fi
+    return 0
+}
+stub_cache_args
+
 # runs the compiler front end: Kotlin to C (or only the checks)
 frontend() { # <mode: check|build> [<c file>]
     t0="$(now)"
@@ -391,7 +417,7 @@ $2
     # the standard library: the precompiled lib/stdlib.mlib (docs/mlib.md), or its sources (MINIC_STDLIB=source, or no .mlib)
     if [ -f "$HOME_DIR/lib/stdlib.mlib" ] && [ "${MINIC_STDLIB:-}" != source ]; then
         # shellcheck disable=SC2086
-        set -- $NATIVE_ARGS $SRCLIST --lib "$HOME_DIR/lib/stdlib.mlib" --compiler-id "$VERSION"
+        set -- $NATIVE_ARGS $SRCLIST --lib "$HOME_DIR/lib/stdlib.mlib" --compiler-id "$VERSION" $STUBARGS
     else
         STDFILES="$(find -L "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
         # shellcheck disable=SC2086
@@ -462,7 +488,7 @@ $emit
 "; fi
     if [ -f "$HOME_DIR/lib/stdlib.mlib" ] && [ "${MINIC_STDLIB:-}" != source ]; then
         # shellcheck disable=SC2086
-        set -- $NATIVE_ARGS $SRCLIST --lib "$HOME_DIR/lib/stdlib.mlib" --compiler-id "$VERSION"
+        set -- $NATIVE_ARGS $SRCLIST --lib "$HOME_DIR/lib/stdlib.mlib" --compiler-id "$VERSION" $STUBARGS
     else
         STDFILES="$(find -L "$HOME_DIR/stdlib" -name '*.kt' | LC_ALL=C sort)"
         # shellcheck disable=SC2086
@@ -548,6 +574,9 @@ if [ "$debug" = 0 ] && [ "$opt" != "-O0" ]; then
         # them for profilers and debuggers that walk the stack with them)
         Linux)
             native_link_flags="-Wl,--gc-sections"
+            # the symbol table is a fifth of a small executable and only profilers and debuggers read it: optimized builds are linked
+            # without it (--debug keeps it, so does MINIC_KEEP_SYMBOLS=1)
+            [ -n "${MINIC_KEEP_SYMBOLS:-}" ] || native_link_flags="$native_link_flags,--strip-all"   # one word: the LLVM path passes it as one --link-arg
             size_cflags="-ffunction-sections -fdata-sections"
             [ -n "${MINIC_UNWIND_TABLES:-}" ] || size_cflags="$size_cflags -fno-unwind-tables -fno-asynchronous-unwind-tables"
             ;;
