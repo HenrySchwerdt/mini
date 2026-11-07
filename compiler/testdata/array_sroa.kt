@@ -111,7 +111,31 @@ fun identity() {
     println(cs.size)
 }
 
+// a null slot, and a polluted (null retyped to non-null) array: the checks stay
+fun nullable() {
+    val a = Cnt(1)
+    val cs = arrayOf<Cnt?>(a, null, Cnt(3))
+    var t = 0
+    for (i in 0 until 3) {
+        val c = cs[i]
+        if (c != null) t += c.n else t += 100
+    }
+    println(t)
+}
+
+@Suppress("UNCHECKED_CAST")
+fun polluted() {
+    val cs = arrayOfNulls<Cnt>(2) as Array<Cnt>
+    try {
+        println(cs[0].n)
+    } catch (e: NullPointerException) {
+        println("npe")
+    }
+}
+
 fun main() {
+    nullable()
+    polluted()
     basic()
     aliased()
     escapes()
