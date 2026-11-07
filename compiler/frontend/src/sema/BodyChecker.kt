@@ -258,7 +258,7 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     }
 
     fun paramType(f: FunSym, name: String): Type? {
-        for (p in f.params) if (p.name == name) return p.varargElement ?: p.type
+        for (p in f.params) if (p.name == name) return p.type
         return null
     }
 

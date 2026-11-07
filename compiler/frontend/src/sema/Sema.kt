@@ -277,8 +277,38 @@ class Sema {
                 if (fs != null) for (f in fs) out.add(f)
                 val ps = owner.props[name]
                 if (ps != null) for (p in ps) out.add(p)
+                // the members the object inherits from its superclass and interfaces (`import C.fromInterface`)
+                ensureSupertypes(owner)
+                members.ensureSynth(owner)
+                for (site in ops.closure(owner.thisType())) {
+                    val sc = site.cls
+                    if (sc === owner || sc === anyType.cls) continue
+                    members.ensureSynth(sc)
+                    val sf = sc.funs[name]
+                    if (sf != null) for (f in sf) if (f.kind != FunKind.CONSTRUCTOR && !f.has("private") && !owner.funs.containsKey(name)) {
+                        out.add(f)
+                        importedVia[f] = owner
+                        importedSubst[f] = ops.substOf(site)
+                    }
+                    val sp = sc.props[name]
+                    if (sp != null) for (p in sp) if (!p.has("private") && !owner.props.containsKey(name)) {
+                        out.add(p)
+                        importedVia[p] = owner
+                        importedSubst[p] = ops.substOf(site)
+                    }
+                }
             }
         }
+    }
+
+    /** members imported through an object that it inherits (not declares): the object they are called on, and the substitution of their class's type parameters */
+    val importedVia = HashMap<Sym, ClassSym>()
+    val importedSubst = HashMap<Sym, Map<TypeParamSym, Type>>()
+    fun importedSubstOf(s: Sym): HashMap<TypeParamSym, Type> {
+        val m = HashMap<TypeParamSym, Type>()
+        val i = importedSubst[s]
+        if (i != null) m.putAll(i)
+        return m
     }
 
     /**
@@ -644,6 +674,10 @@ class Sema {
                 "kotlin.Boolean" -> "kotlin.BooleanArray"
                 "kotlin.Double" -> "kotlin.DoubleArray"
                 "kotlin.Float" -> "kotlin.FloatArray"
+                "kotlin.UInt" -> "kotlin.UIntArray"
+                "kotlin.ULong" -> "kotlin.ULongArray"
+                "kotlin.UByte" -> "kotlin.UByteArray"
+                "kotlin.UShort" -> "kotlin.UShortArray"
                 else -> null
             }
             if (prim != null) {

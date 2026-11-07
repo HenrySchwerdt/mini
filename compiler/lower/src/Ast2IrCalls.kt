@@ -146,7 +146,11 @@ fun Ast2Ir.callWithInfo(e: CallExpr, info: CallInfo, type: Type, node: Ast): IrE
     if (fn.kind == FunKind.SYNTH && fn.owner == null && info.args.size == 1) {
         // `Iface { ... }`: the SAM constructor of a fun interface
         val rt = type
-        if (rt is ClassType && rt.cls.isFunInterface) return samConversion(convertArg(info.args[0], null, null), rt)
+        if (rt is ClassType && rt.cls.isFunInterface) {
+            // a function value for a suspend method: suspend conversion first
+            val sf = ops.samFunType(rt)
+            return samConversion(convertArg(info.args[0], null, if (sf != null && sf.suspend) sf else null), rt)
+        }
     }
     val label = fn.name
     val d = info.dispatch
@@ -428,6 +432,14 @@ private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpres
     if (expected is FunType && expected.suspend && u !is LambdaExpr && u !is AnonFunExpr && u !is CallableRefExpr) {
         val vt = rec(u)?.type
         if (vt is FunType && !vt.suspend && vt.receiver == null == (expected.receiver == null)) return suspendConvertedValue(v, vt, expected)
+        // a value of a class (or a type parameter) that is a function type: `useSuspend(Test())` with `class Test : () -> String`
+        if (vt != null && vt !is FunType && (vt !is ClassType || vt.cls.fnArity < 0) && ops.funSupersOf(vt).any { !it.suspend && it.arity == expected.arity }) return suspendConvertedValue(v, expected, expected)
+    }
+    if (expected is ClassType && expected.cls.isFunInterface && u !is LambdaExpr && u !is AnonFunExpr && u !is CallableRefExpr) {
+        // a non-suspend function value where a fun interface with a suspend method is expected: suspend conversion, then SAM conversion
+        val vt0 = rec(u)?.type
+        val sf = if (vt0 is FunType && !vt0.suspend && !vt0.nullable) ops.samFunType(expected) else null
+        if (sf != null && sf.suspend && vt0 is FunType && vt0.receiver == null == (sf.receiver == null)) return samConversion(suspendConvertedValue(v, vt0, sf), irType(expected))
     }
     if (expected is ClassType && expected.cls.isFunInterface && (rec(u)?.type is FunType || u is CallableRefExpr)) {
         val vt = rec(u)?.type

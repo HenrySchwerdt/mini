@@ -1197,6 +1197,7 @@ class Parser(internal val lex: LexResult) {
                 isVar = kind() == Tk.VAR
                 advance()
             }
+            val quotedUnderscore = kind() == Tk.IDENT && textAt(0) == "`_`"
             val name = parseName("name")
             var t: TypeRef? = null
             if (kind() == Tk.COLON) {
@@ -1210,7 +1211,9 @@ class Parser(internal val lex: LexResult) {
                 advance()
             }
             done(em, NodeKind.DESTRUCT_ENTRY)
-            list.add(fin(DestructEntry(mods, isVar, name, t, source), es))
+            val de = DestructEntry(mods, isVar, name, t, source)
+            de.quoted = quotedUnderscore
+            list.add(fin(de, es))
             if (kind() == Tk.COMMA) advance() else break
             if (p == before) break
         }

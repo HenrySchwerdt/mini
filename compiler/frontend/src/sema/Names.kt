@@ -47,6 +47,9 @@ fun BodyChecker.extensionProp(name: String, recv: Type): NameRes? {
                     val br = bestRecv
                     if (best == null || (br != null && x.typeParams.isEmpty() && ops.isSubtype(r, br) && !ops.isSubtype(br, r))) {
                         best = NameRes(x, t, null, NameRes.VALUE)
+                        // an extension property an object inherits, imported by name: the object is the dispatch receiver
+                        val via = sema.importedVia[x]
+                        if (via != null) best.dispatch = RecvRef(via, null, true)
                         bestRecv = if (x.typeParams.isEmpty()) r else null
                     }
                 }
@@ -151,6 +154,14 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
                 }
                 sema.members.ensureSynth(s.cls)
                 for (en in s.cls.entries) if (en.name == name) return NameRes(en, s.cls.thisType(), null, NameRes.VALUE)
+                // `entries` read in the companion object of an enum class
+                if (!s.instance && s.cls.isEnum && name == "entries") {
+                    val r = memberPropRes(s.cls.thisType(), name)
+                    if (r != null) {
+                        r.dispatch = RecvRef(s.cls, null, true)
+                        return r
+                    }
+                }
             }
             is ReceiverScope -> {
                 val nrt = narrowRecv(s.type, s.label, !seenRecv)
@@ -177,7 +188,10 @@ fun BodyChecker.resolveSimpleName(name: String): NameRes? {
     for (g in sema.topLevel(file, name)) {
         for (x in g) {
             if (x is PropSym && x.decl?.receiver == null) {
-                return NameRes(x, sema.typeOfProp(x), null, NameRes.VALUE)
+                val nr = NameRes(x, sema.typeOfProp(x), null, NameRes.VALUE)
+                val via = sema.importedVia[x]
+                if (via != null) nr.dispatch = RecvRef(via, null, true)
+                return nr
             }
             if (x is EnumEntrySym) return NameRes(x, x.owner.thisType(), null, NameRes.VALUE)
         }
@@ -395,9 +409,11 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
                     return t
                 }
             }
-            var res = memberPropRes(c.thisType(), name)
+            // `Test.prop`: the property of the companion object wins over an instance property of the class with the same name
             val comp = c.companion
-            if (res == null && comp != null) res = memberPropRes(comp.thisType(), name)
+            var res = if (comp != null) memberPropRes(comp.thisType(), name) else null
+            val viaComp = res != null
+            if (res == null) res = memberPropRes(c.thisType(), name)
             if (res == null) {
                 val ep = c.props[name]
                 if (ep != null && ep.isNotEmpty() && c.isObject) {
@@ -419,7 +435,8 @@ fun BodyChecker.selectProperty(node: DotExpr, recv: RecvInfo, sel: NameExpr, saf
                 return ErrType("unresolved " + name)
             }
             val cr = record(node, res.type, res.sym)
-            val cown = (res.sym as? PropSym)?.owner
+            // (a property the companion inherits is read from the companion object)
+            val cown = if (viaComp && comp != null && (res.sym as? PropSym)?.owner?.isObject == false) comp else (res.sym as? PropSym)?.owner
             if (cown != null) cr.access = Access(RecvUse(null, false, RecvRef(cown, null, true), null), null)
             return res.type
         }

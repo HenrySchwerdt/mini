@@ -299,28 +299,49 @@ MkInt mk_double_compare(MkDouble x, MkDouble y) {
     int xs = signbit(x) != 0, ys = signbit(y) != 0;
     return xs == ys ? 0 : (xs ? -1 : 1);
 }
+/* a user class that extends kotlin.Number: its vtable slots 3.. are toDouble, toFloat, toLong, toInt, toChar, toShort, toByte */
+static bool user_number(const MkObject *o) {
+    for (const MkTypeInfo *t = o->type->super; t != NULL; t = t->super)
+        if (strcmp(t->name, "kotlin.Number") == 0) return true;
+    return false;
+}
+/* `x is Function<*>`: some FunctionN interface is among the interfaces of the object's class or its superclasses */
+bool mk_is_function(const MkObject *o) {
+    if (o == NULL) return false;
+    for (const MkTypeInfo *t = o->type; t != NULL; t = t->super)
+        for (size_t i = 0; i < t->interface_count; i++)
+            if (strncmp(t->interfaces[i]->name, "kotlin.Function", 15) == 0) return true;
+    return false;
+}
 bool mk_is_number(const MkObject *o) {
     if (o == NULL) return false;
     const MkTypeInfo *t = o->type;
     return t == &mk_type_Int || t == &mk_type_Long || t == &mk_type_Double || t == &mk_type_Float || t == &mk_type_Byte ||
-           t == &mk_type_Short;
+           t == &mk_type_Short || user_number(o);
 }
-#define NUMBER_TO(name, ctype, fp_expr, int_expr)        \
-    ctype mk_checked_number_to_##name(const MkObject *o) { \
-        int64_t iv = 0;                                      \
-        double dv = 0;                                       \
-        int k = number_kind(o, &iv, &dv);                    \
-        if (k < 0) return 0;                                 \
-        return k ? (fp_expr) : (int_expr);                   \
+#define NUMBER_SLOT(o, slot) ((o)->type->vtable_length > (slot) ? (o)->type->vtable[slot] : NULL)
+#define NUMBER_TO(name, ctype, slot, fp_expr, int_expr)                          \
+    ctype mk_checked_number_to_##name(const MkObject *o) {                         \
+        int64_t iv = 0;                                                            \
+        double dv = 0;                                                             \
+        if (o != NULL && o->type->vtable != NULL && user_number(o)) {              \
+            void *fn = NUMBER_SLOT(o, slot);                                       \
+            if (fn != NULL) return ((ctype (*)(MkObject *))fn)((MkObject *)o);     \
+        }                                                                          \
+        int k = number_kind(o, &iv, &dv);                                          \
+        if (k < 0) return 0;                                                       \
+        return k ? (fp_expr) : (int_expr);                                         \
     }
-NUMBER_TO(int, MkInt, num_d2i(dv), (MkInt)(int32_t)iv)
-NUMBER_TO(long, MkLong, num_d2l(dv), (MkLong)iv)
-NUMBER_TO(double, MkDouble, dv, (MkDouble)iv)
-NUMBER_TO(float, MkFloat, (MkFloat)dv, (MkFloat)iv)
-NUMBER_TO(byte, MkByte, (MkByte)num_d2i(dv), (MkByte)iv)
-NUMBER_TO(short, MkShort, (MkShort)num_d2i(dv), (MkShort)iv)
-NUMBER_TO(char, MkChar, (MkChar)num_d2i(dv), (MkChar)iv)
+NUMBER_TO(int, MkInt, 6, num_d2i(dv), (MkInt)(int32_t)iv)
+NUMBER_TO(long, MkLong, 5, num_d2l(dv), (MkLong)iv)
+NUMBER_TO(double, MkDouble, 3, dv, (MkDouble)iv)
+NUMBER_TO(float, MkFloat, 4, (MkFloat)dv, (MkFloat)iv)
+NUMBER_TO(byte, MkByte, 9, (MkByte)num_d2i(dv), (MkByte)iv)
+NUMBER_TO(short, MkShort, 8, (MkShort)num_d2i(dv), (MkShort)iv)
+NUMBER_TO(char, MkChar, 7, (MkChar)num_d2i(dv), (MkChar)iv)
 #undef NUMBER_TO
+/* Number.toChar() of a class that does not override it: toInt().toChar() */
+MkChar mk_number_to_char_default(MkObject *o) { return (MkChar)mk_checked_number_to_int(o); }
 
 MkByte mk_checked_unbox_byte(const MkObject *b) { return unbox_ok(b, &mk_type_Byte) ? ((const BoxByte *)b)->v : 0; }
 MkShort mk_checked_unbox_short(const MkObject *b) { return unbox_ok(b, &mk_type_Short) ? ((const BoxShort *)b)->v : 0; }
