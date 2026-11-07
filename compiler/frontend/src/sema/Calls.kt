@@ -1209,13 +1209,15 @@ class OpResult(val ret: Type, val callee: Sym?, val calleeText: String?, val par
 }
 
 /** resolves an operator function `recv.name(args)` for pre-typed arguments */
-fun BodyChecker.resolveOperator(name: String, recv0: Type, argTypes: List<Type>, pos: Int, expected: Type?): OpResult? {
+fun BodyChecker.resolveOperator(name: String, recv0: Type, argTypes: List<Type>, pos: Int, expected: Type?, lastArg: Expr? = null): OpResult? {
     var recv = recv0
     if (recv is ErrType) return null
     val args = ArrayList<Arg>()
-    for (t in argTypes) {
-        val a = Arg(null, null, false)
-        a.type = t
+    for ((i, t) in argTypes.withIndex()) {
+        // a lambda / callable reference value (`a[i] = { ... }`) is analysed against the parameter type of `set`
+        val postponed = lastArg != null && i == argTypes.size - 1
+        val a = Arg(if (postponed) lastArg else null, null, false)
+        if (!postponed) a.type = t
         args.add(a)
     }
     // `a[i] = v`: the value is the last parameter of `set`, parameters with defaults and a vararg may stand before it
