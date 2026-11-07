@@ -2085,7 +2085,7 @@ private class Lowering<V : Any, B : Any>(
         val to = e.to
         val o = expr(e.operand)
         val elem = (to as? TObject)?.elem
-        if (to is TObject && elem != null && e.mode != MirExpr.CastMode.Unchecked) {
+        if (to is TObject && elem != null && e.mode != MirExpr.CastMode.Unchecked && e.mode != MirExpr.CastMode.Erased) {
             // an array with a known element type: the element type is checked at run time (mk_array_cast / mk_array_is)
             val ti = typeInfoOf(arrayElemTypeInfoType(elem))
             val flags = c32(arrayCastFlags(to))
@@ -2098,7 +2098,7 @@ private class Lowering<V : Any, B : Any>(
         val prunedTo = (if (to is TObject) to.cName else if (to is TBoxed && to.prim is TInline) (to.prim as TInline).cName else null)?.let { it.startsWith("kc_") && classes[it] == null } == true
         val mode = if (e.mode == MirExpr.CastMode.Checked && prunedTo) MirExpr.CastMode.Unchecked else e.mode // (a class that was pruned: nothing creates it)
         return when (mode) {
-            MirExpr.CastMode.Unchecked -> o
+            MirExpr.CastMode.Unchecked, MirExpr.CastMode.Erased -> o
             MirExpr.CastMode.Checked -> {
                 // everything is an Any: only the null check is left (the erased `as E` of every generic getter)
                 if (to is TObject && to.cName == ANY_CNAME) {

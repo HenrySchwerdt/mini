@@ -1,0 +1,48 @@
+string length: NullPointerException
+string hashCode: NullPointerException
+string get: NullPointerException
+string substring: NullPointerException
+string compareTo: NullPointerException
+class field: NullPointerException
+class call: NullPointerException
+Any hashCode: NullPointerException
+Int unbox: NullPointerException
+for loop: NullPointerException
+for loop string: NullPointerException
+field write: NullPointerException
+list string: NullPointerException
+list class: NullPointerException
+list call: NullPointerException
+generic field string: NullPointerException
+generic field class: NullPointerException
+map value: NullPointerException
+got
+local: NullPointerException
+2
+local reassigned: NullPointerException
+local in loop: NullPointerException
+parameter: NullPointerException
+return: NullPointerException
+generic bound: NullPointerException
+conditional: NullPointerException
+null
+print: ok
+xnull
+concat: ok
+v=null
+template: ok
+false
+true
+equals: ok
+assigned
+assign: ok
+null
+nullable param: ok
+null
+safe call: ok
+-1
+elvis: ok
+5
+filled: ok
+copied
+copy: ok

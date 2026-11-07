@@ -8,6 +8,7 @@ import mini.backend.WasmGlue
 import mini.backend.MirLink
 import mini.backend.MirModule
 import mini.backend.MirOpt
+import mini.backend.NullGuard
 import mini.backend.MirOptions
 import mini.backend.MirReader
 import mini.backend.MirFunction
@@ -434,7 +435,8 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         reportFrontend(e, name, diag)
         throw DriverExit(1)
     }
-    val module = if (separateMlibs || wasmLib) unoptimized else MirOpt.run(unoptimized, optOptions) { line -> errln(line) }
+    val guarded = NullGuard.run(unoptimized)
+    val module = if (separateMlibs || wasmLib) guarded else MirOpt.run(guarded, optOptions) { line -> errln(line) }
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (optOptions.layoutStats) LayoutStats.report(module, if (wasm32) 4 else 8) { line -> errln(line) }
     if (wasmLib) {
