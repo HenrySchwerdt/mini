@@ -258,7 +258,16 @@ class TypeOps(private val sema: Sema) {
                     return false
                 }
                 if (a is ClassType) {
-                    val s = asSuper(a, b.cls) ?: return false
+                    val s = asSuper(a, b.cls)
+                    if (s == null) {
+                        // a value of a class that is a function type where a fun interface is expected (SAM conversion)
+                        if (b.cls.isFunInterface) {
+                            val sf = samFunType(b)
+                            val af = asFunType(a)
+                            if (sf != null && af != null && (sf.suspend == af.suspend || (sf.suspend && !af.suspend))) return funSub(af, sf, depth + 1)
+                        }
+                        return false
+                    }
                     return argsSub(s, b, depth)
                 }
                 return false

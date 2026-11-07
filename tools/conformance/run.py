@@ -139,7 +139,7 @@ def kotlin_test_sources():
     return _KT['ANNOTATIONS'], _KT['SOURCE']
 
 
-DIAG_MARKUP = re.compile(r'<!(?:[A-Z_0-9]+(?:\([^)]*\))?(?:,\s*)?)+!>|<!>')
+DIAG_MARKUP = re.compile(r'<!(?:[A-Z_0-9]+(?:\{[^}]*\})?(?:\([^)]*\))?(?:,\s*)?)+!>|<!>')
 
 
 def classify_ice(err, rc):
