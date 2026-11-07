@@ -117,7 +117,7 @@ def simple_type(t):
     return t.rstrip('?').strip().split('<')[0].strip().split('.')[-1]
 
 def receiver_key(t, tparams):
-    t = t.strip()
+    t = re.sub(r'@\w+\s*', '', t).strip()
     if t.startswith('(') and '->' in t: return 'Function'
     t = t.rstrip('?').strip()
     if '<' not in t: return t.split('.')[-1]
@@ -139,14 +139,14 @@ def parse_params(ptxt):
             if ch in '([{<': d += 1
             elif is_close(p, k): d -= 1
             elif ch == '=' and d == 0 and p[k + 1:k + 2] != '=': has = True; break
-        if not has: req += 1
+        if not has and not re.match(r'(?:@[\w.]+(?:\([^)]*\))?\s*)*(?:(?:noinline|crossinline)\s+)*vararg\b', p): req += 1
     return req, len(ps)
 
 class Decl:
-    __slots__ = ('kind', 'pkg', 'owner', 'name', 'req', 'total', 'file', 'line', 'since', 'opt', 'sig')
+    __slots__ = ('kind', 'pkg', 'owner', 'name', 'req', 'total', 'file', 'line', 'since', 'opt', 'sig', 'hidden')
     def __init__(s, kind, pkg, owner, name, req, total, file, line, sig=None):
         s.kind, s.pkg, s.owner, s.name, s.req, s.total, s.file, s.line, s.sig = kind, pkg, owner, name, req, total, file, line, sig
-        s.since = None; s.opt = False
+        s.since = None; s.opt = False; s.hidden = False
 
 def head_split(head, tparams):
     cut, d = -1, 0
@@ -301,6 +301,7 @@ def annotate(text, decls):
         m = re.search(r'@SinceKotlin\("(\d+)\.(\d+)', j)
         d.since = (int(m.group(1)), int(m.group(2))) if m else None
         d.opt = bool(re.search(r'@(?:kotlin\.)?Experimental\w+|@(?:kotlin\.)?(?:OptIn)', j))
+        d.hidden = bool(re.search(r'DeprecationLevel\.(HIDDEN|ERROR)|level\s*=\s*DeprecationLevel', j) and re.search(r'DeprecationLevel\.(HIDDEN|ERROR)', j))
 
 def scan_tree(root, rels, skip=(), top_only=(), only_files=None):
     decls, classes = [], {}
@@ -369,7 +370,7 @@ def main():
                              top_only=('jvmMain/kotlin',))
     ref += scan_tree(a.ref, ['jvmMain/kotlin/io'], skip, only_files=('Console.kt',))[0]   # print/println/readln (native has them too)
     mini, mini_cls = scan_tree(a.mini, ['kotlin', 'kotlinx', 'mini', 'java'])
-    ref = [d for d in ref if not (d.since and d.since > (2, 1)) and not (a.no_experimental and d.opt)]
+    ref = [d for d in ref if not (d.since and d.since > (2, 1)) and not (a.no_experimental and d.opt) and not d.hidden]
     seen, u = set(), []
     for d in ref:
         k = (d.kind, d.pkg, d.owner, d.name, d.req, d.total)

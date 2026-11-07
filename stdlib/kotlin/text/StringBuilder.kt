@@ -21,7 +21,7 @@ import mini.internal.sbToString
  * know it; length / get / subSequence implement the interface. Values of that type are a String or an object of a class that
  * implements the interface (runtime mk_cs_*). Everything else follows kotlin.text.StringBuilder.
  */
-public class StringBuilder {
+public class StringBuilder : Appendable {
     private val buf: Any = sbNew()
 
     public constructor()
@@ -51,13 +51,18 @@ public class StringBuilder {
 
     public fun substring(startIndex: Int): String = toString().substring(startIndex)
 
-    public fun append(value: Char): StringBuilder {
+    public override fun append(value: Char): StringBuilder {
         sbAppendChar(buf, value)
         return this
     }
 
     public fun append(value: String?): StringBuilder {
         sbAppendString(buf, value ?: "null")
+        return this
+    }
+
+    public override fun append(value: CharSequence?): StringBuilder {
+        sbAppendString(buf, value.toString())
         return this
     }
 
@@ -167,8 +172,8 @@ public class StringBuilder {
     }
 
     /** `append(value, startIndex, endIndex)`: appends the characters of [value] in [startIndex, endIndex). */
-    public fun append(value: String?, startIndex: Int, endIndex: Int): StringBuilder {
-        val s = value ?: "null"
+    public override fun append(value: CharSequence?, startIndex: Int, endIndex: Int): StringBuilder {
+        val s = (value ?: "null").toString()
         if (startIndex < 0 || startIndex > endIndex || endIndex > s.length) {
             mini.internal.throwIndexOutOfBounds("start " + startIndex + ", end " + endIndex + ", length " + s.length)
         }
