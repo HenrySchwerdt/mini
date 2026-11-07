@@ -1046,7 +1046,7 @@ object CEmitter {
                 is MirExpr.Unbox -> unboxInline(e) ?: "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
                 is MirExpr.Cast -> if (e.mode == MirExpr.CastMode.Checked && prunedClass(e.to)) cast(MirExpr.Cast(e.operand, e.to, MirExpr.CastMode.Unchecked))
                     else (if (e.mode == MirExpr.CastMode.Checked) castInline(e) else null) ?: cast(e)
-                is MirExpr.IsInstance -> arrayIs(e) ?: "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
+                is MirExpr.IsInstance -> arrayIs(e) ?: "${if (e.target === TString || e.target === TNString || e.target is TBoxed) "mkh_is_exact" else if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
                 is MirExpr.NotNull -> notNullInline(e) ?: "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
@@ -1219,7 +1219,7 @@ object CEmitter {
             val b = expr(e.right)
             if (op == BinaryOp.AndAnd) return "($a && $b)"
             if (op == BinaryOp.OrOr) return "($a || $b)"
-            if (t == TString) {
+            if ((t == TString || t == TNString) && (e.right.type == TString || e.right.type == TNString)) {
                 return when (op) {
                     BinaryOp.Eq -> "mk_string_equals($a, $b)"
                     BinaryOp.Ne -> "(!mk_string_equals($a, $b))"
@@ -1455,6 +1455,19 @@ MKH_FN MkChar mkh_str_char_at(const MkString *s, MkInt i) {
 #define mk_string_length(s) mkh_str_length((s))
 #define mk_string_char_at(s, i) mkh_str_char_at((s), (i))
 
+/* StringBuilder.append(Char): the room is there and the character fits the buffer (narrow below 256, or wide): two stores, no call. A builder
+ * that shares a string's characters (backing != NULL) has capacity == length, so it takes the runtime too. */
+MKH_FN void mkh_sb_append_char(MkObject *o, MkChar c) {
+    MkSb *sb = (MkSb *)o;
+    if (__builtin_expect(o != NULL && sb->length < sb->capacity, 1)) {
+        MkInt len = sb->length;
+        if (sb->wide) { ((MkChar *)sb->data)[len] = c; sb->length = len + 1; return; }
+        if (c < 256) { ((uint8_t *)sb->data)[len] = (uint8_t)c; sb->length = len + 1; return; }
+    }
+    (mk_sb_append_char)(o, c);
+}
+#define mk_sb_append_char(o, c) mkh_sb_append_char((o), (c))
+
 MKH_FN void mkh_abstract(void) { mk_panic("AbstractMethodError"); }
 MKH_FN MkObject *mkh_cast_nn(MkObject *o, const MkTypeInfo *t) {
     if (o == NULL) {
@@ -1469,6 +1482,8 @@ MKH_FN MkObject *mkh_nn(MkObject *o) {
     return o;
 }
 MKH_FN MkObject *mkh_safe_cast(MkObject *o, const MkTypeInfo *t) { return mk_is_instance(o, t) ? o : NULL; }
+/* `is` with String or a box: final types, the type word is compared */
+MKH_FN bool mkh_is_exact(const MkObject *o, const MkTypeInfo *t) { return o != NULL && o->type == t; }
 /* `is` with a class: the superclass chain of the object's type (an interface needs the runtime's search of the interface tables) */
 MKH_FN bool mkh_is_class(const MkObject *o, const MkTypeInfo *t) {
     if (o == NULL) return false;

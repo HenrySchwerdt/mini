@@ -460,6 +460,16 @@ MkBoolean mk_string_is_double(const MkString *s); /* Java Double.parseDouble syn
 MkDouble mk_string_parse_double(const MkString *s);
 
 /* Growable UTF-16 buffer behind kotlin.text.StringBuilder (an opaque heap object). */
+/* The layout of the builder (runtime/src/v1s.c owns it; the C prelude of generated code appends a narrow character inline). */
+typedef struct MkSb {
+    MkObject header;
+    void *data;      /* uint8_t[capacity] when narrow, MkChar[capacity] when wide */
+    MkInt length;
+    MkInt capacity;  /* in characters */
+    MkInt wide;
+    MkString *backing; /* NULL, or the string whose characters `data` is (see mk_sb_to_string); the builder owns one reference */
+    MkChar inline_chars[];
+} MkSb;
 MkObject *mk_sb_new(void);
 void mk_sb_append_string(MkObject *sb, const MkString *s);
 void mk_sb_append_char(MkObject *sb, MkChar c);

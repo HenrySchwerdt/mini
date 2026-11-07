@@ -1,5 +1,6 @@
 /* kotlin.String: immutable UTF-16 strings. */
 #include "internal.h"
+#include "alloc_small.h"
 
 #include <inttypes.h>
 #include <stddef.h>
@@ -13,7 +14,11 @@ const MkTypeInfo mk_type_String = {
 static MkString *string_alloc(size_t length) {
     if (length > (size_t)INT32_MAX) mk_panic("string too long");
     size_t size = sizeof(MkString) + length * sizeof(MkChar);
-    MkObject *o = mk_alloc_sized_plain(&mk_type_String, size);
+    MkObject *o = NULL;
+#if MK_SMALL_ALLOC
+    if (size <= MK_SMALL_MAX) o = mk_small_new_plain(&mk_type_String, size, 0u);
+#endif
+    if (o == NULL) o = mk_alloc_sized_plain(&mk_type_String, size);
     if (o == NULL) mk_panic("out of memory");
     MkString *s = (MkString *)o;
     s->length = (MkInt)length;
@@ -21,13 +26,19 @@ static MkString *string_alloc(size_t length) {
 }
 
 /* A Latin-1 string: one byte per character (the characters start at the same offset as the UTF-16 ones). */
-static MkString *string_alloc8(size_t length) {
+static inline MkString *string_alloc8(size_t length) {
     if (length > (size_t)INT32_MAX) mk_panic("string too long");
     size_t size = offsetof(MkString, chars) + length;
     if (size < sizeof(MkObject)) size = sizeof(MkObject);
-    MkObject *o = mk_alloc_sized_plain(&mk_type_String, size);
-    if (o == NULL) mk_panic("out of memory");
-    o->flags |= MK_FLAG_LATIN1;
+    MkObject *o = NULL;
+#if MK_SMALL_ALLOC
+    if (size <= MK_SMALL_MAX) o = mk_small_new_plain(&mk_type_String, size, MK_FLAG_LATIN1);
+#endif
+    if (o == NULL) {
+        o = mk_alloc_sized_plain(&mk_type_String, size);
+        if (o == NULL) mk_panic("out of memory");
+        o->flags |= MK_FLAG_LATIN1;
+    }
     MkString *s = (MkString *)o;
     s->length = (MkInt)length;
     return s;
@@ -41,6 +52,28 @@ MkString *mk_string_alloc(MkInt length) {
 MkString *mk_string_alloc8(MkInt length) {
     if (length < 0) mk_panic("negative string length");
     return string_alloc8((size_t)length);
+}
+
+/* Copies `n` bytes (the ranges do not overlap); a short text without a libc call: two overlapping loads and stores. */
+static inline void copy_short(uint8_t *d, const uint8_t *s, size_t n) {
+    if (n > 16) { memcpy(d, s, n); return; }
+    if (n >= 8) { uint64_t a, b; memcpy(&a, s, 8); memcpy(&b, s + n - 8, 8); memcpy(d, &a, 8); memcpy(d + n - 8, &b, 8); return; }
+    if (n >= 4) { uint32_t a, b; memcpy(&a, s, 4); memcpy(&b, s + n - 4, 4); memcpy(d, &a, 4); memcpy(d + n - 4, &b, 4); return; }
+    if (n >= 2) { uint16_t a, b; memcpy(&a, s, 2); memcpy(&b, s + n - 2, 2); memcpy(d, &a, 2); memcpy(d + n - 2, &b, 2); return; }
+    if (n == 1) d[0] = s[0];
+}
+
+MkString *mk_string_substring(const MkString *s, MkInt start, MkInt end) {
+    if (s == NULL) mk_panic("NullPointerException");
+    if (start < 0 || end > s->length || start > end) mk_panic("StringIndexOutOfBoundsException: bad range");
+    if (mk_string_is_latin1(s)) {
+        MkString *r = string_alloc8((size_t)(end - start));
+        copy_short((uint8_t *)(void *)r->chars, mk_string_bytes(s) + start, (size_t)(end - start));
+        return r;
+    }
+    MkString *r = string_alloc((size_t)(end - start));
+    if (end > start) memcpy(r->chars, s->chars + start, (size_t)(end - start) * sizeof(MkChar));
+    return r;
 }
 
 char *mk_string_to_utf8(const MkString *s, size_t *out_length) {
@@ -317,7 +350,25 @@ bool mk_string_equals(const MkString *a, const MkString *b) {
     if (a->length != b->length) return false;
     size_t n = (size_t)a->length;
     bool la = mk_string_is_latin1(a), lb = mk_string_is_latin1(b);
-    if (la == lb) return memcmp(a->chars, b->chars, n * (la ? 1 : sizeof(MkChar))) == 0;
+    if (la && lb) { /* two Latin-1 strings of one length: short ones are compared with a few loads */
+        const uint8_t *x = mk_string_bytes(a), *y = mk_string_bytes(b);
+        if (n >= 8 && n <= 16) {
+            uint64_t p, q, r, t;
+            memcpy(&p, x, 8); memcpy(&q, y, 8); memcpy(&r, x + n - 8, 8); memcpy(&t, y + n - 8, 8);
+            return ((p ^ q) | (r ^ t)) == 0;
+        }
+        if (n >= 4 && n < 8) {
+            uint32_t p, q, r, t;
+            memcpy(&p, x, 4); memcpy(&q, y, 4); memcpy(&r, x + n - 4, 4); memcpy(&t, y + n - 4, 4);
+            return ((p ^ q) | (r ^ t)) == 0;
+        }
+        if (n < 4) { /* 0..3: the first, the last and the middle byte cover them all */
+            if (n == 0) return true;
+            return ((x[0] ^ y[0]) | (x[n - 1] ^ y[n - 1]) | (x[n >> 1] ^ y[n >> 1])) == 0;
+        }
+        return memcmp(x, y, n) == 0;
+    }
+    if (la == lb) return memcmp(a->chars, b->chars, n * sizeof(MkChar)) == 0;
     const MkString *w = la ? b : a, *l = la ? a : b; /* one of each: compare the characters */
     const uint8_t *lbytes = mk_string_bytes(l);
     for (size_t i = 0; i < n; i++) if (w->chars[i] != lbytes[i]) return false;
