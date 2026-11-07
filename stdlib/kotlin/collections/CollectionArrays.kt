@@ -3,15 +3,10 @@
  */
 package kotlin.collections
 
-@Suppress("UNCHECKED_CAST")
-public fun <T> Collection<T>.toTypedArray(): Array<T> {
-    val r = arrayOfNulls<T>(size)
-    var i = 0
-    for (e in this) {
-        r[i] = e
-        i++
-    }
-    return r as Array<T>
+/** An array of the elements; `T` is reified so that the array records its element type (docs/memory-model.md, "Reified object arrays"). */
+public inline fun <reified T> Collection<T>.toTypedArray(): Array<T> {
+    val iter = iterator()
+    return Array<T>(size) { iter.next() }
 }
 
 public fun Collection<Int>.toIntArray(): IntArray {

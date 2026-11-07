@@ -5,9 +5,9 @@
 | total test files | 10070 |
 | skipped (not applicable) | 4117 |
 | **applicable** | **5953** |
-| **pass** | **5852 (98.30%)** |
+| **pass** | **5853 (98.32%)** |
 | compile-error | 63 |
-| ice (compiler crash) | 15 |
+| ice (compiler crash) | 14 |
 | runtime-fail | 20 |
 | crash (signal) | 1 |
 | timeout | 2 |
@@ -18,9 +18,9 @@
 |---|---:|
 | applicable (above) | 5953 |
 | **native-parity applicable** | **5953** |
-| **native-parity pass** | **5852 (98.30%)** |
+| **native-parity pass** | **5853 (98.32%)** |
 
-Wall time: 2948s.
+Wall time: 1653s.
 
 ## Skips
 
@@ -42,17 +42,17 @@ Wall time: 2948s.
 | 17 | compile-error | `unresolved call '_'` | box/builderInference/issues/kt53478.kt |
 | 10 | compile-error | `unresolved reference '_'` | box/callableReference/function/classMemberFromCompanionObject.kt |
 | 8 | compile-error | `no matching callable for reference '_'` | box/callableReference/adaptedReferences/referenceToVarargWithDefaults.kt |
-| 4 | ice | `internal compiler error: the C compiler (cc) rejected the C code that minic generated` | box/arrays/kt47483.kt |
 | 4 | compile-error | `unresolved callable reference '_'` | box/callableReference/function/referenceToCompanionMember.kt |
+| 3 | ice | `internal compiler error: the C compiler (cc) rejected the C code that minic generated` | box/arrays/kt47483.kt |
 | 3 | compile-error | `no operator plus for <error>` | box/builderInference/pclaRootIsElvisSynthetic.kt |
+| 3 | runtime-fail | `Exception in thread "_" java.lang.NullPointerException: null cannot be cast to non-null type` | box/fir/initializationInLocalInnerClassWithSecondaryConstructor.kt |
 | 2 | compile-error | `Suspend function type should be called only from a coroutine or another suspend function` | box/coroutines/kt51530.kt |
-| 2 | runtime-fail | `Exception in thread "_" java.lang.IllegalStateException: N` | box/topLevelInitializtion/failInInitializer1.kt |
 | 1 | compile-error | `unresolved type '_'` | box/annotations/nestedClassesInAnnotations.kt |
 | 1 | timeout | `compile timeout` | box/arrays/primitiveArrays.kt |
-| 1 | runtime-fail | `box() returned: FAIL 1: kotlin.Any@1dc2982d` | box/basics/unchecked_cast10.kt |
+| 1 | runtime-fail | `box() returned: FAIL 1: kotlin.Any@2e86cf2d` | box/basics/unchecked_cast10.kt |
 | 1 | runtime-fail | `box() returned: OKOK` | box/binaryOp/eqNullableToPrimitiveWithSideEffects.kt |
 | 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: call without resolution (in function testTypeInfoOriginInsideLocalClass)` | box/builderInference/oneParameter/oneTypeVariable/oneTypeInfoOrigin/targetTypes/GenericLocalClassWithLeakingTypeParameter.kt |
-| 1 | runtime-fail | `Exception in thread "_" java.lang.Exception: ks1 == ks2 (same file, same SAM type): equals: <get-ks3>.<lambda>$N@5307fa2e != <get-ks3>.<lambda>$N@5307fa2f` | box/callableReference/funInterfaceConstructor/funInterfaceConstructorEquality.kt |
+| 1 | runtime-fail | `Exception in thread "_" java.lang.Exception: ks1 == ks2 (same file, same SAM type): equals: <get-ks3>.<lambda>$N@a1365f2e != <get-ks3>.<lambda>$N@a1365f2f` | box/callableReference/funInterfaceConstructor/funInterfaceConstructorEquality.kt |
 | 1 | compile-error | `0_test.kt: error: unsupported construct: type '_'` | box/callableReference/property/enumNameOrdinal.kt |
 | 1 | compile-error | `0_test.kt:N:N: error: unsupported construct: main function with unsupported parameters (only `_` and `_`)` | box/casts/kt53677.kt |
 | 1 | runtime-fail | `Exception in thread "_" java.lang.ClassCastException: class kotlin.Long cannot be cast to class kotlin.Int` | box/casts/objectToPrimitiveWithAssertion.kt |
@@ -63,13 +63,12 @@ Wall time: 2948s.
 | 1 | runtime-fail | `Exception in thread "_" java.lang.AssertionError: kotlin.Unit` | box/coroutines/featureIntersection/suspendFunctionIsAs.kt |
 | 1 | runtime-fail | `box() returned: fail 04: 0` | box/coroutines/intrinsicSemantics/releaseIntercepted.kt |
 | 1 | runtime-fail | `box() returned: fail: suspendHere(A.foo(*));suspended;resuming;null;null;suspendHere(A.foo(@));s` | box/coroutines/unitTypeReturn/unitSafeCall.kt |
-| 1 | compile-error | `0_test.kt: error: unsupported construct: conversion from Unit to TObject(qualifiedName=kotlin.Any, cName=mk_Any, nullable=true, isInterface=false)` | box/coroutines/varSpilling/safeCallElvis.kt |
+| 1 | compile-error | `0_test.kt: error: unsupported construct: conversion from Unit to TObject(qualifiedName=kotlin.Any, cName=mk_Any, nullable=true, isInterface=false, elem=null, el` | box/coroutines/varSpilling/safeCallElvis.kt |
 | 1 | compile-error | `0_test.kt:N:N: error: unsupported construct: comparison of Int with Long` | box/diagnostics/functions/tailRecursion/realIteratorFoldl.kt |
 | 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: implicit receiver not found` | box/enum/kt20651_inlineLambda.kt |
 | 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: implicit receiver not found (in function <anonymous>)` | box/extensionFunctions/kt13312.kt |
 | 1 | runtime-fail | `box() returned: OO` | box/extensionFunctions/contextReceivers/contextAndNoContextOverloads.kt |
 | 1 | runtime-fail | `box() returned: Fail _B_` | box/fir/functionsDifferInTypeParameterBounds2.kt |
-| 1 | runtime-fail | `Exception in thread "_" java.lang.NullPointerException: null cannot be cast to non-null type` | box/fir/initializationInLocalInnerClassWithSecondaryConstructor.kt |
 | 1 | compile-error | `unresolved this` | box/funInterface/funInterfaceWithReceiver.kt |
 | 1 | crash | `signal 11` | box/funInterface/intersectionTypeToFunInterfaceConversion.kt |
 | 1 | runtime-fail | `Exception in thread "_" java.lang.Exception` | box/ieee754/smartCastToDifferentTypesWithNumericPromotion_properIeeeComparisons.kt |
@@ -79,3 +78,4 @@ Wall time: 2948s.
 | 1 | ice | `internal compiler error: mini.backend.EmitError: local of type Unit (in box)` | box/inline/coercionToUnit.kt |
 | 1 | compile-error | `0_test.kt: error: unsupported construct: call to '_'` | box/inlineClasses/lateinitInlineClasses.kt |
 | 1 | compile-error | `type mismatch: expected kotlin.collections.ArrayList<NullableInt<kotlin.Any?>> but was kotlin.collections.ArrayList<NullableInt<out kotlin.Any?>>` | box/inlineClasses/unboxValueOfAnyBeforeMethodInvocationGeneric.kt |
+| 1 | compile-error | `type mismatch: expected kotlin.collections.ArrayList<NullableInt<kotlin.Any>> but was kotlin.collections.ArrayList<NullableInt<out kotlin.Any>>` | box/inlineClasses/unboxValueOfAnyBeforeMethodInvocationGeneric2.kt |

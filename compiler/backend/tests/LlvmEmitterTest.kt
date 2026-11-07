@@ -149,7 +149,7 @@ class LlvmEmitterTest {
         assertEquals(LlvmEmitter.emit(m), LlvmEmitter.emit(m))
         val wasm = LlvmEmitter.emit(m, target = LlvmTarget.WASM32)
         assertTrue("target triple = \"wasm32-unknown-wasi\"" in wasm)
-        assertTrue("%MkTypeInfo = type <{ ptr, i32, ptr, ptr, ptr, i32, ptr, i32, ptr }>" in wasm, wasm)
+        assertTrue("%MkTypeInfo = type <{ ptr, i32, ptr, ptr, ptr, i32, ptr, i32, ptr, ptr }>" in wasm, wasm)
     }
 
     @Test

@@ -197,6 +197,8 @@ fun <T : Throwable> assertFailsWith(exceptionClass: ${"kotlin.reflect"}.KClass<T
     throw AssertionError(formatAssertMessage(message, "Expected an exception to be thrown, but was completed successfully."))
 }
 
+fun <T : Throwable> assertFailsWith(exceptionClass: ${"kotlin.reflect"}.KClass<T>, block: () -> Unit): T = assertFailsWith(exceptionClass, null, block)
+
 inline fun <reified T : Throwable> assertFailsWith(message: String? = null, block: () -> Unit): T {
     try {
         block()

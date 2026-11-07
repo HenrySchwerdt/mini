@@ -1203,7 +1203,8 @@ source libraries; a version-1 library is rejected with the usual "rebuild the li
 * Strict values in Kotlin collections (`List<Box>`): still M0110 by 5.4; the design note there says what is needed (statement-scoped
   release of temporaries, then a temporary collection of loans; or an owning `OwnedList<T>`).
 * Local functions (`fun helper()` inside a function) that capture owners are lifted and called directly: a call reads the captures
-  (a call after the owner's `free()` is M0101), but a local function used as a value (`::helper`) is not tracked as a closure.
+  (a call after the owner's `free()` is M0101), and a local function used as a value (`::helper`) is a closure over the same captures
+  (it was not tracked before: `val f = ::peek; a.free(); f()` was a use after free that the checker accepted; corpus `s100`, `s101`).
 * Overriders that live in code outside the compilation are invisible to the union rule of virtual calls.
 * No test opts out of the leak suites any more (`*.noleakcheck` is gone): the four Strict programs that leaked were a caught exception of a
   Strict class never released, and a Strict object passed into a generic container (`Cell(Item(5))`) whose owner count was never taken
@@ -1335,6 +1336,94 @@ small open-addressing table (`slots` in `cycles.c`, touched only when an object 
 `compiler/testdata/cycles_{dll,tree,graph,closure,observer}.kt` run on the C and LLVM backend under LeakSanitizer (the leak
 suites). `scripts/test-e2e.sh --suite stress` runs allocation-heavy programs (`compiler/testdata/stress/`): LeakSanitizer clean and the
 peak RSS at 4x the rounds must stay within 25 percent of the peak at 1x.
+
+## Memory-safety gaps closed (Managed mode, generated code and runtime)
+
+An audit of what well-typed Kotlin could still do to the process (use after free, double free, null dereference without an exception,
+out-of-bounds access, races on reference counts). Each item names the gap, the root cause and the regression test (`compiler/testdata`,
+which run under AddressSanitizer + LeakSanitizer in the `leak` and `llvm-leak` suites).
+
+| Gap | Root cause | Fix | Test |
+|---|---|---|---|
+| **Heap pollution is type confusion.** `listOf<Any>(1) as List<String>` followed by `l[0].length` read the boxed Int as a String (length and characters taken from a foreign layout: garbage output, out-of-bounds reads); the same for a generic field (`Box<T>.v`), `T` results, lambda parameters and `Array<String>` (reified arrays, below) | the conversion of an erased value (`Any?`) to the type it has at the use (`adaptResult`, `convertFromErased`, `coerceFlexible`, unboxing from `Any`) was a C-level retyping (`CastMode.Unchecked`) | it is a **checked cast** (`CastMode.Checked`, `erasedCastMode`) like the `checkcast` the JVM inserts at the use: `ClassCastException` (`NullPointerException` for a `null` that is not allowed). `Any` itself, the common case, costs nothing; same-class values pass the inline type-pointer compare | `generic_pollution_cce` |
+| **A non-null property read before it is initialized dereferenced the zero of the allocation** (`open class Base { init { show() } }`, `class D : Base() { val s = "x"; override fun show() { s.length } }`; two `object`s or files that read each other's properties while they initialize). Strings silently read as `""`/`"null"`, other classes were a null dereference | the field of a non-null type is assumed to hold a value | reads of such a field are null-checked (`NullPointerException`, like the JVM) when the field can still be unset while code of its class runs: classes whose initialization lets `this` out (`initLeaksThis`: a member call with the implicit receiver, `this` passed or captured in a property initializer, `init` block or constructor, in the class or one of its superclasses), fields of `object`s and top-level properties that have a non-constant initializer. Other classes pay nothing (`Ir2MirInitSafety.kt`) | `uninit_field_npe` |
+| **Huge arrays**: `IntArray(Int.MAX_VALUE)` on a machine that cannot supply the memory wrote the length into a null block; on a 32-bit target (wasm32) `elem * length` wrapped to a small block and later accesses were out of bounds | `array_new` neither checked the size computation nor the result of the allocator | overflow-checked size, a failed allocation is the fatal `OutOfMemoryError` (like `string too long`) | (needs an unreasonable allocation; the check is in `runtime/src/v1l.c`) |
+| **`list.addAll(list)` never ended** (the loop re-read the size of the list it was growing and ran until the storage was exhausted) | `ArrayList.addAll` iterated with the live size | the element count is taken once before the copy | `list_addall_self` |
+| **Leaks at the end of an uncaught exception**: the exception object and its text were not released before `exit(1)`, so a leak checker flagged every program that ends with an uncaught exception | `mk_report_uncaught` | released | (visible with LeakSanitizer on any `.err` program) |
+| **Data race on reference counts in threaded programs** (`reference count underflow` aborts, use after free): `mk_release` recorded the cycle candidate **after** it had dropped its reference, when another thread could already have freed the object; and `HashMap.get` wrote its one-entry lookup cache (two reference fields) on every read, so concurrent readers of a read-only map double-released the cached node | see left | the candidate is recorded before the decrement (this reference still keeps the object alive; if the decrement then reaches zero the object is a buffered root that dies, which the zero path already handles); the lookup cache is only written while no thread has been started (`mini.internal.threadsActive`) | `threads_shared_readers` |
+| **Strict: a local function used as a value escaped the checker** (`fun peek() = a.v; val f = ::peek; a.free(); f()`: use after free, accepted) | `MemoryFacts` lowered `::helper` to an opaque value, so the captured owners were not borrowed by `f` | `::helper` of a local function with captures lowers to a closure over the captures (`MExpr.Lambda`), the existing closure rules apply (M0101 on the call after the free, M0112 / M0110 on escape) | `strict-corpus/s100_local_fun_ref_after_free`, `s101_local_fun_ref_before_free` |
+
+### Reified object arrays
+
+An `Array<T>` of references records the element type it was created with, like the `Foo[]` of the JVM. That lets a read `a[i]` of a value
+statically typed `Array<C>` skip the checked cast that every other erased-to-specific conversion has (an array element is erased like a
+generic one; without this, `bodies[j]` in `bench/nbody` cost about five instructions per read, +14 % overall).
+
+**Representation (no header growth).** An object array's type pointer is not always `MkObjectArray_ti`: `mk_array_new_of(n, elem, nullable)`
+uses a type info interned per *element tag* (`MkTypeInfo.elem`, a new last field: the element's type info, bit 0 set when the elements may be
+`null`; `NULL` is `Any?`). Its `super` is `MkObjectArray_ti`, so `is Array<*>` is the ordinary super walk, and the dispose of the base runs
+once (`free_dead` walks the chain, so the interned type info has no dispose of its own). The instance layout (`MkArray`: header, length,
+elements) is unchanged, so the layout rules of section 2.7 and the `wasm32` layout asserts are untouched; the only growth is one pointer
+in every `MkTypeInfo`. Primitive arrays are not affected.
+
+**Static side.** `TObject.elem` (MIR, serialized in `.mlib`) is the element type an `Array<E>` type knows: a class, interface, `String`, `Any` or
+a boxed primitive (`Int` and `Int?` differ in nullability). The invariant: *every value of the MIR type `Array<E>` refers to an array that was
+created with exactly this element tag* (`Array<out E>`: with a subtype of `E`). Therefore a read needs no check (`Cast(..., Unchecked)`), and a
+store through such a view needs none either (the static type of the value is the element type, and an `Array<out E>` has no `set`).
+Everything that does not know the element type (`Array<T>` of a generic function, nested arrays, function types, value classes, `Array<*>`)
+has `elem == null`: reads keep the checked cast, stores check the value against the recorded element type (`mk_array_store_obj`, the
+`ArrayStoreException` of the JVM; here a `ClassCastException`, or a `NullPointerException` for a `null` where the recorded type is non-null).
+
+**Where the invariant is established.** Creation records the element type of the static type of the creating expression: `arrayOf`,
+`emptyArray`, `arrayOfNulls`, `Array(n) { }`, `vararg` arrays and spreads (`mk_array_copy_into` checks the elements when the tags differ),
+`enum.values()`, the `args` of `main`, and the stdlib functions that make an array from another (`copyOf`, `copyOfRange`, `plus`, `sliceArray`,
+`reversedArray`, `sortedArray`: `arrayOfNulls<T>(n)` in a generic function whose own parameter is an `Array<T>` makes an array *like* that one,
+`mk_array_new_like`, as `Arrays.copyOf` does; `copyOf(n)` asks for null slots with `arrayOfNulls<T?>`), `Collection<T>.toTypedArray()` (an
+`inline` function with a reified `T`) and `IntArray.toTypedArray()`. An array created where its element type is not known (a generic function
+without such a parameter) records `Any?`. It enters an `Array<C>` type only at a conversion, and every conversion into a type that knows its
+element type is a checked cast (`mk_array_cast` / `mk_array_is`, also `is`, `as?`, smart casts, erased generic results and fields):
+`ClassCastException` unless the tags are equal (or, for `out`, the recorded type is a subtype). So `arrayOf<Any>(1) as Array<String>` fails at the
+cast like on the JVM, and `fun <T> mk(): Array<T> = arrayOfNulls<Any?>(1) as Array<T>` fails where its caller reads the result as `Array<String>`.
+Like the JVM, nullability is not part of the class of an array: `arrayOfNulls<String>(n) as Array<String>` and `Array<String> as Array<String?>` pass (a `null` passes every erased cast, as in `checkcast`; the check of the element type is the only one made). The JVM then throws a `NullPointerException` where the `null` is dereferenced (`a[0].length`); here that dereference of a non-null typed `String` is not checked and reads as the empty string (known gap, the same for `listOf<String?>(null) as List<String>` and `l[0].length`).
+An *empty* array passes every array cast (nothing can be read from or stored into it, so no element can be confused; the frontend infers `arrayOf()` without an expected type as `Array<Any?>`). `CastElim` removes the cast when the operand type already proves it (`Array<String>` to `Array<out Any>`, to `Array<T>`).
+
+**Deliberate differences from the JVM** (all are failures of a cast the JVM would let through and fail later, or not at all):
+`arrayOf(Sq(1)) as Array<Shape>` is a `ClassCastException` (it would allow a store of a `Circle` into a `Sq` array; the JVM throws at that store);
+Stores through a generic view fail
+with `ClassCastException` instead of `ArrayStoreException`. Test: `array_reified`.
+
+### Cost of the checks
+
+Measured with `valgrind --tool=callgrind` (instructions of the whole run, clang -O2, C backend, x86-64, scaled-down workloads of `bench/*`
+so that callgrind finishes) against the compiler and runtime of `origin/main` (4e13fc6); "text" is the `text` section of the linked
+program, which includes the runtime (about 1.7 KB for the new array functions and checks). The checks are emitted inline
+(`CEmitter.castInline`: null test and type-pointer compare of the fast path, the throw is out of line and cold; a leaf class is one compare,
+an interface remembers the type that last passed), the unbox of a box checks type and null itself (no second cast in front of it),
+`CastElim` (`cast-elim` MIR pass) drops casts whose operand type already proves the target, reified arrays remove the check of every
+`Array<C>` read, and the null check of an `object` / top-level property is only emitted when user code can run before it is assigned
+(`Ir2MirInitSafety.firstNonSimpleInit`: initializers that are constants, strings, or stdlib calls on such values run no user code).
+
+| Program | main | this branch | delta | text size |
+|---|---|---|---|---|
+| bench/binarytrees (depth 14) | 629.5 M | 640.8 M | +1.8 % | +2.9 % |
+| bench/nbody (500 k steps) | 330.9 M | 329.3 M | -0.5 % | +2.1 % |
+| bench/fannkuch, spectralnorm, mandelbrot, strbuild | | | 0.0 % | +2.9 % |
+| bench/json | 194.5 M | 195.4 M | +0.5 % | +2.5 % |
+| bench/wordcount | 924.0 M | 901.2 M | -2.5 % | +2.9 % |
+| `ArrayList<String>` iteration and indexing | 124.02 M | 124.03 M | 0.0 % | +2.8 % |
+| `HashMap<String, Int>` lookups | 764.3 M | 713.3 M | -6.7 % | +2.4 % |
+| generic class fields, lambdas over collections | 720.0 M | 615.0 M | -14.6 % | +2.8 % |
+| `object` / top-level property reads in a loop (one top-level `Node` forces the guard) | 560.3 M | 600.3 M | +7.1 % | +3.1 % |
+| `Array<Shape>` reads (index loop and `for`) | 221.59 M | 221.60 M | 0.0 % | +2.9 % |
+
+The savings on the collection programs come from the runtime (`HashMap.get`, `type_is`) and the inline checks replacing the call of
+`mk_checked_cast`. The reads of an `Array<SomeClass>` that cost +14 % on `nbody` before reified arrays are free now (nbody is within noise of main, 0.5 % below it). The one remaining cost is the guard of top-level properties
+that can be read before their initializer ran (a program with a top-level `Node` and a loop reading properties).
+
+Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-range index as a fatal
+`StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
+catchable. Unsynchronized writes to a *shared mutable* collection from several threads are a data race of the program (as on the JVM)
+and are not made safe; the cycle collector still only runs while no Kotlin thread runs (section "Threads").
 
 ## Experience from D2 (Strict code generation)
 

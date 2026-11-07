@@ -1,0 +1,14 @@
+string: NullPointerException
+array: NullPointerException
+list: NullPointerException
+object: NullPointerException
+pair: NullPointerException
+0
+int: ok
+null
+nullable: ok
+unset
+lateinit: ok
+own: NullPointerException
+objects: NullPointerException
+4

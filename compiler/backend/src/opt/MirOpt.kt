@@ -39,6 +39,13 @@ object MirOpt {
             if (options.stats) report("inline: " + st.sites + " call sites in " + st.functions + " functions, " + st.exactDevirt + " exact-type devirtualizations, " + st.scalarReplaced + " objects scalar-replaced")
             if (options.stats) report("inline timing ms: exact " + st.tExact / 1000000 + ", expand " + st.tExpand / 1000000 + ", cleanup " + st.tClean / 1000000 + ", sroa " + st.tSroa / 1000000)
         }
+        if (options.on("cast-elim")) {
+            val ce = CastElim(m)
+            val fs = ArrayList<MirFunction>(m.functions.size)
+            for (f in m.functions) fs.add(ce.run(f))
+            if (options.stats) report("cast-elim: " + ce.removed + " checked casts that cannot fail")
+            m = MirModule(m.sourceName, fs, m.classes, m.externs, m.includes, m.links, m.wasmExports)
+        }
         return m
     }
 }

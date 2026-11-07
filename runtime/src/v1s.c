@@ -177,7 +177,7 @@ static void sb_unshare(MkSb *sb) {
 }
 
 static const MkTypeInfo sb_type = {
-    "mini.internal.StringBuilderBuffer", sizeof(MkSb), &mk_type_Any, sb_dispose, NULL, 0, NULL, 0, NULL,
+    "mini.internal.StringBuilderBuffer", sizeof(MkSb), &mk_type_Any, sb_dispose, NULL, 0, NULL, 0, NULL, NULL,
 };
 
 static MkSb *sb_of(MkObject *o) {
@@ -413,7 +413,7 @@ static void ref_array_trace(MkObject *self, void (*visit)(MkObject *, void *), v
 }
 
 static const MkTypeInfo ref_array_type = {
-    "mini.internal.RefArray", sizeof(MkRefArray), &mk_type_Any, ref_array_dispose, NULL, 0, NULL, 0, ref_array_trace,
+    "mini.internal.RefArray", sizeof(MkRefArray), &mk_type_Any, ref_array_dispose, NULL, 0, NULL, 0, ref_array_trace, NULL,
 };
 
 static MkRefArray *ra_of(MkObject *o, MkInt index) {

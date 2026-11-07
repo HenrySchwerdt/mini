@@ -334,11 +334,45 @@ internal fun Ir2Mir.borrowedCapture(d: IrValueDeclaration): Boolean {
 
 internal fun Ir2Mir.currentFunctionName(): String = currentFunction?.name ?: "<module>"
 
-/** Converts an erased value (`Any?`) to the type [t] of a typed local (unboxing / unchecked cast). */
+/**
+ * The mode of the cast of an erased value (`Any?`: the element of a `List<String>`, the `T` of a generic field, a lambda parameter) to the
+ * type it has at the use. Like the `checkcast` of the JVM it is checked: a polluted generic (`listOf<Any>(1) as List<String>`) must fail
+ * with a ClassCastException where the value is read, not be taken for a String (whose length and characters would then be read out of
+ * an object of another layout). Only `Any` itself cannot fail.
+ */
+internal fun erasedCastMode(to: MirType): MirExpr.CastMode =
+    if (to is TObject && to.cName == ANY_CNAME) MirExpr.CastMode.Unchecked else MirExpr.CastMode.Checked
+
+/**
+ * The cast of an erased value to the type [to] it has at the use ([erasedCastMode]); null passes, as it does the `checkcast` of the JVM (the
+ * JVM does not test for null there: `fun <T> f(): T = null as T` read as a `String` fails only where the value is dereferenced).
+ */
+internal fun Ir2Mir.erasedCast(v: MirExpr, to: MirType): MirExpr {
+    if (to === TNull) return MirExpr.Cast(v, to, MirExpr.CastMode.Unchecked)
+    val mode = erasedCastMode(to)
+    if (mode != MirExpr.CastMode.Checked) return MirExpr.Cast(v, to, mode)
+    val r = if (to === TString) MirExpr.Cast(MirExpr.Cast(v, TNString, mode), to, MirExpr.CastMode.Unchecked)
+        else if (to is TObject && !to.nullable) MirExpr.Cast(MirExpr.Cast(v, to.copy(nullable = true), mode), to, MirExpr.CastMode.Unchecked)
+        else MirExpr.Cast(v, to, mode)
+    erasedChecks[r] = v
+    return r
+}
+
+/**
+ * The value [e] where it is passed on as an `Any` (an argument of a generic parameter, a vararg element of `T`): the JVM checks an erased
+ * value where it is used at a specific type, not where it flows through generic code, so the check [erasedCast] made is dropped.
+ */
+internal fun Ir2Mir.withoutErasedCheck(e: MirExpr, to: MirType): MirExpr {
+    if (!(to is TObject && to.cName == ANY_CNAME)) return e
+    val inner = erasedChecks[e] ?: return e
+    return inner
+}
+
+/** Converts an erased value (`Any?`) to the type [t] of a typed local (unboxing / checked cast). */
 internal fun Ir2Mir.convertFromErased(v: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
     if (v.type == t) return v
-    if (t.isPrimitive) return unboxCast(v, t, MirExpr.CastMode.Unchecked)
-    if (t.isRef && v.type.isRef) return MirExpr.Cast(v, t, MirExpr.CastMode.Unchecked)
+    if (t.isPrimitive) return unboxCast(v, t, MirExpr.CastMode.Checked)
+    if (t.isRef && v.type.isRef) return erasedCast(v, t)
     return convertTo(v, t, at)
 }
 
@@ -351,8 +385,8 @@ internal fun Ir2Mir.adaptResult(e: MirExpr, expected: MirType, at: IrElement, ou
     if (!e.type.isRef) return e
     var v = e
     if (v.isOwned() || (v is MirExpr.FieldGet && v.type.isRef)) v = tmpOf(v, out)
-    if (expected.isPrimitive) return unboxCast(v, expected, MirExpr.CastMode.Unchecked)
-    if (expected.isRef) return MirExpr.Cast(v, expected, MirExpr.CastMode.Unchecked)
+    if (expected.isPrimitive) return unboxCast(v, expected, MirExpr.CastMode.Checked)
+    if (expected.isRef) return erasedCast(v, expected)
     return e
 }
 
@@ -459,7 +493,10 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
     val key = "$tid:" + boundIdx.joinToString(",") + ":" + liftedCaps.size + ":" + ((e.type as? ClassType)?.args?.lastOrNull()?.type?.classFqName ?: "?") + (if (currentStrict) "s" else "")
     val shared = refClassCache[key]
     if (shared != null) return MirExpr.New(shared.first, bound + liftedCaps.map { MirExpr.Local(localOf(it, e)) }, shared.second)
-    val made = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, emptyList(), tid * 7919 + boundIdx.size) { _, args, capLocals, body ->
+    // a local function of Strict code reads Strict owners through its captures: like the captures of a lambda they are borrowed (the
+    // memory checker proved that the function value does not outlive them), counting them would release a freed object
+    val borrowedCaps = boundTypes.map { false } + liftedCaps.map { borrowedCapture(it) }
+    val made = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, borrowedCaps, tid * 7919 + boundIdx.size) { _, args, capLocals, body ->
         val actual = ArrayList<MirExpr>()
         var k = 0
         for ((i, p) in params.withIndex()) {
@@ -473,7 +510,7 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
         val lifted = if (liftedCaps.isEmpty()) emptyList() else {
             liftedCaps.indices.map { MirExpr.Local(capLocals[boundIdx.size + it]) }
         }
-        val callExpr = callResolved(target, lifted + actual, e, body)
+        val callExpr = callResolved(target, lifted + actual, e, body, e.typeArguments, (e.type as? ClassType)?.args?.lastOrNull()?.type)
         val rt = if (target is IrConstructor) typeOf(target.parent as IrClass) else mirType(target.returnType, target)
         if (rt == TUnit) {
             body += MirStmt.Eval(callExpr)
@@ -490,7 +527,7 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
 }
 
 /** Direct call of [target] with already lowered [args] (receiver first), as used by function references. */
-internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: IrElement, out: MutableList<MirStmt>): MirExpr {
+internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: IrElement, out: MutableList<MirStmt>, typeArgs: List<Type?> = emptyList(), resultType: Type? = null): MirExpr {
     if (target is IrConstructor) {
         val cName = functionNames[target] ?: unsupported(at, "reference to constructor of '${(target.parent as IrClass).kotlinFqName}'")
         return MirExpr.New(cName, args, typeOf(target.parent as IrClass))
@@ -505,7 +542,15 @@ internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: Ir
     val cName = if (parent is IrClass) null else functionNames[target]
     if (cName != null) return MirExpr.Call(cName, args, mirType(target.returnType, target))
     // builtin members and functions the backend knows (`String::length`, `Int::plus`, `Any::toString`): an ordinary call of the arguments
-    val call = IrCall(target, target.returnType)
+    // (a reference to a generic function with its type arguments, `::arrayOfNulls` as `(Int) -> Array<String?>`: the call knows them, like the element type of an array)
+    // (`::arrayOfNulls` against `(Int) -> Array<String?>`: T is not recorded, the result type says it)
+    val targs = if (target.name == "arrayOfNulls" && (typeArgs.isEmpty() || typeArgs.any { it == null })) {
+        val el = ((resultType as? ClassType)?.args?.firstOrNull())?.type
+        if (el != null) listOf<Type?>(el) else typeArgs
+    } else typeArgs
+    val known = targs.isNotEmpty() && targs.all { it != null } && resultType != null
+    val call = IrCall(target, if (known) resultType!! else target.returnType)
+    if (known) call.typeArguments = targs
     for ((i, p) in target.parameters.withIndex()) {
         val tp = IrValueParameter("\$ref$i", p.type, p.kind, i)
         tp.parent = target

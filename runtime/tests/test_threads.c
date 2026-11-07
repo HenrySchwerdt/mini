@@ -51,7 +51,7 @@ static void dispose_it(MkObject *s) {
     (void)s;
     disposed++;
 }
-static const MkTypeInfo T = {"Shared", sizeof(MkObject), &mk_type_Any, dispose_it, 0, 0, 0, 0, NULL};
+static const MkTypeInfo T = {"Shared", sizeof(MkObject), &mk_type_Any, dispose_it, 0, 0, 0, 0, NULL, NULL};
 
 enum { THREADS = 4, ITERS = 200000 };
 
@@ -67,7 +67,7 @@ static void worker(void *arg) {
 }
 
 /* Shared DebugAllocator over the Heap: every thread allocates and frees. */
-static const MkTypeInfo T_Plain = {"Plain", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL};
+static const MkTypeInfo T_Plain = {"Plain", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
 static void alloc_worker(void *arg) {
     MkAllocator *d = arg;
     for (int i = 0; i < 5000; i++) {

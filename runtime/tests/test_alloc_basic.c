@@ -9,10 +9,10 @@ static char order[16];
 static void note(char c) { size_t n = strlen(order); order[n] = c; order[n + 1] = 0; }
 static void dispose_a(MkObject *s) { (void)s; note('A'); }
 static void dispose_b(MkObject *s) { (void)s; note('B'); }
-static const MkTypeInfo T_A = {"A", sizeof(Obj), &mk_type_Any, dispose_a, 0, 0, 0, 0, NULL};
-static const MkTypeInfo T_B = {"B", sizeof(Obj), &T_A, dispose_b, 0, 0, 0, 0, NULL};
-static const MkTypeInfo T_Plain = {"Plain", sizeof(Obj), &mk_type_Any, NULL, 0, 0, 0, 0, NULL};
-static const MkTypeInfo T_Iface = {"Iface", 0, NULL, NULL, 0, 0, 0, 0, NULL};
+static const MkTypeInfo T_A = {"A", sizeof(Obj), &mk_type_Any, dispose_a, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_B = {"B", sizeof(Obj), &T_A, dispose_b, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Plain = {"Plain", sizeof(Obj), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Iface = {"Iface", 0, NULL, NULL, 0, 0, 0, 0, NULL, NULL};
 
 /* legacy allocators: positional {allocate, free}, traits left 0 */
 static void *l_alloc(MkAllocator *s, size_t size, size_t a) { (void)s; (void)a; return malloc(size); }
@@ -116,7 +116,7 @@ static void check_alloc_with(void) {
 /* ---- mk_free ---- */
 static int disposed;
 static void count_dispose(MkObject *s) { (void)s; disposed++; }
-static const MkTypeInfo T_Count = {"Count", sizeof(Obj), &mk_type_Any, count_dispose, 0, 0, 0, 0, NULL};
+static const MkTypeInfo T_Count = {"Count", sizeof(Obj), &mk_type_Any, count_dispose, 0, 0, 0, 0, NULL, NULL};
 
 typedef struct { MkAllocator base; void *last_free; size_t frees; } Spy;
 static void *spy_alloc(MkAllocator *s, size_t size, size_t a) { (void)s; (void)a; return malloc(size); }

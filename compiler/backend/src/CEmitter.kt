@@ -69,6 +69,16 @@ object CEmitter {
         val literals = LinkedHashMap<String, String>() // kotlin value -> C name
         val sig = HashMap<String, MirFunction>()
         val classes = HashMap<String, MirClass>()
+        /** C names of the classes some other class extends (the closed world: every class of the program is in the module) */
+        var extendedSet: HashSet<String>? = null
+        fun extended(): HashSet<String> {
+            val ex = extendedSet
+            if (ex != null) return ex
+            val r = HashSet<String>()
+            for (c in classes.values) { val s = c.superCName; if (s != null) r.add(s) }
+            extendedSet = r
+            return r
+        }
         /** Object layout (Layout.kt); pointers are 8 bytes (the C backend targets 64-bit hosts, the asserts in the struct emission check it). */
         val layouts = ObjectLayouts(classes, 8)
         val cycles = CycleAnalysis(classes) // which classes can be part of a reference cycle
@@ -904,6 +914,62 @@ object CEmitter {
             return sb.toString()
         }
 
+        /**
+         * The checks of erased values (`as T` of a generic read, a field that may be unset, the unbox of a box) as one statement expression:
+         * the test is the only code of the fast path, the failing case raises and leaves the function right there (no load of the pending
+         * exception after every check). Only when the exit path is short, like [arrayAccess].
+         */
+        fun inlineGuard(e: MirExpr, operand: MirExpr, cond: (String) -> String, slow: (String) -> String, value: (String) -> String, post: (String) -> String = { "" }, decl: String = ""): String? {
+            val exit = exitStmt(0).replace("\n", " ").trim()
+            if (exit.length > 260) return null
+            val c = "mkc${tmpCounter++}"
+            val s = "({ $decl MkObject *$c = ${obj(operand)}; if (__builtin_expect(${cond(c)}, 0)) { ${slow(c)} if (mk_pending_exception != NULL) { $exit } ${post(c)} } ${value(c)}; })"
+            inlineChecked.add(e)
+            return s
+        }
+
+        fun notNullInline(e: MirExpr.NotNull): String? =
+            inlineGuard(e, e.operand, { "$it == NULL" }, { "(void)mk_checked_nn($it);" }, { "(${cType(e.type)})$it" })
+
+        fun castInline(e: MirExpr.Cast): String? {
+            val to = e.to
+            if (to is TObject && to.elem != null) return null // an array with a known element type: mk_array_cast
+            if (to is TObject && to.cName == ANY_CNAME) {
+                if (to.nullable) return null
+                return inlineGuard(e, e.operand, { "$it == NULL" }, { "(void)mk_checked_nn($it);" }, { "(MkObject *)$it" })
+            }
+            val ti = "&${typeInfoOf(to)}"
+            val nullable = to.isNullableRef()
+            val value = { c: String -> "(${cType(to)})$c" }
+            val slow = { c: String -> if (nullable) "(void)mk_checked_cast($c, $ti);" else "(void)mk_checked_cast_nn($c, $ti);" }
+            if (to is TObject && classes[to.cName]?.isInterface == true) {
+                // an interface is never the exact type of an object: the type that last passed this cast is remembered (a monomorphic site then costs one compare)
+                val k = "mkk${tmpCounter++}"
+                val cond = { c: String -> if (nullable) "$c != NULL && $c->type != $k" else "$c == NULL || $c->type != $k" }
+                return inlineGuard(e, e.operand, cond, slow, value, { c -> "$k = $c->type;" }, "static const MkTypeInfo *$k;")
+            }
+            // a class: the object's own type, or its direct superclass (the common hierarchy of one abstract base)
+            val leaf = to !is TObject || (classes[to.cName]?.let { !it.external && it.cName !in extended() } == true)
+            val ok = { c: String -> if (!leaf) "$c->type != $ti && $c->type->super != $ti" else "$c->type != $ti" }
+            val cond = { c: String -> if (nullable) "$c != NULL && ${ok(c)}" else "$c == NULL || (${ok(c)})" }
+            return inlineGuard(e, e.operand, cond, slow, value)
+        }
+
+        fun unboxInline(e: MirExpr.Unbox): String? {
+            val k = boxName(e.to)
+            val ct = cType(e.to)
+            val exit = exitStmt(0).replace("\n", " ").trim()
+            if (exit.length > 260) return null
+            val id = tmpCounter++
+            val c = "mkc$id"; val r = "mkr$id"
+            val tn = when (k) { "int" -> "Int"; "long" -> "Long"; "boolean" -> "Boolean"; "double" -> "Double"; "float" -> "Float"; "byte" -> "Byte"; "short" -> "Short"; else -> "Char" }
+            val s = "({ MkObject *$c = ${obj(e.operand)}; $ct $r; " +
+                "if (__builtin_expect($c != NULL && $c->type == &mk_type_$tn, 1)) $r = ((const struct { MkObject h; $ct v; } *)$c)->v; " +
+                "else { $r = mk_checked_unbox_$k($c); if (mk_pending_exception != NULL) { $exit } } $r; })"
+            inlineChecked.add(e)
+            return s
+        }
+
         fun exprInner(e: MirExpr): String {
             return when (e) {
                 is MirExpr.IntConst -> if (e.value == Int.MIN_VALUE) "(-2147483647-1)" else if (e.value < 0) "(${e.value})" else e.value.toString()
@@ -954,10 +1020,11 @@ object CEmitter {
                 }
                 is MirExpr.NullConst -> "NULL"
                 is MirExpr.Box -> "mk_box_${boxName(e.operand.type)}(${expr(e.operand)})"
-                is MirExpr.Unbox -> "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
-                is MirExpr.Cast -> cast(e)
-                is MirExpr.IsInstance -> "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
-                is MirExpr.NotNull -> "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
+                is MirExpr.Unbox -> unboxInline(e) ?: "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
+                is MirExpr.Cast -> if (e.mode == MirExpr.CastMode.Checked && prunedClass(e.to)) cast(MirExpr.Cast(e.operand, e.to, MirExpr.CastMode.Unchecked))
+                    else (if (e.mode == MirExpr.CastMode.Checked) castInline(e) else null) ?: cast(e)
+                is MirExpr.IsInstance -> arrayIs(e) ?: "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
+                is MirExpr.NotNull -> notNullInline(e) ?: "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
                     val fp = fnPtrType(e.type, e.paramTypes)
@@ -1058,6 +1125,12 @@ object CEmitter {
         fun fnPtrType(ret: MirType, params: List<MirType>): String =
             "${cType(ret)} (*)(${(listOf("MkObject *") + params.map { cType(it) }).joinToString(", ")})"
 
+        /** A class of the program that is not in the module: it was pruned because nothing creates it (a value class that is never boxed), no object has its type info. */
+        fun prunedClass(t: MirType): Boolean {
+            val c = if (t is TObject) t.cName else if (t is TBoxed && t.prim is TInline) (t.prim as TInline).cName else return false
+            return c.startsWith("kc_") && classes[c] == null
+        }
+
         fun cast(e: MirExpr.Cast): String {
             val to = e.to
             return when (e.mode) {
@@ -1066,13 +1139,25 @@ object CEmitter {
                     if (cType(e.operand.type) == cType(to)) s else "((${cType(to)})$s)"
                 }
                 MirExpr.CastMode.Checked -> {
+                    if (to is TObject && to.elem != null) return "((${cType(to)})mk_array_cast(${obj(e.operand)}, &${typeInfoOf(arrayElemTypeInfoType(to.elem!!))}, ${arrayCastFlags(to)}))"
                     // everything is an Any: only the null check is left (the erased `as E` of every generic getter)
                     if (to is TObject && to.cName == ANY_CNAME) return if (to.nullable) "((MkObject *)${obj(e.operand)})" else "((MkObject *)mkh_nn(${obj(e.operand)}))"
                     val fn = if (to.isNullableRef()) "mkh_cc" else "mkh_cast_nn"
                     "((${cType(to)})$fn(${obj(e.operand)}, &${typeInfoOf(to)}))"
                 }
-                MirExpr.CastMode.Safe -> "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
+                MirExpr.CastMode.Safe -> if (to is TObject && to.elem != null) {
+                    val t = "mkc${tmpCounter++}"
+                    "({ MkObject *$t = ${obj(e.operand)}; (${cType(to)})(mk_array_is($t, &${typeInfoOf(arrayElemTypeInfoType(to.elem!!))}, ${arrayCastFlags(to)}) ? $t : NULL); })"
+                } else "((${cType(to)})mkh_safe_cast(${obj(e.operand)}, &${typeInfoOf(to)}))"
             }
+        }
+
+        /** `x is Array<E>` for an array type with a known element type. */
+        fun arrayIs(e: MirExpr.IsInstance): String? {
+            val t = e.target
+            if (t !is TObject) return null
+            val el = t.elem ?: return null
+            return "mk_array_is((const MkObject *)${expr(e.operand)}, &${typeInfoOf(arrayElemTypeInfoType(el))}, ${arrayCastFlags(t)})"
         }
 
         /** A class (not an interface) as the target of an `is` test: only the superclass chain of the object's type can contain it. */

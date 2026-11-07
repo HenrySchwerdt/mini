@@ -110,7 +110,7 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         out += MirStmt.Eval(r)
         return MirExpr.Unreachable(TNothing)
     }
-    return r
+    return guardUnsetGetterResult(c, r, out)
 }
 
 internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
@@ -134,6 +134,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         unsupported(c, "$name of a type that is not an enum class")
     }
     memoryApiCall(c, owner, out)?.let { return it }
+    // `arrayOf` / `emptyArray` are made here, not called: the array records the element type of the call (docs/memory-model.md, "Reified object arrays")
+    if (parent is IrFile && parent.packageFqName == "kotlin" && (name == "arrayOf" || name == "emptyArray")) arrayFunction(c, name, "kotlin", out)?.let { return it }
 
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Nothing") {
         // a member called on a value of type Nothing (`null?.toString()`, `p.toString()` with `p: Nothing`): the receiver never completes
@@ -267,7 +269,7 @@ internal fun Ir2Mir.memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<
     ) {
         val field = prop.backingField!!
         val args = callArgs(c, f, out)
-        if (real.parameters.size == 1) return adaptResult(fieldGet(args[0], field), mirType(c.type, c), c, out)
+        if (real.parameters.size == 1) return adaptResult(if (c in unguardedReads) fieldGet(args[0], field) else guardUnsetField(fieldGet(args[0], field), field), mirType(c.type, c), c, out)
         // the setter of a fake override in `class B : A<Int>()` takes an Int, the field (of `A<T>`) holds an Any
         val ft = mirType(field.type, field)
         out += MirStmt.SetField(args[0], fieldOwner(field).cName, field.name, ft, coerceFlexible(args[1], ft, c, out))
@@ -662,7 +664,7 @@ internal fun Ir2Mir.comparableCompareTo(c: IrCall, out: MutableList<MirStmt>): M
 /** `values()`, `valueOf(String)` and `entries` of an enum class (generated functions, see Ir2MirClasses). */
 internal fun Ir2Mir.enumSpecialCall(c: IrCall, enumClass: IrClass, fname: String, out: MutableList<MirStmt>): MirExpr {
     val inf = info(enumClass)
-    val arrType = arrayType(arrayKindOfFq("kotlin.Array")!!)
+    val arrType = enumArrayType(inf)
     return when (fname) {
         "values" -> MirExpr.Call(inf.cName + "_values", emptyList(), arrType)
         "<get-entries>" -> {

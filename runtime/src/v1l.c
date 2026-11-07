@@ -54,6 +54,10 @@ _Noreturn void mk_report_uncaught(void) {
     }
     fputc('\n', stderr);
     fflush(stderr);
+    /* nothing may be left behind for LeakSanitizer (and the exception's own references run their dispose) */
+    mk_release((MkObject *)text);
+    mk_release(e);
+    mk_release_drain();
     exit(1);
 }
 
@@ -99,7 +103,7 @@ static void *const throwable_vtable[] = {
 
 #define EXC(Name, qualified, Super, dispose)                                                       \
     const MkTypeInfo Name##_ti = {qualified, sizeof(MkThrowable), &Super, dispose, throwable_vtable, \
-                                  4, NULL, 0, NULL};                                                     \
+                                  4, NULL, 0, NULL, NULL};                                                   \
     MkObject *Name##_new(const MkString *message, MkObject *cause) {                               \
         MkThrowable *t = (MkThrowable *)mk_alloc(&Name##_ti);                                      \
         t->message = message;                                                                      \
@@ -206,6 +210,19 @@ MkObject *mk_checked_cast(MkObject *object, const MkTypeInfo *target) {
         mk_raise_class_cast(object, target);
         return NULL;
     }
+    return object;
+}
+
+MkObject *mk_checked_cast_nn(MkObject *object, const MkTypeInfo *target) {
+    if (object == NULL) {
+        mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
+        return NULL;
+    }
+    return mk_checked_cast(object, target);
+}
+
+MkObject *mk_checked_nn(MkObject *object) {
+    if (object == NULL) mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
     return object;
 }
 
@@ -446,26 +463,30 @@ static void object_array_trace(MkObject *self, void (*visit)(MkObject *, void *)
     for (MkInt i = 0; i < a->length; i++) visit(e[i], ctx);
 }
 
-const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_Any, object_array_dispose, NULL, 0, NULL, 0, object_array_trace};
-const MkTypeInfo MkIntArray_ti = {"kotlin.IntArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo MkLongArray_ti = {"kotlin.LongArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo MkDoubleArray_ti = {"kotlin.DoubleArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo MkByteArray_ti = {"kotlin.ByteArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo MkShortArray_ti = {"kotlin.ShortArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo MkFloatArray_ti = {"kotlin.FloatArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo MkBooleanArray_ti = {"kotlin.BooleanArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
-const MkTypeInfo MkCharArray_ti = {"kotlin.CharArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL};
+const MkTypeInfo MkObjectArray_ti = {"kotlin.Array", sizeof(MkArray), &mk_type_Any, object_array_dispose, NULL, 0, NULL, 0, object_array_trace, NULL};
+const MkTypeInfo MkIntArray_ti = {"kotlin.IntArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo MkLongArray_ti = {"kotlin.LongArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo MkDoubleArray_ti = {"kotlin.DoubleArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo MkByteArray_ti = {"kotlin.ByteArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo MkShortArray_ti = {"kotlin.ShortArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo MkFloatArray_ti = {"kotlin.FloatArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo MkBooleanArray_ti = {"kotlin.BooleanArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
+const MkTypeInfo MkCharArray_ti = {"kotlin.CharArray", sizeof(MkArray), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL};
 
 static MkObject *array_new(const MkTypeInfo *type, MkInt length, size_t elem) {
+    bool objects = mk_is_object_array_type(type);
     if (length < 0) {
         char buf[48];
         snprintf(buf, sizeof buf, "%d", (int)length);
         mk_raise(&MkNegativeArraySizeException_ti, buf);
         return NULL;
     }
+    /* (the size computation must not wrap on 32-bit targets, and a failed allocation must not be written through) */
+    if ((size_t)length > (SIZE_MAX - sizeof(MkArray)) / elem) mk_panic("OutOfMemoryError: array too large");
     size_t bytes = sizeof(MkArray) + elem * (size_t)length;
-    if (type == &MkObjectArray_ti) mk_cycles_ensure();
-    MkObject *o = type == &MkObjectArray_ti ? mk_alloc_sized(NULL, type, bytes) : mk_alloc_sized_plain(type, bytes); /* (primitive arrays are never candidates) */
+    if (objects) mk_cycles_ensure();
+    MkObject *o = objects ? mk_alloc_sized(NULL, type, bytes) : mk_alloc_sized_plain(type, bytes); /* (primitive arrays are never candidates) */
+    if (o == NULL) mk_panic("OutOfMemoryError: Java heap space");
     ((MkArray *)o)->length = length;
     return o;
 }
@@ -480,6 +501,113 @@ MkObject *mk_array_new_float(MkInt n) { return array_new(&MkFloatArray_ti, n, si
 MkObject *mk_array_new_boolean(MkInt n) { return array_new(&MkBooleanArray_ti, n, sizeof(MkBoolean)); }
 MkObject *mk_array_new_char(MkInt n) { return array_new(&MkCharArray_ti, n, sizeof(MkChar)); }
 
+/* ---- reified object arrays ------------------------------------------------------------------------ */
+
+/* One type info per element tag, created on first use and never freed (the table is lock free: a lost race leaves a duplicate that
+ * compares equal by `elem`, which is all anybody compares). */
+typedef struct ArrayTypeNode {
+    const MkTypeInfo *tag;
+    MkTypeInfo ti;
+    struct ArrayTypeNode *next;
+} ArrayTypeNode;
+#define ARRAY_TYPE_BUCKETS 256
+static ArrayTypeNode *array_types[ARRAY_TYPE_BUCKETS];
+
+static const MkTypeInfo *array_type_of(const MkTypeInfo *tag) {
+    if (tag == NULL) return &MkObjectArray_ti;
+    size_t h = (size_t)(((uintptr_t)tag >> 3) * 2654435761u) % ARRAY_TYPE_BUCKETS;
+    ArrayTypeNode *head = __atomic_load_n(&array_types[h], __ATOMIC_ACQUIRE);
+    for (ArrayTypeNode *n = head; n != NULL; n = n->next) {
+        if (n->tag == tag) return &n->ti;
+    }
+    ArrayTypeNode *n = (ArrayTypeNode *)malloc(sizeof *n);
+    if (n == NULL) mk_panic("OutOfMemoryError: Java heap space");
+    n->tag = tag;
+    n->ti = MkObjectArray_ti;
+    n->ti.super = &MkObjectArray_ti;
+    n->ti.dispose = NULL; /* (the superclass's dispose releases the elements: free_dead runs the whole chain) */
+    n->ti.elem = tag;
+    do {
+        n->next = head;
+    } while (!__atomic_compare_exchange_n(&array_types[h], &head, n, 0, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE));
+    return &n->ti;
+}
+
+static const MkTypeInfo *array_tag(const MkTypeInfo *elem, MkInt nullable) {
+    if (elem == NULL || elem == &mk_type_Any) return nullable ? NULL : (const MkTypeInfo *)&mk_type_Any;
+    return (const MkTypeInfo *)((uintptr_t)elem | (nullable ? 1u : 0u));
+}
+static const MkTypeInfo *tag_type(const MkTypeInfo *tag) { return tag == NULL ? &mk_type_Any : (const MkTypeInfo *)((uintptr_t)tag & ~(uintptr_t)1); }
+static bool tag_nullable(const MkTypeInfo *tag) { return tag == NULL || ((uintptr_t)tag & 1) != 0; }
+
+MkObject *mk_array_new_of(MkInt n, const MkTypeInfo *elem, MkInt nullable) { return array_new(array_type_of(array_tag(elem, nullable)), n, sizeof(MkObject *)); }
+MkObject *mk_array_new_like(const MkObject *source, MkInt n, MkInt nullable) {
+    if (source == NULL) { mk_raise_npe(); return NULL; }
+    const MkTypeInfo *tag = source->type->elem;
+    if (nullable && tag != NULL) tag = (const MkTypeInfo *)((uintptr_t)tag | 1u);
+    return array_new(array_type_of(tag), n, sizeof(MkObject *));
+}
+
+/* Is a value of the dynamic type `t` (NULL: null) an instance of the element type recorded as `tag`? */
+static bool value_fits(const MkObject *v, const MkTypeInfo *tag) {
+    if (v == NULL) return tag_nullable(tag);
+    const MkTypeInfo *want = tag_type(tag);
+    return want == &mk_type_Any || v->type == want || mk_is_instance(v, want);
+}
+
+static bool array_store_ok(const MkObject *array, const MkObject *value) {
+    const MkTypeInfo *tag = array->type->elem;
+    if (tag == NULL || value_fits(value, tag)) return true;
+    if (value == NULL) mk_raise_npe();
+    else mk_raise_class_cast(value, tag_type(tag));
+    return false;
+}
+
+void mk_array_store_obj(MkObject *array, MkInt index, MkObject *value) {
+    if (array->type->elem != NULL && !array_store_ok(array, value)) return;
+    mk_array_set_obj(array, index, value);
+}
+
+MkBoolean mk_array_is(const MkObject *object, const MkTypeInfo *elem, MkInt flags) {
+    if (object == NULL) return false;
+    if (!mk_is_object_array_type(object->type)) return false;
+    const MkTypeInfo *have = object->type->elem;
+    const MkTypeInfo *want = array_tag(elem, flags & 1);
+    if (have == want) return true;
+    /* like the JVM (`arrayOfNulls<T>(n) as Array<T>`, `Array<String> as Array<String?>`): nullability is not part of the class of an array; the null
+     * check is left to the use of an element (the check of the element type is not) */
+    if (tag_type(have) == tag_type(want)) return true;
+    if ((flags & 2) == 0) return false;
+    /* a covariant view: the recorded element type must be a subtype */
+    MkObject probe;
+    memset(&probe, 0, sizeof probe);
+    probe.type = tag_type(have);
+    return tag_type(want) == &mk_type_Any || mk_is_instance(&probe, tag_type(want));
+}
+
+MkObject *mk_array_cast(MkObject *object, const MkTypeInfo *elem, MkInt flags) {
+    if (object == NULL) {
+        if ((flags & 4) == 0) mk_raise(&MkNullPointerException_ti, "null cannot be cast to non-null type");
+        return NULL;
+    }
+    /* an empty array has no element to read or store: it can be viewed with any element type (the one the frontend inferred for `arrayOf()` need not match) */
+    if (mk_is_object_array_type(object->type) && ((const MkArray *)object)->length == 0) return object;
+    if (!mk_array_is(object, elem, flags)) {
+        char buf[320];
+        if (mk_is_object_array_type(object->type)) {
+            const MkTypeInfo *have = object->type->elem;
+            const MkTypeInfo *want = array_tag(elem, flags & 1);
+            snprintf(buf, sizeof buf, "class kotlin.Array<%s%s> cannot be cast to class kotlin.Array<%s%s%s>", tag_type(have)->name, tag_nullable(have) ? "?" : "",
+                     (flags & 2) ? "out " : "", tag_type(want)->name, tag_nullable(want) ? "?" : "");
+            mk_raise(&MkClassCastException_ti, buf);
+        } else {
+            mk_raise_class_cast(object, &MkObjectArray_ti);
+        }
+        return NULL;
+    }
+    return object;
+}
+
 #define ELEMS(type, array) MK_ARRAY_ELEMS(type, array)
 
 void mk_array_copy_into(MkObject *dst, MkInt index, const MkObject *src) {
@@ -489,7 +617,10 @@ void mk_array_copy_into(MkObject *dst, MkInt index, const MkObject *src) {
         mk_raise_index(index, d->length);
         return;
     }
-    if (dst->type == &MkObjectArray_ti) {
+    if (mk_is_object_array_type(dst->type)) {
+        if (dst->type->elem != NULL && src->type->elem != dst->type->elem) {
+            for (MkInt i = 0; i < s->length; i++) if (!array_store_ok(dst, ELEMS(MkObject *, s)[i])) return;
+        }
         MkObject **to = ELEMS(MkObject *, d) + index;
         MkObject *const *from = ELEMS(MkObject *, s);
         for (MkInt i = 0; i < s->length; i++) {
@@ -534,7 +665,7 @@ const MkString *mk_array_content_to_string(const MkObject *array) {
     for (MkInt i = 0; i < a->length; i++) {
         if (i > 0) buf_append(&b, sep, 2);
         MkString *e;
-        if (array->type == &MkObjectArray_ti) e = mk_to_string(ELEMS(MkObject *, a)[i]);
+        if (mk_is_object_array_type(array->type)) e = mk_to_string(ELEMS(MkObject *, a)[i]);
         else if (array->type == &MkIntArray_ti) e = mk_string_from_int(ELEMS(MkInt, a)[i]);
         else if (array->type == &MkLongArray_ti) e = mk_string_from_long(ELEMS(MkLong, a)[i]);
         else if (array->type == &MkDoubleArray_ti) e = mk_string_from_double(ELEMS(MkDouble, a)[i]);

@@ -78,7 +78,10 @@ object MirLink {
         }
 
         fun type(t: MirType?) {
-            if (t is TObject) cls(t.cName)
+            if (t is TObject) {
+                cls(t.cName)
+                type(t.elem)
+            }
         }
 
         fun visitFunction(f: MirFunction) {
