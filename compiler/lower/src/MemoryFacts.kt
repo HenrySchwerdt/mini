@@ -783,6 +783,21 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     return opaque(e.type, e, cs)
                 }
                 is IrFunctionExpression -> return lambdaExpr(e)
+                is IrFunctionReference -> {
+                    // `::helper` of a local function that captures owners is a closure over them, like the lambda `{ helper() }`: the
+                    // function value reads the captured values whenever it is called, so it must not outlive them
+                    val t = e.target
+                    if (t is IrSimpleFunction && (t.origin == "LOCAL_FUNCTION" || t.visibility == "local")) {
+                        val caps = closureInfo().capturesOf(t)
+                        if (caps.isNotEmpty()) {
+                            lambdaCounter++
+                            val cl = ArrayList<MLocal>()
+                            for (v in caps) cl.add(local(v))
+                            return MExpr.Lambda(lambdaCounter, emptyList(), emptyList(), cl, pos(e))
+                        }
+                    }
+                    return opaque(e.type, e)
+                }
                 is IrVararg -> {
                     // the elements of `listOf(a, b)` / `arrayOf(...)` are stored into an array: a Strict value there leaves Strict code
                     val els = ArrayList<MExpr>()

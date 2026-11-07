@@ -373,7 +373,7 @@ void mk_b1_set_args_utf16(int argc, const MkChar *const *argv) {
 
 MkObject *mk_b1_args(void) {
     MkInt n = b1_argc > 1 ? (MkInt)(b1_argc - 1) : 0;
-    MkObject *array = mk_array_new_obj(n);
+    MkObject *array = mk_array_new_of(n, &mk_type_String, 0);
     for (MkInt i = 0; i < n; i++) {
 #if defined(_WIN32)
         if (b1_wargv != NULL) {

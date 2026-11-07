@@ -80,6 +80,9 @@ public external fun atomicLongExchange(a: LongArray, v: Long): Long
 @CSymbol("mk_atomic_long_cas")
 public external fun atomicLongCas(a: LongArray, expected: Long, v: Long): Boolean
 
+@CSymbol("mk_sys_threads_active")
+public external fun threadsActive(): Boolean
+
 @CSymbol("mk_atomic_ref_get")
 public external fun atomicRefGet(a: Array<Any?>): Any?
 

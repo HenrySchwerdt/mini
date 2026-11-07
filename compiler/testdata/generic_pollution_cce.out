@@ -1,0 +1,20 @@
+list element: ClassCastException
+list for: ClassCastException
+box field: ClassCastException
+box local: ClassCastException
+generic result: ClassCastException
+generic result class: ClassCastException
+generic int: ClassCastException
+generic interface: ClassCastException
+array element: ClassCastException
+map value: ClassCastException
+lambda parameter: ClassCastException
+0
+null element: ok
+13
+subclass is fine: ok
+1
+any is fine: ok
+3
+6
+same type is fine: ok

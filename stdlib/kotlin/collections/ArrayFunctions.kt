@@ -17,7 +17,7 @@ public fun <T> Array<T>.copyOf(): Array<T> {
 
 public fun <T> Array<T>.copyOf(newSize: Int): Array<T?> {
     if (newSize < 0) throw IllegalArgumentException("Invalid new array size: " + newSize + ".")
-    val r = arrayOfNulls<T>(newSize)
+    val r = arrayOfNulls<T?>(newSize) // (T?: an array like this one, with room for null)
     var i = 0
     val n = if (newSize < size) newSize else size
     while (i < n) { r[i] = this[i]; i++ }
@@ -291,10 +291,12 @@ public infix fun <T, R> Array<out T>.zip(other: Array<out R>): List<Pair<T, R>> 
     return r
 }
 public operator fun <T> Array<T>.plus(element: T): Array<T> {
-    val r = copyOf(size + 1)
-    r[size] = element
     @Suppress("UNCHECKED_CAST")
-    return r as Array<T>
+    val r = arrayOfNulls<T>(size + 1) as Array<T>
+    var i = 0
+    while (i < size) { r[i] = this[i]; i++ }
+    r[size] = element
+    return r
 }
 public fun <T> Array<out T>.joinToString(
     separator: CharSequence = ", ",

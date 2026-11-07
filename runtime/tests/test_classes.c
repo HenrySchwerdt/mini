@@ -19,20 +19,20 @@ static MkString *point_to_string(MkObject *self) {
 static bool point_equals(MkObject *a, MkObject *b) { return ((Base *)a)->x == ((Base *)b)->x; }
 static MkInt point_hash(MkObject *a) { return ((Base *)a)->x; }
 
-static const MkTypeInfo I_iface = {"I", 0, NULL, NULL, NULL, 0, NULL, 0, NULL};
-static const MkTypeInfo J_iface = {"J", 0, NULL, NULL, NULL, 0, NULL, 0, NULL};
+static const MkTypeInfo I_iface = {"I", 0, NULL, NULL, NULL, 0, NULL, 0, NULL, NULL};
+static const MkTypeInfo J_iface = {"J", 0, NULL, NULL, NULL, 0, NULL, 0, NULL, NULL};
 
 static void *const base_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code, (void *)base_f};
-static const MkTypeInfo T_Base = {"Base", sizeof(Base), &mk_type_Any, base_dispose, base_vt, 4, NULL, 0, NULL};
+static const MkTypeInfo T_Base = {"Base", sizeof(Base), &mk_type_Any, base_dispose, base_vt, 4, NULL, 0, NULL, NULL};
 
 static void *const i_table[] = {(void *)derived_g};
 static void *const derived_vt[] = {(void *)mk_any_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code,
                                    (void *)derived_f, (void *)i_table};
 static const MkTypeInfo *const derived_ifaces[] = {&I_iface};
-static const MkTypeInfo T_Derived = {"Derived", sizeof(Base), &T_Base, NULL, derived_vt, 5, derived_ifaces, 1, NULL};
+static const MkTypeInfo T_Derived = {"Derived", sizeof(Base), &T_Base, NULL, derived_vt, 5, derived_ifaces, 1, NULL, NULL};
 
 static void *const point_vt[] = {(void *)point_to_string, (void *)point_equals, (void *)point_hash};
-static const MkTypeInfo T_Point = {"pkg.Point", sizeof(Base), &mk_type_Any, NULL, point_vt, 3, NULL, 0, NULL};
+static const MkTypeInfo T_Point = {"pkg.Point", sizeof(Base), &mk_type_Any, NULL, point_vt, 3, NULL, 0, NULL, NULL};
 
 typedef MkInt (*IntFn)(MkObject *);
 

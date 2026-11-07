@@ -8,7 +8,7 @@ static const MkString *utf8(const char *s) { return mk_string_from_utf8(s, strle
 typedef struct { MkThrowable base; MkInt code; } Mine;
 static void *const mine_vt[] = {(void *)mk_throwable_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code,
                                 (void *)mk_throwable_message};
-static const MkTypeInfo Mine_ti = {"Mine", sizeof(Mine), &MkException_ti, NULL, mine_vt, 4, NULL, 0, NULL};
+static const MkTypeInfo Mine_ti = {"Mine", sizeof(Mine), &MkException_ti, NULL, mine_vt, 4, NULL, 0, NULL, NULL};
 
 static void test_throw_catch(void) {
     CHECK(mk_pending_exception == NULL);

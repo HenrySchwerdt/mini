@@ -6,7 +6,7 @@
 typedef struct { MkObject h; long a, b; } Obj;
 static int disposed;
 static void count_dispose(MkObject *s) { (void)s; disposed++; }
-static const MkTypeInfo T = {"Node", sizeof(Obj), &mk_type_Any, count_dispose, 0, 0, 0, 0, NULL};
+static const MkTypeInfo T = {"Node", sizeof(Obj), &mk_type_Any, count_dispose, 0, 0, 0, 0, NULL, NULL};
 
 static void abort_double_free(void *arg) {
     MkObject *o = mk_alloc_with((MkAllocator *)arg, &T);

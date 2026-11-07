@@ -1,5 +1,7 @@
 package mini.backend.llvm
 
+import mini.backend.arrayElemTypeInfoType
+import mini.backend.arrayCastFlags
 import mini.backend.ANY_CNAME
 import mini.backend.BinaryOp
 import mini.backend.EmitError
@@ -188,7 +190,7 @@ private class Lowering<V : Any, B : Any>(
         typeCheckPlan = if (customIsInstanceSymbol) TypeCheckPlan.EMPTY else TypeChecks.analyze(module, externalClassNames)
 
         b.beginModule(module.sourceName, module.links, target)
-        b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT, IrType.PTR))
+        b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT, IrType.PTR, IrType.PTR))
         predeclare()
         for (f in module.functions) emitFunction(f)
         val userMain = module.functions.firstOrNull { it.cName == Mangling.MAIN }
@@ -923,7 +925,7 @@ private class Lowering<V : Any, B : Any>(
             if (c.isInterface) {
                 val init = b.constNamedStruct(
                     "MkTypeInfo",
-                    listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong()), b.constNull()),
+                    listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong()), b.constNull(), b.constNull()),
                 )
                 b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage, 8, false)
                 b.blankLine(IrSection.CLASSES)
@@ -996,7 +998,7 @@ private class Lowering<V : Any, B : Any>(
                 "MkTypeInfo",
                 listOf(
                     nameSym, b.constInt(szT, lay.size.toLong()), superTi, dispose, vtg, b.constInt(szT, vt.size.toLong()), ifs,
-                    b.constInt(szT, c.interfaces.size.toLong()), trace,
+                    b.constInt(szT, c.interfaces.size.toLong()), trace, b.constNull(),
                 ),
             )
             val typeInfoLinkage = if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage
@@ -1755,7 +1757,10 @@ private class Lowering<V : Any, B : Any>(
             is MirExpr.IsInstance -> {
                 val o = expr(e.operand)
                 val use = typeCheckPlan.uses[e]
-                if (use == null) {
+                val tgt = e.target
+                if (tgt is TObject && tgt.elem != null) {
+                    rt("mk_array_is", TBoolean, listOf(TString, TString, TInt), listOf(o, typeInfoOf(arrayElemTypeInfoType(tgt.elem!!)), c32(arrayCastFlags(tgt))))
+                } else if (use == null) {
                     val ti = typeInfoOf(e.target)
                     rt("mk_is_instance", TBoolean, listOf(TString, TString), listOf(o, ti))
                 } else {
@@ -2084,8 +2089,20 @@ private class Lowering<V : Any, B : Any>(
     fun cast(e: MirExpr.Cast): V {
         val to = e.to
         val o = expr(e.operand)
+        val elem = (to as? TObject)?.elem
+        if (to is TObject && elem != null && e.mode != MirExpr.CastMode.Unchecked) {
+            // an array with a known element type: the element type is checked at run time (mk_array_cast / mk_array_is)
+            val ti = typeInfoOf(arrayElemTypeInfoType(elem))
+            val flags = c32(arrayCastFlags(to))
+            if (e.mode == MirExpr.CastMode.Checked) return rt("mk_array_cast", TString, listOf(TString, TString, TInt), listOf(o, ti, flags))
+            val c = rt("mk_array_is", TBoolean, listOf(TString, TString, TInt), listOf(o, ti, flags))
+            openBlock()
+            return b.select(c, o, b.constNull())
+        }
         externTypeInfo(to)
-        return when (e.mode) {
+        val prunedTo = (if (to is TObject) to.cName else if (to is TBoxed && to.prim is TInline) (to.prim as TInline).cName else null)?.let { it.startsWith("kc_") && classes[it] == null } == true
+        val mode = if (e.mode == MirExpr.CastMode.Checked && prunedTo) MirExpr.CastMode.Unchecked else e.mode // (a class that was pruned: nothing creates it)
+        return when (mode) {
             MirExpr.CastMode.Unchecked -> o
             MirExpr.CastMode.Checked -> {
                 // everything is an Any: only the null check is left (the erased `as E` of every generic getter)

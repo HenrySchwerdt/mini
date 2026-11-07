@@ -33,6 +33,16 @@ class Ir2Mir {
     internal val fileName: String get() = currentFile.name
 
     internal val classInfos = LinkedHashMap<IrClass, ClassInfo>()
+    /** classes whose initialization lets `this` out (Ir2MirInitSafety.kt) */
+    /** the casts of erased values made by [erasedCast] (the nodes are compared by identity) -> the value they check */
+    internal val erasedChecks = HashMap<MirExpr, MirExpr>()
+    /** field reads that feed a safe call (`x?.f`): they are null-tested by the program, an unset field is not an error there */
+    internal val unguardedReads = HashSet<IrExpression>()
+    internal val initLeakCache = HashMap<IrClass, Boolean>()
+    internal val simpleInitCache = HashMap<IrDeclarationParent, Int>()
+    internal val initLeakAt = HashMap<IrClass, Int>()
+    internal val unsetGuardCache = HashMap<IrField, Boolean>()
+    internal val getterGuardCache = HashMap<IrClass, Boolean>()
 
     /** user functions of the module being converted (top-level, members, constructors): IR function -> C name */
     internal val functionNames = HashMap<IrFunction, String>()

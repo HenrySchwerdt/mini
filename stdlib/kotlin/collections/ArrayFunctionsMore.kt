@@ -166,7 +166,7 @@ public fun <T> Array<out Array<out T>>.flatten(): List<T> {
 
 @Suppress("UNCHECKED_CAST")
 public operator fun <T> Array<T>.plus(elements: Array<out T>): Array<T> {
-    val r = arrayOfNulls<Any?>(size + elements.size) as Array<T>
+    val r = arrayOfNulls<T>(size + elements.size) as Array<T>
     var i = 0
     while (i < size) { r[i] = this[i]; i++ }
     var j = 0
@@ -175,7 +175,7 @@ public operator fun <T> Array<T>.plus(elements: Array<out T>): Array<T> {
 }
 @Suppress("UNCHECKED_CAST")
 public operator fun <T> Array<T>.plus(elements: Collection<T>): Array<T> {
-    val r = arrayOfNulls<Any?>(size + elements.size) as Array<T>
+    val r = arrayOfNulls<T>(size + elements.size) as Array<T>
     var i = 0
     while (i < size) { r[i] = this[i]; i++ }
     for (e in elements) { r[i] = e; i++ }
@@ -183,12 +183,12 @@ public operator fun <T> Array<T>.plus(elements: Collection<T>): Array<T> {
 }
 @Suppress("UNCHECKED_CAST")
 public fun <T> Array<T>.sliceArray(indices: IntRange): Array<T> {
-    if (indices.isEmpty()) return arrayOfNulls<Any?>(0) as Array<T>
+    if (indices.isEmpty()) return arrayOfNulls<T>(0) as Array<T>
     return copyOfRange(indices.start, indices.endInclusive + 1)
 }
 @Suppress("UNCHECKED_CAST")
 public fun <T> Array<T>.sliceArray(indices: Collection<Int>): Array<T> {
-    val r = arrayOfNulls<Any?>(indices.size) as Array<T>
+    val r = arrayOfNulls<T>(indices.size) as Array<T>
     var i = 0
     for (index in indices) { r[i] = this[index]; i++ }
     return r

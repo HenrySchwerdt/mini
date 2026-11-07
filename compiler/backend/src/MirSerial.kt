@@ -204,7 +204,13 @@ private class MirWriterImpl {
                 sb.append("(obj ")
                 str(t.qualifiedName); sb.append(' ')
                 str(t.cName); sb.append(' ')
-                sb.append(t.nullable).append(' ').append(t.isInterface).append(')')
+                sb.append(t.nullable).append(' ').append(t.isInterface)
+                if (t.elem != null) {
+                    sb.append(' ')
+                    type(t.elem)
+                    sb.append(' ').append(t.elemOut)
+                }
+                sb.append(')')
             }
             is TInline -> {
                 sb.append("(inline ")
@@ -743,7 +749,8 @@ private class MirReaderImpl {
         val it = (x as Sx.Lst).items
         if (tag == "obj") {
             need(it, 5, "obj")
-            return TObject(str(it[1]), str(it[2]), bool(it[3]), bool(it[4]))
+            return if (it.size >= 7) TObject(str(it[1]), str(it[2]), bool(it[3]), bool(it[4]), type(it[5]), bool(it[6]))
+            else TObject(str(it[1]), str(it[2]), bool(it[3]), bool(it[4]))
         }
         if (tag == "inline") {
             need(it, 4, "inline")

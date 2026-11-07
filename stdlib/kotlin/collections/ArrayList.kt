@@ -77,11 +77,15 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
 
     override fun addAll(elements: Collection<E>): Boolean {
         if (elements.isEmpty()) return false
-        ensureCapacity(length + elements.size)
+        // The count is fixed up front: `list.addAll(list)` must append the elements that were there, not chase its own tail.
+        var remaining = elements.size
+        if (length > Int.MAX_VALUE - remaining) mini.internal.throwIllegalArgument("List too large")
+        ensureCapacity(length + remaining)
         val it = elements.iterator()
-        while (it.hasNext()) {
+        while (remaining > 0 && it.hasNext()) {
             refArraySet(array, length, it.next())
             length++
+            remaining--
         }
         return true
     }
