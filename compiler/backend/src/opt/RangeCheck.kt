@@ -103,17 +103,34 @@ internal object RangeCheck {
     /** One access index form: kind 0 `i + x` (x may be null: plain `i`), 1 `i - x`, 2 `x - i`. */
     private class Form(val kind: Int, val x: MirExpr?)
 
-    private fun formOf(idx: MirExpr, v: MirLocal, invariant: (MirExpr) -> Boolean): Form? {
+    /** Is an index operand constant over the whole loop? */
+    private abstract class Inv {
+        abstract fun ok(x: MirExpr): Boolean
+    }
+
+    /** For the original loop: a constant, or an Int local that is neither declared nor assigned in the loop body. */
+    private class OrigInv(val v: MirLocal, val declaredIds: Set<Int>, val assigned: Set<Int>) : Inv() {
+        override fun ok(x: MirExpr): Boolean =
+            (x is MirExpr.IntConst) || (x is MirExpr.Local && x.type === TInt && x.local !== v && x.local.id !in declaredIds && x.local.id !in assigned)
+    }
+
+    /** The same for the renamed copy (the locals declared inside the loop have new ids there). */
+    private class CopyInv(val copier: LoopCopier, val assigned: Set<Int>) : Inv() {
+        override fun ok(x: MirExpr): Boolean =
+            (x is MirExpr.IntConst) || (x is MirExpr.Local && x.type === TInt && !copier.isInner(x.local) && x.local.id !in assigned)
+    }
+
+    private fun formOf(idx: MirExpr, v: MirLocal, invariant: Inv): Form? {
         if (idx is MirExpr.Local) return if (idx.local === v) Form(0, null) else null
         if (idx !is MirExpr.Binary || idx.type !== TInt) return null
         val l = idx.left
         val r = idx.right
         if (idx.op == BinaryOp.Add) {
-            if (l is MirExpr.Local && l.local === v && invariant(r)) return Form(0, r)
-            if (r is MirExpr.Local && r.local === v && invariant(l)) return Form(0, l)
+            if (l is MirExpr.Local && l.local === v && invariant.ok(r)) return Form(0, r)
+            if (r is MirExpr.Local && r.local === v && invariant.ok(l)) return Form(0, l)
         } else if (idx.op == BinaryOp.Sub) {
-            if (l is MirExpr.Local && l.local === v && invariant(r)) return Form(1, r)
-            if (r is MirExpr.Local && r.local === v && invariant(l)) return Form(2, l)
+            if (l is MirExpr.Local && l.local === v && invariant.ok(r)) return Form(1, r)
+            if (r is MirExpr.Local && r.local === v && invariant.ok(l)) return Form(2, l)
         }
         return null
     }
@@ -150,9 +167,7 @@ internal object RangeCheck {
             val declaredIds = HashSet<Int>()
             for (l in inner.declared) declaredIds.add(l.id)
             val v = loop.variable
-            val invariant = { x: MirExpr ->
-                (x is MirExpr.IntConst) || (x is MirExpr.Local && x.type === TInt && x.local !== v && x.local.id !in declaredIds && x.local.id !in inner.assigned)
-            }
+            val invariant = OrigInv(v, declaredIds, inner.assigned)
             // the accesses that can lose their test
             val find = Finder(v, invariant, declaredIds)
             find.walk(loop.body)
@@ -192,7 +207,7 @@ internal object RangeCheck {
     private class Entry(val form: Form, val len: MirLocal)
 
     /** Collects the distinct (length local, index form) pairs of the accesses that can be unchecked. */
-    private class Finder(val v: MirLocal, val invariant: (MirExpr) -> Boolean, val declaredIds: Set<Int>) : MirVisitor() {
+    private class Finder(val v: MirLocal, val invariant: Inv, val declaredIds: Set<Int>) : MirVisitor() {
         val forms = LinkedHashMap<String, Entry>()
         override fun visit(e: MirExpr) {
             if (e !is MirExpr.RuntimeCall) return
@@ -286,9 +301,7 @@ internal object RangeCheck {
 
     /** Turns the accesses of the copy whose index form is covered by the guard into unchecked ones. */
     private class Unchecked(val v: MirLocal, val copier: LoopCopier, val assigned: Set<Int>) : MirTransform() {
-        val invariant = { x: MirExpr ->
-            (x is MirExpr.IntConst) || (x is MirExpr.Local && x.type === TInt && !copier.isInner(x.local) && x.local.id !in assigned)
-        }
+        val invariant = CopyInv(copier, assigned)
 
         override fun expr(e: MirExpr): MirExpr {
             val r = rebuildExpr(e)
