@@ -41,19 +41,6 @@ MkInt mk_string_compare(const MkString *a, const MkString *b) {
     return a->length - b->length;
 }
 
-MkString *mk_string_substring(const MkString *s, MkInt start, MkInt end) {
-    if (s == NULL) mk_panic("NullPointerException");
-    if (start < 0 || end > s->length || start > end) mk_panic("StringIndexOutOfBoundsException: bad range");
-    if (mk_string_is_latin1(s)) {
-        MkString *r = mk_string_alloc8(end - start);
-        if (end > start) memcpy((uint8_t *)(void *)r->chars, mk_string_bytes(s) + start, (size_t)(end - start));
-        return r;
-    }
-    MkString *r = mk_string_alloc(end - start);
-    if (end > start) memcpy(r->chars, s->chars + start, (size_t)(end - start) * sizeof(MkChar));
-    return r;
-}
-
 /* Java's Double.parseDouble grammar (decimal form), after trimming characters <= ' '.
  * Copies the cleaned ASCII text into `out` (capacity n+1). */
 static int clean_double(const MkString *s, char *out, size_t cap) {
@@ -117,15 +104,6 @@ MkDouble mk_string_parse_double(const MkString *s) {
  * with the first one that is not: texts of ASCII/Latin-1 characters take half the memory and half the bandwidth while they are built.
  * `mk_sb_to_string` makes a one-byte (Latin-1) MkString from a narrow buffer, a UTF-16 one from a wide buffer. */
 
-typedef struct MkSb {
-    MkObject header;
-    void *data;      /* uint8_t[capacity] when narrow, MkChar[capacity] when wide */
-    MkInt length;
-    MkInt capacity;  /* in characters */
-    MkInt wide;
-    MkString *backing; /* NULL, or the string whose characters `data` is (see mk_sb_to_string); the builder owns one reference */
-    MkChar inline_chars[];
-} MkSb;
 
 #define SB_STEAL_MIN 65536 /* characters: from here on mk_sb_to_string shares the buffer instead of copying it */
 #define MK_SB_INLINE_BYTES 32 /* the inline storage: 32 narrow or 16 wide characters */

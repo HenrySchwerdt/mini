@@ -2178,7 +2178,7 @@ private class Lowering<V : Any, B : Any>(
         }
         val a = expr(e.left)
         val c = expr(e.right)
-        if (t === TString) {
+        if ((t === TString || t === TNString) && (e.right.type === TString || e.right.type === TNString)) {
             return when (op) {
                 BinaryOp.Eq -> rt("mk_string_equals", TBoolean, listOf(TString, TString), listOf(a, c))
                 BinaryOp.Ne -> {

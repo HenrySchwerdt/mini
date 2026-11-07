@@ -8,7 +8,7 @@
 
 /* ---- boxes ------------------------------------------------------------------- */
 
-typedef struct MkBoxInt { MkObject header; MkInt value; } MkBoxInt;
+typedef MkBoxIntCell MkBoxInt; /* (minirt.h: generated code boxes small Ints inline) */
 typedef struct MkBoxLong { MkObject header; MkLong value; } MkBoxLong;
 typedef struct MkBoxBoolean { MkObject header; MkBoolean value; } MkBoxBoolean;
 typedef struct MkBoxDouble { MkObject header; MkDouble value; } MkBoxDouble;
@@ -29,7 +29,6 @@ const MkTypeInfo mk_type_Char = {"kotlin.Char", sizeof(MkBoxChar), &mk_type_Any,
 /* Boxes of small values are shared and immortal (static): no allocation, no reference counting, like the box caches of the
  * JVM and Kotlin/Native (the identity of a box is unspecified). The tables are made on first use and published with a CAS. */
 #define BOX_CACHE(NAME, CTYPE, TYPE, LO, COUNT)                                                           \
-    static CTYPE *volatile NAME##_cache;                                                                   \
     static CTYPE *NAME##_cache_make(void) {                                                                \
         CTYPE *t = malloc(sizeof(CTYPE) * (COUNT));                                                        \
         if (t == NULL) return NULL;                                                                        \
@@ -51,6 +50,9 @@ const MkTypeInfo mk_type_Char = {"kotlin.Char", sizeof(MkBoxChar), &mk_type_Any,
         if (t == NULL) t = NAME##_cache_make();                                                            \
         return t != NULL ? &t[v - (LO)].header : NULL;                                                     \
     }
+MkBoxInt *volatile mk_int_box_cache; /* the table of the boxes of -128..1023, NULL until the first one is made */
+#define int_cache mk_int_box_cache
+static MkBoxChar *volatile char_cache;
 BOX_CACHE(int, MkBoxInt, mk_type_Int, -128, 1152)
 BOX_CACHE(char, MkBoxChar, mk_type_Char, 0, 256)
 

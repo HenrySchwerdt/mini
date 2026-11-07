@@ -503,7 +503,8 @@ internal fun Ir2Mir.refEquality(op: BinaryOp, a: MirExpr, b: MirExpr, at: IrElem
     if (op == BinaryOp.IdEq) {
         return MirExpr.Binary(BinaryOp.IdEq, boxIfPrim(a, at, out), boxIfPrim(b, at, out))
     }
-    if (ta == TString && tb == TString) return MirExpr.Binary(BinaryOp.Eq, a, b)
+    // String and String? operands: mk_string_equals accepts null (equal only to null), no type dispatch
+    if ((ta == TString || ta == TNString) && (tb == TString || tb == TNString)) return MirExpr.Binary(BinaryOp.Eq, a, b)
     return MirExpr.RuntimeCall("mk_equals", listOf(asAny(boxIfPrim(a, at, out)), asAny(boxIfPrim(b, at, out))), TBoolean)
 }
 
