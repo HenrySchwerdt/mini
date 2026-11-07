@@ -39,6 +39,11 @@ object MirOpt {
             if (options.stats) report("inline: " + st.sites + " call sites in " + st.functions + " functions, " + st.exactDevirt + " exact-type devirtualizations, " + st.scalarReplaced + " objects scalar-replaced")
             if (options.stats) report("inline timing ms: exact " + st.tExact / 1000000 + ", expand " + st.tExpand / 1000000 + ", cleanup " + st.tClean / 1000000 + ", sroa " + st.tSroa / 1000000)
         }
+        if (options.on("array-len")) {
+            val st = IntArray(1)
+            m = ArrayLen.run(m, st)
+            if (options.stats) report("array-len: " + st[0] + " array locals with a cached length")
+        }
         return m
     }
 }

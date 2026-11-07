@@ -2013,7 +2013,8 @@ private class Lowering<V : Any, B : Any>(
         val value = if (isGet) null else expr(e.args[2])
         val elemSize = when (kind) { "int" -> 4; "long" -> 8; "double" -> 8; "float" -> 4; "byte" -> 1; "short" -> 2; "boolean" -> 1; "char" -> 2; else -> pb }
         val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
-        val len = loadTag(TInt, gep(arr, layouts.headerSize), "array length")
+        val lenIdx = if (isGet) 2 else 3 // ArrayLen: the cached length is an extra last argument
+        val len = if (e.args.size > lenIdx && kind != "obj") expr(e.args[lenIdx]) else loadTag(TInt, gep(arr, layouts.headerSize), "array length")
         val bad = icmp(IrCmp.UGE, idx, len)
         val badL = newLabel("oob")
         val okL = newLabel("aok")

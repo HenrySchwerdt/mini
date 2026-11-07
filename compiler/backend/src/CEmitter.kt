@@ -882,7 +882,9 @@ object CEmitter {
                 "short" -> "MkShort"; "boolean" -> "MkBoolean"; "char" -> "MkChar"; "obj" -> "MkObject *"
                 else -> return null
             }
-            if (e.args.size != (if (isGet) 2 else 3) || e.args[1].type !== TInt) return null
+            val base = if (isGet) 2 else 3
+            val lenArg = if (e.args.size == base + 1 && kind != "obj") e.args[base] else null // ArrayLen: the cached length
+            if ((e.args.size != base && lenArg == null) || e.args[1].type !== TInt) return null
             val exit = exitStmt(0).replace("\n", " ").trim()
             if (exit.length > 260) return null
             val id = tmpCounter++
@@ -890,7 +892,8 @@ object CEmitter {
             val borrowed = fplan?.borrowedReads?.contains(e) == true
             val sb = StringBuilder("({ MkObject *$a = (MkObject *)${expr(e.args[0])}; MkInt $i = ${expr(e.args[1])}; ")
             if (!isGet) sb.append("$ct $v = ${coerceTo(e.args[2], if (kind == "obj") e.args[2].type else e.args[2].type)}; ")
-            sb.append("if (__builtin_expect((uint32_t)$i >= (uint32_t)((MkArray *)$a)->length, 0)) { mk_raise_index($i, ((MkArray *)$a)->length); $exit } ")
+            val lenC = if (lenArg != null) expr(lenArg) else "((MkArray *)$a)->length"
+            sb.append("if (__builtin_expect((uint32_t)$i >= (uint32_t)$lenC, 0)) { mk_raise_index($i, $lenC); $exit } ")
             if (isGet) {
                 sb.append("$ct $v = MK_ARRAY_ELEMS($ct, $a)[$i]; ")
                 if (kind == "obj" && !borrowed) sb.append("${ret(v, "array read")}; ")
@@ -933,7 +936,7 @@ object CEmitter {
                     val owns = NativeConventions.ownedArgs(e.cName)
                     if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)"
                     else if (owns != null) ownedCall(e.cName, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0)
-                    else arrayAccess(e) ?: "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${e.args.joinToString(", ") { expr(it) }})"
+                    else arrayAccess(e) ?: "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${ArrayLen.plainArgs(e).joinToString(", ") { expr(it) }})"
                 }
                 is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
                 is MirExpr.Load -> { usesMemory = true; "MKH_LOAD(${cType(e.type)}, ${expr(e.ptr)})" }
