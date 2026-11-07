@@ -176,6 +176,13 @@ private fun Ast2Ir.coerceUnitValue(e: IrExpression): IrExpression = e
 
 /** converts [e] for a position that expects [expected] (return values, initialisers): inserts the implicit coercions */
 fun Ast2Ir.convertWithExpected(e: Expr, expected: Type?): IrExpression {
+    // `[a, b]` (an annotation parameter default): the array of the expected type, built like the elements of `arrayOf(a, b)`
+    if (e is CollectionLiteral && expected != null) {
+        val elems = ArrayList<IrVarargElement>()
+        for (x in e.elements) elems.add(convert(x))
+        val et = (expected as? ClassType)?.args?.firstOrNull()?.type ?: expected
+        return IrVararg(et, elems, expected)
+    }
     val ir = convert(e)
     return ir
 }
