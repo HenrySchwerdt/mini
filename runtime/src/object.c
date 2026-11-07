@@ -225,6 +225,16 @@ void mk_release(MkObject *object) {
         return;
     }
     uint32_t flags = object->flags;
+#if MK_SMALL_ALLOC && !defined(MK_STATS)
+    /* the last reference of a string or boxed Int (the temporaries of every collection loop): no dispose, no cycle bookkeeping, a plain
+     * small block of the calling thread; the common case is decided with a single test of the flags */
+    if ((flags & (MK_FLAG_STATIC | MK_FLAG_STACK | MK_FLAG_SHARED | MK_FLAG_ARMED | MK_FLAG_BUFFERED | MK_FLAG_PREFIXED)) == 0 &&
+        !__atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) && object->refcount == 1u &&
+        (object->type == &mk_type_String || object->type == &mk_type_Int)) {
+        mk_small_free_object(object);
+        return;
+    }
+#endif
     if (flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) {
         MK_STAT_RELEASE(0);
         return;

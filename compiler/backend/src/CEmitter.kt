@@ -1468,6 +1468,16 @@ MKH_FN void mkh_sb_append_char(MkObject *o, MkChar c) {
 }
 #define mk_sb_append_char(o, c) mkh_sb_append_char((o), (c))
 
+/* Boxing an Int: the shared boxes of small values are found inline (runtime classes.c), anything else takes the runtime. */
+MKH_FN MkObject *mkh_box_int(MkInt v) {
+    if ((uint32_t)v - (uint32_t)MK_INT_BOX_CACHE_LO < (uint32_t)MK_INT_BOX_CACHE_COUNT) {
+        MkBoxIntCell *t = __atomic_load_n(&mk_int_box_cache, __ATOMIC_ACQUIRE);
+        if (__builtin_expect(t != NULL, 1)) return &t[v - MK_INT_BOX_CACHE_LO].header;
+    }
+    return (mk_box_int)(v);
+}
+#define mk_box_int(v) mkh_box_int((v))
+
 MKH_FN void mkh_abstract(void) { mk_panic("AbstractMethodError"); }
 MKH_FN MkObject *mkh_cast_nn(MkObject *o, const MkTypeInfo *t) {
     if (o == NULL) {
