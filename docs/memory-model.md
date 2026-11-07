@@ -1427,30 +1427,45 @@ The runtime helpers keep a last line of defence: `mk_string_length` and `mk_stri
 ### Cost of the checks
 
 Measured with `valgrind --tool=callgrind` (instructions of the whole run, clang -O2, C backend, x86-64, scaled-down workloads of `bench/*`
-so that callgrind finishes) against the compiler and runtime of `origin/main` (4e13fc6); "text" is the `text` section of the linked
-program, which includes the runtime (about 1.7 KB for the new array functions and checks). The checks are emitted inline
-(`CEmitter.castInline`: null test and type-pointer compare of the fast path, the throw is out of line and cold; a leaf class is one compare,
-an interface remembers the type that last passed), the unbox of a box checks type and null itself (no second cast in front of it),
-`CastElim` (`cast-elim` MIR pass) drops casts whose operand type already proves the target, reified arrays remove the check of every
-`Array<C>` read, and the null check of an `object` / top-level property is only emitted when user code can run before it is assigned
-(`Ir2MirInitSafety.firstNonSimpleInit`: initializers that are constants, strings, or stdlib calls on such values run no user code).
+so that callgrind finishes; the five last rows are small programs of one construct each) with the compiler and runtime of three states:
+`pre` = main before the memory-safety work of PR #79 (7dfec43), `#79` = main with it (320cfb8), and this branch (the checked erased
+casts, reified arrays, the unset-field checks and the null guards of this section). "text" is the `text` section of the linked program,
+which includes the runtime (the new array functions and checks are about 1.7 KB of it; the rest of the growth is the extra
+`MkTypeInfo.elem` pointer of every type info and the checks of #79). The checks are emitted inline (`CEmitter.castInline`: null test and
+type-pointer compare of the fast path, the throw is out of line and cold; a leaf class is one compare, an interface remembers the type that
+last passed), the unbox of a box checks type and null itself (no second cast in front of it), `CastElim` (`cast-elim` MIR pass) drops casts
+whose operand type already proves the target, reified arrays remove the check of every `Array<C>` read, the null guards of `NullGuard`
+exit the function from a cold block that does not continue (a guard whose failure path falls through, with a test of the pending exception,
+keeps the optimizer from hoisting the length and the elements of the array out of the loop and from unrolling it: +13 % on `nbody` at first),
+and the null check of an `object` / top-level property is only emitted when user code can run before it is assigned
+(`Ir2MirInitSafety.firstNonSimpleInit`: initializers that are constants, strings, parameters, stdlib calls on such values, or constructors of
+program classes that only assign their fields from such values run no user code).
 
-| Program | main | this branch | delta | text size |
-|---|---|---|---|---|
-| bench/binarytrees (depth 14) | 629.5 M | 640.8 M | +1.8 % | +2.9 % |
-| bench/nbody (500 k steps) | 330.9 M | 329.3 M | -0.5 % | +2.1 % |
-| bench/fannkuch, spectralnorm, mandelbrot, strbuild | | | 0.0 % | +2.9 % |
-| bench/json | 194.5 M | 195.4 M | +0.5 % | +2.5 % |
-| bench/wordcount | 924.0 M | 901.2 M | -2.5 % | +2.9 % |
-| `ArrayList<String>` iteration and indexing | 124.02 M | 124.03 M | 0.0 % | +2.8 % |
-| `HashMap<String, Int>` lookups | 764.3 M | 713.3 M | -6.7 % | +2.4 % |
-| generic class fields, lambdas over collections | 720.0 M | 615.0 M | -14.6 % | +2.8 % |
-| `object` / top-level property reads in a loop (one top-level `Node` forces the guard) | 560.3 M | 600.3 M | +7.1 % | +3.1 % |
-| `Array<Shape>` reads (index loop and `for`) | 221.59 M | 221.60 M | 0.0 % | +2.9 % |
+| Program | pre #79 | #79 (main) | this branch | vs pre | vs #79 | text vs pre |
+|---|---|---|---|---|---|---|
+| bench/binarytrees (depth 14) | 619.91 M | 631.20 M | 629.59 M | +1.6 % | -0.3 % | +3.9 % |
+| bench/nbody (500 k steps) | 330.92 M | 323.39 M | 323.39 M | -2.3 % | 0.0 % | +3.3 % |
+| bench/fannkuch (9) | 176.90 M | 176.90 M | 176.90 M | 0.0 % | 0.0 % | +3.9 % |
+| bench/spectralnorm (500) | 225.55 M | 225.55 M | 225.55 M | 0.0 % | 0.0 % | +4.0 % |
+| bench/mandelbrot (500) | 106.44 M | 106.44 M | 106.44 M | 0.0 % | 0.0 % | +4.0 % |
+| bench/strbuild | 536.96 M | 536.96 M | 535.95 M | -0.2 % | -0.2 % | +3.9 % |
+| bench/json | 194.07 M | 195.20 M | 197.11 M | +1.6 % | +1.0 % | +3.6 % |
+| bench/wordcount | 957.60 M | 921.75 M | 918.52 M | -4.1 % | -0.4 % | +3.9 % |
+| bench/graph (20 k nodes) | 110.01 M | 109.88 M | 109.43 M | -0.5 % | -0.4 % | +3.6 % |
+| `ArrayList<String>` iteration and indexing | 271.57 M | 268.58 M | 256.58 M | -5.5 % | -4.5 % | +3.5 % |
+| `HashMap<String, Int>` lookups | 957.09 M | 864.07 M | 861.07 M | -10.0 % | -0.3 % | +3.3 % |
+| generic class fields, lambdas over collections | 1498.52 M | 1342.33 M | 1345.34 M | -10.2 % | +0.2 % | +3.7 % |
+| `object` / top-level property reads in a loop (one top-level `Node`) | 680.28 M | 720.28 M | 680.28 M | 0.0 % | -5.6 % | +4.0 % |
+| `Array<Shape>` reads (index loop and `for`) | 221.60 M | 221.60 M | 221.60 M | 0.0 % | 0.0 % | +4.0 % |
 
-The savings on the collection programs come from the runtime (`HashMap.get`, `type_is`) and the inline checks replacing the call of
-`mk_checked_cast`. The reads of an `Array<SomeClass>` that cost +14 % on `nbody` before reified arrays are free now (nbody is within noise of main, 0.5 % below it). The one remaining cost is the guard of top-level properties
-that can be read before their initializer ran (a program with a top-level `Node` and a loop reading properties).
+Everything is within 2 % of the state before #79 (the largest cost is `binarytrees`, +1.6 %: `check(n.right!!)` has the same code as before,
+but the cold exit of the null test of `!!` costs two more saved registers in the recursive function). The savings on the collection programs
+come from the runtime (`HashMap.get`, `type_is`) and the inline checks replacing the call of `mk_checked_cast`. The reads of an
+`Array<SomeClass>` are free where the array is created by the function itself or passed only such arrays (`nbody`: `bodies` is made in
+`main` and passed down; `Array<Shape>` above); an array that came through a cast, a field or a call result tests every element it reads
+once per value (the test is the two instructions `test`/`je`; the loop over `bodies` read through a field would pay 2 per element). The
+one cost of #79 that remained, the guard of top-level properties that can be read before their initializer ran, is gone for a program whose
+initializers only construct simple objects (`val top = Node(7)`); it stays for a top-level initializer that runs user code.
 
 Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-range index as a fatal
 `StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
