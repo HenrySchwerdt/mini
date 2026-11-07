@@ -319,8 +319,8 @@ private class CastAlias(val u: UseScan) : MirTransform() {
     }
 }
 
-/** Removes the declarations of the array locals anywhere and its initial `set` statements at the top level. */
-private class ArrayDropper(val ids: HashSet<Int>, val top: List<MirStmt>) : MirTransform() {
+/** Removes the declarations of the array locals anywhere and its first [initial] `set` statements at the top level (the construction; later ones stay and keep the array). */
+private class ArrayDropper(val ids: HashSet<Int>, val top: List<MirStmt>, var initial: Int) : MirTransform() {
     private fun isSet(s: MirStmt): Boolean {
         if (s !is MirStmt.Eval) return false
         val c = s.expr
@@ -334,7 +334,7 @@ private class ArrayDropper(val ids: HashSet<Int>, val top: List<MirStmt>) : MirT
         for (i in l.indices) {
             val s = l[i]
             var drop = s is MirStmt.Declare && ids.contains(s.local.id)
-            if (!drop && l === top && isSet(s)) drop = true
+            if (!drop && l === top && initial > 0 && isSet(s)) { drop = true; initial-- }
             val r = if (drop) s else stmt(s)
             if (out == null && (drop || r !== s)) {
                 out = ArrayList(l.size)
@@ -479,7 +479,7 @@ internal class ArraySroa(val st: InlineState, val caller: MirFunction) {
         u.walk(work)
         val rw = ArrayRewriter(ids, n, elems, u, top)
         var out = rw.stmts(work)
-        val dropper = ArrayDropper(ids, out)
+        val dropper = ArrayDropper(ids, out, n)
         out = dropper.stmts(out)
         if (mentionsAny(out, ids)) return null
         var k = 0
