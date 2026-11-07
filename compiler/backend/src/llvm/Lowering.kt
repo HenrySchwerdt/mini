@@ -2095,7 +2095,8 @@ private class Lowering<V : Any, B : Any>(
             return b.select(c, o, b.constNull())
         }
         externTypeInfo(to)
-        return when (e.mode) {
+        val mode = if (e.mode == MirExpr.CastMode.Checked && to is TObject && to.cName.startsWith("kc_") && classes[to.cName] == null) MirExpr.CastMode.Unchecked else e.mode // (a class that was pruned: nothing creates it)
+        return when (mode) {
             MirExpr.CastMode.Unchecked -> o
             MirExpr.CastMode.Checked -> {
                 // everything is an Any: only the null check is left (the erased `as E` of every generic getter)

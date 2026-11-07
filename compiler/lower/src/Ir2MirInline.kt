@@ -31,7 +31,8 @@ internal fun Ir2Mir.inlineLambdaOf(e: IrExpression?): InlineLambda? = when (e) {
 }
 
 /** Value of [v] converted to the type [t] regardless of erasure (box / unbox / retype). */
-internal fun Ir2Mir.coerceFlexible(v: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
+internal fun Ir2Mir.coerceFlexible(v0: MirExpr, t: MirType, at: IrElement, out: MutableList<MirStmt>): MirExpr {
+    val v = withoutErasedCheck(v0, t)
     if (v is MirExpr.Unreachable && v.type == TNothing && t != TNothing && t != TUnit) return MirExpr.Unreachable(t) // `fn(return x)`
     if (v.type == t || v.type == TNothing) return v
     if (t == TUnit) return v
@@ -43,7 +44,7 @@ internal fun Ir2Mir.coerceFlexible(v: MirExpr, t: MirType, at: IrElement, out: M
         x.type.isPrimitive && t.isPrimitive -> coerceOperand(x, t, at, out)
         x.type.isPrimitive && t.isRef -> coerceOperand(x, t, at, out)
         x.type.isRef && t.isPrimitive -> unboxCast(x, t, MirExpr.CastMode.Checked)
-        x.type.isRef && t.isRef -> if (x.type == t) x else MirExpr.Cast(x, t, erasedCastMode(t))
+        x.type.isRef && t.isRef -> if (x.type == t) x else erasedCast(x, t)
         else -> convertTo(x, t, at)
     }
 }

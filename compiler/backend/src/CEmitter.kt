@@ -1021,7 +1021,8 @@ object CEmitter {
                 is MirExpr.NullConst -> "NULL"
                 is MirExpr.Box -> "mk_box_${boxName(e.operand.type)}(${expr(e.operand)})"
                 is MirExpr.Unbox -> unboxInline(e) ?: "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
-                is MirExpr.Cast -> (if (e.mode == MirExpr.CastMode.Checked) castInline(e) else null) ?: cast(e)
+                is MirExpr.Cast -> if (e.mode == MirExpr.CastMode.Checked && prunedClass(e.to)) cast(MirExpr.Cast(e.operand, e.to, MirExpr.CastMode.Unchecked))
+                    else (if (e.mode == MirExpr.CastMode.Checked) castInline(e) else null) ?: cast(e)
                 is MirExpr.IsInstance -> arrayIs(e) ?: "${if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
                 is MirExpr.NotNull -> notNullInline(e) ?: "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
@@ -1123,6 +1124,9 @@ object CEmitter {
 
         fun fnPtrType(ret: MirType, params: List<MirType>): String =
             "${cType(ret)} (*)(${(listOf("MkObject *") + params.map { cType(it) }).joinToString(", ")})"
+
+        /** A class of the program that is not in the module: it was pruned because nothing creates it (a value class that is never boxed), no object has its type info. */
+        fun prunedClass(t: MirType): Boolean = t is TObject && t.cName.startsWith("kc_") && classes[t.cName] == null
 
         fun cast(e: MirExpr.Cast): String {
             val to = e.to

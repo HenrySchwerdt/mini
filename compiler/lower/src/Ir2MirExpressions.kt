@@ -111,7 +111,8 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
     is IrGetField -> {
         val f = e.field
         val r = e.receiver
-        if (r == null) guardUnsetField(staticFieldGet(f, e), f) else guardUnsetField(fieldGet(operands(listOf(r), out)[0], f), f)
+        val raw = if (r == null) staticFieldGet(f, e) else fieldGet(operands(listOf(r), out)[0], f)
+        if (e in unguardedReads) raw else guardUnsetField(raw, f)
     }
     is IrStringConcatenation -> stringConcat(e, out)
     is IrFunctionExpression -> lambdaValue(e, out)
@@ -213,7 +214,7 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             if (v.type == target || v.type == TNothing) return v
             val vt = v.type
             if (vt.isRef && target is TObject && target.elem != null && !(vt is TObject && vt.cName == ARRAY_CNAME && arrayCastCannotFail(vt, target))) {
-                return MirExpr.Cast(v, target, erasedCastMode(target)) // a smart cast to an array type that knows its element type: the test that justified it may have been made on another view
+                return erasedCast(v, target) // a smart cast to an array type that knows its element type: the test that justified it may have been made on another view
             }
             if (v.type.isRef && target.isRef) return MirExpr.Cast(v, target, MirExpr.CastMode.Unchecked)
             if (v.type.isRef && v.type !is TBoxed && target.isPrimitive) {
@@ -252,7 +253,8 @@ internal fun Ir2Mir.constant(c: IrConst): MirExpr = when (val v = c.value) {
 internal fun isNumericType(t: MirType): Boolean =
     t == TInt || t == TLong || t == TChar || t == TDouble || t == TByte || t == TShort || t == TFloat
 
-internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
+internal fun Ir2Mir.convertTo(e0: MirExpr, to: MirType, at: IrElement): MirExpr {
+    val e = withoutErasedCheck(e0, to)
     // the placeholder value of a `break` / `continue` / `return` (already emitted) used as a value of a type (`x + break`, `for (j in continue downTo 1)`)
     if (e is MirExpr.Unreachable && e.type == TNothing && to != TNothing && to != TUnit) return MirExpr.Unreachable(to)
     if (e.type == to || e.type == TNothing) return e
@@ -289,7 +291,7 @@ internal fun Ir2Mir.convertTo(e: MirExpr, to: MirType, at: IrElement): MirExpr {
     // an array that enters a type that knows the element type of its array (`Array<String>`): the element type is checked (docs/memory-model.md,
     // "Reified object arrays"); a view that knows less (an upcast: `Array<String>` as `Array<out Any>` or `Array<T>`) is a plain retyping
     if (from.isRef && to is TObject && to.elem != null && !e.isOwned() && !(from is TObject && from.cName == ARRAY_CNAME && arrayCastCannotFail(from, to))) {
-        return MirExpr.Cast(e, to, erasedCastMode(to))
+        return erasedCast(e, to)
     }
     if (from.isRef && to.isRef) return e // C-level retyping is done by the emitter
     // a generic result (`T` = Unit, an `Any?` at run time) where Unit is expected: the callers discard the value

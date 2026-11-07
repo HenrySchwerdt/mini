@@ -34,6 +34,10 @@ class Ir2Mir {
 
     internal val classInfos = LinkedHashMap<IrClass, ClassInfo>()
     /** classes whose initialization lets `this` out (Ir2MirInitSafety.kt) */
+    /** the casts of erased values made by [erasedCast] (the nodes are compared by identity) -> the value they check */
+    internal val erasedChecks = HashMap<MirExpr, MirExpr>()
+    /** field reads that feed a safe call (`x?.f`): they are null-tested by the program, an unset field is not an error there */
+    internal val unguardedReads = HashSet<IrExpression>()
     internal val initLeakCache = HashMap<IrClass, Boolean>()
     internal val simpleInitCache = HashMap<IrDeclarationParent, Int>()
     internal val initLeakAt = HashMap<IrClass, Int>()

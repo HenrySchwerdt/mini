@@ -529,6 +529,38 @@ private fun cKind(t: MirType): String = when {
 
 
 /**
+ * The "special bridges" of Kotlin/JVM and Kotlin/Native: `contains`, `indexOf`, `lastIndexOf`, `remove`, `get`, `containsKey` and `containsValue` of a
+ * collection take an `Any?` in the erased signature (`Collection<out E>.contains(element: @UnsafeVariance E)`); an override that takes a more
+ * specific type (`class StrList : List<String?> { override fun contains(o: String?) }`) is called with a value of another type as "not found"
+ * (false, -1, null), not with a cast that fails.
+ */
+private fun Ir2Mir.specialBridgeGuard(name: String, rp: List<MirType>, ip: List<MirType>, rr: MirType, ps: List<MirLocal>, out: MutableList<MirStmt>) {
+    if (rp.size != 2 || ip.size != 2) return
+    val any = rp[1]
+    if (!(any is TObject && any.cName == ANY_CNAME)) return
+    val fallback: MirExpr = when (name) {
+        "contains", "containsKey", "containsValue" -> if (rr == TBoolean) MirExpr.BooleanConst(false) else return
+        "indexOf", "lastIndexOf" -> if (rr == TInt) MirExpr.IntConst(-1) else return
+        "remove", "get" -> if (rr == TBoolean) MirExpr.BooleanConst(false) else if (rr.isRef && rr !is TBoxed && rr !is TNull) zeroOf(rr) else return
+        else -> return
+    }
+    val t = ip[1]
+    val inst: MirType = when {
+        t === TString || t === TNString -> TString
+        t is TObject && t.cName == ANY_CNAME -> return
+        t is TObject -> t.copy(nullable = false)
+        t is TBoxed -> t
+        t is TInline -> inlineObjType(t, false)
+        t.isPrimitive && t !is TInline -> TBoxed(t)
+        else -> return
+    }
+    val p = MirExpr.Local(ps[1])
+    var test: MirExpr = MirExpr.IsInstance(p, inst)
+    if (t === TNString || (t is TObject && t.nullable) || t is TBoxed) test = MirExpr.Binary(BinaryOp.OrOr, MirExpr.Binary(BinaryOp.IdEq, p, MirExpr.NullConst()), test)
+    out += MirStmt.If(MirExpr.Unary(UnaryOp.Not, test), listOf(MirStmt.Return(fallback)), emptyList())
+}
+
+/**
  * C name of the implementation of [impl] to store in a vtable / itable slot whose signature is that
  * of [root]. Generic code erases type parameters (`Any?`), so an override such as
  * `override fun push(x: Int)` of `fun push(x: T)` has a different C signature than the slot; a small
@@ -549,6 +581,7 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
     val fn = try { inFreshFunction {
         val ps = rp.mapIndexed { i, t -> MirLocal(localCounter++, if (i == 0) "this" else "p$i", t) }
         val out = ArrayList<MirStmt>()
+        specialBridgeGuard(impl.name, rp, ip, rr, ps, out)
         val args = ps.mapIndexed { i, p ->
             if (i == 0) MirExpr.Cast(MirExpr.Local(p), ip[0].let { if (it is TInline) inlineObjType(it, true) else it }, MirExpr.CastMode.Unchecked)
             else if (ip[i] == TNothing) {

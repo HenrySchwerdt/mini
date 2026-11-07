@@ -574,9 +574,11 @@ MkBoolean mk_array_is(const MkObject *object, const MkTypeInfo *elem, MkInt flag
     const MkTypeInfo *have = object->type->elem;
     const MkTypeInfo *want = array_tag(elem, flags & 1);
     if (have == want) return true;
+    /* like the JVM (`arrayOfNulls<T>(n) as Array<T>`, `Array<String> as Array<String?>`): nullability is not part of the class of an array; the null
+     * check is left to the use of an element (the check of the element type is not) */
+    if (tag_type(have) == tag_type(want)) return true;
     if ((flags & 2) == 0) return false;
-    /* a covariant view: the recorded element type must be a subtype (and not nullable where the view is not) */
-    if (tag_nullable(have) && !tag_nullable(want)) return false;
+    /* a covariant view: the recorded element type must be a subtype */
     MkObject probe;
     memset(&probe, 0, sizeof probe);
     probe.type = tag_type(have);

@@ -218,6 +218,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 return
             }
             if (t == TUnit || t == TNothing) unsupported(s, "variable '${s.name}' of type $t")
+            if (s.name.endsWith("_safe_receiver")) s.initializer?.let { if (it is IrGetField || it is IrCall) unguardedReads.add(it) }
             val init0 = s.initializer?.let { bindValue(it, t, out) }
             // an initializer of type Nothing (`val x: Int = null!!`) never completes: the variable is declared without a value
             val init = if (init0 != null && init0.type == TNothing) null else init0

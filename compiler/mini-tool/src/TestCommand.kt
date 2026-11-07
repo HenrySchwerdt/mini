@@ -187,6 +187,16 @@ fun assertContentEquals(expected: BooleanArray?, actual: BooleanArray?, message:
     assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
 }
 
+fun <T : Throwable> assertFailsWith(exceptionClass: kotlin.reflect.KClass<T>, message: String? = null, block: () -> Unit): T {
+    try {
+        block()
+    } catch (e: Throwable) {
+        if (e::class == exceptionClass) return e as T
+        throw AssertionError(formatAssertMessage(message, "Expected an exception of " + exceptionClass + ", but was: " + e))
+    }
+    throw AssertionError(formatAssertMessage(message, "Expected an exception to be thrown, but was completed successfully."))
+}
+
 inline fun <reified T : Throwable> assertFailsWith(message: String? = null, block: () -> Unit): T {
     try {
         block()
