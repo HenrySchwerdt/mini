@@ -560,6 +560,8 @@ private fun Ir2Mir.specialBridgeCheck(impl: IrSimpleFunction, root: IrSimpleFunc
     }
     if (!owned) return null
     val t = ip[1]
+    // `override fun contains(element: Nothing)`: no argument is acceptable, the bridge always answers "not found"
+    if (t == TNothing) return { _ -> MirExpr.BooleanConst(false) }
     val any = t is TObject && t.cName == ANY_CNAME
     val nullable = (t is TObject && t.nullable) || t === TNString || t is TBoxed
     if (any && nullable) return null

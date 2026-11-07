@@ -720,11 +720,12 @@ fun BodyChecker.assign(e: BinaryExpr): Type {
         val recvT = fin(expr(l.receiver, null))
         val idx = ArrayList<Type>()
         for (i in l.indices) idx.add(expr(i, null))
-        val vt = expr(e.right, null)
+        val post = isPostponedExpr(e.right)
+        val vt = if (post) sema.nullableAny else expr(e.right, null)
         val all = ArrayList<Type>()
         all.addAll(idx)
         all.add(vt)
-        val res = resolveOperator("set", recvT, all, e.start, null)
+        val res = resolveOperator("set", recvT, all, e.start, null, if (post) e.right else null)
         val rr = record(e, res?.ret ?: sema.unitType, res?.callee)
         if (res != null) rr.calleeText = res.calleeText
         rr.call = res?.info

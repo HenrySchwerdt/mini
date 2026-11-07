@@ -42,6 +42,7 @@ fun Sema.checkStubFunSignature(f: FunSym) {
     ensureSig(f)
     val bc = BodyChecker(this, file)
     for (tp in f.typeParams) ensureBounds(tp)
+    bc.scope = bc.functionScope(f)   // the constants of the enclosing object / class are visible in annotation arguments
     bc.checkAnnotations(d.mods)
     for (p in d.params) bc.checkAnnotations(p.mods)
     recordFunSignature(bc, f)
@@ -61,6 +62,7 @@ fun Sema.checkFun(f: FunSym) {
         bc.checkFunBody(f, 2)
     } else {
         for (tp in f.typeParams) ensureBounds(tp)
+        bc.scope = bc.functionScope(f)
         bc.checkAnnotations(d.mods)
         for (p in d.params) bc.checkAnnotations(p.mods)
         recordFunSignature(bc, f)

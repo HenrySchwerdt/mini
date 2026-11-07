@@ -187,7 +187,7 @@ fun assertContentEquals(expected: BooleanArray?, actual: BooleanArray?, message:
     assertContentEqualsImpl(message, expected?.toList(), actual?.toList())
 }
 
-fun <T : Throwable> assertFailsWith(exceptionClass: kotlin.reflect.KClass<T>, message: String? = null, block: () -> Unit): T {
+fun <T : Throwable> assertFailsWith(exceptionClass: ${"kotlin.reflect"}.KClass<T>, message: String? = null, block: () -> Unit): T {
     try {
         block()
     } catch (e: Throwable) {

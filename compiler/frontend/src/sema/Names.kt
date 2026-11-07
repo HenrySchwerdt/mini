@@ -490,6 +490,17 @@ fun BodyChecker.dotExpr(e: DotExpr, expected: Type?): Type {
         return t ?: ErrType("property")
     }
     if (sel is CallExpr) {
+        if (e.safe) {
+            // `x?.f { x.g() }`: the arguments are only evaluated when the receiver is not null
+            val saved = flow
+            flow = saved.copy()
+            flow.addAll(nonNullFacts(e.receiver))
+            try {
+                return callExpr(sel, info, expected, e)
+            } finally {
+                flow = saved
+            }
+        }
         return callExpr(sel, info, expected, e)
     }
     return unsupported(e.start, "selector " + sel::class.simpleName)
