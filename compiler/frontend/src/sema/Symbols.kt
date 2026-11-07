@@ -266,6 +266,8 @@ class TypeParamScope(val tps: List<TypeParamSym>, parent: Scope?) : Scope(parent
 /** Local declarations of a block / function body / lambda. */
 class LocalScope(parent: Scope?) : Scope(parent) {
     val vars = LinkedHashMap<String, VarSym>()
+    /** the variables a later declaration of the same name replaced in this scope (a local `val s` over the parameter `s`): `s()` may still call them */
+    val shadowedVars = LinkedHashMap<String, ArrayList<VarSym>>()
     val funs = LinkedHashMap<String, ArrayList<FunSym>>()
     val classes = LinkedHashMap<String, ClassSym>()
     val props = LinkedHashMap<String, PropSym>()

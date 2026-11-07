@@ -290,6 +290,16 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                         }
                     }
                 }
+                // a variable of the same scope this one replaced (a parameter): called when the newer one has no `invoke`
+                val sh = s.shadowedVars[name]
+                if (sh != null) for (ov in sh.asReversed()) {
+                    val ot = ov.type
+                    if (ot != null) {
+                        val oic = invokeCandidates(typeWithFlowVar(ov, ot))
+                        for (c in oic) c.invokeVar = ov
+                        if (oic.isNotEmpty()) groups.add(oic)
+                    }
+                }
                 val lc = s.classes[name]
                 if (lc != null) groups.add(ctorCandidates(lc))
             }
