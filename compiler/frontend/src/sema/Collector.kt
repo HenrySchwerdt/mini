@@ -170,7 +170,7 @@ class Collector(private val sema: Sema) {
             }
             is PropertyDecl -> {
                 val p = collectProp(m, c, file, body)
-                if (!file.declOnly && m.receiver == null && c.props[p.name] != null) sema.error(file, m.start, "conflicting declarations: property '" + p.name + "'")
+                if (!file.declOnly && m.receiver == null && c.props[p.name]?.any { !it.isExtension } == true) sema.error(file, m.start, "conflicting declarations: property '" + p.name + "'")
                 addTo(c.props, p.name, p)
             }
             is SecondaryCtor -> {

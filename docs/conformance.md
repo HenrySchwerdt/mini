@@ -748,6 +748,34 @@ What remains is a long tail of single tests (about 90 different causes), see `su
 
 Regression test: `compiler/testdata/conformance8a_misc.kt`.
 
+## Eighth round (b) (branch claude/conformance-8b)
+
+Starting point: 5853 / 5953 (63 compile-error, 14 ice, 20 runtime-fail, 1 crash, 2 timeout). Result: 5868 / 5953 (98.57 %), 56 compile-error, 7 ice, 19 runtime-fail, 1 crash, 2 timeout (15 tests fixed), no test that passed before fails now.
+Every remaining failure is a single test with its own cause (see `summary.md`).
+
+| fix | tests |
+|---|---:|
+| `while (break)` / `do { } while (break)` and `throw ... as T`: an operand that never completes (a `Nothing` placeholder) is not a C value (`loopCondition`, `typeOperator`) | 2 |
+| `Array(n, return x)`: an initializer of type `Nothing` ends the function before the array is made | 1 |
+| `recv.p(args)` where `p` is a member property of function type with receiver (`with(h) { 5.foo() }`): `CallInfo.invokePropRef` names the implicit receiver `p` is read from | 1 |
+| a Unit value in front of an argument that needs statements (`eq(Unit, f())`) no longer gets a (typeless) temporary (`Ir2Mir.operands`) | 1 |
+| expected types of nested generic calls: `val l: List<Box<Any?>> = listOf(Box(0))`, `arrayListOf(Box(0))` (the expected type of the call bounds the type parameters of its result before the arguments are analysed, also for overloads that agree), `a[i] = Box(2)` (the value of an indexed assignment is analysed against the parameter of `set`) | 2 |
+| `A::member` where `member` belongs to the companion object of `A` (members, extensions and extension properties; also `Companion::ext`): bound to the companion, after the members / extensions of `A` | 1 |
+| two local classes (or enum entry bodies of two enums) with the same name in one function got the same C name; the second one now gets a counter | 1 |
+| a star-imported object / companion `C` wins over a private class `C` of the file when `C` is used as an expression | 1 |
+| `::Z` of an unboxed value class (there is no constructor function) | 1 |
+| an extension property named like a member property is no conflicting declaration | 1 |
+| `pkg.property`: a top-level property read through the package name | 1 |
+| a lambda for a fun interface that is the lower bound of an `in`-projection (`Container<in Element>.add { }`) | 1 |
+| lexer: `$"..."` (one-dollar prefix of the multi-dollar interpolation) | 1 |
+
+Regression test: `compiler/testdata/conformance8b_misc.kt`.
+
+What was looked at and left: `.name` of a callable reference held in a value (`val r = C::f; r.name`, 4 tests: function reference closures carry no name), overload resolution that depends on the result type of a lambda
+(`transform { ... }` against a local variable named `transform`, 3 tests), `Unit` as a null in generic positions (`res!!` for `T = Unit`, `unchecked_cast10`), fun interfaces whose abstract method is `toString`,
+context-receiver overloads (`contextAndNoContextOverloads`), boxed identity of small values and folded constants, reified type parameters captured by an object in an inline function (`kt7017`), `KotlinNothingValueException`,
+lazily started file initialisers (`failInInitializer1/2`).
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

@@ -530,6 +530,13 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
 /** Direct call of [target] with already lowered [args] (receiver first), as used by function references. */
 internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: IrElement, out: MutableList<MirStmt>, typeArgs: List<Type?> = emptyList(), resultType: Type? = null): MirExpr {
     if (target is IrConstructor) {
+        // `::Z` of an unboxed value class: the unboxed value is the argument (there is no constructor function)
+        val vcls = target.parent as IrClass
+        val vt = inlineTypeOf(vcls)
+        if (vt != null && args.size == 1) {
+            val a = retag(coerceFlexible(args[0], vt.rep, at, out), vt)
+            return if (vcls.declarations.none { it is IrAnonymousInitializer }) a else MirExpr.Call(vt.cName + "_make", listOf(a), vt)
+        }
         val cName = functionNames[target] ?: unsupported(at, "reference to constructor of '${(target.parent as IrClass).kotlinFqName}'")
         return MirExpr.New(cName, args, typeOf(target.parent as IrClass))
     }

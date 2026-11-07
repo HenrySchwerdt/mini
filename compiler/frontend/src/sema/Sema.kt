@@ -359,7 +359,8 @@ class Sema {
     // ---- classifier lookup and type resolution -------------------------------------------------------------------
 
     /** the classifier (class, typealias or type parameter) a simple name refers to, or null */
-    fun lookupClassifier(scope: Scope, name: String): Sym? {
+    /** [asValue]: the name is used as an expression, so a class that is no value (no object, no companion) yields to a lower-priority one (`C` of a star import) */
+    fun lookupClassifier(scope: Scope, name: String, asValue: Boolean = false): Sym? {
         var s: Scope? = scope
         while (s != null) {
             when (s) {
@@ -377,12 +378,16 @@ class Sema {
                 }
                 is FileScope -> {
                     val groups = topLevel(s.file, name)
+                    var first: Sym? = null
                     for (g in groups) {
                         for (x in g) {
-                            if (x is ClassSym || x is TypeAliasSym) return x
+                            if (x is ClassSym || x is TypeAliasSym) {
+                                if (!asValue || (x is ClassSym && (x.isObject || x.companion != null))) return x
+                                if (first == null) first = x
+                            }
                         }
                     }
-                    return null
+                    return first
                 }
                 is ReceiverScope -> {}
             }
