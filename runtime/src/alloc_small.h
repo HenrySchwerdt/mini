@@ -54,7 +54,8 @@ typedef struct MkSmallCache {
 } MkSmallCache;
 extern MK_TLS MkSmallCache mk_small_cache;
 
-void *mk_small_refill(size_t cls); /* slow path of mk_small_alloc */
+void *mk_small_refill(size_t cls); /* slow path of mk_small_carve: batches of freed blocks, then new memory */
+void *mk_small_carve(size_t cls);  /* slow path of mk_small_alloc: the next block of the bump chunk, else mk_small_refill */
 void mk_small_full(size_t cls);    /* slow path of mk_small_free: `free` holds a full batch */
 void mk_small_register(void);      /* first block of a thread's list: arm the thread-exit flush */
 
@@ -69,13 +70,7 @@ static inline void *mk_small_alloc(size_t cls) {
         t->count[cls]--;
         return b;
     }
-    size_t sz = cls * MK_SMALL_GRAN;
-    if ((size_t)(t->end - t->bump) >= sz) {
-        b = t->bump;
-        t->bump += sz;
-        return b;
-    }
-    return mk_small_refill(cls);
+    return mk_small_carve(cls);
 }
 
 #if defined(__GNUC__) || defined(__clang__)
