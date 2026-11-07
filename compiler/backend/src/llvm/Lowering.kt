@@ -1863,7 +1863,8 @@ private class Lowering<V : Any, B : Any>(
     /** The element kind of an inlined array accessor (`mk_array_get_int`, `mk_array_set_obj`, ...), or null for any other runtime call. */
     fun arrayAccessKind(cName: String): String? {
         if (cName == "mk_array_length") return "length"
-        val k = if (cName.startsWith("mk_array_get_")) cName.substring(13) else if (cName.startsWith("mk_array_set_")) cName.substring(13) else return null
+        val k = if (cName.startsWith("mk_array_get_") || cName.startsWith("mk_array_set_")) cName.substring(13)
+        else if (cName.startsWith("mk_arrayu_get_") || cName.startsWith("mk_arrayu_set_")) cName.substring(14) else return null
         return if (k == "int" || k == "long" || k == "double" || k == "float" || k == "byte" || k == "short" || k == "boolean" || k == "char" || k == "obj") k else null
     }
 
@@ -2008,22 +2009,25 @@ private class Lowering<V : Any, B : Any>(
         val kind = arrayAccessKind(e.cName)!!
         val arr = expr(e.args[0])
         if (kind == "length") return loadTag(TInt, gep(arr, layouts.headerSize), "array length")
-        val isGet = e.cName.startsWith("mk_array_get_")
+        val unchecked = e.cName.startsWith("mk_arrayu_") // RangeCheck: proved in bounds by a test before the loop
+        val isGet = e.cName.startsWith("mk_array_get_") || e.cName.startsWith("mk_arrayu_get_")
         val idx = expr(e.args[1])
         val value = if (isGet) null else expr(e.args[2])
         val elemSize = when (kind) { "int" -> 4; "long" -> 8; "double" -> 8; "float" -> 4; "byte" -> 1; "short" -> 2; "boolean" -> 1; "char" -> 2; else -> pb }
         val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
-        val lenIdx = if (isGet) 2 else 3 // ArrayLen: the cached length is an extra last argument
-        val len = if (e.args.size > lenIdx && kind != "obj") expr(e.args[lenIdx]) else loadTag(TInt, gep(arr, layouts.headerSize), "array length")
-        val bad = icmp(IrCmp.UGE, idx, len)
-        val badL = newLabel("oob")
-        val okL = newLabel("aok")
-        condBr(bad, badL, okL, true)
-        startBlock(badL)
-        rt("mk_raise_index", TUnit, listOf(TInt, TInt), listOf(idx, len))
-        exitStmt()
-        startBlock(okL)
-        openBlock()
+        if (!unchecked) {
+            val lenIdx = if (isGet) 2 else 3 // ArrayLen: the cached length is an extra last argument
+            val len = if (e.args.size > lenIdx) expr(e.args[lenIdx]) else loadTag(TInt, gep(arr, layouts.headerSize), "array length")
+            val bad = icmp(IrCmp.UGE, idx, len)
+            val badL = newLabel("oob")
+            val okL = newLabel("aok")
+            condBr(bad, badL, okL, true)
+            startBlock(badL)
+            rt("mk_raise_index", TUnit, listOf(TInt, TInt), listOf(idx, len))
+            exitStmt()
+            startBlock(okL)
+            openBlock()
+        }
         val off = b.bin(IrOp.ADD, b.bin(IrOp.MUL, b.cast(IrCast.SEXT, idx, IrType.I64, ""), c64(elemSize), ""), c64(elemOff), "")
         val p = b.gep(arr, off, true, "")
         var result: V = b.none

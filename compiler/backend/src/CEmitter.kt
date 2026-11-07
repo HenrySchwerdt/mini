@@ -872,6 +872,26 @@ object CEmitter {
          * exception after every access. Only when the exit path is short (few locals to release): else the call plus check is
          * smaller.
          */
+        /** `mk_arrayu_get_*` / `mk_arrayu_set_*` (RangeCheck: the index is proved in bounds by a test before the loop): no length test. */
+        fun uncheckedArrayAccess(e: MirExpr.RuntimeCall): String? {
+            val n = e.cName
+            val isGet = n.startsWith("mk_arrayu_get_")
+            if (!isGet && !n.startsWith("mk_arrayu_set_")) return null
+            val ct = when (n.substring(14)) {
+                "int" -> "MkInt"; "long" -> "MkLong"; "double" -> "MkDouble"; "float" -> "MkFloat"; "byte" -> "MkByte"
+                "short" -> "MkShort"; "boolean" -> "MkBoolean"; "char" -> "MkChar"
+                else -> throw EmitError("unchecked array access $n")
+            }
+            if (e.args.size != (if (isGet) 2 else 3)) throw EmitError("unchecked array access $n")
+            val a = expr(e.args[0])
+            val i = expr(e.args[1])
+            return if (isGet) "MK_ARRAY_ELEMS($ct, (MkObject *)$a)[$i]"
+            else {
+                val id = tmpCounter++
+                "({ MkObject *mka$id = (MkObject *)$a; MkInt mki$id = $i; $ct mkv$id = ${coerceTo(e.args[2], e.args[2].type)}; MK_ARRAY_ELEMS($ct, mka$id)[mki$id] = mkv$id; (void)0; })"
+            }
+        }
+
         fun arrayAccess(e: MirExpr.RuntimeCall): String? {
             val n = e.cName
             val isGet = n.startsWith("mk_array_get_")
@@ -883,7 +903,7 @@ object CEmitter {
                 else -> return null
             }
             val base = if (isGet) 2 else 3
-            val lenArg = if (e.args.size == base + 1 && kind != "obj") e.args[base] else null // ArrayLen: the cached length
+            val lenArg = if (e.args.size == base + 1) e.args[base] else null // ArrayLen: the cached length
             if ((e.args.size != base && lenArg == null) || e.args[1].type !== TInt) return null
             val exit = exitStmt(0).replace("\n", " ").trim()
             if (exit.length > 260) return null
@@ -936,7 +956,7 @@ object CEmitter {
                     val owns = NativeConventions.ownedArgs(e.cName)
                     if (e.cName == "mk_free_dealloc" && !tr.enabled) "((void)0)"
                     else if (owns != null) ownedCall(e.cName, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0)
-                    else arrayAccess(e) ?: "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${ArrayLen.plainArgs(e).joinToString(", ") { expr(it) }})"
+                    else uncheckedArrayAccess(e) ?: arrayAccess(e) ?: "${if (fplan?.borrowedReads?.contains(e) == true) e.cName + "_b" else e.cName}(${ArrayLen.plainArgs(e).joinToString(", ") { expr(it) }})"
                 }
                 is MirExpr.StringLength -> "((MkInt)${expr(e.operand)}->length)"
                 is MirExpr.Load -> { usesMemory = true; "MKH_LOAD(${cType(e.type)}, ${expr(e.ptr)})" }
@@ -1099,6 +1119,10 @@ object CEmitter {
             else -> throw EmitError("no unsigned type for $t")
         }
 
+        /** A literal divisor other than 0 and -1: no zero test and no overflow case, the C compiler sees a plain division by a constant. */
+        fun constDivisor(d: MirExpr): Boolean =
+            (d is MirExpr.IntConst && d.value != 0 && d.value != -1) || (d is MirExpr.LongConst && d.value != 0L && d.value != -1L)
+
         fun binary(e: MirExpr.Binary): String {
             val op = e.op
             val t = e.left.type
@@ -1154,8 +1178,8 @@ object CEmitter {
                 BinaryOp.Add -> "($c)(($u)$a + ($u)$b)"
                 BinaryOp.Sub -> "($c)(($u)$a - ($u)$b)"
                 BinaryOp.Mul -> "($c)(($u)$a * ($u)$b)"
-                BinaryOp.Div -> "mkh_div_$suffix($a, $b)"
-                BinaryOp.Rem -> "mkh_rem_$suffix($a, $b)"
+                BinaryOp.Div -> if (constDivisor(e.right)) "($c)($a / $b)" else "mkh_div_$suffix($a, $b)"
+                BinaryOp.Rem -> if (constDivisor(e.right)) "($c)($a % $b)" else "mkh_rem_$suffix($a, $b)"
                 BinaryOp.Shl -> "($c)(($u)$a << (($b) & $mask))"
                 BinaryOp.Shr -> "($c)($a >> (($b) & $mask))"
                 BinaryOp.Ushr -> "($c)(($u)$a >> (($b) & $mask))"

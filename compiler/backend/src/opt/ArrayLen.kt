@@ -12,15 +12,15 @@ package mini.backend
  *     mk_array_length(a)           ->  len
  *
  * The bounds test is unchanged (an unsigned compare against the length), so the checks stay; the emitters only skip the load.
- * Object arrays are left alone (their accessors carry the reference counting).
+ * Object arrays too (the reference counting of the accessors is decided later, by RcOpt, on the same calls).
  */
 internal object ArrayLen {
-    private val KINDS = setOf("int", "long", "double", "float", "byte", "short", "boolean", "char")
+    private val KINDS = setOf("int", "long", "double", "float", "byte", "short", "boolean", "char", "obj")
 
     fun isPrimArray(t: MirType): Boolean {
         if (t !is TObject || t.nullable) return false
         return t.cName == "MkIntArray" || t.cName == "MkLongArray" || t.cName == "MkDoubleArray" || t.cName == "MkFloatArray" ||
-            t.cName == "MkByteArray" || t.cName == "MkShortArray" || t.cName == "MkBooleanArray" || t.cName == "MkCharArray"
+            t.cName == "MkByteArray" || t.cName == "MkShortArray" || t.cName == "MkBooleanArray" || t.cName == "MkCharArray" || t.cName == "MkObjectArray"
     }
 
     /** The element kind when [e] is a plain accessor (without a cached length) on a local, else null. */
@@ -32,6 +32,18 @@ internal object ArrayLen {
         if (k !in KINDS) return null
         if (e.args.size != (if (isGet) 2 else 3)) return null
         return k
+    }
+
+    /** The element kind when [e] is an accessor that carries a cached length (a local of type Int as the last argument), else null. */
+    fun lenAccessKind(e: MirExpr.RuntimeCall): String? {
+        val n = e.cName
+        val isGet = n.startsWith("mk_array_get_")
+        if (!isGet && !n.startsWith("mk_array_set_")) return null
+        val k = n.substring(13)
+        if (k !in KINDS) return null
+        if (e.args.size != (if (isGet) 3 else 4)) return null
+        val last = e.args[e.args.size - 1]
+        return if (last is MirExpr.Local && last.type === TInt) k else null
     }
 
     /** The arguments of an accessor without the cached length (what a plain runtime call takes). */

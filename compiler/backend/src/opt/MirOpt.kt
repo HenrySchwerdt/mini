@@ -43,6 +43,11 @@ object MirOpt {
             val st = IntArray(1)
             m = ArrayLen.run(m, st)
             if (options.stats) report("array-len: " + st[0] + " array locals with a cached length")
+            if (options.on("range-check")) {
+                val rs = IntArray(1)
+                m = RangeCheck.run(m, rs)
+                if (options.stats) report("range-check: " + rs[0] + " loops versioned with unchecked array accesses")
+            }
         }
         return m
     }
