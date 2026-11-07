@@ -25,6 +25,11 @@ internal fun Ir2Mir.collectClass(c: IrClass, pkg: String, path: List<String>, fi
             classInfos[s] = ClassInfo(s, Mangling.className("kotlin", listOf(sn)), "kotlin." + sn, file)
         }
     }
+    // kotlin.Number is a class the runtime knows (boxed numbers); a user class that extends it gets the class compiled with the vtable slots of its members
+    for (t in c.superTypes) {
+        val s = t.classOrNull ?: continue
+        if (s.kotlinFqName == "kotlin.Number" && s !in classInfos) classInfos[s] = ClassInfo(s, Mangling.className("kotlin", listOf("Number")), "kotlin.Number", file)
+    }
     for (d in c.declarations) {
         if (d is IrClass && !isPtrClass(d) && d.kind != IrClassKind.ANNOTATION_CLASS) collectClass(d, pkg, path + d.name, file)
     }
@@ -72,7 +77,7 @@ internal fun Ir2Mir.superclassOf(c: IrClass): IrClass? {
     for (t in c.superTypes) {
         if (t is FunType) continue   // `class F : (Int) -> Int`: see functionSupertypes
         val s = t.classOrNull ?: unsupported(c, "supertype '${t.classFqName}' of '${c.name}'")
-        if (isAny(s) || s.kotlinFqName == "kotlin.Enum") continue
+        if (isAny(s) || s.kotlinFqName == "kotlin.Enum" || s.kotlinFqName == "kotlin.Annotation" || s.kotlinFqName == "kotlin.Function") continue
         if (s.kind == IrClassKind.INTERFACE) {
             if (s !in classInfos) unsupported(c, "supertype '${s.kotlinFqName}' of '${c.name}'")
             continue
@@ -86,7 +91,7 @@ internal fun Ir2Mir.superclassOf(c: IrClass): IrClass? {
 /** The arities of the function types (`(Int) -> Int` is 1) that [c] inherits from, through its supertypes and their supertypes. */
 internal fun Ir2Mir.functionSupertypes(c: IrClass, acc: MutableSet<Int> = LinkedHashSet()): Set<Int> {
     for (t in c.superTypes) {
-        if (t is FunType) acc += t.params.size + (if (t.receiver != null) 1 else 0)
+        if (t is FunType) acc += t.params.size + (if (t.receiver != null) 1 else 0) + (if (t.suspend) 1 else 0)
         else {
             val s = t.classOrNull ?: continue
             if (s in classInfos && s !== c) functionSupertypes(s, acc)
@@ -220,6 +225,7 @@ internal fun IrFunction.extensionReceiverParameter(): IrValueParameter? =
 internal fun Ir2Mir.convertMembers(info: ClassInfo): List<MirFunction> {
     val out = ArrayList<MirFunction>()
     val c = info.ir
+    if (c.kotlinFqName == "kotlin.Number") return out   // the members are the runtime's (boxed numbers) or the user class's
     for (f in classFunctions(c)) {
         if (f.isFakeOverride || isEnumSpecial(c, f)) continue
         if (f.body == null) {
@@ -370,10 +376,25 @@ internal fun Ir2Mir.resolveFake(f: IrSimpleFunction): IrSimpleFunction {
         ?: f
 }
 
+/** A function `(enum) -> name / ordinal`: every enum class starts with the same hidden fields, so the layout of any one gives it. */
+internal fun Ir2Mir.enumAccessor(name: Boolean): String {
+    val owner = classInfos.values.first { it.ir.kind == IrClassKind.ENUM_CLASS }
+    val cName = "mkh_enum_" + (if (name) "get_name" else "get_ordinal")
+    if (extraFunctions.none { it.cName == cName }) {
+        val self = MirLocal(0, "this", anyNullable)
+        val t = if (name) TString else TInt
+        val field = MirExpr.FieldGet(MirExpr.Cast(MirExpr.Local(self), typeOf(owner.ir), MirExpr.CastMode.Unchecked), owner.cName, if (name) "\$name" else "\$ordinal", t)
+        extraFunctions += MirFunction("kotlin.Enum." + (if (name) "name" else "ordinal"), cName, listOf(self), t, listOf(MirStmt.Return(field)))
+    }
+    return cName
+}
+
 internal fun Ir2Mir.implName(f: IrSimpleFunction?): String? {
     if (f == null) return null
     val p = parentClass(f)
     if (p != null && (isAny(p) || isRuntimeProvided(p))) return null
+    // `enum class E : Named` where `Named.name` is implemented by Enum.name: the itable entry reads the hidden field
+    if (p != null && p.kotlinFqName == "kotlin.Enum" && (f.name == "<get-name>" || f.name == "<get-ordinal>")) return enumAccessor(f.name == "<get-name>")
     if (!hasBody(f)) return null
     val n = functionNames[f] ?: error("no C name for ${f.name}")
     if (p != null && p.isValue && f.parameters.isNotEmpty() && f.parameters[0].kind == IrParameterKind.DispatchReceiver && inlineRepOf(p) != null) return valueClassWrapper(f, n)
@@ -389,13 +410,20 @@ internal fun Ir2Mir.slotsOf(c: IrClass): List<IrSimpleFunction> = slotCache.getO
         return@getOrPut if (sup != null) slotsOf(sup) else listOfNotNull(messageRootOf(c))
     }
     val base = superclassOf(c)?.let { slotsOf(it) } ?: emptyList()
-    base + classFunctions(c).filter { f ->
+    val own = classFunctions(c).filter { f ->
         topClass(f) === f && anyMember(f) == null && f.modality != IrModality.FINAL &&
             f.visibility != "private"
     }
+    // the runtime (v1l.c, mk_checked_number_to_*) calls these slots of a user class that extends Number: a fixed order
+    if (c.kotlinFqName == "kotlin.Number") {
+        val order = listOf("toDouble", "toFloat", "toLong", "toInt", "toChar", "toShort", "toByte")
+        return@getOrPut base + own.sortedBy { order.indexOf(it.name) }
+    }
+    base + own
 }
 
 internal fun Ir2Mir.implClass(c: IrClass, root: IrSimpleFunction): String? {
+    if (c.kotlinFqName == "kotlin.Number" && root.name == "toChar") return "mk_number_to_char_default"
     if (builtinOf(c) != null) return if (root === builtinMessageRoot) "mk_throwable_message" else null
     val g = classFunctions(c).firstOrNull { topClass(it) === root }
     val sup = superclassOf(c)
@@ -452,9 +480,11 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
             else MirItable(info(i).cName, interfaceMethods(i).map { m -> bridged(findImpl(c, m), m) })
         }
         for (n in functionSupertypes(c)) {
-            val impl = invokeImpl(c, n) ?: unsupported(c, "class '${c.name}' implements a function type without an invoke function")
+            val impl = invokeImpl(c, n)
+            if (impl == null && c.modality != IrModality.ABSTRACT) unsupported(c, "class '${c.name}' implements a function type without an invoke function")
             funIfaces += functionInterface(n).cName
-            itables = itables + MirItable(functionInterface(n).cName, listOf(erasedInvoke(impl, n)))
+            // an abstract class leaves the invoke to its subclasses
+            itables = itables + MirItable(functionInterface(n).cName, listOf(if (impl == null) null else erasedInvoke(impl, n)))
         }
     }
     val objectCtor = if (c.kind == IrClassKind.OBJECT) {
@@ -555,6 +585,7 @@ private fun Ir2Mir.specialBridgeCheck(impl: IrSimpleFunction, root: IrSimpleFunc
 internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): String? {
     val name = implName(impl) ?: return null
     impl!!
+    if (name.startsWith("mkh_enum_get_")) return name   // the accessor of the hidden enum fields takes any object
     val rp = root.parameters.map { mirType(it.type, it) }
     val ip = impl.parameters.map { mirType(it.type, it) }
     val rr = mirType(root.returnType, root)
@@ -575,6 +606,11 @@ internal fun Ir2Mir.bridged(impl: IrSimpleFunction?, root: IrSimpleFunction): St
         }
         val args = ps.mapIndexed { i, p ->
             if (i == 0) MirExpr.Cast(MirExpr.Local(p), ip[0].let { if (it is TInline) inlineObjType(it, true) else it }, MirExpr.CastMode.Unchecked)
+            else if (ip[i] == TNothing) {
+                // `override fun foo(p: Nothing)` of `foo(p: T)`: the bridge casts the argument to Nothing, which never succeeds
+                out += MirStmt.Throw(tmpOf(newBuiltin("MkClassCastException", MirExpr.StringConst("value cannot be cast to kotlin.Nothing")), out))
+                MirExpr.NullConst(anyNullable)
+            }
             else coerceFlexible(MirExpr.Local(p), ip[i], impl, out)
         }
         val call = MirExpr.Call(name, args, ir)

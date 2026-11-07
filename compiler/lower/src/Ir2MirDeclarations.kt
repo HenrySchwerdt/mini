@@ -56,7 +56,7 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         }
     }
     for (p in f.parameters) {
-        val l = MirLocal(localCounter++, if (p.kind == IrParameterKind.DispatchReceiver) "this" else p.name, mirType(p.type, p))
+        val l = MirLocal(localCounter++, if (p.kind == IrParameterKind.DispatchReceiver) "this" else p.name, mirType(p.type, p).let { if (it == TNothing) anyNullable else it })
         locals[p] = l
         if (p.type.classFqName == "kotlin.Unit" && !p.type.isMarkedNullable()) unitVars += p
         params += l
@@ -397,7 +397,7 @@ internal fun Ir2Mir.initField(self: MirExpr, f: IrField, out: MutableList<MirStm
 internal fun Ir2Mir.delegatingCall(c: IrDelegatingConstructorCall, out: MutableList<MirStmt>) {
     val k = c.callee
     val cls = k.parent as IrClass
-    if (isAny(cls)) return
+    if (isAny(cls) || cls.kotlinFqName == "kotlin.Number") return
     // an enum class with secondary constructors only: the call of `Enum()` has nothing to do (name and ordinal are set by the creation code)
     if (cls.kotlinFqName == "kotlin.Enum" && builtinOf(cls) == null) return
     if (builtinOf(cls) != null) { builtinSuperInit(c, k, out); return }
@@ -414,6 +414,7 @@ internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirSt
     builtinOf(cls)?.let { return builtinNew(c, cls, it, out) }
     if (inlineRepOf(cls) != null) return valueClassNew(c, k, cls, out)
     if (cls.kotlinFqName == "kotlin.Any") return MirExpr.RuntimeCall("mk_any_new", emptyList(), anyType)
+    if (cls.kotlinFqName == "kotlin.String" && c.arguments.none { it != null }) return MirExpr.StringConst("")   // `String()`
     arrayKindOfFq(cls.kotlinFqName)?.let { return arrayConstructor(c, it, out) }
     val cName = functionNames[k] ?: unsupported(c, "construction of '${cls.kotlinFqName}'")
     if (cls.kind != IrClassKind.CLASS) unsupported(c, "construction of ${classKind(cls)} '${cls.name}'")

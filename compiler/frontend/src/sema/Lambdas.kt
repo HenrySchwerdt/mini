@@ -457,6 +457,14 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     // suspend conversion: a reference to a non-suspend function where a suspend function type is expected becomes a suspend lambda;
     // so does a reference to a suspend function (`O(::id)`), whose closure would not take the continuation like a suspend function value
     val csym = chosen.sym
+    // coercion to Unit: a reference to a function that returns something where a function type that returns Unit is expected
+    if (ef != null && adapted == null && csym is FunSym && !chosen.isProp && ops.isUnit(ef.ret) && !ops.isUnit(cs.resolveFixed(ops.substitute(chosen.ret, m))) && ops.allParams(ef).size == chosen.params.size) {
+        val off0 = chosen.params.size - csym.params.size
+        if (off0 in 0..1) {
+            val n0 = csym.params.size
+            adapted = AdaptedRef(AdaptMap(IntArray(n0) { off0 + it }, IntArray(n0) { 1 }), off0)
+        }
+    }
     // `val f = ::suspendFun`: with no expected type the reference is a value of the suspend function type (calling it passes the continuation)
     val selfSuspend = ef == null && csym is FunSym && !chosen.isProp && csym.mods()?.has("suspend") == true &&
         chosen.params.none { unfixedType(cs.resolveFixed(ops.substitute(it, m))) } && !unfixedType(cs.resolveFixed(ops.substitute(chosen.ret, m)))
@@ -492,7 +500,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
     } else {
         for (p in chosen.params) ps.add(cs.resolveFixed(ops.substitute(p, m)))
     }
-    val ret = cs.resolveFixed(ops.substitute(chosen.ret, m))
+    val ret = if (adapted != null && ef != null && ops.isUnit(ef.ret) && chosen.sym is FunSym) sema.unitType else cs.resolveFixed(ops.substitute(chosen.ret, m))
     val t: Type
     if (chosen.isProp) {
         val k = if (chosen.propReceiver) 1 else 0

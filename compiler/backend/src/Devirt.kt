@@ -61,6 +61,8 @@ object Devirt {
             instantiatedList.add(c)
             // what the runtime calls on any object: toString, equals, hashCode and the message of a Throwable (vtable slots 0..3)
             for (i in 0 until minOf(4, c.vtable.size)) reach(c.vtable[i])
+            // mk_checked_number_to_* (the Number members on a value of static type Number) call the vtable slots 3..9 of a user class that extends Number
+            if (ancestorsOf(c).any { classes[it]?.qualifiedName == "kotlin.Number" }) for (i in 3 until minOf(10, c.vtable.size)) reach(c.vtable[i])
             for (t in c.itables) {
                 val q = classes[t.interfaceCName]?.qualifiedName
                 // interfaces the runtime dispatches on by itself: threads call Function0.invoke, sorting calls Comparable.compareTo,

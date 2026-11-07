@@ -142,6 +142,21 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
             out += MirStmt.Declare(l, v)
             locals[p] = l
         }
+        // an inline member of an inner class: the outer instances (`this@E`) are reached through the `$outer` fields of the receiver
+        val dispatchParam = params.firstOrNull { it.kind == IrParameterKind.DispatchReceiver }
+        val ownerCls = callee.parent as? IrClass
+        if (dispatchParam != null && ownerCls != null && ownerCls.isInner && ownerCls in classInfos) {
+            var cur: MirLocal? = locals[dispatchParam]
+            var k: IrClass = ownerCls
+            while (cur != null && k.isInner) {
+                val oc = k.parent as? IrClass ?: break
+                val l = MirLocal(localCounter++, "outer", typeOf(oc))
+                out += MirStmt.Declare(l, MirExpr.FieldGet(MirExpr.Local(cur), info(k).cName, "\$outer", l.type))
+                oc.thisReceiver?.let { locals[it] = l }
+                cur = l
+                k = oc
+            }
+            }
         }
         val ret = mirType(callee.returnType, callee)
         val r = expandBody(callee, ret, c, out)

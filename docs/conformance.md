@@ -669,6 +669,68 @@ Still open (runtime-fail): `failInInitializer1/2` (exception inside a lazily sta
 strings (`static_smallIntIdentity`, `stringTrim`), equality of adapted references with defaults, `nothingValueException`, `inheritFromAbstractMutableListInt`,
 suspend `releaseIntercepted` / `unitSafeCall` / `suspendFunctionIsAs`, context-receiver overloads, `functionsDifferInTypeParameterBounds2`, `ieee754` smart casts with numeric promotion.
 
+## Seventh round (a) (branch claude/conformance-7a)
+
+Targets: the `compile-error` / `ice` buckets left by round 6a (frontend and lowering fixes). `results.json` / `summary.md` come from a full harness run on the tree merged with origin/main (6a + 6b + stub cache), followed by a `--retest` of everything that did not pass, after fixing the two regressions the full run found (a backticked `` `_` `` destructuring entry is a variable, the plain `_` is not: `DestructEntry.quoted`). Compared test by test with the main results: no test that passed there fails now, 63 more pass.
+
+| | after round 6 (a + b) | round 7 (a) |
+|---|---:|---:|
+| **pass (applicable 5953)** | **5745 (96.51%)** | **5808 (97.56%)** |
+| compile-error | 129 | 74 |
+| ice | 26 | 15 |
+| runtime-fail | 42 | 44 |
+| crash | 8 | 9 |
+| timeout | 3 | 3 |
+
+Fixes, grouped by cause (tests `compiler/testdata/conformance7a_*`):
+
+1. **Classes extending `Number`**, **function types and `kotlin.Function` as supertypes** (also suspend; suspend conversion of function values to suspend fun interfaces), **annotation instances**, data objects, companion property lookup, enum entries implementing interface properties, inline members of inner classes (`$outer` chain), Unit and Nothing typed parameters / fields (`conformance7a_number`, `_function_types`, `_misc`).
+2. **Scoping**: `do { var y } while (y < 10)` sees the body's variables, local-class contexts, `super` in the delegation of an object literal (`conformance7a_scoping`).
+3. **Members an object inherits, imported by name** (`import Reg.fromInterface`, `import Reg.genericFromSuper`, extension properties and functions from a superclass or generic interface of the object): the object is the dispatch receiver and the type arguments of the supertype are substituted (`Sema.importedVia`, `conformance7a_imported_members`; `useImportedMember*`).
+4. **Unsigned varargs**: `vararg us: UInt` is a `UIntArray` (a value class over `IntArray`), also with spread and the empty vararg; `UInt` / `Int` retyping in `convertTo` (`conformance7a_imported_members`).
+5. **Defaults of `vararg` parameters** are arrays (`vararg arr: Int = intArrayOf(1, 2)`: `function/defaultsWithVarArg2`, `varargWithDefaultValue`, `varArgNoInline`), and ``val (`_`, c) = ...`` (`conformance7a_vararg_defaults`, `multiDecl/UnderscoreNames`).
+
+Per category with a change (pass / applicable, 6a + 6b vs this round):
+
+| category | 6a + 6b | 7a |
+|---|---:|---:|
+| box/annotations | 3 / 9 | 7 / 9 |
+| box/builderInference | 64 / 70 | 65 / 70 |
+| box/callableReference | 187 / 202 | 192 / 202 |
+| box/casts | 42 / 51 | 43 / 51 |
+| box/closures | 102 / 106 | 105 / 106 |
+| box/controlStructures | 208 / 212 | 210 / 212 |
+| box/controlflow | 18 / 19 | 19 / 19 |
+| box/coroutines | 432 / 446 | 437 / 446 |
+| box/dataClasses | 49 / 50 | 50 / 50 |
+| box/dataObjects | 1 / 3 | 3 / 3 |
+| box/defaultArguments | 76 / 77 | 77 / 77 |
+| box/delegatedProperty | 47 / 48 | 48 / 48 |
+| box/enum | 78 / 81 | 79 / 81 |
+| box/fieldRename | 1 / 2 | 2 / 2 |
+| box/funInterface | 29 / 36 | 30 / 36 |
+| box/function | 35 / 36 | 36 / 36 |
+| box/inlineClasses | 711 / 732 | 715 / 732 |
+| box/innerNested | 48 / 49 | 49 / 49 |
+| box/involvesIrInterpreter | 28 / 33 | 29 / 33 |
+| box/localClasses | 36 / 40 | 37 / 40 |
+| box/lower | 6 / 9 | 7 / 9 |
+| box/objects | 105 / 108 | 108 / 108 |
+| box/primitiveTypes | 84 / 91 | 91 / 91 |
+| box/properties | 87 / 88 | 88 / 88 |
+| box/specialBuiltins | 11 / 20 | 12 / 20 |
+| box/statics | 7 / 8 | 8 / 8 |
+| box/strings | 29 / 31 | 30 / 31 |
+| box/super | 34 / 35 | 35 / 35 |
+| box/suspendConversion | 2 / 3 | 3 / 3 |
+| box/unsignedTypes | 38 / 40 | 39 / 40 |
+| box/vararg | 16 / 17 | 17 / 17 |
+| boxInline/annotations | 0 / 2 | 2 / 2 |
+| boxInline/defaultValues | 70 / 71 | 71 / 71 |
+| boxInline/innerClasses | 4 / 8 | 7 / 8 |
+
+Remaining: builder inference (`pclaRoot*`, `kt53478`, `kt63733`, `kt51988`), adapted references with `vararg` and defaults, member references to companion members, the inline-class ICEs (`inlineClasses/*`), `Nothing`-typed parameters in bridges, `signedToUnsignedConversions` (`@ImplicitIntegerCoercion`), `objectIntrinsics/objects` (`Enum` as a value), the `MultiDollarInterpolation` lexer cases and a few linking failures.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

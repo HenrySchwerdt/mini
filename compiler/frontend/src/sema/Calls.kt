@@ -143,8 +143,11 @@ fun BodyChecker.extensionGroups(name: String, recv: Type, out: ArrayList<List<Ca
     for (g in fileTopFuns(name)) {
         val l = ArrayList<Candidate>()
         for (f in g) if (f.isExtension) {
-            val c = Candidate(f, HashMap(), recv)
+            val via = sema.importedVia[f]
+            val c = Candidate(f, sema.importedSubstOf(f), recv)
             c.extRef = ref
+            // a member extension an object inherits, imported by name: the object is the dispatch receiver
+            if (via != null) c.dispatchRef = RecvRef(via, null, true)
             l.add(c)
         }
         if (l.isNotEmpty()) out.add(l)
@@ -345,7 +348,12 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 for (g in sema.topLevel(file, name)) {
                     val l = ArrayList<Candidate>()
                     for (x in g) {
-                        if (x is FunSym && !x.isExtension) l.add(Candidate(x, HashMap(), null))
+                        if (x is FunSym && !x.isExtension) {
+                            val via = sema.importedVia[x]
+                            val c = Candidate(x, sema.importedSubstOf(x), null)
+                            if (via != null) c.dispatchRef = RecvRef(via, null, true)
+                            l.add(c)
+                        }
                         else if (x is ClassSym) l.addAll(ctorCandidates(x))
                         else if (x is TypeAliasSym) {
                             val et = sema.expandAlias(x)
@@ -516,6 +524,8 @@ fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List
     val il = ArrayList<Candidate>()
     for (mp in members.propsNamed(rt, name)) {
         if (mp.prop.receiver != null) continue
+        // a property whose type is being inferred cannot be the callee (`val ok = ok()` calls the function `ok`)
+        if (mp.prop.typeState == 1) continue
         val pt = ops.substitute(sema.typeOfProp(mp.prop), mp.subst)
         for (ic in invokeCandidates(pt)) {
             ic.invokeProp = mp.prop
@@ -840,6 +850,15 @@ fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt 
         val fd = ArrayList<Attempt>()
         for (a in pool) if (a.binding.defaultsUsed == min) fd.add(a)
         pool = fd
+    }
+    if (pool.size > 1 && pool.all { it.tps.isEmpty() }) {
+        // the same member of several bounds / supertypes (`T : A, T : B`): the one with the most specific result type
+        val rets = pool.map { ops.substitute(sema.returnTypeOf(it.cand.fn), it.cand.subst) }
+        for (i in pool.indices) {
+            var most = true
+            for (j in rets.indices) if (j != i && !ops.isSubtype(rets[i], rets[j])) most = false
+            if (most) return pool[i]
+        }
     }
     if (pool.size > 1) {
         // a member of a subclass over the same signature of its supertype was already filtered; prefer non-abstract

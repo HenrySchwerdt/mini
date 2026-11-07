@@ -47,9 +47,9 @@ class Members(private val sema: Sema) {
         if (c.membersDone) return
         c.membersDone = true
         val tf = c.thisType()
-        if (c.isData || c.isValue) {
+        if (c.isData || c.isValue || c.isAnnotation) {
             val pc = c.primaryCtor
-            if (pc != null && !c.isValue) {
+            if (pc != null && !c.isValue && !c.isAnnotation) {
                 sema.ensureSig(pc)
                 var i = 1
                 for (p in pc.params) {

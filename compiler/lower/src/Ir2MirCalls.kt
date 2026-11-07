@@ -166,6 +166,16 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     ) return rangeContains(c, c.arguments.map { it!! }, out)
     if (parent is IrClass && name == "rangeTo" && c.arguments.size == 2) rangeObject(c, parent, out)?.let { return it }
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Comparable" && name == "compareTo") return comparableCompareTo(c, out)
+    if (parent is IrClass && parent.kotlinFqName == "kotlin.Number" && (name == "toString" || name == "equals" || name == "hashCode") && c.superQualifier == null) {
+        // the Any members seen through Number (fake overrides of the class)
+        val vals = operands(c.arguments.map { it ?: unsupported(c, "omitted argument") }, out)
+        return anyMember(if (name == "toString") 0 else if (name == "equals") 1 else 2, vals, c, out)
+    }
+    if (parent is IrClass && parent.kotlinFqName == "kotlin.Number" && c.arguments.size == 1 && c.superQualifier != null && name == "toChar") {
+        // `super.toChar()` of a class that extends Number: toInt().toChar()
+        val recv = operands(listOf(c.arguments[0]!!), out)[0]
+        return MirExpr.RuntimeCall("mk_number_to_char_default", listOf(asAny(recv)), TChar)
+    }
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Number" && c.arguments.size == 1) {
         val kind = when (name) {
             "toInt" -> TInt; "toLong" -> TLong; "toDouble" -> TDouble; "toFloat" -> TFloat
