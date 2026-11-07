@@ -247,7 +247,7 @@ fun Ast2Ir.localDestructuring(d: DestructuringDecl): IrStatement {
 fun Ast2Ir.destructureInto(entries: List<DestructEntry>, tmp: IrVariable, out: ArrayList<IrStatement>) {
     var i = 1
     for (e in entries) {
-        if (e.name == "_" && rec(e) == null) {
+        if (e.name == "_" && !e.quoted) {
             // an unused entry: no componentN call and no variable
             i++
             continue
