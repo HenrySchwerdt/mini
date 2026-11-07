@@ -663,7 +663,7 @@ Fixed by cause:
 * a member `fun f(s: String)` next to an extension `fun String.f()` (same erased signature) get distinct symbols (`captureExtensionReceiver`, was a crash).
 * harness: a test that declares `fun main()` as a helper is renamed so that it does not become the entry.
 
-Result: **5745 -> 5778 of 5953 (97.06%)** (runtime-fail 42 -> 21, crash 8 -> 0, ice 26, compile-error 126, timeout 2), no test that passed on main fails.
+Result: before this round (6a+6b main) 5745, 7b alone 5778 (runtime-fail 42 -> 21, crash 8 -> 0); merged with 7a (main 5808): **5838 of 5953 (98.07%)** (compile-error 74, ice 15, runtime-fail 23, crash 1, timeout 2), compared test by test with main: no test that passed there fails.
 
 Still open (runtime-fail): `failInInitializer1/2` (exception inside a lazily started file initialiser must become `ExceptionInInitializerError`), boxed identity of small ints / constant
 strings (`static_smallIntIdentity`, `stringTrim`), equality of adapted references with defaults, `nothingValueException`, `inheritFromAbstractMutableListInt`,
