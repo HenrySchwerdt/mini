@@ -68,7 +68,8 @@ class Ir2Mir {
     /** the closure class of a function reference by its key (target, bound parameters): references to the same function share a class, which compares equal by its captured values */
     internal val refClassCache = HashMap<String, Pair<String, TObject>>()
     internal val refTargetIds = HashMap<IrFunction, Int>()
-    internal val refClasses = HashMap<MirType, RefClass>()
+    internal val refClasses = HashMap<Any, RefClass>()
+    internal val autoCells = HashMap<IrValueDeclaration, Boolean>()
     internal val functionInterfaces = HashMap<Int, TObject>()
     internal val liftedFns = HashMap<IrSimpleFunction, LiftedFn>()
     internal val returnTargets = HashMap<IrFunction, InlineReturn>()
