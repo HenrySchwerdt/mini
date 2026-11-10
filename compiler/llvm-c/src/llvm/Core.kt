@@ -140,6 +140,7 @@ const val LLVMAttributeFunctionIndex = -1
 @CName("LLVMSetLinkage") external fun LLVMSetLinkage(global: LLVMValueRef, linkage: Int)
 @CName("LLVMSetUnnamedAddress") external fun LLVMSetUnnamedAddress(global: LLVMValueRef, unnamedAddr: Int)
 @CName("LLVMSetAlignment") external fun LLVMSetAlignment(v: LLVMValueRef, bytes: Int)
+@CName("LLVMSetOrdering") external fun LLVMSetOrdering(v: LLVMValueRef, ordering: Int)
 @CName("LLVMSetInitializer") external fun LLVMSetInitializer(globalVar: LLVMValueRef, constantVal: LLVMValueRef)
 @CName("LLVMGetInitializer") external fun LLVMGetInitializer(globalVar: LLVMValueRef): LLVMValueRef?
 @CName("LLVMSetGlobalConstant") external fun LLVMSetGlobalConstant(globalVar: LLVMValueRef, isConstant: Int)
