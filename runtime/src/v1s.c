@@ -381,7 +381,17 @@ static void ref_array_dispose(MkObject *self) {
     MkRefArray *a = (MkRefArray *)self;
     for (MkInt i = 0; i < a->length; i++) {
         MkObject *item = a->items[i];
-        if (item != NULL) mk_release(item);
+        if (item == NULL) continue;
+#if !defined(MK_STATS)
+        /* a reference to an object that stays alive (a graph's nodes are held by many lists): the decrement of mk_release, without
+         * the call. Anything else (static, shared, a candidate not yet buffered, the last reference, threads running) takes it. */
+        if ((item->flags & (MK_FLAG_STATIC | MK_FLAG_STACK | MK_FLAG_SHARED | MK_FLAG_ARMED)) == 0 && item->refcount > 1u &&
+            !__atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
+            item->refcount--;
+            continue;
+        }
+#endif
+        mk_release(item);
     }
 }
 

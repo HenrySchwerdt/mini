@@ -390,7 +390,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         }
         val mc = classOf(cls)
         val display = fq.substring(fq.lastIndexOf('.') + 1)
-        return if (mc.mode == MemMode.Strict && fileOf(cls) != null) MType(TK.Strict, nullable, mc, null, fq, display)
+        // enum constants and objects are immortal singletons: nothing to own, free or move (`for (e in values()) if (..) return e`)
+        val singleton = cls.kind == IrClassKind.ENUM_CLASS || cls.kind == IrClassKind.ENUM_ENTRY || cls.kind == IrClassKind.OBJECT
+        // a value class around a plain value (`value class Id(val n: Int)`) is a value: copies have no identity to own, free or move
+        val plainValue = cls.isValue && mc.fields.all { !it.type.tracked }
+        return if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton && !plainValue) MType(TK.Strict, nullable, mc, null, fq, display)
         else MType(TK.Managed, nullable, mc, null, fq, display)
     }
 
@@ -440,6 +444,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         if (interop && mapType(f.returnType).tracked) retAnnot = MAnnot(null, pos(f))
         // a result of generic type (`fun <T> first(xs: Box<T>): T`) is a reference some argument keeps alive, not a fresh allocation: a loan
         if (retAnnot.owned == null && retAnnot.borrowed == null && f.returnType is TypeParamType) retAnnot = MAnnot(null, pos(f))
+        // a Strict method that only ever returns its own receiver (`fun add(x: Int): Builder { ...; return this }`, `operator fun inc() = this`)
+        // returns a loan of the receiver: the caller already owns the object, a second owner would be a double free
+        if (retAnnot.owned == null && retAnnot.borrowed == null && mode == MemMode.Strict && cls != null && f is IrSimpleFunction &&
+            f.modality == IrModality.FINAL && f.overridden.isEmpty() && mapType(f.returnType).tracked && returnsOnlyReceiver(f)
+        ) retAnnot = MAnnot(null, pos(f))
         val parent = f.parent
         val fq = if (parent is IrFile) parent.packageFqName + "." + name
         else (if (cls != null) cls.kotlinFqName else "") + "." + name
@@ -474,6 +483,34 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             m.virtualTargets = { overridersOf(f).map { funOf(it) } }
         }
         return m
+    }
+
+    /** Does every `return` of [f] (and its expression body) yield the dispatch receiver itself, and is there at least one? */
+    private fun returnsOnlyReceiver(f: IrSimpleFunction): Boolean {
+        val recv = f.parameters.firstOrNull { it.kind == IrParameterKind.DispatchReceiver } ?: return false
+        fun isThis(x: IrExpression): Boolean = when (x) {
+            is IrGetValue -> x.owner === recv
+            is IrTypeOperatorCall -> x.operator == IrTypeOperator.IMPLICIT_CAST && isThis(x.argument)
+            else -> false
+        }
+        var found = 0
+        var other = false
+        val w = object : IrWalker() {
+            override fun visit(e: IrElement) {
+                if (e is IrFunctionExpression || e is IrClass) return
+                if (e is IrReturn && e.returnTarget === f) {
+                    if (isThis(e.value)) found++ else other = true
+                }
+                visitChildren(e)
+            }
+        }
+        val b = f.body
+        if (b is IrExpressionBody) {
+            if (isThis(b.expression)) found++ else w.visit(b.expression)
+        } else if (b is IrBlockBody) {
+            for (st in b.statements) w.visit(st)
+        } else return false
+        return found > 0 && !other
     }
 
     private fun ctorType(ctor: IrConstructor): MType {
@@ -758,6 +795,10 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     if (e.operator == IrTypeOperator.INSTANCEOF || e.operator == IrTypeOperator.NOT_INSTANCEOF) {
                         return opaque(e.type, e, listOf(expr(e.argument, out)))
                     }
+                    // a value cast (or smart cast after `is String`) to String or a primitive is never a Strict object: not tracked
+                    // (`if (key is String) { lastKey = key }` in a lookup cache of `Any?` keys is no store of the caller's object)
+                    val ct = mapType(e.type)
+                    if (ct.tk == TK.Str || ct.tk == TK.Prim) return opaque(e.type, e, listOf(expr(e.argument, out)))
                     return expr(e.argument, out)
                 }
                 is IrCall -> return call(e, out)
