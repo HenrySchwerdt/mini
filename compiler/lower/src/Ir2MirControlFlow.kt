@@ -179,7 +179,9 @@ internal fun Ir2Mir.whenValue(w: IrWhen, out: MutableList<MirStmt>): MirExpr {
         out += MirStmt.Declare(tmp, null)
         out += c
         fun assign(vv: MirExpr, body: MutableList<MirStmt>, r: IrExpression) {
-            if (vv.type != TNothing) body += MirStmt.Assign(tmp, convertTo(vv, type, r))
+            // a Unit call whose value is needed as a reference (the non-null branch of `a?.f()` for a Unit `f`): the Unit object
+            if (vv.type == TUnit && type.isRef && vv !is MirExpr.Local && vv !== MirExpr.UnitValue) body += MirStmt.Assign(tmp, unitAsRef(vv, body))
+            else if (vv.type != TNothing) body += MirStmt.Assign(tmp, convertTo(vv, type, r))
         }
         assign(av, a, br[0].result)
         assign(bv, b, br[1].result)

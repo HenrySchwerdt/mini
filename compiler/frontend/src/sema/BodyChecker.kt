@@ -140,6 +140,8 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     }
 
     fun declareVar(l: LocalScope, v: VarSym) {
+        val old = l.vars[v.name]
+        if (old != null && old !== v) l.shadowedVars.getOrPut(v.name) { ArrayList() }.add(old)
         l.vars[v.name] = v
     }
 

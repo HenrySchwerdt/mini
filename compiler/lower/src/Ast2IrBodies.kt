@@ -116,6 +116,7 @@ fun Ast2Ir.buildFunctionBody(fn: IrSimpleFunction, sym: FunSym): IrBody? {
     if (owner is IrClass && sym.kind != FunKind.LOCAL && sym.kind != FunKind.ANONYMOUS) bc = memberCtx(fn, owner, localClassCtx(owner))
     else {
         bc = BodyCtx(parentCtx, fn, anonFunLabels[sym] ?: sym.name, false)
+        bc.isAnonFun = sym.kind == FunKind.ANONYMOUS
         for (p in fn.parameters) if (p.kind == IrParameterKind.ExtensionReceiver) bc.recvs.add(RecvEntry(null, sym, null, null, p))
     }
     // the context parameters of the function are the implicit context arguments of the calls in its body, and are

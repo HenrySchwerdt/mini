@@ -1,0 +1,8 @@
+interceptions=0 releases=0
+interceptions=1 releases=0
+result OK
+interceptions=1 releases=1
+kotlin.Unit
+null
+kotlin.Unit
+false

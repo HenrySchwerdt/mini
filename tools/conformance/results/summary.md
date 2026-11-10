@@ -5,10 +5,10 @@
 | total test files | 10070 |
 | skipped (not applicable) | 4117 |
 | **applicable** | **5953** |
-| **pass** | **5868 (98.57%)** |
-| compile-error | 56 |
-| ice (compiler crash) | 7 |
-| runtime-fail | 19 |
+| **pass** | **5898 (99.08%)** |
+| compile-error | 35 |
+| ice (compiler crash) | 5 |
+| runtime-fail | 12 |
 | crash (signal) | 1 |
 | timeout | 2 |
 
@@ -18,9 +18,9 @@
 |---|---:|
 | applicable (above) | 5953 |
 | **native-parity applicable** | **5953** |
-| **native-parity pass** | **5868 (98.57%)** |
+| **native-parity pass** | **5898 (99.08%)** |
 
-Wall time: 2245s.
+Wall time: 4802s.
 
 ## Skips
 
@@ -39,35 +39,21 @@ Wall time: 2245s.
 
 | count | status | first diagnostic | example |
 |---:|---|---|---|
-| 17 | compile-error | `unresolved call '_'` | box/builderInference/issues/kt53478.kt |
-| 9 | compile-error | `unresolved reference '_'` | box/callableReference/function/classMemberFromCompanionObject.kt |
+| 13 | compile-error | `unresolved call '_'` | box/builderInference/issues/kt53478.kt |
 | 7 | compile-error | `no matching callable for reference '_'` | box/callableReference/adaptedReferences/referenceToVarargWithDefaults.kt |
 | 3 | compile-error | `no operator plus for <error>` | box/builderInference/pclaRootIsElvisSynthetic.kt |
 | 3 | runtime-fail | `Exception in thread "_" java.lang.NullPointerException: null cannot be cast to non-null type` | box/fir/initializationInLocalInnerClassWithSecondaryConstructor.kt |
-| 2 | compile-error | `Suspend function type should be called only from a coroutine or another suspend function` | box/coroutines/kt51530.kt |
-| 2 | compile-error | `unresolved callable reference '_'` | box/coroutines/suspendFunctionMethodReference.kt |
+| 2 | timeout | `compile timeout` | box/arrays/primitiveArrays.kt |
+| 2 | compile-error | `unresolved reference '_'` | box/volatile/messagePassing.kt |
 | 1 | compile-error | `unresolved type '_'` | box/annotations/nestedClassesInAnnotations.kt |
-| 1 | timeout | `compile timeout` | box/arrays/primitiveArrays.kt |
-| 1 | runtime-fail | `box() returned: FAIL 1: kotlin.Any@34d43a2d` | box/basics/unchecked_cast10.kt |
 | 1 | runtime-fail | `box() returned: OKOK` | box/binaryOp/eqNullableToPrimitiveWithSideEffects.kt |
 | 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: call without resolution (in function testTypeInfoOriginInsideLocalClass)` | box/builderInference/oneParameter/oneTypeVariable/oneTypeInfoOrigin/targetTypes/GenericLocalClassWithLeakingTypeParameter.kt |
-| 1 | runtime-fail | `Exception in thread "_" java.lang.Exception: ks1 == ks2 (same file, same SAM type): equals: <get-ks3>.<lambda>$N@dc88ac2e != <get-ks3>.<lambda>$N@dc88ac2f` | box/callableReference/funInterfaceConstructor/funInterfaceConstructorEquality.kt |
-| 1 | compile-error | `0_test.kt: error: unsupported construct: type '_'` | box/callableReference/property/enumNameOrdinal.kt |
-| 1 | compile-error | `0_test.kt:N:N: error: unsupported construct: main function with unsupported parameters (only `_` and `_`)` | box/casts/kt53677.kt |
+| 1 | runtime-fail | `Exception in thread "_" java.lang.Exception: ks1 == ks2 (same file, same SAM type): equals: <get-ks3>.<lambda>$N@1131dd2e != <get-ks3>.<lambda>$N@1131dd2f` | box/callableReference/funInterfaceConstructor/funInterfaceConstructorEquality.kt |
 | 1 | runtime-fail | `Exception in thread "_" java.lang.ClassCastException: class kotlin.Long cannot be cast to class kotlin.Int` | box/casts/objectToPrimitiveWithAssertion.kt |
 | 1 | ice | `internal compiler error: mini.backend.EmitError: no type info for Ptr? (in box)` | box/casts/toNativePointers.kt |
-| 1 | runtime-fail | `box() returned: Fail` | box/collections/inheritFromAbstractMutableListInt.kt |
-| 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: unknown loop label outer (in function <anonymous>)` | box/controlStructures/breakContinueInExpressions/inlinedBreakContinue/lambdaPassedToInlineFunction.kt |
+| 1 | compile-error | `unresolved callable reference '_'` | box/coroutines/suspendFunctionMethodReference.kt |
 | 1 | compile-error | `0_test.kt: error: unsupported construct: receiver parameter` | box/coroutines/featureIntersection/inlineSuspendFinally.kt |
-| 1 | runtime-fail | `Exception in thread "_" java.lang.AssertionError: kotlin.Unit` | box/coroutines/featureIntersection/suspendFunctionIsAs.kt |
-| 1 | runtime-fail | `box() returned: fail 04: 0` | box/coroutines/intrinsicSemantics/releaseIntercepted.kt |
-| 1 | runtime-fail | `box() returned: fail: suspendHere(A.foo(*));suspended;resuming;null;null;suspendHere(A.foo(@));s` | box/coroutines/unitTypeReturn/unitSafeCall.kt |
-| 1 | compile-error | `0_test.kt: error: unsupported construct: conversion from Unit to TObject(qualifiedName=kotlin.Any, cName=mk_Any, nullable=true, isInterface=false, elem=null, el` | box/coroutines/varSpilling/safeCallElvis.kt |
-| 1 | compile-error | `0_test.kt:N:N: error: unsupported construct: comparison of Int with Long` | box/diagnostics/functions/tailRecursion/realIteratorFoldl.kt |
 | 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: implicit receiver not found` | box/enum/kt20651_inlineLambda.kt |
-| 1 | runtime-fail | `box() returned: OO` | box/extensionFunctions/contextReceivers/contextAndNoContextOverloads.kt |
-| 1 | runtime-fail | `box() returned: Fail _B_` | box/fir/functionsDifferInTypeParameterBounds2.kt |
-| 1 | compile-error | `unresolved this` | box/funInterface/funInterfaceWithReceiver.kt |
 | 1 | crash | `signal 11` | box/funInterface/intersectionTypeToFunInterfaceConversion.kt |
 | 1 | runtime-fail | `Exception in thread "_" java.lang.Exception` | box/ieee754/smartCastToDifferentTypesWithNumericPromotion_properIeeeComparisons.kt |
 | 1 | compile-error | `0_test.kt:N:N: error: unsupported construct: call with omitted argument '_' of '_'` | box/inference/kt38664.kt |
@@ -76,6 +62,11 @@ Wall time: 2245s.
 | 1 | runtime-fail | `Exception in thread "_" java.lang.AssertionError: xByteStatic(N) != xByteDyanmic(N). Expected <N>, actual <N> are not the same instance.` | box/initializers/static_smallIntIdentity.kt |
 | 1 | compile-error | `0_test.kt: error: unsupported construct: call to '_'` | box/inlineClasses/lateinitInlineClasses.kt |
 | 1 | compile-error | `no matching super constructor` | box/localClasses/anonymousObjectInExtension.kt |
-| 1 | timeout | `run timeout` | box/lower/forLoopsLowering/listsCME.kt |
 | 1 | runtime-fail | `Exception in thread "_" java.lang.AssertionError: Should fail with exception` | box/nothingValue/nothingValueException.kt |
 | 1 | ice | `internal compiler error: mini.lower.LowerError: offset N: name Enum is not a value (in function testCompanionObjectAccess)` | box/objectIntrinsics/objects.kt |
+| 1 | compile-error | `0_test.kt:N:N: error: unsupported construct: call of abstract function '_'` | box/specialBuiltins/bridges.kt |
+| 1 | runtime-fail | `Exception in thread "_" java.lang.AssertionError: OverOver: Override: OK01` | box/specialBuiltins/throwableComplex.kt |
+| 1 | runtime-fail | `Exception in thread "_" java.lang.AssertionError: Expected the value to be true.` | box/stringTrim/stringTrim.kt |
+| 1 | compile-error | `type mismatch: expected kotlin.Unit but was kotlin.Nothing?` | boxInline/complex/nestedCallsWithGenericToInt.kt |
+| 1 | compile-error | `0_1.kt:N:N: error: unsupported construct: lambda passed to an inline function that cannot be expanded in place` | boxInline/private/effectivePrivate.kt |
+| 1 | runtime-fail | `box() returned: fail 2` | boxInline/reified/kt7017.kt |
