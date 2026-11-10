@@ -9,10 +9,10 @@ import kotlin.coroutines.*
 class Box(var v: Int)
 
 fun main() {
+    val b = Box(7)
+    val n = b.v
+    b.free()
     runBlocking {
-        val b = Box(7)
-        val n = b.v
-        b.free()
         launch { println(n) }
         println(async { n + 1 }.await())
     }
