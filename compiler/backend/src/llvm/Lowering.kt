@@ -253,6 +253,8 @@ private class Lowering<V : Any, B : Any>(
         b.declareDefined("mkh_cast_nn", IrType.PTR, IrExt.NONE, p2, e2, IrAttrs.STD, IrLinkage.INTERNAL)
         b.declareDefined("mkh_cc", IrType.PTR, IrExt.NONE, p2, e2, IrAttrs.STD, IrLinkage.INTERNAL)
         b.declareDefined("mkh_nn", IrType.PTR, IrExt.NONE, p1, e1, IrAttrs.STD, IrLinkage.INTERNAL)
+        b.declareDefined("mkh_box_int", IrType.PTR, IrExt.NONE, listOf(IrType.I32), e1, IrAttrs.INLINE, IrLinkage.INTERNAL)
+        b.declareDefined("mkh_sb_append_char", IrType.VOID, IrExt.NONE, listOf(IrType.PTR, IrType.I16), listOf(IrExt.NONE, IrExt.ZERO), IrAttrs.INLINE, IrLinkage.INTERNAL)
         for (t in listOf(IrType.I32, IrType.I64)) {
             val n = if (t == IrType.I32) "int" else "long"
             val pt = listOf(t, t)
@@ -814,6 +816,85 @@ private class Lowering<V : Any, B : Any>(
                 endHelper()
             }
         }
+        emitFastPathHelpers()
+    }
+
+    /**
+     * The inline fast paths of the C prelude that are one call of an always-inline helper here: `mkh_box_int` (a shared box of a small
+     * Int, found without a call) and `mkh_sb_append_char` (StringBuilder.append(Char): the room is there and the character fits the
+     * buffer, two stores). Anything unusual takes the runtime function, whose result is the same.
+     */
+    private fun emitFastPathHelpers() {
+        val ptr = IrType.PTR
+        val i32 = IrType.I32
+        val hs = layouts.headerSize
+        // ---- mkh_box_int(v): the cache of boxes of -128..1023 (runtime classes.c), an acquire load as in the C prelude
+        val cache = b.externTypeInfo("mk_int_box_cache")
+        val boxInt = declare("mk_box_int", TString, listOf(TInt)) // (the real function; the helper below is what the program calls)
+        beginHelper("mkh_box_int", ptr, listOf("v"), listOf(i32), IrAttrs.INLINE)
+        run {
+            val v = b.param(0)
+            val tbl = b.newBlock("b_tbl")
+            val hit = b.newBlock("b_hit")
+            val slow = b.newBlock("b_slow")
+            val idx = b.bin(IrOp.ADD, v, c32(128), "idx")
+            val inRange = b.cmp(IrCmp.ULT, idx, c32(1152), "inr")
+            b.condBr(inRange, tbl, slow, false)
+            b.appendBlock(tbl)
+            val t = b.loadAcquirePtr(cache, pb, "t")
+            val isNull = b.cmp(IrCmp.IEQ, t, b.constNull(), "nul")
+            b.condBr(isNull, slow, hit, true)
+            b.appendBlock(hit)
+            val cell = (hs + 4 + pb - 1) / pb * pb // struct MkBoxIntCell { MkObject header; MkInt value; }
+            val off = b.bin(IrOp.MUL, b.cast(IrCast.ZEXT, idx, IrType.I64, "ix"), c64(cell), "off")
+            b.ret(b.gep(t, off, true, "box"))
+            b.appendBlock(slow)
+            b.ret(b.call(boxInt, ptr, IrExt.NONE, listOf(v), listOf(IrExt.NONE), -1, "r"))
+        }
+        endHelper()
+        // ---- mkh_sb_append_char(o, c): struct MkSb { MkObject header; void *data; MkInt length; MkInt capacity; MkInt wide; ... }
+        val appendChar = declare("mk_sb_append_char", TUnit, listOf(TString, TChar))
+        beginHelper("mkh_sb_append_char", IrType.VOID, listOf("o", "c"), listOf(ptr, IrType.I16), IrAttrs.INLINE)
+        run {
+            val o = b.param(0)
+            val c = b.param(1)
+            val chk = b.newBlock("b_chk")
+            val room = b.newBlock("b_room")
+            val wideB = b.newBlock("b_wide")
+            val narrowChk = b.newBlock("b_narrow")
+            val narrowB = b.newBlock("b_nstore")
+            val slow = b.newBlock("b_slow")
+            val isNull = b.cmp(IrCmp.IEQ, o, b.constNull(), "nul")
+            b.condBr(isNull, slow, chk, true)
+            b.appendBlock(chk)
+            val lenP = b.gep(o, c64(hs + pb), true, "lp")
+            val len = b.loadTagged(i32, lenP, "sb length", "len")
+            val cap = b.loadTagged(i32, b.gep(o, c64(hs + pb + 4), true, "cp"), "sb capacity", "cap")
+            val hasRoom = b.cmp(IrCmp.SLT, len, cap, "room")
+            b.condBr(hasRoom, room, slow, false)
+            b.appendBlock(room)
+            val wide = b.loadTagged(i32, b.gep(o, c64(hs + pb + 8), true, "wp"), "sb wide", "wide")
+            val isWide = b.cmp(IrCmp.INE, wide, c32(0), "isw")
+            val data = b.loadTagged(ptr, b.gep(o, c64(hs), true, "dp"), "sb data", "data")
+            val len64 = b.cast(IrCast.SEXT, len, IrType.I64, "len64")
+            val len1 = b.bin(IrOp.ADD, len, c32(1), "len1")
+            b.condBr(isWide, wideB, narrowChk, false)
+            b.appendBlock(wideB)
+            b.store(c, b.gep(data, b.bin(IrOp.MUL, len64, c64(2), "w2"), true, "wslot"), 2)
+            b.storeTagged(len1, lenP, "sb length")
+            b.retVoid()
+            b.appendBlock(narrowChk)
+            val fits = b.cmp(IrCmp.ULT, c, b.constInt(IrType.I16, 256L), "fits")
+            b.condBr(fits, narrowB, slow, false)
+            b.appendBlock(narrowB)
+            b.store(b.cast(IrCast.TRUNC, c, IrType.I8, "c8"), b.gep(data, len64, true, "nslot"), 1)
+            b.storeTagged(len1, lenP, "sb length")
+            b.retVoid()
+            b.appendBlock(slow)
+            b.call(appendChar, IrType.VOID, IrExt.NONE, listOf(o, c), listOf(IrExt.NONE, IrExt.ZERO), -1, "")
+            b.retVoid()
+        }
+        endHelper()
     }
 
     // ---- classes ---------------------------------------------------------------------
@@ -1661,8 +1742,10 @@ private class Lowering<V : Any, B : Any>(
         is MirExpr.RuntimeCall -> arrayAccessKind(e.cName) == null && ThrowAnalysis.runtimeCallThrows(e.cName)
         is MirExpr.VCall, is MirExpr.ICall -> throwing.dynamicMayThrow
         is MirExpr.New -> throwing.callMayThrow(e.ctorCName)
-        is MirExpr.Unbox, is MirExpr.NotNull -> true
-        is MirExpr.Cast -> e.mode == MirExpr.CastMode.Checked
+        // inlined with a cold exit of their own (unboxInline, NotNull, castInline): no test of the pending exception on the fast path
+        is MirExpr.Unbox -> e.to is TInline
+        is MirExpr.NotNull -> false
+        is MirExpr.Cast -> castMode(e) == MirExpr.CastMode.Checked && !castInlined(e)
         is MirExpr.Binary -> (e.op == BinaryOp.Div || e.op == BinaryOp.Rem) && (e.left.type === TInt || e.left.type === TLong) &&
             !((e.right is MirExpr.IntConst && e.right.value != 0) || (e.right is MirExpr.LongConst && e.right.value != 0L))
         else -> false
@@ -1715,6 +1798,10 @@ private class Lowering<V : Any, B : Any>(
                 else if (isRefArrayAccess(e)) refArrayAccess(e, fplan?.borrowedReads?.contains(e) == true)
                 else if (isStringLengthCall(e)) stringLength(e)
                 else if (isStringCharAtCall(e)) stringCharAt(e)
+                else if (e.cName == "mk_sb_append_char" && e.type === TUnit && e.args.size == 2 && e.args[1].type === TChar) {
+                    val vs = e.args.map { expr(it) }
+                    call(TUnit, b.global("mkh_sb_append_char"), listOf(e.args[0].type, TChar), vs)
+                }
                 else if (owns != null) {
                     declare(e.cName, e.type, e.args.map { it.type })
                     ownedCall(e.cName, e.type, e.args.map { it.type }, e.args, BooleanArray(e.args.size) { k -> ownsIndex(owns, k) }, 0, null)
@@ -1747,18 +1834,21 @@ private class Lowering<V : Any, B : Any>(
             is MirExpr.Box -> {
                 val v = expr(e.operand)
                 val p = e.operand.type
-                rt("mk_box_${boxName(p)}", TString, listOf(p), listOf(v))
+                if (p === TInt) call(TString, b.global("mkh_box_int"), listOf(TInt), listOf(v))
+                else rt("mk_box_${boxName(p)}", TString, listOf(p), listOf(v))
             }
             is MirExpr.Unbox -> {
                 val o = expr(e.operand)
-                rt("mk_checked_unbox_${boxName(e.to)}", e.to, listOf(TString), listOf(o))
+                if (e.to is TInline) rt("mk_checked_unbox_${boxName(e.to)}", e.to, listOf(TString), listOf(o)) else unboxInline(o, e.to)
             }
             is MirExpr.Cast -> cast(e)
             is MirExpr.IsInstance -> {
                 val o = expr(e.operand)
                 val use = typeCheckPlan.uses[e]
                 val tgt = e.target
-                if (tgt is TObject && tgt.elem != null) {
+                if (tgt === TString || tgt === TNString || tgt is TBoxed) {
+                    exactTypeCheck(o, typeInfoOf(tgt)) // final types: the type word is compared (CEmitter's mkh_is_exact)
+                } else if (tgt is TObject && tgt.elem != null) {
                     rt("mk_array_is", TBoolean, listOf(TString, TString, TInt), listOf(o, typeInfoOf(arrayElemTypeInfoType(tgt.elem!!)), c32(arrayCastFlags(tgt))))
                 } else if (use == null) {
                     val ti = typeInfoOf(e.target)
@@ -1769,7 +1859,8 @@ private class Lowering<V : Any, B : Any>(
             }
             is MirExpr.NotNull -> {
                 val o = expr(e.operand)
-                rt("mk_checked_not_null", TString, listOf(TString), listOf(o))
+                guardCold(icmp(IrCmp.IEQ, o, b.constNull()), true) { rt("mk_checked_not_null", TString, listOf(TString), listOf(o)) }
+                o
             }
             is MirExpr.FieldGet -> {
                 val o = expr(e.obj)
@@ -2086,6 +2177,131 @@ private class Lowering<V : Any, B : Any>(
         return b.phi(ity(t), tv, tEnd, ev, eEnd)
     }
 
+    /** A class that was pruned (nothing creates it): a Checked cast to it is Unchecked. */
+    private fun castMode(e: MirExpr.Cast): MirExpr.CastMode {
+        val to = e.to
+        val prunedTo = (if (to is TObject) to.cName else if (to is TBoxed && to.prim is TInline) (to.prim as TInline).cName else null)?.let { it.startsWith("kc_") && classes[it] == null } == true
+        return if (e.mode == MirExpr.CastMode.Checked && prunedTo) MirExpr.CastMode.Unchecked else e.mode
+    }
+
+    /** A Checked cast that [castInline] (or the Any case of [cast]) lowers with a cold exit of its own: everything but arrays with an element type and interfaces. */
+    private fun castInlined(e: MirExpr.Cast): Boolean {
+        val to = e.to
+        if (castMode(e) != MirExpr.CastMode.Checked) return false
+        if (to is TObject && to.elem != null) return false
+        if (to is TObject && to.cName == ANY_CNAME) return !to.nullable
+        if (to is TObject && classes[to.cName]?.isInterface == true) return false
+        return true
+    }
+
+    private var extendedSet: HashSet<String>? = null
+
+    /** The C names of the classes some class extends. */
+    private fun extended(): HashSet<String> {
+        val known = extendedSet
+        if (known != null) return known
+        val r = HashSet<String>()
+        for (c in classes.values) { val sup = c.superCName; if (sup != null) r.add(sup) }
+        extendedSet = r
+        return r
+    }
+
+    /**
+     * `if (bad) { slow(); <leave the function> }`: the failing path is a cold block. With [alwaysRaises] nothing continues after the
+     * slow call; otherwise the slow call may succeed (it only raises when the check really fails) and the pending exception is tested
+     * once on that path.
+     */
+    private fun guardCold(bad: V, alwaysRaises: Boolean, slow: () -> Unit) {
+        val slowL = newLabel("gslow")
+        val okL = newLabel("gok")
+        condBr(bad, slowL, okL, true)
+        startBlock(slowL)
+        slow()
+        if (alwaysRaises) {
+            exitStmt()
+        } else {
+            checkPending()
+            br(okL)
+        }
+        startBlock(okL)
+        openBlock()
+    }
+
+    /** `x as T` / `x as T?` to a class, String or box (CEmitter.castInline): the object's own type, or its direct superclass, passes inline. */
+    private fun castInline(o: V, to: MirType): V {
+        val ti = typeInfoOf(to)
+        val nullable = isNullableRef(to)
+        val leaf = to !is TObject || (classes[to.cName]?.let { !isExternalClass(it) && it.cName !in extended() } == true)
+        val slowL = newLabel("cslow")
+        val chkL = newLabel("cchk")
+        val okL = newLabel("cok")
+        // null: passes as `T?`, raises as `T`
+        condBr(icmp(IrCmp.IEQ, o, b.constNull()), if (nullable) okL else slowL, chkL, !nullable)
+        startBlock(chkL)
+        val ty = load(TString, o)
+        if (leaf) {
+            condBr(icmp(IrCmp.INE, ty, ti), slowL, okL, true)
+        } else {
+            val miss = newLabel("cmiss")
+            condBr(icmp(IrCmp.INE, ty, ti), miss, okL, false)
+            startBlock(miss)
+            val sup = load(TString, gep(ty, 2 * pb))
+            condBr(icmp(IrCmp.INE, sup, ti), slowL, okL, true)
+        }
+        startBlock(slowL)
+        if (nullable) rt("mk_checked_cast", TString, listOf(TString, TString), listOf(o, ti))
+        else rt("mk_checked_cast_nn", TString, listOf(TString, TString), listOf(o, ti))
+        checkPending()
+        br(okL)
+        startBlock(okL)
+        openBlock()
+        return o
+    }
+
+    /** `is String` / `is <box>`: the type word is compared, null is no instance. */
+    private fun exactTypeCheck(o: V, ti: V): V {
+        val readL = newLabel("ex_read")
+        val joinL = newLabel("ex_join")
+        openBlock()
+        val entry = curBlock
+        condBr(icmp(IrCmp.IEQ, o, b.constNull()), joinL, readL)
+        startBlock(readL)
+        val same = icmp(IrCmp.IEQ, load(TString, o), ti)
+        val readEnd = curBlock
+        br(joinL)
+        startBlock(joinL)
+        openBlock()
+        return b.phi(IrType.I1, b.constInt(IrType.I1, 0L), entry, same, readEnd)
+    }
+
+    /** The unbox of a primitive box (CEmitter.unboxInline): the type word is the test, the value is read in place; anything else raises in the runtime. */
+    private fun unboxInline(o: V, to: MirType): V {
+        val kind = boxName(to)
+        val ti = typeInfoOf(TBoxed(to))
+        val chkL = newLabel("ub_chk")
+        val fastL = newLabel("ub_fast")
+        val slowL = newLabel("ub_slow")
+        val joinL = newLabel("ub_join")
+        condBr(icmp(IrCmp.IEQ, o, b.constNull()), slowL, chkL, true)
+        startBlock(chkL)
+        condBr(icmp(IrCmp.IEQ, load(TString, o), ti), fastL, slowL, false)
+        startBlock(fastL)
+        val align = if (to === TLong || to === TDouble) 8 else 4
+        val off = (layouts.headerSize + align - 1) / align * align
+        val value = if (to === TBoolean) icmp(IrCmp.INE, b.load(IrType.I8, b.gep(o, b.constInt(IrType.I64, off.toLong()), true, ""), 0, ""), b.constInt(IrType.I8, 0L))
+        else load(to, gep(o, off))
+        val fastEnd = curBlock
+        br(joinL)
+        startBlock(slowL)
+        val slowValue = rt("mk_checked_unbox_$kind", to, listOf(TString), listOf(o))
+        checkPending()
+        val slowEnd = curBlock
+        br(joinL)
+        startBlock(joinL)
+        openBlock()
+        return b.phi(ity(to), value, fastEnd, slowValue, slowEnd)
+    }
+
     fun cast(e: MirExpr.Cast): V {
         val to = e.to
         val o = expr(e.operand)
@@ -2100,16 +2316,17 @@ private class Lowering<V : Any, B : Any>(
             return b.select(c, o, b.constNull())
         }
         externTypeInfo(to)
-        val prunedTo = (if (to is TObject) to.cName else if (to is TBoxed && to.prim is TInline) (to.prim as TInline).cName else null)?.let { it.startsWith("kc_") && classes[it] == null } == true
-        val mode = if (e.mode == MirExpr.CastMode.Checked && prunedTo) MirExpr.CastMode.Unchecked else e.mode // (a class that was pruned: nothing creates it)
+        val mode = castMode(e)
         return when (mode) {
             MirExpr.CastMode.Unchecked, MirExpr.CastMode.Erased -> o
             MirExpr.CastMode.Checked -> {
                 // everything is an Any: only the null check is left (the erased `as E` of every generic getter)
                 if (to is TObject && to.cName == ANY_CNAME) {
                     if (to.nullable) return o
-                    return call(TString, b.global("mkh_nn"), listOf(TString), listOf(o))
+                    guardCold(icmp(IrCmp.IEQ, o, b.constNull()), true) { rt("mk_checked_nn", TString, listOf(TString), listOf(o)) }
+                    return o
                 }
+                if (castInlined(e)) return castInline(o, to)
                 if (isNullableRef(to)) call(TString, b.global("mkh_cc"), listOf(TString, TString), listOf(o, typeInfoOf(to)))
                 else call(TString, b.global("mkh_cast_nn"), listOf(TString, TString), listOf(o, typeInfoOf(to)))
             }
@@ -2218,8 +2435,9 @@ private class Lowering<V : Any, B : Any>(
             BinaryOp.Add -> binop(IrOp.ADD, a, c)
             BinaryOp.Sub -> binop(IrOp.SUB, a, c)
             BinaryOp.Mul -> binop(IrOp.MUL, a, c)
-            BinaryOp.Div -> call(t, b.global("mkh_div_$suffix"), listOf(t, t), listOf(a, c))
-            BinaryOp.Rem -> call(t, b.global("mkh_rem_$suffix"), listOf(t, t), listOf(a, c))
+            // a literal divisor other than 0 and -1 has no zero test and no overflow case: a plain division (CEmitter.constDivisor)
+            BinaryOp.Div -> if (constDivisor(e.right)) binop(IrOp.SDIV, a, c) else call(t, b.global("mkh_div_$suffix"), listOf(t, t), listOf(a, c))
+            BinaryOp.Rem -> if (constDivisor(e.right)) binop(IrOp.SREM, a, c) else call(t, b.global("mkh_rem_$suffix"), listOf(t, t), listOf(a, c))
             BinaryOp.Shl, BinaryOp.Shr, BinaryOp.Ushr -> {
                 var cnt = binop(IrOp.AND, c, b.constInt(IrType.I32, mask))
                 if (t === TLong) cnt = cvt(IrCast.ZEXT, cnt, IrType.I64)
@@ -2231,6 +2449,9 @@ private class Lowering<V : Any, B : Any>(
             else -> throw EmitError("operator $op on $t")
         }
     }
+
+    private fun constDivisor(d: MirExpr): Boolean =
+        (d is MirExpr.IntConst && d.value != 0 && d.value != -1) || (d is MirExpr.LongConst && d.value != 0L && d.value != -1L)
 
     fun unary(e: MirExpr.Unary): V {
         val a = expr(e.operand)
