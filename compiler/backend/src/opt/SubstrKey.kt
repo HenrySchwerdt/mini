@@ -28,6 +28,7 @@ internal class SubstrKey(module: MirModule) {
     private val findRange: String?
     private val put: String?
     private val putRange: String?
+    private val putRangeAt: String?
     val available: Boolean
 
     init {
@@ -37,6 +38,7 @@ internal class SubstrKey(module: MirModule) {
         var fndR: String? = null
         var pt: String? = null
         var ptR: String? = null
+        var ptA: String? = null
         for (f in module.functions) {
             when (f.qualifiedName) {
                 "kotlin.text.substring" -> if (f.params.size == 3 && f.params[0].type === TString && f.params[1].type === TInt && f.params[2].type === TInt) sub = f.cName
@@ -45,10 +47,11 @@ internal class SubstrKey(module: MirModule) {
                 "kotlin.collections.HashMap.findNodeRange" -> if (f.params.size == 4) fndR = f.cName
                 "kotlin.collections.HashMap.put" -> if (f.params.size == 3) pt = f.cName
                 "kotlin.collections.HashMap.putRange" -> if (f.params.size == 5) ptR = f.cName
+                "kotlin.collections.HashMap.putRangeAt" -> if (f.params.size == 6) ptA = f.cName
             }
         }
-        substr = sub; check = chk; find = fnd; findRange = fndR; put = pt; putRange = ptR
-        available = sub != null && chk != null && fnd != null && fndR != null && pt != null && ptR != null
+        substr = sub; check = chk; find = fnd; findRange = fndR; put = pt; putRange = ptR; putRangeAt = ptA
+        available = sub != null && chk != null && fnd != null && fndR != null && pt != null && ptR != null && ptA != null
     }
 
     private class Cand(val decl: MirStmt.Declare, val s: MirExpr, val a: MirExpr, val b: MirExpr) {
@@ -186,12 +189,108 @@ internal class SubstrKey(module: MirModule) {
         for (c in accepted) for (g in c.group) scan.aliasDecls[g]?.let { removed.add(it) }
 
         val rw = object : MirTransform() {
+            /**
+             * The nodes that earlier `findNodeRange` calls returned, still valid: `get(w)` followed by `put(w, v)` (the counting idiom) hands the
+             * node to the put (`putRangeAt`), which then needs no second lookup. Key: the map local and the range operands. An entry lives while
+             * nothing that can change the map ran since: any statement with a call, a field store or an allocation of something else than a box clears it.
+             */
+            var avail = HashMap<String, MirLocal>()
+
+            fun opKey(e: MirExpr): String? = when (e) {
+                is MirExpr.Local -> if (e.local.id in scan.assigned) null else "L" + e.local.id
+                is MirExpr.IntConst -> "I" + e.value
+                else -> null
+            }
+
+            fun lookupKey(recv: MirExpr, c: Cand): String? {
+                val r = opKey(recv) ?: return null
+                if (recv !is MirExpr.Local) return null
+                return r + "|" + opKey(c.rs!!) + "|" + opKey(c.ra!!) + "|" + opKey(c.rb!!)
+            }
+
+            /** No call, no store, no allocation but a box: nothing here can change a map or free a node. */
+            fun noEffects(e: MirExpr): Boolean = when (e) {
+                is MirExpr.Local, is MirExpr.IntConst, is MirExpr.LongConst, is MirExpr.DoubleConst, is MirExpr.BooleanConst,
+                is MirExpr.CharConst, is MirExpr.StringConst, is MirExpr.NullConst, is MirExpr.UnitValue, is MirExpr.TypeInfoOf -> true
+                is MirExpr.Binary -> noEffects(e.left) && noEffects(e.right)
+                is MirExpr.Unary -> noEffects(e.operand)
+                is MirExpr.Convert -> noEffects(e.operand)
+                is MirExpr.Cast -> noEffects(e.operand)
+                is MirExpr.IsInstance -> noEffects(e.operand)
+                is MirExpr.NotNull -> noEffects(e.operand)
+                is MirExpr.FieldGet -> noEffects(e.obj)
+                is MirExpr.StringLength -> noEffects(e.operand)
+                is MirExpr.Box -> noEffects(e.operand)
+                is MirExpr.Unbox -> noEffects(e.operand)
+                is MirExpr.Conditional -> noEffects(e.cond) && noEffects(e.thenValue) && noEffects(e.elseValue)
+                is MirExpr.Call -> e.cName == find && e.args.all { noEffects(it) }   // a lookup only reads
+                else -> false
+            }
+
+            fun noEffects(l: List<MirStmt>): Boolean = l.all { noEffects(it) }
+
+            fun noEffects(s: MirStmt): Boolean = when (s) {
+                is MirStmt.Declare -> s.init == null || noEffects(s.init) || s in declOf || s in removed
+                is MirStmt.Assign -> noEffects(s.value)
+                is MirStmt.Eval -> noEffects(s.expr)
+                is MirStmt.If -> noEffects(s.cond) && noEffects(s.thenBody) && noEffects(s.elseBody)
+                is MirStmt.Block -> noEffects(s.body)
+                is MirStmt.While -> noEffects(s.cond) && noEffects(s.body)
+                is MirStmt.Loop -> noEffects(s.body)
+                is MirStmt.DoWhile -> noEffects(s.body) && noEffects(s.condStmts) && noEffects(s.cond)
+                is MirStmt.ForRange -> noEffects(s.start) && noEffects(s.end) && (s.step == null || noEffects(s.step)) && noEffects(s.body)
+                is MirStmt.Break, is MirStmt.Continue -> true
+                else -> false
+            }
+
+            fun stmtWithEnv(s: MirStmt): MirStmt {
+                val pure = noEffects(s)
+                val saved = avail
+                val r: MirStmt
+                when (s) {
+                    // children see the entries that are valid when they start; what they add (or clear) is theirs only
+                    is MirStmt.If -> {
+                        if (!noEffects(s.cond)) avail = HashMap()
+                        val c = expr(s.cond)
+                        avail = HashMap(avail)
+                        val t = stmts(s.thenBody)
+                        avail = HashMap(if (noEffects(s.cond)) saved else HashMap())
+                        val f = stmts(s.elseBody)
+                        r = if (c === s.cond && t === s.thenBody && f === s.elseBody) s else keep(s, MirStmt.If(c, t, f))
+                    }
+                    is MirStmt.Block -> {
+                        avail = HashMap(avail)
+                        val b = stmts(s.body)
+                        r = if (b === s.body) s else keep(s, MirStmt.Block(b))
+                    }
+                    is MirStmt.While, is MirStmt.Loop, is MirStmt.DoWhile, is MirStmt.ForRange, is MirStmt.Try -> {
+                        avail = if (pure && s !is MirStmt.Try) HashMap(avail) else HashMap()
+                        r = rebuildStmt(s)
+                    }
+                    else -> r = rebuildStmt(s)
+                }
+                avail = saved
+                if (!pure) {
+                    avail = HashMap()
+                } else if (r is MirStmt.Declare) {
+                    val init = r.init
+                    if (init is MirExpr.Call && init.cName == findRange && init.args.size == 4 && r.local.id !in scan.assigned) {
+                        val recv = init.args[0]
+                        val k = if (recv is MirExpr.Local && recv.local.id !in scan.assigned) {
+                            "L" + recv.local.id + "|" + opKey(init.args[1]) + "|" + opKey(init.args[2]) + "|" + opKey(init.args[3])
+                        } else null
+                        if (k != null && !k.contains("null")) avail[k] = r.local
+                    }
+                }
+                return r
+            }
+
             override fun stmts(l: List<MirStmt>): List<MirStmt> {
                 var out: ArrayList<MirStmt>? = null
                 for (i in l.indices) {
                     val s = l[i]
                     val repl: List<MirStmt>? = if (s is MirStmt.Declare) (declOf[s] ?: if (s in removed) emptyList() else null) else null
-                    val r = if (repl != null) null else stmt(s)
+                    val r = if (repl != null) null else stmtWithEnv(s)
                     if (out == null && (repl != null || r !== s)) {
                         out = ArrayList(l.size)
                         for (k in 0 until i) out.add(l[k])
@@ -214,7 +313,17 @@ internal class SubstrKey(module: MirModule) {
                         if (c != null) return MirExpr.Call(findRange!!, listOf(expr(e.args[0]), copy(c.rs!!), copy(c.ra!!), copy(c.rb!!)), e.type)
                     } else if (e.cName == put && e.args.size == 3) {
                         val c = cand(e.args[1])
-                        if (c != null) return MirExpr.Call(putRange!!, listOf(expr(e.args[0]), copy(c.rs!!), copy(c.ra!!), copy(c.rb!!), expr(e.args[2])), e.type)
+                        if (c != null) {
+                            val recv = expr(e.args[0])
+                            val value = expr(e.args[2])
+                            // the node of the lookup of the same key that ran just before (nothing could change the map since)
+                            val key = if (noEffects(e.args[0]) && noEffects(e.args[2])) lookupKey(recv, c) else null
+                            val node = if (key != null) avail[key] else null
+                            if (node != null) {
+                                return MirExpr.Call(putRangeAt!!, listOf(recv, copy(c.rs!!), copy(c.ra!!), copy(c.rb!!), MirExpr.Local(node), value), e.type)
+                            }
+                            return MirExpr.Call(putRange!!, listOf(recv, copy(c.rs!!), copy(c.ra!!), copy(c.rb!!), value), e.type)
+                        }
                     }
                 }
                 return rebuildExpr(e)

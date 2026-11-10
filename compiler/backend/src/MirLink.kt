@@ -190,7 +190,7 @@ internal object Companions {
     private val QUALIFIED = setOf(
         "kotlin.text.substring", "kotlin.text.checkSubstringRange",
         "kotlin.collections.HashMap.findNode", "kotlin.collections.HashMap.findNodeRange",
-        "kotlin.collections.HashMap.put", "kotlin.collections.HashMap.putRange",
+        "kotlin.collections.HashMap.put", "kotlin.collections.HashMap.putRange", "kotlin.collections.HashMap.putRangeAt",
     )
 
     class Index(fs: List<MirFunction>) {
@@ -211,8 +211,9 @@ internal object Companions {
         val put = idx.get("kotlin.collections.HashMap.put", 3)
         val findR = idx.get("kotlin.collections.HashMap.findNodeRange", 4)
         val putR = idx.get("kotlin.collections.HashMap.putRange", 5)
+        val putA = idx.get("kotlin.collections.HashMap.putRangeAt", 6)
         if (find != null && findR != null && live(find.cName)) { out.add(findR); out.add(check) }
-        if (put != null && putR != null && live(put.cName)) { out.add(putR); out.add(check) }
+        if (put != null && putR != null && putA != null && live(put.cName)) { out.add(putR); out.add(putA); out.add(check) }
         return out.filter { !live(it.cName) }.distinctBy { it.cName }
     }
 }

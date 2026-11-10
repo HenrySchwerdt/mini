@@ -64,15 +64,6 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     private var lastKey: Any? = null
     @mini.memory.Borrowed private var lastNode: HashNode<K, V>? = null
 
-    // The same for a lookup by a range of a string (findNodeRange / putRange): `map[text.substring(a, b)]` then `map[text.substring(a, b)] = v` finds the
-    // entry once. The source string is a strong reference (its identity then means its contents). The entry is remembered by its place (table index and
-    // depth in the chain, no reference: nothing to count): a new node is appended to a chain, so the place stays right until the table is rebuilt or a node
-    // is removed, which is where lastSrc is cleared (resize, removeNode, clear).
-    private var lastSrc: String? = null
-    private var lastFrom: Int = 0
-    private var lastTo: Int = 0
-    private var lastIdx: Int = 0
-    private var lastDepth: Int = 0
 
     public constructor() {
         linked = false
@@ -172,51 +163,37 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     // The lookup of `src.substring(from, to)` without making that String: the hash and the comparison read the characters of `src` in place. The compiler
     // calls this (opt/SubstrKey.kt) for a substring that is only used as a key; the range was tested where the substring would have been made.
     @ReturnsBorrowed
-    private fun cachedRangeNode(): HashNode<K, V>? {
-        var e = slot(lastIdx)
-        var d = lastDepth
-        while (d > 0 && e != null) {
-            e = e.next
-            d--
-        }
-        return e
-    }
-
-    @ReturnsBorrowed
     internal fun findNodeRange(src: String, from: Int, to: Int): HashNode<K, V>? {
-        if (src === lastSrc && from == lastFrom && to == lastTo) return cachedRangeNode()
         val n = refArrayLength(table)
         if (n == 0) return null
         val h = mini.internal.stringHashRange(src, from, to)
         val hash = h xor (h ushr 16)
-        val index = (n - 1) and hash
-        var e = slot(index)
-        var depth = 0
+        var e = slot((n - 1) and hash)
         while (e != null) {
             if (e.hash == hash) {
                 val k: Any? = e.key
-                if (k is String && mini.internal.stringEqualsRange(k, src, from, to)) {
-                    // (written by a read: only while single threaded, see findNode)
-                    if (!mini.internal.threadsActive()) {
-                        if (lastSrc !== src) lastSrc = src
-                        lastFrom = from
-                        lastTo = to
-                        lastIdx = index
-                        lastDepth = depth
-                    }
-                    return e
-                }
+                if (k is String && mini.internal.stringEqualsRange(k, src, from, to)) return e
             }
             e = e.next
-            depth++
         }
         return null
+    }
+
+    // `put(src.substring(from, to), value)` after a `findNodeRange(src, from, to)` that returned [node] with nothing in between that could change the map
+    // (the compiler checks, opt/SubstrKey.kt): the entry is updated, a missing one is made.
+    internal fun putRangeAt(src: String, from: Int, to: Int, node: HashNode<K, V>?, @TakesOwnership value: V): V? {
+        if (node != null) {
+            val old = node.value
+            node.value = value
+            return old
+        }
+        return putRange(src, from, to, value)
     }
 
     // `put(src.substring(from, to), value)`: the String is made only when the key is new.
     @Suppress("UNCHECKED_CAST")
     internal fun putRange(src: String, from: Int, to: Int, @TakesOwnership value: V): V? {
-        val found = if (src === lastSrc && from == lastFrom && to == lastTo) cachedRangeNode() else findNodeRange(src, from, to)
+        val found = findNodeRange(src, from, to)
         if (found != null) {
             val old = found.value
             found.value = value
@@ -320,7 +297,6 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     }
 
     private fun resize() {
-        lastSrc = null
         val oldTab = table
         val oldCap = refArrayLength(oldTab)
         val newCap: Int
@@ -381,7 +357,6 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
                 if (linked) unlink(e)
                 lastKey = null
                 lastNode = null
-                lastSrc = null
                 count--
                 return e
             }
@@ -413,7 +388,6 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         tail = null
         lastKey = null
         lastNode = null
-        lastSrc = null
     }
 
     override fun putAll(from: Map<out K, V>) {

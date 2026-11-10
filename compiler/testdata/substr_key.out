@@ -35,4 +35,10 @@ empty
 true
 empty
 1
+{ab=5, cd=5}
+{cd=5, ab=12}
+{cd=46}
+{ab=1}
+{ab=1}
+1
 yzz1

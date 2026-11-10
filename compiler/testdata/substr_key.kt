@@ -112,6 +112,45 @@ fun emptyKey(text: String): Int {
     return m.size
 }
 
+fun clearIt(m: HashMap<String, Int>): Int { m.clear(); return 41 }
+
+// the node of a lookup is handed to the put that follows only while nothing could change the map in between
+fun fused(text: String): Int {
+    val m = HashMap<String, Int>()
+    m["ab"] = 1
+    m["cd"] = 2
+    var i = 0
+    var sum = 0
+    while (i + 2 <= text.length) {
+        val w = text.substring(i, i + 2)
+        val c = m[w]
+        if (c == null) m[w] = 100 else m[w] = c + 1       // lookup, then update: fused
+        i += 2
+    }
+    println(m)
+    val w1 = text.substring(0, 2)
+    val c1 = m[w1]
+    m.remove("ab")                                         // a call in between: the node may be gone
+    m[w1] = (c1 ?: 0) + 7
+    println(m)
+    val w2 = text.substring(2, 4)
+    val c2 = m[w2]
+    m[w2] = clearIt(m) + (c2 ?: 0)                         // the value clears the map first
+    println(m)
+    val w3 = text.substring(0, 2)
+    val c3 = m[w3]
+    if (c3 == null) { m.clear(); m[w3] = 1 } else { m[w3] = 2 }
+    println(m)
+    for (k in 0 until 3) {
+        val w4 = text.substring(0, 2)
+        val c4 = m[w4]
+        m[w4] = (c4 ?: 0) + 1
+        if (k == 1) m.remove(w4)
+    }
+    println(m)
+    return m.size
+}
+
 fun main() {
     val t = "a b c a b a dd dd a"
     val m = count(t)
@@ -126,6 +165,7 @@ fun main() {
     println(setOps("abcabcabcxyzxyz"))
     println(getOrDefaultLoop("abababcab"))
     println(emptyKey("abc"))
+    println(fused("abcdabcdababcd"))
     // a key made by substring but later also printed: kept as is
     val m2 = HashMap<String, Int>()
     val w = "xyzzy".substring(1, 4)
