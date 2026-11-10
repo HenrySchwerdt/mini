@@ -123,7 +123,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
         for ((i, p) in params.withIndex()) {
             val arg = c.arguments.getOrNull(i)
             if ((arg == null) != (pass == 1)) continue
-            val lam = if (arg != null && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlineLambdaOf(arg) else null
+            val lam = if (arg != null && p.kind == IrParameterKind.Regular && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlineLambdaOf(arg) else null
             if (lam != null) {
                 // the same function expanded inside its own lambda argument (`consumer { consumer(f()) }`): the inner call has its own parameter value
                 inlineLambdaParams[p]?.let { shadowedLambdas[p] = it }

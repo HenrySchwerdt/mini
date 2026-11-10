@@ -86,6 +86,17 @@ internal fun Ir2Mir.messageRootOf(c: IrClass): IrSimpleFunction? {
     return r
 }
 
+/** `Throwable.cause` getter at the root of the override chain: the vtable slot 4 of every Throwable. */
+internal fun Ir2Mir.causeRootOf(c: IrClass): IrSimpleFunction? {
+    builtinCauseRoot?.let { return it }
+    val prop = c.declarations.filterIsInstance<IrProperty>().firstOrNull { it.name == "cause" }
+    val getter = prop?.getter
+        ?: c.declarations.filterIsInstance<IrSimpleFunction>().firstOrNull { it.name == "<get-cause>" || it.name == "getCause" }
+    val r = getter?.let { topClass(it) }
+    builtinCauseRoot = r
+    return r
+}
+
 /** Is [c] (a user class or a built-in) a subclass of a runtime-provided exception class? */
 internal fun Ir2Mir.inheritsBuiltin(c: IrClass): Boolean {
     var k: IrClass? = c
@@ -143,6 +154,7 @@ internal fun Ir2Mir.builtinMember(c: IrCall, real: IrSimpleFunction, out: Mutabl
     val name = real.name
     val args = c.arguments.map { it ?: unsupported(c, "omitted argument") }
     return when {
+        name == "<get-cause>" && !viaSuper -> null // virtual: a subclass may override `cause`
         name == "<get-cause>" -> {
             val r = operands(args, out)[0]
             MirExpr.RuntimeCall("mk_throwable_cause", listOf(asAny(r)), TObject(JAVA_LANG + "Throwable", "MkThrowable", true))

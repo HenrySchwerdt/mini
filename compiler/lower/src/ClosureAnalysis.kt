@@ -174,7 +174,7 @@ internal class ClosureInfo {
             if (callee.isInline) {
                 for ((i, a) in expression.arguments.withIndex()) {
                     val p = callee.parameters.getOrNull(i) ?: continue
-                    if (a is IrFunctionExpression && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlinedLambdas += a.function
+                    if (a is IrFunctionExpression && p.kind == IrParameterKind.Regular && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlinedLambdas += a.function
                 }
             }
             if (callee.origin == "LOCAL_FUNCTION" || callee.origin == "LOCAL_FUNCTION_FOR_LAMBDA" ||

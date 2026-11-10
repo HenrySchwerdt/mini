@@ -235,7 +235,11 @@ class ConstraintSystem(private val sema: Sema) {
                 } else {
                     when (v) {
                         Variance.OUT -> if (!addSub(st, bt, depth + 1)) return false
-                        Variance.IN -> if (!addSub(bt, st, depth + 1)) return false
+                        Variance.IN -> {
+                            if (!addSub(bt, st, depth + 1)) return false
+                            // an `out T'` argument against `in T`: the captured type approximates to Nothing in this position (`T` = Nothing)
+                            if (sa.variance == Variance.OUT && bt is VarType && !bt.nullable) addSub(sema.nothingType, bt, depth + 1)
+                        }
                         Variance.INV -> {
                             if (sa.variance == Variance.OUT) {
                                 if (!addSub(st, bt, depth + 1)) return false

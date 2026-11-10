@@ -370,7 +370,10 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
                 val vet = p.varargElementType
                 if (vet != null) {
                     if (count == 0) call.arguments.add(null)
-                    else {
+                    else if (ad.map.spreadVararg) {
+                        val lp = lparams[start]
+                        call.arguments.add(IrVararg(vet, arrayListOf<IrVarargElement>(IrSpreadElement(IrGetValue(lp, lp.type, null))), p.type))
+                    } else {
                         val els = ArrayList<IrVarargElement>()
                         for (k in 0 until count) els.add(IrGetValue(lparams[start + k], lparams[start + k].type, null))
                         call.arguments.add(IrVararg(vet, els, p.type))
@@ -388,7 +391,7 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     val fe = IrFunctionExpression(fn, ft, "LAMBDA")
     fe.startOffset = e.start
     fe.refTarget = target
-    fe.refShape = ad.map.starts.joinToString(",") + "/" + ad.map.counts.joinToString(",") + "/" + ad.suspendConv + "/" + (retT.classFqName ?: "?") + "/" + (bound != null) + "/" + n + "/" + ptypes.size
+    fe.refShape = (if (ad.map.spreadVararg) "spread:" else "") + ad.map.starts.joinToString(",") + "/" + ad.map.counts.joinToString(",") + "/" + ad.suspendConv + "/" + (retT.classFqName ?: "?") + "/" + (bound != null) + "/" + n + "/" + ptypes.size
     if (outer.isEmpty()) return fe
     outer.add(fe)
     return IrBlock(outer, ft, null)

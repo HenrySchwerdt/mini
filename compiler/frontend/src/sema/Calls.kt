@@ -524,6 +524,15 @@ fun BodyChecker.localReceiverFunVar(name: String): Boolean {
 
 /** members of an implicit receiver, then top-level extensions applicable to it */
 fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List<Candidate>>, ref: RecvRef? = null) {
+    // `fun (() -> String).f() = invoke()`: the receiver is a function value
+    if (name == "invoke" && ref != null && (rt is FunType || ops.asFunType(rt) != null)) {
+        val ic = invokeCandidates(rt)
+        if (ic.isNotEmpty()) {
+            for (c in ic) c.dispatchRef = ref
+            groups.add(ic)
+            return
+        }
+    }
     val mem = ArrayList<Candidate>()
     for (m in members.funsNamed(rt, name)) {
         if (m.fn.decl?.receiver != null) continue

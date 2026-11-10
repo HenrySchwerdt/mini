@@ -98,12 +98,12 @@ static void throwable_dispose(MkObject *self) {
 }
 
 static void *const throwable_vtable[] = {
-    (void *)mk_throwable_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code, (void *)mk_throwable_message,
+    (void *)mk_throwable_to_string, (void *)mk_any_equals, (void *)mk_any_hash_code, (void *)mk_throwable_message, (void *)mk_throwable_cause,
 };
 
 #define EXC(Name, qualified, Super, dispose)                                                       \
     const MkTypeInfo Name##_ti = {qualified, sizeof(MkThrowable), &Super, dispose, throwable_vtable, \
-                                  4, NULL, 0, NULL, NULL};                                                   \
+                                  5, NULL, 0, NULL, NULL};                                                   \
     MkObject *Name##_new(const MkString *message, MkObject *cause) {                               \
         MkThrowable *t = (MkThrowable *)mk_alloc(&Name##_ti);                                      \
         t->message = message;                                                                      \
