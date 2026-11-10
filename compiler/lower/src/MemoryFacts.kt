@@ -475,9 +475,18 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             if (p.kind == IrParameterKind.Regular || p.kind == IrParameterKind.Context) {
                 if (hasAnnotation(p.annotations, TAKES_OWNERSHIP)) takes.add(pi)
                 pi++
+            } else if (p.kind == IrParameterKind.ExtensionReceiver && hasAnnotation(p.annotations, TAKES_OWNERSHIP)) {
+                takes.add(-1)   // `@receiver:TakesOwnership`: the callee keeps the receiver (a function value that starts a coroutine)
             }
         }
         if (fq.startsWith("mini.internal.refArraySet") && params.size == 3) takes.add(2)
+        // a fake override (the inherited `Channel.trySend`) states what the declaration it inherits states
+        if (f is IrSimpleFunction && f.isFakeOverride) {
+            var cur: IrSimpleFunction? = f
+            var guard = 0
+            while (cur != null && cur.isFakeOverride && guard++ < 16) cur = cur.overridden.firstOrNull()
+            if (cur != null && cur !== f) takes.addAll(funOf(cur).takesOwnership)
+        }
         if (takes.isNotEmpty()) m.takesOwnership = takes
         if (f is IrSimpleFunction && !f.isFakeOverride && (f.modality != IrModality.FINAL || (parent as? IrClass)?.kind == IrClassKind.INTERFACE)) {
             m.virtualTargets = { overridersOf(f).map { funOf(it) } }

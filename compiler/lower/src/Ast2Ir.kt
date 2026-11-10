@@ -610,6 +610,9 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         if (r != null) {
             val ep = IrValueParameter("<this>", irType(r), IrParameterKind.ExtensionReceiver, idx++)
             ep.parent = fn
+            // `@receiver:Ann fun T.f()` annotates the extension receiver parameter
+            val recvAnns = m?.annotations()?.filter { it.target == "receiver" }
+            if (recvAnns != null && recvAnns.isNotEmpty()) ep.annotations = annotationsOfEntries(recvAnns, sym.file ?: bodyFile())
             fn.parameters.add(ep)
         }
         addValueParameters(fn, sym.params, idx)
