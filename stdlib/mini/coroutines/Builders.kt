@@ -67,7 +67,7 @@ private class BlockingCoroutine<T>(parentContext: CoroutineContext, private val 
 }
 
 /** Runs [block] in a new coroutine on an event loop of the calling thread and blocks until it and its children are complete. */
-public fun <T> runBlocking(context: CoroutineContext = EmptyCoroutineContext, block: suspend CoroutineScope.() -> T): T {
+public fun <T> runBlocking(context: CoroutineContext = EmptyCoroutineContext, @mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T {
     val loop = EventLoop()
     val c = BlockingCoroutine<T>(context + loop, loop)
     block.startCoroutine(c, c)

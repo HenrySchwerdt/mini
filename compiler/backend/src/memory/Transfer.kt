@@ -399,7 +399,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun evalCall(e: MExpr.Call, env: Env): AVal {
         val fn = e.fn
         val rv = e.receiver?.let { eval(it, env) }
-        if (rv != null) discard(rv)
+        if (rv != null) {
+            // a closure as the receiver (`block.startCoroutine(c)`) that the callee keeps: it outlives the call
+            if (rv.caps && rv.refs.isNotEmpty() && fn.receiver?.annot?.borrowed == null && !fn.borrowsAll) {
+                Summaries.escapeReason(fn, FnSummary.RECEIVER)?.let { escapeClosure(rv, "is kept by `${fn.qname.substringAfterLast('.')}`, which $it") }
+            }
+            discard(rv)
+        }
         // exception: methods of local owners may be called while a field is moved out
         if (!(e.receiver is MExpr.Local)) checkMovedFields(e.pos)
         val args = processArgs(fn, rv, e.args, env, e)

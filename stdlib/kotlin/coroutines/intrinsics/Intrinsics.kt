@@ -25,19 +25,23 @@ public fun <T> Continuation<T>.intercepted(): Continuation<T> {
 }
 
 @Suppress("UNCHECKED_CAST")
+@receiver:kotlin.internal.TakesOwnership
 public fun <T> (suspend () -> T).createCoroutineUnintercepted(completion: Continuation<T>): Continuation<Unit> =
     SafeStarter(completion as Continuation<Any?>, { c -> (this as (Continuation<T>) -> Any?)(c as Continuation<T>) }) as Continuation<Unit>
 
 @Suppress("UNCHECKED_CAST")
+@receiver:kotlin.internal.TakesOwnership
 public fun <R, T> (suspend R.() -> T).createCoroutineUnintercepted(receiver: R, completion: Continuation<T>): Continuation<Unit> =
     SafeStarter(completion as Continuation<Any?>, { c -> (this as (R, Continuation<T>) -> Any?)(receiver, c as Continuation<T>) }) as Continuation<Unit>
 
 /** Runs the block as a suspend function with [completion] as its continuation; the result is the value or COROUTINE_SUSPENDED. */
 @Suppress("UNCHECKED_CAST")
+@receiver:kotlin.internal.TakesOwnership
 public fun <T> (suspend () -> T).startCoroutineUninterceptedOrReturn(completion: Continuation<T>): Any? =
     (this as (Continuation<T>) -> Any?)(completion)
 
 @Suppress("UNCHECKED_CAST")
+@receiver:kotlin.internal.TakesOwnership
 public fun <R, T> (suspend R.() -> T).startCoroutineUninterceptedOrReturn(receiver: R, completion: Continuation<T>): Any? =
     (this as (R, Continuation<T>) -> Any?)(receiver, completion)
 
