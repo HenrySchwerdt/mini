@@ -53,6 +53,15 @@ object MirOpt {
             if (options.stats) report("exact-is: " + ex.changed + " class tests of a leaf class turned into a type-word compare")
             m = MirModule(m.sourceName, fs, m.classes, m.externs, m.includes, m.links, m.wasmExports)
         }
+        if (options.on("substr-key")) {
+            val sk = SubstrKey(m)
+            if (sk.available) {
+                val fs = ArrayList<MirFunction>(m.functions.size)
+                for (f in m.functions) fs.add(sk.run(f))
+                if (options.stats) report("substr-key: " + sk.sites + " substrings used only as map keys are not made")
+                m = MirModule(m.sourceName, fs, m.classes, m.externs, m.includes, m.links, m.wasmExports)
+            }
+        }
         if (options.on("array-len")) {
             val st = IntArray(1)
             m = ArrayLen.run(m, st)

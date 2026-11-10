@@ -94,6 +94,16 @@ object Devirt {
             // the emitters make an accessor for every `object`: its initialiser stays
             for (c in m.classes) reach(c.objectCtor)
             while (workF.isNotEmpty()) collect(workF.removeAt(workF.size - 1).body)
+            if (hasMain) {
+                // what the MIR passes call in place of other functions (opt/SubstrKey.kt) stays
+                val idx = Companions.Index(m.functions)
+                while (true) {
+                    val more = Companions.missing(idx) { n -> reachable.contains(n) }
+                    if (more.isEmpty()) break
+                    for (f in more) reach(f.cName)
+                    while (workF.isNotEmpty()) collect(workF.removeAt(workF.size - 1).body)
+                }
+            }
         }
 
         fun run(): MirModule {

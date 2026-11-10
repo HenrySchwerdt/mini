@@ -349,34 +349,67 @@ MkString *mk_string_from_char(MkChar value) {
     return s;
 }
 
+/* n Latin-1 bytes of x and y equal? Short ones with a few loads (n is the length of both). */
+static inline bool latin1_equal(const uint8_t *x, const uint8_t *y, size_t n) {
+    if (n >= 8 && n <= 16) {
+        uint64_t p, q, r, t;
+        memcpy(&p, x, 8); memcpy(&q, y, 8); memcpy(&r, x + n - 8, 8); memcpy(&t, y + n - 8, 8);
+        return ((p ^ q) | (r ^ t)) == 0;
+    }
+    if (n >= 4 && n < 8) {
+        uint32_t p, q, r, t;
+        memcpy(&p, x, 4); memcpy(&q, y, 4); memcpy(&r, x + n - 4, 4); memcpy(&t, y + n - 4, 4);
+        return ((p ^ q) | (r ^ t)) == 0;
+    }
+    if (n < 4) { /* 0..3: the first, the last and the middle byte cover them all */
+        if (n == 0) return true;
+        return ((x[0] ^ y[0]) | (x[n - 1] ^ y[n - 1]) | (x[n >> 1] ^ y[n >> 1])) == 0;
+    }
+    return memcmp(x, y, n) == 0;
+}
+
 bool mk_string_equals(const MkString *a, const MkString *b) {
     if (a == b) return true;
     if (a == NULL || b == NULL) return false;
     if (a->length != b->length) return false;
     size_t n = (size_t)a->length;
     bool la = mk_string_is_latin1(a), lb = mk_string_is_latin1(b);
-    if (la && lb) { /* two Latin-1 strings of one length: short ones are compared with a few loads */
-        const uint8_t *x = mk_string_bytes(a), *y = mk_string_bytes(b);
-        if (n >= 8 && n <= 16) {
-            uint64_t p, q, r, t;
-            memcpy(&p, x, 8); memcpy(&q, y, 8); memcpy(&r, x + n - 8, 8); memcpy(&t, y + n - 8, 8);
-            return ((p ^ q) | (r ^ t)) == 0;
-        }
-        if (n >= 4 && n < 8) {
-            uint32_t p, q, r, t;
-            memcpy(&p, x, 4); memcpy(&q, y, 4); memcpy(&r, x + n - 4, 4); memcpy(&t, y + n - 4, 4);
-            return ((p ^ q) | (r ^ t)) == 0;
-        }
-        if (n < 4) { /* 0..3: the first, the last and the middle byte cover them all */
-            if (n == 0) return true;
-            return ((x[0] ^ y[0]) | (x[n - 1] ^ y[n - 1]) | (x[n >> 1] ^ y[n >> 1])) == 0;
-        }
-        return memcmp(x, y, n) == 0;
-    }
+    if (la && lb) return latin1_equal(mk_string_bytes(a), mk_string_bytes(b), n); /* two Latin-1 strings of one length */
     if (la == lb) return memcmp(a->chars, b->chars, n * sizeof(MkChar)) == 0;
     const MkString *w = la ? b : a, *l = la ? a : b; /* one of each: compare the characters */
     const uint8_t *lbytes = mk_string_bytes(l);
     for (size_t i = 0; i < n; i++) if (w->chars[i] != lbytes[i]) return false;
+    return true;
+}
+
+/* The hash and the equality of the substring [from, to) of `s` without making it (the map lookups of `map[s.substring(a, b)]`, see
+ * compiler/backend/src/opt/SubstrKey.kt): mk_string_hash_range(s, a, b) == mk_string_hash(substring(s, a, b)). The range was checked
+ * where the substring would have been made; a bad one here is a bug of the caller. */
+static void check_range(const MkString *s, MkInt from, MkInt to) {
+    if (s == NULL) mk_panic("NullPointerException");
+    if (from < 0 || to > s->length || from > to) mk_panic("StringIndexOutOfBoundsException: bad range");
+}
+
+MkInt mk_string_hash_range(const MkString *s, MkInt from, MkInt to) {
+    check_range(s, from, to);
+    uint32_t h = 0;
+    if (mk_string_is_latin1(s)) {
+        const uint8_t *b = mk_string_bytes(s);
+        for (MkInt i = from; i < to; i++) h = h * 31u + b[i];
+    } else {
+        for (MkInt i = from; i < to; i++) h = h * 31u + s->chars[i];
+    }
+    return (MkInt)h;
+}
+
+bool mk_string_equals_range(const MkString *key, const MkString *s, MkInt from, MkInt to) {
+    check_range(s, from, to);
+    if (key == NULL) return false;
+    size_t n = (size_t)(to - from);
+    if ((size_t)key->length != n) return false;
+    bool lk = mk_string_is_latin1(key), ls = mk_string_is_latin1(s);
+    if (lk && ls) return latin1_equal(mk_string_bytes(key), mk_string_bytes(s) + from, n);
+    for (size_t i = 0; i < n; i++) if (mk_string_at(key, (MkInt)i) != mk_string_at(s, from + (MkInt)i)) return false;
     return true;
 }
 
