@@ -53,6 +53,7 @@ internal val BUILTIN_CLASSES: List<BuiltinClass> = listOf(
     b("MkNotImplementedError", "kotlin.NotImplementedError", "MkError"),
     b("MkNegativeArraySizeException", JAVA_LANG + "NegativeArraySizeException", "MkRuntimeException", "kotlin.NegativeArraySizeException"),
     b("MkAssertionError", JAVA_LANG + "AssertionError", "MkError", "kotlin.AssertionError"),
+    b("MkKotlinNothingValueException", "kotlin.KotlinNothingValueException", "MkRuntimeException"),
 )
 
 private val builtinByFq: Map<String, BuiltinClass> = BUILTIN_CLASSES.flatMap { c -> c.names.map { it to c } }.toMap()

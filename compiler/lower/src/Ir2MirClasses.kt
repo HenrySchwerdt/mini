@@ -100,6 +100,19 @@ internal fun Ir2Mir.functionSupertypes(c: IrClass, acc: MutableSet<Int> = Linked
     return acc
 }
 
+/** does [c] have a suspend function type (`suspend () -> Unit`) among its supertypes, also through other classes and interfaces */
+internal fun Ir2Mir.hasSuspendFunctionSupertype(c: IrClass, seen: MutableSet<IrClass> = HashSet()): Boolean {
+    if (!seen.add(c)) return false
+    for (t in c.superTypes) {
+        if (t is FunType) { if (t.suspend) return true }
+        else {
+            val s = t.classOrNull ?: continue
+            if (s in classInfos && hasSuspendFunctionSupertype(s, seen)) return true
+        }
+    }
+    return false
+}
+
 /** The `invoke` with [arity] value parameters that [c] declares or inherits from a class. */
 internal fun Ir2Mir.invokeImpl(c: IrClass, arity: Int): IrSimpleFunction? {
     val g = classFunctions(c).firstOrNull { it.name == "invoke" && !it.isFakeOverride && it.parameters.count { p -> p.kind != IrParameterKind.DispatchReceiver } == arity && hasBody(it) }
@@ -485,6 +498,12 @@ internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
             funIfaces += functionInterface(n).cName
             // an abstract class leaves the invoke to its subclasses
             itables = itables + MirItable(functionInterface(n).cName, listOf(if (impl == null) null else erasedInvoke(impl, n)))
+        }
+        // `class C : suspend () -> Unit`: `c is SuspendFunction0<*>` holds (the marker of the function objects of suspend lambdas)
+        if (hasSuspendFunctionSupertype(c)) {
+            val marker = suspendMarkerInterface().cName
+            funIfaces += marker
+            itables = itables + MirItable(marker, emptyList())
         }
     }
     val objectCtor = if (c.kind == IrClassKind.OBJECT) {

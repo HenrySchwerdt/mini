@@ -1991,3 +1991,75 @@ public fun Array<out ULong>.sum(): ULong {
     return ULong(s)
 }
 
+@kotlin.jvm.JvmName("sumOfIntUByteArraySelector")
+public inline fun UByteArray.sumOf(selector: (UByte) -> Int): Int {
+    var s: Int = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongUByteArraySelector")
+public inline fun UByteArray.sumOf(selector: (UByte) -> Long): Long {
+    var s: Long = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleUByteArraySelector")
+public inline fun UByteArray.sumOf(selector: (UByte) -> Double): Double {
+    var s: Double = 0.0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfIntUShortArraySelector")
+public inline fun UShortArray.sumOf(selector: (UShort) -> Int): Int {
+    var s: Int = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongUShortArraySelector")
+public inline fun UShortArray.sumOf(selector: (UShort) -> Long): Long {
+    var s: Long = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleUShortArraySelector")
+public inline fun UShortArray.sumOf(selector: (UShort) -> Double): Double {
+    var s: Double = 0.0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfIntUIntArraySelector")
+public inline fun UIntArray.sumOf(selector: (UInt) -> Int): Int {
+    var s: Int = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongUIntArraySelector")
+public inline fun UIntArray.sumOf(selector: (UInt) -> Long): Long {
+    var s: Long = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleUIntArraySelector")
+public inline fun UIntArray.sumOf(selector: (UInt) -> Double): Double {
+    var s: Double = 0.0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfIntULongArraySelector")
+public inline fun ULongArray.sumOf(selector: (ULong) -> Int): Int {
+    var s: Int = 0
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfLongULongArraySelector")
+public inline fun ULongArray.sumOf(selector: (ULong) -> Long): Long {
+    var s: Long = 0L
+    for (e in this) s += selector(e)
+    return s
+}
+@kotlin.jvm.JvmName("sumOfDoubleULongArraySelector")
+public inline fun ULongArray.sumOf(selector: (ULong) -> Double): Double {
+    var s: Double = 0.0
+    for (e in this) s += selector(e)
+    return s
+}

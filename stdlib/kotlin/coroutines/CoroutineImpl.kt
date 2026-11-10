@@ -15,9 +15,23 @@ public abstract class BaseContinuation(public val completion: Continuation<Any?>
 
     /** The continuation to resume from outside: wrapped by the interceptor (dispatcher) of the context, if there is one. */
     public fun interceptedContinuation(): Continuation<Any?> {
+        val cached = interceptedCache
+        if (cached != null) return cached
         val interceptor = context[ContinuationInterceptor.Key] ?: return this
-        // not cached: the wrapper refers to this object, so keeping it here would be a reference cycle
-        return interceptor.interceptContinuation(this)
+        // kept until the coroutine completes (then handed back to the interceptor): a reference cycle meanwhile, which the cycle collector handles
+        val wrapped = interceptor.interceptContinuation(this)
+        interceptedCache = wrapped
+        return wrapped
+    }
+
+    private var interceptedCache: Continuation<Any?>? = null
+
+    /** The coroutine has completed: the interceptor may release the continuation it made of this one. */
+    private fun releaseIntercepted() {
+        val wrapped = interceptedCache ?: return
+        interceptedCache = null
+        val interceptor = context[ContinuationInterceptor.Key] ?: return
+        interceptor.releaseInterceptedContinuation(wrapped)
     }
 
     public override fun resumeWith(result: Result<Any?>) {
@@ -41,6 +55,7 @@ public abstract class BaseContinuation(public val completion: Continuation<Any?>
                 failure = e
             }
             if (failure == null && out is SuspendMarker) return out
+            cur.releaseIntercepted()
             val parent = cur.completion
             res = if (failure != null) Result.failure<Any?>(failure) else Result.success(out)
             if (parent is BaseContinuation) {
