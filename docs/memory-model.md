@@ -1251,6 +1251,11 @@ generated `main` stays Managed) and `minic-native --check` is run. The outcome i
 | conformance (300) | 300 | 277 (92.3%) | 20 | 3 | 0 |
 | **all** | 560 | 459 (82.0%) | 79 | 22 | 0 |
 
+After the coroutine-starter fix (the price of soundness, not a regression of the checker's precision): all 560 programs: 456 accepted
+(81.4%; 79 (a), 25 (b)); testdata 168 of 243 (69.1%; was 170), conformance (300) 276 (92.0%; was 277); `--sample 1500`: 1390 of 1500
+(92.7%; 89 (a), 21 (b), 0 ICE; was 1398). The programs lost are blocks handed to `startCoroutine`/`launch`/`Channel.send`/`ArrayDeque.add`
+that capture or send an owner: before they were accepted although the coroutine or the queue outlives the owner.
+
 Larger conformance sample (`--sample 1500`, the same selection rule): before 1292 of 1497 accepted (86.3%; 151 (a), 54 (b), 0 ICE),
 after 1398 of 1500 (93.2%; 89 (a), 13 (b), 0 ICE). (The three programs that do not compile standalone in Managed mode with the older
 release's library are not counted before.)
@@ -1286,10 +1291,51 @@ Causes after the fixes (`--list` prints the program behind every row):
    statement. Neither exists yet; every such program is rejected with M0110 (never accepted), so this costs usability, not soundness.
 2. *Closures over a `var` owner* (the closure shares a reference-counting cell with the variable) and closures returned from a
    function that borrows `this` (`inner_receivers_super`).
-3. *Coroutines*: `launch`/`async` blocks may outlive the call, so an owner they capture needs structured proof; the block of
-   `startCoroutine` (a Strict receiver object) is stored in the coroutine. `launch { owner.x }` in `runBlocking` is accepted today (the
-   body of `startCoroutine` does not escape its receiver in the summary), which is a gap in the soundness of coroutines, not a new one;
-   it is listed in the checker's open items rather than fixed here.
+3. *Coroutines*: fixed, see "Coroutine starters keep their block" below.
+
+**Coroutine starters keep their block (soundness fix)**
+
+`runBlocking { val b = Box(7); launch { println(b.v) }; b.free() }` was accepted, and it is a use after free: `launch` only schedules
+the coroutine, which runs after `b.free()` (AddressSanitizer: `heap-use-after-free` in the closure of the launched block, read of a
+freed 40-byte `Box`; the allocation and the `free` are the ones of `b`). The summary of `launch` did not say that its block escapes,
+because the block is only the *extension receiver* of `block.startCoroutine(c, c)` and summaries tracked parameters, not receivers.
+
+* A function value used as an extension receiver is parameter `FnSummary.RECEIVER` (-1) in the summaries: `escapes`/`carries` and
+  the `.mlib` text form (`-1:reason`) cover it, and a call site that passes a closure as the receiver of a callee that keeps it is
+  M0112 (owner) or M0109 (loan), like a closure argument.
+* `@receiver:TakesOwnership` (new use-site target on extension receivers, `Ast2Ir`) declares it for the library primitives
+  `startCoroutine`, `createCoroutine`, `createCoroutineUnintercepted`, `startCoroutineUninterceptedOrReturn` (all overloads), so
+  `launch`, `async`, `produce`, `GlobalScope.launch`, `launchIn`, user wrappers (`fun CoroutineScope.start(b: Box) { launch { b.v } }`
+  is M0109 for the borrowed parameter) and `dispatch { }` of a dispatcher are rejected when the block captures an owner.
+* `Channel.send`/`trySend` and `ArrayDeque.add*` take ownership of the element; a fake override (`Channel.trySend`) inherits the
+  declaration's `@TakesOwnership`. Before, `ArrayDeque.addLast(owner)` and `channel.trySend(owner)` were silently accepted.
+* Structured scopes that finish their block before returning keep borrowing: `coroutineScope`, `supervisorScope`, `withTimeout`,
+  `withTimeoutOrNull` (already `@Borrowed`) and now `runBlocking` itself (`@Borrowed block`).
+* `Thread { }` / `thread { }` already moved their captures (the owner is dead afterwards: M0107 on `free`, corpus `s141`).
+* Price: user code that calls `startCoroutine` itself on a block that completes synchronously (empty context) is now rejected unless
+  its own wrapper declares the block `@Borrowed` (3 programs of the coverage sets, `conf6b_prop_recv_invoke`, `conf6b_sam_suspend`);
+  a launched block inside `runBlocking` that captures an owner declared *outside* is M0109 (a loan escapes), though it would be safe.
+
+Corpus: `s135`-`s144` (REJECT: launch, async, produce, GlobalScope.launch, startCoroutine, createCoroutine, Thread, dispatcher,
+channel send, launching wrapper) and `s145`, `s146` (ACCEPT: structured scopes, a launched block that only uses a copied value).
+
+**Strict values in collections: what was found, and why it stays M0110**
+
+The obvious design (moving an owner into `listOf(p, q)` / `ArrayList.add`, the collection's reference counting then frees it) was
+prototyped: the checker side is a small change (a keep-by-`@TakesOwnership` or vararg-array reason becomes `takeOwnership` instead of
+M0110). Two things block it, both measured under ASan:
+
+1. *Code generation leaks the owner's count.* The vararg store (`mk_array_set_obj`) and the owned-parameter hand-over of a dynamic call
+   retain the value, while a moved Strict owner is never released, so every moved element leaks (`listOf(Box(1), Box(2))`: 2 objects,
+   `list.add(b)`: 1). It needs the moved owner's own count to be handed over in the C emitter and both LLVM lowerings
+   (`Tracking.movedTemp` already does it for fresh temporaries of static calls); the prototype did that and was leak free.
+2. *A read element is a loan nobody tracks.* `val first = ys[0]; ys.clear(); println(first.v)` is a heap-use-after-free, because the
+   result of a Managed call is untracked. A sound version needs the collection to be a tracked holder: element reads (`get`, `iterator`,
+   lambda parameters of `forEach`/`map`) become loans of a per-epoch pseudo owner that every mutating call (`clear`, `remove*`, `set`,
+   reassignment of the variable) kills; corpus `s147` pins the behaviour.
+
+Neither piece was shipped: accepting the moves without (2) would trade a conservative rejection for a use after free. The collection
+tests (`s44`, `s45`, `s79`, `s147`) stay REJECT M0110.
 
 ## Cycles: the cycle collector of Managed mode
 
