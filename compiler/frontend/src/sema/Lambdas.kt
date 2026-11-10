@@ -250,6 +250,8 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         var gi = 0
         for (g in unqualifiedGroups(name)) {
             for (c in g) {
+                // `invoke` of a variable or property named like the reference is not what `::name` denotes
+                if (c.invokeVar != null || c.invokeProp != null) continue
                 val er0 = c.extRecv
                 if (c.extRef != null && er0 != null && !extFits(c.fn, er0)) continue
                 val before = cands.size

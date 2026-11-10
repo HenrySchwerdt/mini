@@ -7,8 +7,10 @@ package kotlin.collections
 
 import kotlin.reflect.KProperty
 
-public inline fun <T> Iterable(crossinline iterator: () -> Iterator<T>): Iterable<T> = object : Iterable<T> {
-    override fun iterator(): Iterator<T> = iterator()
+public fun <T> Iterable(iterator: () -> Iterator<T>): Iterable<T> = LambdaIterable(iterator)
+
+private class LambdaIterable<T>(private val source: () -> Iterator<T>) : Iterable<T> {
+    override fun iterator(): Iterator<T> = source()
 }
 
 public fun <K, V> Array<out Pair<K, V>>.toMap(): Map<K, V> = when (size) {
