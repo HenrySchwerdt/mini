@@ -310,6 +310,12 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         return TextVal(r, tyText(t))
     }
 
+    override fun loadAcquirePtr(ptr: TextVal, align: Int, name: String): TextVal {
+        val r = result(name)
+        ins(r + " = load atomic ptr, ptr " + ptr.text + " acquire, align " + align)
+        return TextVal(r, "ptr")
+    }
+
     override fun storeTagged(v: TextVal, ptr: TextVal, tag: String) {
         ins("store " + v.ty + " " + v.text + ", ptr " + ptr.text + ", !tbaa !" + tbaaId(tag))
     }

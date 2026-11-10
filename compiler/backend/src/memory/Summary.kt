@@ -23,11 +23,15 @@ class FnSummary(
     fun escapes(i: Int): Boolean = escapes.containsKey(i)
 
     companion object {
+        /** Index of the receiver of a function value in [escapes]: `block.startCoroutine(c)` keeps `block` (and what it captures). */
+        const val RECEIVER = -1
         val NONE = FnSummary(emptyMap())
     }
 }
 
 object Summaries {
+    private const val RECEIVER = FnSummary.RECEIVER
+
     // Tarjan's strongly connected components over the call graph (calls and virtual targets). The members of one component are solved
     // together by a fixpoint (optimistic for recursion); everything a component calls is final before it is solved, so every function is
     // analysed a small, bounded number of times and its summary is cached for good.
@@ -227,6 +231,9 @@ object Summaries {
 
         fun run(body: List<MStmt>): FnSummary {
             for ((i, p) in fn.params.withIndex()) if (!p.isContext) alias.getOrPut(p.local.id) { HashSet() }.add(i)
+            // the receiver of a function value (`block.startCoroutine(c)`, extension on `suspend () -> T`) is parameter RECEIVER: a closure that may be kept
+            val rc = fn.receiver
+            if (rc != null && isFunctionType(rc.local.type)) alias.getOrPut(rc.local.id) { HashSet() }.add(RECEIVER)
             // property parameters of a constructor are stored into the fields of the new object
             val co = fn.ctorOf
             if (co != null) for ((i, p) in fn.params.withIndex()) if (p.owned) esc[i] = "is stored into a field of `${co.name.substringAfterLast('.')}`"
@@ -273,6 +280,9 @@ object Summaries {
                 is MExpr.Call -> {
                     val callee = e.fn
                     val sum = of(callee)
+                    if (e.receiver != null && callee.receiver?.annot?.borrowed == null && sum != null && sum.escapes(RECEIVER)) {
+                        escape(e.receiver, "escapes into `${short(callee)}`, which ${sum.escapes[RECEIVER]}")
+                    }
                     for ((i, a) in e.args.withIndex()) {
                         val p = callee.params.getOrNull(i) ?: continue
                         if (p.isContext) continue
