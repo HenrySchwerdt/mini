@@ -7,3 +7,5 @@ package kotlin.sequences
 import kotlin.random.Random
 
 public fun <T> Sequence<T>.shuffled(random: Random): Sequence<T> = LazyListSequence { this.toList().shuffled(random) }
+
+public operator fun <T> Sequence<T>.plus(elements: Array<out T>): Sequence<T> = this.plus(elements.asList())
