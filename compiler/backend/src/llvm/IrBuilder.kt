@@ -118,6 +118,9 @@ interface IrBuilder<V : Any, B : Any> {
      * Natural alignment.
      */
     fun loadTagged(t: IrType, ptr: V, tag: String, name: String): V
+
+    /** `load atomic ptr, ptr %p acquire`: an acquire load of a pointer of the given alignment (`__atomic_load_n(p, __ATOMIC_ACQUIRE)` of the C prelude). */
+    fun loadAcquirePtr(ptr: V, align: Int, name: String): V
     fun storeTagged(v: V, ptr: V, tag: String)
 
     /** `getelementptr i8, ptr base, i64 offset`. */
