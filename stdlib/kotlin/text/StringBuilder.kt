@@ -58,6 +58,10 @@ public class StringBuilder : Appendable {
 
     // one overload for String and CharSequence: both mangle to the same C symbol, so a separate String overload cannot coexist
     public override fun append(value: CharSequence?): StringBuilder {
+        if (value is String) {
+            sbAppendString(buf, value)
+            return this
+        }
         sbAppendString(buf, if (value == null) "null" else value.toString())
         return this
     }
