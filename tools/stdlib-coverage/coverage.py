@@ -118,6 +118,7 @@ def simple_type(t):
 
 def receiver_key(t, tparams):
     t = re.sub(r'@\w+\s*', '', t).strip()
+    if t.rstrip('?') in tparams: return '*'     # receiver is a bare type parameter (`C.onEach` with C : Iterable<T>)
     if t.startswith('(') and '->' in t: return 'Function'
     t = t.rstrip('?').strip()
     if '<' not in t: return t.split('.')[-1]
@@ -339,6 +340,7 @@ def owner_candidates(d, supers):
         base = o[4:].split('<')[0]
         if base != o[4:]: yield 'ext:' + base
         for s in supers(base, set()): yield 'ext:' + s
+        yield base                       # a member of the class (StringBuilder.set is a member in mini)
     elif '.' in o:
         yield 'ext:' + o      # Duration.Companion.parse may be an extension on Duration.Companion
         yield 'ext:' + o.split('.')[-1]
@@ -370,7 +372,7 @@ def main():
                              top_only=('jvmMain/kotlin',))
     ref += scan_tree(a.ref, ['jvmMain/kotlin/io'], skip, only_files=('Console.kt',))[0]   # print/println/readln (native has them too)
     mini, mini_cls = scan_tree(a.mini, ['kotlin', 'kotlinx', 'mini', 'java'])
-    ref = [d for d in ref if not (d.since and d.since > (2, 1)) and not (a.no_experimental and d.opt) and not d.hidden]
+    ref = [d for d in ref if d.pkg != 'kotlin.js' and not (d.since and d.since > (2, 1)) and not (a.no_experimental and d.opt) and not d.hidden]
     seen, u = set(), []
     for d in ref:
         k = (d.kind, d.pkg, d.owner, d.name, d.req, d.total)
@@ -379,6 +381,8 @@ def main():
 
     midx = collections.defaultdict(list)
     for d in mini: midx[(d.kind, d.pkg, d.owner, d.name)].append(d)
+    by_name = collections.defaultdict(list)
+    for d in mini: by_name[(d.kind, d.name)].append(d)
     by_simple = collections.defaultdict(list)
     for (p, full), sup in mini_cls.items(): by_simple[full.split('.')[-1]].append(sup)
     class_pkgs = collections.defaultdict(set)
@@ -403,7 +407,9 @@ def main():
             ok = (d.pkg, full) in mini_class_set or (d.sig == 'typealias' and d.name in class_pkgs)
         else:
             ok = False
-            for own in owner_candidates(d, supers):
+            if d.owner == 'ext:*':
+                ok = any(m.pkg in pkg_family(d.pkg) and m.owner.startswith('ext:') and arity_ok(d, [m]) for m in by_name.get((d.kind, d.name), []))
+            for own in ([] if ok else owner_candidates(d, supers)):
                 for pp in pkg_family(d.pkg):
                     c = midx.get((d.kind, pp, own, d.name), [])
                     if c and (d.kind == 'val' or arity_ok(d, c)): ok = True; break
