@@ -475,6 +475,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             if (p.kind == IrParameterKind.Regular || p.kind == IrParameterKind.Context) {
                 if (hasAnnotation(p.annotations, TAKES_OWNERSHIP)) takes.add(pi)
                 pi++
+            } else if (p.kind == IrParameterKind.ExtensionReceiver && hasAnnotation(p.annotations, TAKES_OWNERSHIP)) {
+                takes.add(-1)   // `@receiver:TakesOwnership`: the callee keeps the receiver (a function value that starts a coroutine)
             }
         }
         if (fq.startsWith("mini.internal.refArraySet") && params.size == 3) takes.add(2)
