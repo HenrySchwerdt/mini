@@ -417,7 +417,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val carries: Set<Int> = Summaries.of(fn)?.carries ?: emptySet()
             if (carries.isEmpty()) return AVal.untracked(rt, e.pos)
             val refs = LinkedHashSet<Int>()
-            for (i in carries) args.getOrNull(i)?.let { a -> if (!a.fresh && !a.isNull) refs += a.refs }
+            for (i in carries) {
+                // the closure the callee returns reads its receiver (`fun peek(): () -> Int = { n }`): it is a loan of the receiver
+                val a = if (i == FnSummary.RECEIVER) rv else args.getOrNull(i)
+                if (a != null && !a.fresh && !a.isNull) refs += a.refs
+            }
             return if (refs.isEmpty()) AVal.untracked(rt, e.pos) else AVal(rt, false, -1, refs, emptySet(), false, false, e.pos, caps = true)
         }
         if ((fn.mode == MemMode.Managed || fn.external) && fn.ret.annot.borrowed == null) return AVal.untracked(rt, e.pos)

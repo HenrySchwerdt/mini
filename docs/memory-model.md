@@ -1380,6 +1380,15 @@ A block handed to `launch`/`async` may borrow an owner that was declared *outsid
 reads whatever the variable holds when it runs, which the checker tracks as it tracks any use of `b` (`s155`; `s156` use after free, `s157` a closure that
 assigns the variable, `s158` returned: REJECT). `s108` changed from REJECT to ACCEPT.
 
+**Closures returned from methods that borrow `this`**
+
+A lambda returned from a method that captures the receiver (`fun peek(): () -> Int = { n }`) was already accepted, but the summary only knew
+parameters: the result was an unrelated function value, so `val f = c.peek(); c.free(); f()` was a use after free that nobody reported
+(a false negative found while writing `s165`). The summary's `carries` set now also holds the receiver (`FnSummary.RECEIVER`, `~-1` in the `.mlib` text
+form): a call of such a method yields a loan of the receiver's owner, so `f()` after `c.free()` is M0101 (`s166`) and the closure may be used while the owner
+lives (`s165`). A *local class or anonymous object* returned from such a method (`inner_receivers_super`, `localExtendsInner`) stays M0109: its instance is a
+tracked allocation that the caller must own while it holds a loan of the receiver; the model has no owner that borrows.
+
 **Strict values in collections: what was found, and why it stays M0110**
 
 The obvious design (moving an owner into `listOf(p, q)` / `ArrayList.add`, the collection's reference counting then frees it) was
