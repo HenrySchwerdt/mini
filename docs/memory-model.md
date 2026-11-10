@@ -1091,7 +1091,7 @@ fix them. The sections above stay the specification; where this one refines them
 
 ### Corpus and measurement
 
-`compiler/testdata/strict-corpus/` holds 99 small programs a Kotlin developer would write (data classes in `println`, templates and
+`compiler/testdata/strict-corpus/` started with 99 small programs (it has grown with every fix since, see the coverage section below) a Kotlin developer would write (data classes in `println`, templates and
 `toString`/`equals`/`hashCode`, scope functions, extension functions, interfaces and abstract classes, generics, nullable handling,
 builders, exceptions with objects in flight, arenas and heaps, collections, lambdas, Managed library functions). The first line of
 each file is the verdict: `// ACCEPT: ...` (must compile and, with a `.out` file, run with that output) or `// REJECT Mxxxx: ...`
@@ -1210,6 +1210,86 @@ source libraries; a version-1 library is rejected with the usual "rebuild the li
   Strict class never released, and a Strict object passed into a generic container (`Cell(Item(5))`) whose owner count was never taken
   over (a compiler temporary of tracked type now holds a counted reference that the callee takes or the scope releases); the
   Managed ones were reference cycles (the collector, section "Cycles").
+
+### Strict-mode coverage on ordinary Kotlin
+
+The corpus above is hand-written for Strict. The question this section answers is the opposite one: how much *ordinary* Kotlin, written
+without a thought for ownership, does the checker accept when a file is switched to Strict? `scripts/strict-coverage.sh` measures it:
+
+```sh
+scripts/strict-coverage.sh                    # e2e testdata + samples + 300 conformance box tests; prints the two tables below
+scripts/strict-coverage.sh --set testdata     # one set: testdata | samples | conformance
+scripts/strict-coverage.sh --sample 1500 --set conformance --list    # a bigger conformance sample, one line per program
+scripts/strict-coverage.sh --only closures    # programs whose name contains this
+```
+
+Every program (`compiler/testdata/*.kt`, `examples/` and the non-memory `website/samples/`, and the first N Kotlin box tests that pass in
+Managed mode, ordered by the hash of their name so the sample is stable and diverse) is first checked unchanged; a program that does
+not compile standalone in Managed mode is not counted. Then `@file:MemoryMode(Mode.Strict)` is put on every user file (the harness's
+generated `main` stays Managed) and `minic-native --check` is run. The outcome is classified (`tools/conformance/strict_coverage.py`, `RULES`):
+
+* **accepted**: no diagnostic.
+* **(a) correct rejection**: the program has no ownership discipline, which Strict rejects by design: an escaping allocation of a class
+  without an allocator (M0204: a Strict class needs `@AllocatedBy` or a context allocator), an allocation that is never released (M0102),
+  a borrowed value returned or stored as owned (M0109, 4.2: ownership transfer is visible in the signature), use after free or move.
+  A program that has an (a) diagnostic must change anyway, so one counts as (a) even when it also has a (b) one.
+* **(b) mini limitation**: only limitations stand in the way: a false positive, a missing summary or an unsupported construct.
+* **(c) ICE**: the compiler crashed or the checker could not analyse Strict code. None was found in any of the programs measured (not even
+  in a 1500-program conformance sample).
+
+| set (before, the 0.10.0 release checker) | programs | accepted | (a) | (b) | (c) |
+|---|---:|---:|---:|---:|---:|
+| testdata | 242 | 164 (67.8%) | 60 | 18 | 0 |
+| samples | 17 | 12 (70.6%) | 4 | 1 | 0 |
+| conformance (300) | 299 | 256 (85.6%) | 28 | 15 | 0 |
+| **all** | 558 | 432 (77.4%) | 92 | 34 | 0 |
+
+| set (after) | programs | accepted | (a) | (b) | (c) |
+|---|---:|---:|---:|---:|---:|
+| testdata | 243 | 170 (70.0%) | 55 | 18 | 0 |
+| samples | 17 | 12 (70.6%) | 4 | 1 | 0 |
+| conformance (300) | 300 | 277 (92.3%) | 20 | 3 | 0 |
+| **all** | 560 | 459 (82.0%) | 79 | 22 | 0 |
+
+Larger conformance sample (`--sample 1500`, the same selection rule): before 1292 of 1497 accepted (86.3%; 151 (a), 54 (b), 0 ICE),
+after 1398 of 1500 (93.2%; 89 (a), 13 (b), 0 ICE). (The three programs that do not compile standalone in Managed mode with the older
+release's library are not counted before.)
+
+Causes after the fixes (`--list` prints the program behind every row):
+
+| class | cause | programs |
+|---|---|---:|
+| (a) | escaping allocation without an allocator | 65 |
+| (a) | allocation never released | 6 |
+| (a) | borrowed value returned or stored as owned (M0109) | 7 |
+| (a) | use after move | 1 |
+| (b) | Strict value in a Kotlin collection or vararg (`listOf(p, q)`, `arrayOf(Shape(1))`, `HashSet.add`, `ArrayList.add`) | 16 |
+| (b) | closure over an owner stored or returned (M0112/M0109 closures, reference-counting cell of a captured `var`) | 6 |
+
+**Fixes made for the (b) groups** (each has `ACCEPT` and `REJECT` programs in the strict corpus):
+
+| Cause | Fix | Corpus |
+|---|---|---|
+| Enum constants and `object`s were tracked like allocations: `for (e in values()) if (..) return e` was M0109, `listOf(Color.RED)` M0110 | they are immortal singletons: not tracked | `s120` |
+| Fluent builders: `fun add(x: Int): Builder { ..; return this }` was M0109 | a final, non-overriding method of a Strict class that returns nothing but its receiver returns a loan of it (an `@Borrowed` result); the caller's chain is checked as a loan: freeing the result is M0107, using it after the owner's free is M0101, storing it is M0109 | `s121`-`s125` |
+| Lookup caches in the standard library: `HashSet.contains(strictObj)` escaped through `lastKey = key` guarded by `key is String` | a cast or smart cast to `String` or a primitive yields a value that is never a Strict object (not tracked) | (summary of `HashMap.containsKey`) |
+| `sequence { .. }`, `seq.map { .. }`, `seq.filter { .. }` over an owner were M0112: the lazy object keeps the lambda | an object of a Managed class that only keeps a function value in a property carries what the function borrows, like a returned closure: its result is a loan of the owners, and storing it somewhere that outlives them is still M0112/M0109 | `s126`-`s128`, `s131`-`s133` |
+| `coroutineScope { .. }`, `supervisorScope`, `withTimeout`, `withTimeoutOrNull` capturing an owner were M0109 | these finish their block before they return: the block parameter is `@Borrowed` (`launch`, `async` are not: they may outlive the call) | `s129` |
+| Value classes (`@JvmInline value class Id(val n: Int)`) were allocations: `listOf(Id(1))`, `Result.success(Id(1))` were M0110, an escaping one M0204 | a value class around a plain value is a value: not tracked (one around an owner stays tracked) | `s134` |
+
+**What remains (b), in order of size**
+
+1. *Strict values in Kotlin collections* (16 programs). By 5.4 a collection that keeps a Strict object is a Managed container keeping
+   an owner. It cannot be made sound by a summary alone: the collection holds a counted reference, `free()` deallocates at once, and
+   releasing the collection afterwards would read freed memory. What is needed is the owning collection of 5.4 (`OwnedList<T>`) or a
+   non-retaining array like the borrowing capture fields of closures, plus a rule that a temporary collection of loans dies within its
+   statement. Neither exists yet; every such program is rejected with M0110 (never accepted), so this costs usability, not soundness.
+2. *Closures over a `var` owner* (the closure shares a reference-counting cell with the variable) and closures returned from a
+   function that borrows `this` (`inner_receivers_super`).
+3. *Coroutines*: `launch`/`async` blocks may outlive the call, so an owner they capture needs structured proof; the block of
+   `startCoroutine` (a Strict receiver object) is stored in the coroutine. `launch { owner.x }` in `runBlocking` is accepted today (the
+   body of `startCoroutine` does not escape its receiver in the summary), which is a gap in the soundness of coroutines, not a new one;
+   it is listed in the checker's open items rather than fixed here.
 
 ## Cycles: the cycle collector of Managed mode
 
