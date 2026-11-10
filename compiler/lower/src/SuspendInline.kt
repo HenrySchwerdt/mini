@@ -442,7 +442,7 @@ internal fun Ast2Ir.snapshotForMemory(fn: IrFunction, body: IrBlockBody): IrBloc
     return try {
         val c = Copier(this, emptyMap(), fn, true)
         IrBlockBody(ArrayList(body.statements.map { c.stmt(it, null) }))
-    } catch (x: CopyUnsupported) {
+    } catch (x: Exception) {
         null
     }
 }
