@@ -8,6 +8,8 @@ class RecvEntry(val cls: ClassSym?, val fn: FunSym?, val lambda: LambdaExpr?, va
 
 /** What the builder knows about the function (or class initializer) whose body it is building. */
 class BodyCtx(val parent: BodyCtx?, val fn: IrFunction?, val label: String?, val isLambda: Boolean) {
+    /** an anonymous function (`fun() { }`): like a lambda for `break` / `continue` when it is the argument of an inline function */
+    var isAnonFun = false
     val recvs = ArrayList<RecvEntry>()
     /** loops being built, innermost last (with their source labels) */
     val loops = ArrayList<IrLoop>()
@@ -610,6 +612,9 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
         if (r != null) {
             val ep = IrValueParameter("<this>", irType(r), IrParameterKind.ExtensionReceiver, idx++)
             ep.parent = fn
+            // `@receiver:Ann fun T.f()` annotates the extension receiver parameter
+            val recvAnns = m?.annotations()?.filter { it.target == "receiver" }
+            if (recvAnns != null && recvAnns.isNotEmpty()) ep.annotations = annotationsOfEntries(recvAnns, sym.file ?: bodyFile())
             fn.parameters.add(ep)
         }
         addValueParameters(fn, sym.params, idx)

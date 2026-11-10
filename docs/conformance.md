@@ -776,6 +776,34 @@ What was looked at and left: `.name` of a callable reference held in a value (`v
 context-receiver overloads (`contextAndNoContextOverloads`), boxed identity of small values and folded constants, reified type parameters captured by an object in an inline function (`kt7017`), `KotlinNothingValueException`,
 lazily started file initialisers (`failInInitializer1/2`).
 
+## Ninth round (a) (branch claude/conformance-9a)
+
+Starting point: 5868 / 5953 (56 compile-error, 7 ice, 19 runtime-fail, 1 crash, 2 timeout). Result: 5898 / 5953 (99.08 %), 35 compile-error, 5 ice, 12 runtime-fail, 1 crash, 2 timeout (30 tests fixed), compared per test with the baseline: no test that passed before fails now.
+
+| fix | tests |
+|---|---:|
+| a lambda is no argument for a rigid type parameter (`shapeOk`): a local `transform: (T) -> R` no longer takes `transform { ... }` away from the extension `transform` | 3 |
+| MIR `Cleanup`: an alias chain of more than 50 copies (a constructor with 55+ arguments that all need statements) was resolved only in part, the declarations went and uses stayed | (kt51530) |
+| `releaseInterceptedContinuation`: a state machine keeps the continuation the interceptor made of it and hands it back when it completes | 1 |
+| the Unit object, not null, in `Unit?` / generic positions: `a?.f()` for a Unit `f` (also after a suspension), Unit-returning lambdas and suspend functions return the object, a generic call with `T = Unit` | 5 |
+| `x is SuspendFunction0<*>`: function objects of suspend lambdas, references and classes with a suspend function supertype carry a marker interface | 1 |
+| `.name` of a function reference held in a value (closure classes of references are named after the target; stdlib `functionObjectName`) | 3 |
+| `with(a) { call(::ext) }`: an extension of an implicit receiver is a bound reference in the arity check; `Obj::Nested` is a constructor reference; `E::name` / `Enum<*>` | 3 |
+| an inline function expanded inside its own lambda argument (`consumer { consumer(f()) }`) no longer finds the outer lambda for its parameter | 1 |
+| `fun interface F { override fun toString(): String }` and `fun interface F { fun String.foo() }` | 2 |
+| overloads `foo()` / `context(Scope) foo()` (signature key, tie-break by contexts in scope, implicit receiver as context argument) | 1 |
+| overloads and members that differ in type parameter bounds; a member of two bounds takes the more specific result type | 3 |
+| `break` / `continue` through an anonymous function passed to an inline function | 1 |
+| declared lambda parameter types bound the type variables (`foldl(0) { e: Int, acc: Long -> }`) | 1 |
+| a local `val s` over a parameter `s` of function type: `s()` calls the parameter | 1 |
+| stdlib: `ArrayList` iterators throw `ConcurrentModificationException`, `AbstractMutableList.remove` goes through `iterator()`, `sumOf` for unsigned arrays | 3 |
+| harness: `suspend fun main` and `::main` of a test are renamed, `EmptyContinuation()` has a default context (as upstream) | 1 |
+| `KotlinNothingValueException` (runtime class); a generic call typed `Nothing` throws it | 0 (the test needs the inference of `Nothing`) |
+
+Regression tests: `compiler/testdata/conformance9a_misc.kt`, `conformance9a_coroutines.kt`, `conformance9a_more.kt`.
+
+What was looked at and left: `failInInitializer1/2` (needs `ExceptionInInitializerError` and a failure state for file facades: `ObjectGet` would have to count as throwing in both emitters and `mk_object_init` remember the failure), `kt7017` (reified `T` captured by an object in an inline function: local classes are lowered once, not per instantiation), `nothingValueException` (inference of `Nothing` from `in`/`out` projections), `override val cause` of a Throwable subclass, builder inference with postponed type variables, adapted references with `vararg` passed as an array, boxed identity of small values and strings.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

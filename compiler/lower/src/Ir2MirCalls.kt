@@ -110,6 +110,17 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         out += MirStmt.Eval(r)
         return MirExpr.Unreachable(TNothing)
     }
+    // a generic call whose result type is Nothing (`fun <T> f(): T` with T inferred as Nothing) returned a value: Kotlin throws
+    if (r.type != TNothing && r.type != TUnit && r.type != TNull && mirType(c.type, c) == TNothing && !c.type.isMarkedNullable()) {
+        if (r is MirExpr.Call || r is MirExpr.VCall || r is MirExpr.ICall || r is MirExpr.RuntimeCall) out += MirStmt.Eval(r)
+        out += MirStmt.Throw(tmpOf(newBuiltin("MkKotlinNothingValueException", MirExpr.NullConst()), out))
+        return MirExpr.Unreachable(TNothing)
+    }
+    // a generic call whose result type is Unit (`fun <T> f(): T` with T = Unit): the value is the Unit object whatever the callee returned
+    if (r.type.isRef && r.type != TNothing && r.type !== TNull && mirType(c.type, c) == TUnit && !c.type.isMarkedNullable() && c.callee.returnType is TypeParamType) {
+        out += MirStmt.Eval(r)
+        return MirExpr.UnitValue
+    }
     return guardUnsetGetterResult(c, r, out)
 }
 

@@ -347,7 +347,9 @@ class TypeOps(private val sema: Sema) {
                         }
                         val ps = ArrayList<Type>()
                         for (p in f.params) ps.add(substitute(p.type ?: ErrType("sam"), m))
-                        return FunType(null, ps, substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
+                        // `fun interface F { fun String.foo(): String }`: a lambda for it has the receiver
+                        val er = f.receiver
+                        return FunType(if (er != null) substitute(er, m) else null, ps, substitute(sema.returnTypeOf(f), m), false, f.mods()?.has("suspend") == true)
                     }
                 }
             }

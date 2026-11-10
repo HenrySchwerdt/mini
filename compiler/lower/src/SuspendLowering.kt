@@ -167,7 +167,7 @@ private class SmBuilder(val a: Ast2Ir, val fn: IrFunction) {
         if (loop == null) {
             val rv = retVar
             if (rv != null && value == null) emit(IrReturn(step, get(rv), nothing))
-            else emit(IrReturn(step, value ?: a.nullConst(), nothing))
+            else emit(IrReturn(step, value ?: a.unitValue(), nothing))
             return
         }
         setHandler(handlerAt(targetDepth))
@@ -400,7 +400,8 @@ private class SmBuilder(val a: Ast2Ir, val fn: IrFunction) {
     // ---- statements ----------------------------------------------------------------------------------------------
 
     fun assignTo(target: IrVariable?, e: IrExpression) {
-        if (target == null || isUnitOrNothing(e.type)) {
+        // (a Unit value stored into a `Unit?` / `Any` variable, as the branch of `a?.suspendUnitCall()`, is the Unit object, not null)
+        if (target == null || a.isNothing(e.type) || (a.isUnit(e.type) && a.isUnit(target.type))) {
             emit(e)
         } else {
             emit(set(target, e))
@@ -622,7 +623,7 @@ private class SmBuilder(val a: Ast2Ir, val fn: IrFunction) {
         machine.condition = a.constBool(true)
         blocks.add(cur)
         for (s in body.statements) emitInto(null, s)
-        emit(IrReturn(step, a.nullConst(), nothing))
+        emit(IrReturn(step, a.unitValue(), nothing))
         // the dispatch
         val ws = ArrayList<IrBranch>()
         for (b in blocks) {
@@ -652,7 +653,7 @@ private class SmBuilder(val a: Ast2Ir, val fn: IrFunction) {
         val stepStmts = ArrayList<IrStatement>()
         stepStmts.addAll(prelude)
         stepStmts.add(machine)
-        stepStmts.add(IrReturn(step, a.nullConst(), nothing))
+        stepStmts.add(IrReturn(step, a.unitValue(), nothing))
         step.body = IrBlockBody(stepStmts)
         val stepType = FunType(null, listOf(implT, anyN), anyN, false, false)
         val fe = IrFunctionExpression(step, stepType, "LAMBDA")
@@ -778,7 +779,7 @@ fun Ast2Ir.lowerSuspendBody(fn: IrFunction, body0: IrBlockBody): IrBlockBody {
         // no suspension point: an ordinary function that returns its value
         val stmts = ArrayList<IrStatement>(body.statements)
         val orig = fn.origReturnType
-        if (orig != null && isUnit(orig)) stmts.add(IrReturn(fn, nullConst(), sema.nothingType))
+        if (orig != null && isUnit(orig)) stmts.add(IrReturn(fn, unitValue(), sema.nothingType))
         return IrBlockBody(stmts)
     }
     return b.build(body)

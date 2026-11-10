@@ -91,8 +91,8 @@ public class ClosedSendChannelException(message: String?) : IllegalStateExceptio
 public class ClosedReceiveChannelException(message: String?) : NoSuchElementException(message)
 
 public interface SendChannel<in E> {
-    public suspend fun send(element: E)
-    public fun trySend(element: E): Boolean
+    public suspend fun send(@kotlin.internal.TakesOwnership element: E)
+    public fun trySend(@kotlin.internal.TakesOwnership element: E): Boolean
     public fun close(cause: Throwable?): Boolean
 }
 

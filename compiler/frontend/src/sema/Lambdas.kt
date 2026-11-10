@@ -111,7 +111,9 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     flow = savedFlow
     var ret: Type
     val expRet = ef?.ret
-    if (expRet != null && ops.isUnit(cs?.resolveFixed(expRet) ?: expRet)) {
+    val expRetFixed = if (expRet != null) (cs?.resolveFixed(expRet) ?: expRet) else null
+    // (`() -> Unit?` takes any value of the lambda body: `{ null }` is no Unit lambda)
+    if (expRetFixed != null && ops.isUnit(expRetFixed) && !expRetFixed.nullable) {
         ret = sema.unitType
     } else {
         val types = ArrayList<Type>()
@@ -269,7 +271,10 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             cands.add(rc)
         }
     } else {
-        val ri = resolveReceiver(rcv, null)
+        val ri0 = resolveReceiver(rcv, null)
+        // `Obj::Nested` where `Nested` is a class declared in the object: a reference to its constructor, not a bound member of the object
+        val ro = (ri0 as? ValueRecv)?.type as? ClassType
+        val ri: RecvInfo? = if (ro != null && ro.cls.isObject && ro.cls.nested[name] != null && members.funsNamed(ro, name).isEmpty()) ClassRecv(ro.cls) else ri0
         if (ri is ClassRecv) {
             var ct = ri.cls.thisType()
             if (e.typeArgs.isNotEmpty() && e.typeArgs.size == ct.args.size) {
