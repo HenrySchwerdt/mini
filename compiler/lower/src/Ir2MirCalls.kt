@@ -124,7 +124,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     // C interop: external functions of C, the kotlinx.cinterop intrinsics, @CStruct fields
     interopCall(c, owner, out)?.let { return it }
     // enumValues<E>() / enumValueOf<E>(name) / enumEntries<E>(): the generated values / valueOf / entries of E
-    if (parent is IrFile && parent.packageFqName == "kotlin" && owner.isInline && c.typeArguments.size == 1 &&
+    if (parent is IrFile && (parent.packageFqName == "kotlin" || (parent.packageFqName == "kotlin.enums" && name == "enumEntries")) && owner.isInline && c.typeArguments.size == 1 &&
         (name == "enumValues" || name == "enumValueOf" || name == "enumEntries")
     ) {
         val ec = substituted(c.typeArguments[0] ?: unsupported(c, "$name without a type argument")).classOrNull

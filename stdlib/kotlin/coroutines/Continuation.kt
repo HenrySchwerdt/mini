@@ -77,14 +77,16 @@ public object EmptyCoroutineContext : CoroutineContext {
 internal class CombinedContext(private val left: CoroutineContext, private val element: CoroutineContext.Element) : CoroutineContext {
     @Suppress("UNCHECKED_CAST")
     override fun <E : CoroutineContext.Element> get(key: CoroutineContext.Key<E>): E? {
-        if (element.key === key) return element as E
+        val e = element[key]
+        if (e != null) return e
         return left[key]
     }
 
     override fun <R> fold(initial: R, operation: (R, CoroutineContext.Element) -> R): R = operation(left.fold(initial, operation), element)
 
     override fun minusKey(key: CoroutineContext.Key<*>): CoroutineContext {
-        if (element.key === key) return left
+        @Suppress("UNCHECKED_CAST")
+        if (element[key as CoroutineContext.Key<CoroutineContext.Element>] != null) return left
         val newLeft = left.minusKey(key)
         return if (newLeft === left) this else if (newLeft === EmptyCoroutineContext) element else CombinedContext(newLeft, element)
     }
@@ -131,3 +133,34 @@ internal fun currentContinuationIntrinsic(): Continuation<Any?> = throw IllegalS
 /** The context of the coroutine that calls this suspend property. */
 public suspend val coroutineContext: CoroutineContext
     get() = currentContinuationIntrinsic().context
+
+/**
+ * A key of a polymorphic element: [safeCast] converts an element with the key [baseKey] (or any key derived from it) to [E].
+ */
+public abstract class AbstractCoroutineContextKey<B : CoroutineContext.Element, E : B>(
+    baseKey: CoroutineContext.Key<B>,
+    private val safeCast: (element: CoroutineContext.Element) -> E?
+) : CoroutineContext.Key<E> {
+    private val topmostKey: CoroutineContext.Key<*> = if (baseKey is AbstractCoroutineContextKey<*, *>) baseKey.topmostKey else baseKey
+
+    internal fun tryCast(element: CoroutineContext.Element): E? = safeCast(element)
+    internal fun isSubKey(key: CoroutineContext.Key<*>): Boolean = key === this || topmostKey === key
+}
+
+/** The implementation of [CoroutineContext.Element.get] for elements with polymorphic keys. */
+public fun <E : CoroutineContext.Element> CoroutineContext.Element.getPolymorphicElement(key: CoroutineContext.Key<E>): E? {
+    if (key is AbstractCoroutineContextKey<*, *>) {
+        @Suppress("UNCHECKED_CAST")
+        return if (key.isSubKey(this.key)) key.tryCast(this) as? E else null
+    }
+    @Suppress("UNCHECKED_CAST")
+    return if (this.key === key) this as E else null
+}
+
+/** The implementation of [CoroutineContext.Element.minusKey] for elements with polymorphic keys. */
+public fun CoroutineContext.Element.minusPolymorphicKey(key: CoroutineContext.Key<*>): CoroutineContext {
+    if (key is AbstractCoroutineContextKey<*, *>) {
+        return if (key.isSubKey(this.key) && key.tryCast(this) != null) EmptyCoroutineContext else this
+    }
+    return if (this.key === key) EmptyCoroutineContext else this
+}

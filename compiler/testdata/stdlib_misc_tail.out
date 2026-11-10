@@ -67,6 +67,13 @@ false
 [x]
 7
 [1, 2, 3, 4, 5]
+false
+true
+false
+{b=2}
+[1, 2, 3]
+[1, 2, 3, null, null]
+[1, 2, 3]
 42
 == ObservableProperty
 4

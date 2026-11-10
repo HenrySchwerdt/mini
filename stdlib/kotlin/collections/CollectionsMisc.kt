@@ -5,7 +5,6 @@
  */
 package kotlin.collections
 
-import kotlin.random.Random
 import kotlin.reflect.KProperty
 
 public inline fun <T> Iterable(crossinline iterator: () -> Iterator<T>): Iterable<T> = object : Iterable<T> {
@@ -53,4 +52,29 @@ public operator fun <V, V1 : V> MutableMap<in String, out V>.getValue(thisRef: A
     val v = m[key]
     if (v == null && !m.containsKey(key)) throw NoSuchElementException("Key " + key + " is missing in the map.")
     return v as V1
+}
+
+/** Removes the entry for [key] only if it is mapped to [value] (`MutableMap.remove(key, value)` of the JVM). */
+public fun <K, V> MutableMap<K, V>.remove(key: K, value: V): Boolean {
+    if (containsKey(key) && this[key] == value) {
+        remove(key)
+        return true
+    }
+    return false
+}
+
+public fun <T> ArrayDeque<T>.toArray(): Array<Any?> {
+    val result = arrayOfNulls<Any?>(size)
+    var i = 0
+    for (e in this) result[i++] = e
+    return result
+}
+
+@Suppress("UNCHECKED_CAST")
+public fun <T> ArrayDeque<*>.toArray(array: Array<T>): Array<T> {
+    val result: Array<T> = if (array.size >= size) array else array.copyOf(size) as Array<T>
+    var i = 0
+    for (e in this) result[i++] = e as T
+    if (result.size > size) result[size] = null as T
+    return result
 }

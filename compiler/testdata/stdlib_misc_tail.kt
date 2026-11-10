@@ -110,6 +110,15 @@ fun testMisc() {
     val z: Int by mm
     println(z)
     println(sequenceOf(1, 2, 3, 4, 5).shuffled(Random(3)).toList().sorted())
+    val rm = mutableMapOf("a" to 1, "b" to 2)
+    println(rm.remove("a", 2))
+    println(rm.remove("a", 1))
+    println(rm.remove("z", 1))
+    println(rm)
+    val dq = ArrayDeque(listOf(1, 2, 3))
+    println(dq.toArray().toList())
+    println(dq.toArray(arrayOfNulls<Int>(5)).toList())
+    println(dq.toArray(arrayOfNulls<Int>(2)).toList())
     val b = Box(1)
     val kp: KMutableProperty1<Box, Int> = Box::v
     kp.setValue(b, kp, 42)
