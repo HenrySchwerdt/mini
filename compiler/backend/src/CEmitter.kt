@@ -1048,7 +1048,7 @@ object CEmitter {
                 is MirExpr.Unbox -> unboxInline(e) ?: "mk_checked_unbox_${boxName(e.to)}(${obj(e.operand)})"
                 is MirExpr.Cast -> if (e.mode == MirExpr.CastMode.Checked && prunedClass(e.to)) cast(MirExpr.Cast(e.operand, e.to, MirExpr.CastMode.Unchecked))
                     else (if (e.mode == MirExpr.CastMode.Checked) castInline(e) else null) ?: cast(e)
-                is MirExpr.IsInstance -> arrayIs(e) ?: "${if (e.target === TString || e.target === TNString || e.target is TBoxed) "mkh_is_exact" else if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
+                is MirExpr.IsInstance -> arrayIs(e) ?: "${if (e.exact || e.target === TString || e.target === TNString || e.target is TBoxed) "mkh_is_exact" else if (isClassTarget(e.target)) "mkh_is_class" else "mk_is_instance"}((const MkObject *)${expr(e.operand)}, &${typeInfoOf(e.target)})"
                 is MirExpr.NotNull -> notNullInline(e) ?: "((${cType(e.type)})mkh_nn((MkObject *)${expr(e.operand)}))"
                 is MirExpr.FieldGet -> "(((struct ${e.owner} *)${expr(e.obj)})->${Mangling.field(e.field)})"
                 is MirExpr.VCall -> {
@@ -1417,8 +1417,20 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
  * elements right behind the length); a failing index or a NULL array takes the runtime's panic. The parentheses keep the macros
  * of this block from expanding the names of the real functions. */
 #define MKH_RA_ITEMS(a) ((MkObject **)(((MkArray *)(a)) + 1))
+/* The failing paths of the inline accessors always abort (mk_panic): declared so, the C compiler may keep loads of loop-invariant
+ * fields in registers across a test that "might call" the runtime. */
+#if defined(__GNUC__) || defined(__clang__)
+#define MKH_COLD_NORETURN static __attribute__((noreturn, cold, noinline, unused))
+#else
+#define MKH_COLD_NORETURN static
+#endif
+MKH_COLD_NORETURN void mkh_fail_ra_get(MkObject *a, MkInt i) { (void)(mk_ref_array_get_b)(a, i); mk_panic("array access"); }
+MKH_COLD_NORETURN void mkh_fail_ra_set_o(MkObject *a, MkInt i, MkObject *v) { (mk_ref_array_set_o)(a, i, v); mk_panic("array access"); }
+MKH_COLD_NORETURN void mkh_fail_ra_set(MkObject *a, MkInt i, MkObject *v) { (mk_ref_array_set)(a, i, v); mk_panic("array access"); }
+MKH_COLD_NORETURN void mkh_fail_str_length(const MkString *s) { (void)(mk_string_length)(s); mk_panic("NullPointerException"); }
+MKH_COLD_NORETURN void mkh_fail_str_char_at(const MkString *s, MkInt i) { (void)(mk_string_char_at)(s, i); mk_panic("StringIndexOutOfBoundsException"); }
 MKH_FN MkObject *mkh_ra_get_b(MkObject *a, MkInt i) {
-    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) return (mk_ref_array_get_b)(a, i);
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) mkh_fail_ra_get(a, i);
     return MKH_RA_ITEMS(a)[i];
 }
 MKH_FN MkObject *mkh_ra_get(MkObject *a, MkInt i) {
@@ -1427,14 +1439,14 @@ MKH_FN MkObject *mkh_ra_get(MkObject *a, MkInt i) {
     return v;
 }
 MKH_FN void mkh_ra_set_o(MkObject *a, MkInt i, MkObject *v) {
-    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) { (mk_ref_array_set_o)(a, i, v); return; }
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) mkh_fail_ra_set_o(a, i, v);
     MkObject **p = &MKH_RA_ITEMS(a)[i];
     MkObject *old = *p;
     *p = v;
     MKH_REL(old);
 }
 MKH_FN void mkh_ra_set(MkObject *a, MkInt i, MkObject *v) {
-    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) { (mk_ref_array_set)(a, i, v); return; }
+    if (__builtin_expect(a == NULL || (uint32_t)i >= (uint32_t)((MkArray *)a)->length, 0)) mkh_fail_ra_set(a, i, v);
     MKH_RETAIN(v);
     mkh_ra_set_o(a, i, v);
 }
@@ -1450,11 +1462,11 @@ MKH_FN MkInt mkh_ra_length(MkObject *a) {
 
 /* Strings (minirt.h MkString): the length and the indexing of the common case are inline; NULL and a bad index take the runtime. */
 MKH_FN MkInt mkh_str_length(const MkString *s) {
-    if (__builtin_expect(s == NULL, 0)) return (mk_string_length)(s); /* a polluted null: the runtime traps with a NullPointerException */
+    if (__builtin_expect(s == NULL, 0)) mkh_fail_str_length(s); /* a polluted null: the runtime traps with a NullPointerException */
     return s->length;
 }
 MKH_FN MkChar mkh_str_char_at(const MkString *s, MkInt i) {
-    if (__builtin_expect(s == NULL || (uint32_t)i >= (uint32_t)s->length, 0)) return (mk_string_char_at)(s, i);
+    if (__builtin_expect(s == NULL || (uint32_t)i >= (uint32_t)s->length, 0)) mkh_fail_str_char_at(s, i);
     return mk_string_at(s, i);
 }
 #define mk_string_length(s) mkh_str_length((s))

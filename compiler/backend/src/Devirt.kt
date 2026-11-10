@@ -336,7 +336,7 @@ object Devirt {
             is MirExpr.Box -> { val a = expr(e.operand); if (a === e.operand) e else MirExpr.Box(a, e.to) }
             is MirExpr.Unbox -> { val a = expr(e.operand); if (a === e.operand) e else MirExpr.Unbox(a, e.to) }
             is MirExpr.Cast -> { val a = expr(e.operand); if (a === e.operand) e else MirExpr.Cast(a, e.to, e.mode) }
-            is MirExpr.IsInstance -> { val a = expr(e.operand); if (a === e.operand) e else MirExpr.IsInstance(a, e.target) }
+            is MirExpr.IsInstance -> { val a = expr(e.operand); if (a === e.operand) e else MirExpr.IsInstance(a, e.target, e.exact) }
             is MirExpr.NotNull -> { val a = expr(e.operand); if (a === e.operand) e else MirExpr.NotNull(a) }
             is MirExpr.FieldGet -> { val a = expr(e.obj); if (a === e.obj) e else MirExpr.FieldGet(a, e.owner, e.field, e.type) }
             is MirExpr.VCall -> {
