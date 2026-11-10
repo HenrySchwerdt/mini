@@ -64,6 +64,24 @@ class ConstraintSystem(private val sema: Sema) {
         }
     }
 
+    /** unfixed variables that are type arguments (not the type itself) in [t] */
+    fun nestedVars(t: Type, top: Boolean, out: ArrayList<TypeVariable>) {
+        when (t) {
+            is VarType -> if (!top && t.v.fixed == null && !out.contains(t.v)) out.add(t.v)
+            is ClassType -> for (a in t.args) {
+                val x = a.type
+                if (x != null) nestedVars(x, false, out)
+            }
+            is FunType -> {
+                val r = t.receiver
+                if (r != null) nestedVars(r, false, out)
+                for (p in t.params) nestedVars(p, false, out)
+                nestedVars(t.ret, false, out)
+            }
+            else -> {}
+        }
+    }
+
     fun unfixedVars(t: Type, out: ArrayList<TypeVariable>) {
         when (t) {
             is VarType -> {
@@ -241,7 +259,7 @@ class ConstraintSystem(private val sema: Sema) {
      * upper bounds (`out += v` with `out: MutableList<Set<String>>`: the `Iterable<T>` overload would need `String <: Set<String>`).
      */
     fun consistent(): Boolean {
-        for (v in vars) {
+        for (v in vars + sema.openVars) {
             for (l in ArrayList(v.lower)) {
                 val lr = resolveFixed(l)
                 if (lr is IntLiteralType || lr is ErrType || hasVars(lr)) continue
@@ -261,9 +279,10 @@ class ConstraintSystem(private val sema: Sema) {
         fixInOrder(vars)
     }
 
-    fun fixVarsOf(t: Type) {
+    fun fixVarsOf(t: Type, except: List<TypeVariable> = emptyList()) {
         val l = ArrayList<TypeVariable>()
         unfixedVars(resolveFixed(t), l)
+        l.removeAll(except)
         fixInOrder(l)
     }
 
@@ -299,6 +318,7 @@ class ConstraintSystem(private val sema: Sema) {
         unfixedVars(resolveFixed(t), dep)
         for (d in dep) {
             if (d.solving) return null
+            if (sema.openVars.contains(d)) continue // a postponed variable of a builder lambda stays in the type
             fix(d)
         }
         return resolveFixed(t)

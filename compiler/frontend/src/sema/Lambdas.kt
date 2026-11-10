@@ -85,6 +85,8 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     target.inlinable = inlinable && !target.isSuspend
     targets.add(target)
     lambdaDepth++
+    val savedInArg = inArgCall
+    inArgCall = false
     // statements of the body, value of the last expression
     var last: Type = sema.unitType
     var lastIsExpr = false
@@ -105,6 +107,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
         i++
     }
     synthDepth = depth0
+    inArgCall = savedInArg
     lambdaDepth--
     targets.removeAt(targets.size - 1)
     scope = savedScope

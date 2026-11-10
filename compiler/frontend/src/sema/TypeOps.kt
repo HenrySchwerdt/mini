@@ -503,6 +503,18 @@ class TypeOps(private val sema: Sema) {
             if (all) return c
         }
         if (depth > 3) return sema.anyType
+        // function types of the same shape (`if (c) { { 1 } } else { { 1f } }`): the result types are joined
+        val f0 = ts[0]
+        if (f0 is FunType && ts.all { it is FunType && it.arity == f0.arity && it.suspend == f0.suspend && it.contexts == f0.contexts && (it.receiver == null) == (f0.receiver == null) }) {
+            val fs = ts.map { it as FunType }
+            var sameParams = true
+            for (f in fs) {
+                val pa = allParams(f)
+                val pb = allParams(f0)
+                for (k in pa.indices) if (!isSubtype(pa[k], pb[k]) || !isSubtype(pb[k], pa[k])) sameParams = false
+            }
+            if (sameParams) return FunType(f0.receiver, f0.params, commonSuperType(fs.map { it.ret }), false, f0.suspend, f0.contexts)
+        }
         // type parameters / function types / intersections: go through their bounds
         val expanded = ArrayList<Type>()
         for (t in ts) expanded.add(t)

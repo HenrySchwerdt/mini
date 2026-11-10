@@ -292,7 +292,8 @@ fun Sema.checkClass(c: ClassSym) {
     }
     for (en in d.enumEntries) {
         val ec = BodyChecker(this, file)
-        ec.scope = bodyScope
+        // the arguments of an entry are no instance code: no `this` of the enum class
+        ec.scope = ClassScope(c, c.headerScope ?: bodyScope, false)
         ec.enumEntryCall(c, en)
         val body = enumEntryBodies[en]
         if (body != null) checkClass(body)
