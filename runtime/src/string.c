@@ -395,6 +395,13 @@ MkInt mk_string_hash_range(const MkString *s, MkInt from, MkInt to) {
     uint32_t h = 0;
     if (mk_string_is_latin1(s)) {
         const uint8_t *b = mk_string_bytes(s);
+        if (to - from <= 8) { /* a word: a plain loop (the unrolled and vectorized forms cost more to set up than they save) */
+#if defined(__clang__)
+#pragma clang loop unroll(disable) vectorize(disable)
+#endif
+            for (MkInt i = from; i < to; i++) h = h * 31u + b[i];
+            return (MkInt)h;
+        }
         for (MkInt i = from; i < to; i++) h = h * 31u + b[i];
     } else {
         for (MkInt i = from; i < to; i++) h = h * 31u + s->chars[i];
@@ -403,8 +410,7 @@ MkInt mk_string_hash_range(const MkString *s, MkInt from, MkInt to) {
 }
 
 bool mk_string_equals_range(const MkString *key, const MkString *s, MkInt from, MkInt to) {
-    check_range(s, from, to);
-    if (key == NULL) return false;
+    if (key == NULL) return false; /* (the range was checked by mk_string_hash_range or by the caller: it must be valid) */
     size_t n = (size_t)(to - from);
     if ((size_t)key->length != n) return false;
     bool lk = mk_string_is_latin1(key), ls = mk_string_is_latin1(s);
