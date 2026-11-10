@@ -359,6 +359,12 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
         return v
     }
 
+    override fun loadAcquirePtr(ptr: ApiVal, align: Int, name: String): ApiVal {
+        val v = load(IrType.PTR, ptr, align, name)
+        LLVMSetOrdering(v.ref, 4) // LLVMAtomicOrderingAcquire
+        return v
+    }
+
     override fun storeTagged(v: ApiVal, ptr: ApiVal, tag: String) {
         val s = LLVMBuildStore(builder, v.ref, ptr.ref)
         LLVMSetMetadata(s, kTbaa, tbaaTag(tag))
