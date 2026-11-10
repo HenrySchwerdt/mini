@@ -104,6 +104,11 @@ public open class NegativeArraySizeException : RuntimeException {
     public constructor(message: String?) : super(message)
 }
 
+public open class KotlinNothingValueException : RuntimeException {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+}
+
 public open class UninitializedPropertyAccessException : RuntimeException {
     public constructor() : super()
     public constructor(message: String?) : super(message)

@@ -65,6 +65,8 @@ class CallInfo(val fn: FunSym, val typeArgs: List<Type>, val args: List<Arg>, va
     var isInvoke = false
     /** the receiver is the first argument of an `invoke` of a function type with receiver */
     var recvAsFirstArg = false
+    /** the implicit receivers (`with(scope) { }`, lambdas with receiver) that supply the context parameters of [fn], per parameter (null: none fits) */
+    var contextRecvs: List<RecvRef?> = emptyList()
 }
 
 class Records {

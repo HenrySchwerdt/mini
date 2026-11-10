@@ -18,6 +18,8 @@ import mini.internal.refArraySetOwned
 public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     internal var array: Any
     internal var length: Int = 0
+    /** structural modifications so far: an iterator that sees another count than it started with fails (ConcurrentModificationException) */
+    internal var modCount: Int = 0
 
     public constructor() {
         array = refArrayNew(4)
@@ -60,6 +62,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         ensureCapacity(length + 1)
         refArraySetOwned(array, length, element)
         length++
+        modCount++
         return true
     }
 
@@ -73,6 +76,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         }
         refArraySetOwned(array, index, element)
         length++
+        modCount++
     }
 
     override fun addAll(elements: Collection<E>): Boolean {
@@ -87,6 +91,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
             length++
             remaining--
         }
+        modCount++
         return true
     }
 
@@ -101,7 +106,15 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         }
         refArraySet(array, length - 1, null)
         length--
+        modCount++
         return old
+    }
+
+    override fun remove(element: E): Boolean {
+        val i = indexOf(element)
+        if (i < 0) return false
+        removeAt(i)
+        return true
     }
 
     override fun clear() {
@@ -111,6 +124,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
             i++
         }
         length = 0
+        modCount++
     }
 
     override fun indexOf(element: E): Int {
@@ -158,12 +172,14 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
 internal class ArrayListIterator<E>(private val list: ArrayList<E>) : MutableIterator<E> {
     private var index: Int = 0
     private var last: Int = -1
+    private var expectedModCount: Int = list.modCount
 
     override fun hasNext(): Boolean = index < list.length
 
     @Suppress("UNCHECKED_CAST")
     @ReturnsBorrowed
     override fun next(): E {
+        if (list.modCount != expectedModCount) throw ConcurrentModificationException()
         if (index >= list.length) mini.internal.throwNoSuchElement(null)
         last = index
         index++
@@ -172,7 +188,9 @@ internal class ArrayListIterator<E>(private val list: ArrayList<E>) : MutableIte
 
     override fun remove() {
         if (last < 0) mini.internal.throwIllegalState(null)
+        if (list.modCount != expectedModCount) throw ConcurrentModificationException()
         list.removeAt(last)
+        expectedModCount = list.modCount
         if (last < index) index--
         last = -1
     }

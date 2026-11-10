@@ -182,6 +182,13 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isCs else MirExpr.Unary(UnaryOp.Not, isCs)
             }
             val inst = if (target is TBoxed) target else if (target.isPrimitive) TBoxed(target) else target.nonNull()
+            if (substituted(e.typeOperand).classFqName?.startsWith("kotlin.coroutines.SuspendFunction") == true && v.type.isRef) {
+                // `x is SuspendFunction0<*>`: a function object of the arity with the marker of suspend lambdas and references
+                val nv = if (v is MirExpr.Local) v else tmpOfPlain(v, out)
+                var sTest: MirExpr = MirExpr.Binary(BinaryOp.AndAnd, MirExpr.IsInstance(nv, inst), MirExpr.IsInstance(nv, suspendMarkerInterface()))
+                if (e.typeOperand.isMarkedNullable()) sTest = MirExpr.Binary(BinaryOp.OrOr, MirExpr.Binary(BinaryOp.IdEq, nv, MirExpr.NullConst()), sTest)
+                return if (e.operator == IrTypeOperator.INSTANCEOF) sTest else MirExpr.Unary(UnaryOp.Not, sTest)
+            }
             var test: MirExpr = if (target == TUnit) MirExpr.Binary(BinaryOp.IdEq, asAny(v), unitInstance()) else MirExpr.IsInstance(v, inst)
             // `x is T?` (also a reified T substituted by a nullable type, `null.foo<A?>()`): null is an instance
             val top = e.typeOperand
@@ -286,7 +293,7 @@ internal fun Ir2Mir.convertTo(e0: MirExpr, to: MirType, at: IrElement): MirExpr 
     if (from === TNull && (to.isPrimitive || to == TNothing)) return MirExpr.Unreachable(to)
     if (isNumericType(from) && isNumericType(to)) return MirExpr.Convert(e, to)
     // the Unit value in a generic position (`Result.success(Unit)`, a `Continuation<Unit>`) is null, like the result of a Unit lambda
-    if (e is MirExpr.Local && from == TUnit && to.isRef) return MirExpr.NullConst(to)
+    if (e is MirExpr.Local && from == TUnit && to.isRef) return unitInstance()
     // a value class and its representation have the same machine value (the elements of a `UIntArray` are `Int`s)
     if ((from is TInline && from.repr == to) || (to is TInline && to.repr == from)) return MirExpr.Cast(e, to, MirExpr.CastMode.Unchecked)
     if (from.isPrimitive && to.isPrimitive) unsupported(at, "conversion from $from to $to")

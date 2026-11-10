@@ -642,7 +642,7 @@ fun Ast2Ir.findLoop(label: String?, at: Ast): IrLoop {
         } else {
             for (i in c.loops.indices.reversed()) if (c.loops[i].label == label) return c.loops[i]
         }
-        if (!c.isLambda) break
+        if (!c.isLambda && !c.isAnonFun) break
         c = c.parent
     }
     if (label == null) fail(at, "break / continue outside of a loop")

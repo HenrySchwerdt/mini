@@ -39,6 +39,13 @@ internal fun Ir2Mir.functionArity(t: Type): Int? {
     return rest.toIntOrNull()
 }
 
+/** The interface that tells the function object of a suspend lambda or reference from a plain `FunctionN` of the same arity. */
+internal fun Ir2Mir.suspendMarkerInterface(): TObject = suspendMarker ?: run {
+    val cName = Mangling.className("kotlin", listOf("SuspendFunctionMarker"))
+    extraClasses += MirClass("kotlin.SuspendFunctionMarker", cName, true, null, emptyList(), emptyList(), emptyList(), emptyList())
+    TObject("kotlin.SuspendFunctionMarker", cName, false, true).also { suspendMarker = it }
+}
+
 /** The MIR interface type for `FunctionN`, creating it on first use. */
 internal fun Ir2Mir.functionInterface(arity: Int): TObject = functionInterfaces.getOrPut(arity) {
     val cName = Mangling.className("kotlin", listOf("Function$arity"))
@@ -159,6 +166,7 @@ internal fun Ir2Mir.closureClass(
     sam: SamTarget? = null,
     borrowedCaps: List<Boolean> = emptyList(),
     hashSeed: Int? = null,
+    suspend: Boolean = false,
     makeBody: (self: MirLocal, args: List<MirLocal>, caps: List<MirLocal>, out: MutableList<MirStmt>) -> Unit,
 ): Pair<String, TObject> {
     val iface = if (sam == null) functionInterface(arity) else null
@@ -206,10 +214,16 @@ internal fun Ir2Mir.closureClass(
             vt = listOf(null, eh.first.cName, eh.second.cName)
         }
     }
+    if (sam != null && sam.method.name in anyMemberNames && sam.method.parameters.size == (if (sam.method.name == "equals") 2 else 1)) {
+        // the SAM is a member of Any (`fun interface F { override fun toString(): String }`): the vtable slot of that member calls the lambda
+        val slot = when (sam.method.name) { "toString" -> 0; "equals" -> 1; else -> 2 }
+        vt = vt.mapIndexed { i, v -> if (i == slot) invokeName else v }
+    }
     if (iface != null) {
+        val marker = if (suspend) suspendMarkerInterface().cName else null
         extraClasses += MirClass(
-            qualified, cName, false, null, fields, listOf(iface.cName), vt,
-            listOf(MirItable(iface.cName, listOf(invokeName))),
+            qualified, cName, false, null, fields, listOfNotNull(iface.cName, marker), vt,
+            listOfNotNull(MirItable(iface.cName, listOf(invokeName)), if (marker != null) MirItable(marker, emptyList()) else null),
         )
     } else {
         val ifaces = allInterfaces(sam!!.iface) + sam.iface
@@ -298,7 +312,7 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
         val shared = refClassCache[refKey]
         if (shared != null) return MirExpr.New(shared.first, caps.map { MirExpr.Local(localOf(it, e)) }, shared.second)
     }
-    val made = closureClass(currentFunctionName() + ".<lambda>", arity, capTypes, sam, borrowed, if (refKey != null) refKey.hashCode() else null) { _, args, capLocals, body ->
+    val made = closureClass(currentFunctionName() + (if (rt != null) ".::" + rt.name else ".<lambda>"), arity, capTypes, sam, borrowed, if (refKey != null) refKey.hashCode() else null, fn.isSuspend && sam == null) { _, args, capLocals, body ->
         for ((i, v) in caps.withIndex()) locals[v] = capLocals[i]
         currentFunction = fn
         currentReturn = if (sam != null) sam.ret else if (ret == TUnit) TUnit else anyNullable
@@ -311,7 +325,7 @@ internal fun Ir2Mir.lambdaValue(e: IrFunctionExpression, out: MutableList<MirStm
         }
         convertBodyOf(fn, currentReturn, body)
         if (body.lastOrNull() !is MirStmt.Return) {
-            body += if (sam == null) MirStmt.Return(MirExpr.NullConst(anyNullable))
+            body += if (sam == null) MirStmt.Return(unitInstance())
             else if (sam.ret == TUnit) MirStmt.Return(null) else MirStmt.Return(MirExpr.Unreachable(sam.ret))
         }
     }
@@ -497,7 +511,7 @@ internal fun Ir2Mir.functionReference(e: IrFunctionReference, out: MutableList<M
     // a local function of Strict code reads Strict owners through its captures: like the captures of a lambda they are borrowed (the
     // memory checker proved that the function value does not outlive them), counting them would release a freed object
     val borrowedCaps = boundTypes.map { false } + liftedCaps.map { borrowedCapture(it) }
-    val made = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, borrowedCaps, tid * 7919 + boundIdx.size) { _, args, capLocals, body ->
+    val made = closureClass(currentFunctionName() + ".::" + name, arity, capTypes, null, borrowedCaps, tid * 7919 + boundIdx.size, target.isSuspend) { _, args, capLocals, body ->
         val actual = ArrayList<MirExpr>()
         var k = 0
         for ((i, p) in params.withIndex()) {
@@ -574,13 +588,16 @@ internal fun Ir2Mir.callResolved(target: IrFunction, args: List<MirExpr>, at: Ir
 /** The single abstract method of a `fun interface` and its erased signature. */
 internal class SamTarget(val iface: IrClass, val method: IrSimpleFunction, val argTypes: List<MirType>, val ret: MirType)
 
+private val anyMemberNames = setOf("toString", "hashCode", "equals")
+
 internal fun Ir2Mir.samTarget(iface: IrClass, at: IrElement): SamTarget {
     if (iface !in classInfos) unsupported(at, "SAM conversion to '${iface.name}'")
     // the abstract method of the interface itself, or the one it inherits (`fun interface C : G<Char>`)
     val all = (listOf(iface) + allInterfaces(iface)).flatMap { i -> interfaceMethods(i) }.distinct()
     // an abstract method that a sub-interface implements (`fun interface Proxy : I { override fun f() = g(); fun g(): Int }`) is not the SAM
     val abstract = all.filter { it.modality == IrModality.ABSTRACT && all.none { o -> o !== it && o.modality != IrModality.ABSTRACT && it in allOverridden(o) } }
-    val m = abstract.singleOrNull() ?: unsupported(at, "SAM conversion to '${iface.name}' (needs exactly one abstract method)")
+    // `fun interface F { override fun toString(): String }`: the abstract redeclaration of a member of Any is the single abstract method
+    val m = abstract.singleOrNull() ?: all.singleOrNull { it.name in anyMemberNames && !hasBody(it) } ?: unsupported(at, "SAM conversion to '${iface.name}' (needs exactly one abstract method)")
     val args = m.parameters.drop(1).map { mirType(it.type, it) }
     return SamTarget(iface, m, args, mirType(m.returnType, m))
 }
