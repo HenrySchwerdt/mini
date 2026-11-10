@@ -944,26 +944,6 @@ private class Lowering<V : Any, B : Any>(
         }
     }
 
-    /** `o is C` for a class without subclasses (MirExpr.IsInstance.exact): not null and the type word is C's type info. */
-    private fun exactIs(objectValue: V, target: MirType): V {
-        val isNull = icmp(IrCmp.IEQ, objectValue, b.constNull())
-        val nullBlock = newLabel("exact_null")
-        val readType = newLabel("exact_read")
-        val merge = newLabel("exact_merge")
-        condBr(isNull, nullBlock, readType, false)
-        startBlock(nullBlock)
-        val nullResult = b.constInt(IrType.I1, 0L)
-        val nullEnd = curBlock
-        br(merge)
-        startBlock(readType)
-        val actualType = load(TString, gep(objectValue, 0))
-        val same = icmp(IrCmp.IEQ, actualType, typeInfoOf(target))
-        val readEnd = curBlock
-        br(merge)
-        startBlock(merge)
-        return b.phi(IrType.I1, nullResult, nullEnd, same, readEnd)
-    }
-
     /** Unknown runtime type-info stays on mk_is_instance, preserving foreign subclass semantics. */
     private fun typeCheck(objectValue: V, expression: MirExpr.IsInstance, use: TypeCheckUse): V {
         val isNull = icmp(IrCmp.IEQ, objectValue, b.constNull())
@@ -1866,12 +1846,10 @@ private class Lowering<V : Any, B : Any>(
                 val o = expr(e.operand)
                 val use = typeCheckPlan.uses[e]
                 val tgt = e.target
-                if (tgt === TString || tgt === TNString || tgt is TBoxed) {
-                    exactTypeCheck(o, typeInfoOf(tgt)) // final types: the type word is compared (CEmitter's mkh_is_exact)
+                if (tgt === TString || tgt === TNString || tgt is TBoxed || (e.exact && !(tgt is TObject && tgt.elem != null))) {
+                    exactTypeCheck(o, typeInfoOf(tgt)) // final types, and classes that nothing extends (MirExpr.IsInstance.exact): the type word is compared (CEmitter's mkh_is_exact)
                 } else if (tgt is TObject && tgt.elem != null) {
                     rt("mk_array_is", TBoolean, listOf(TString, TString, TInt), listOf(o, typeInfoOf(arrayElemTypeInfoType(tgt.elem!!)), c32(arrayCastFlags(tgt))))
-                } else if (e.exact) {
-                    exactIs(o, e.target)
                 } else if (use == null) {
                     val ti = typeInfoOf(e.target)
                     rt("mk_is_instance", TBoolean, listOf(TString, TString), listOf(o, ti))
