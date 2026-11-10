@@ -98,6 +98,9 @@ class Ir2Mir {
     /** `KClassImpl` (package kotlin, reflect) of the stdlib sources (what `Foo::class` creates), if present in the module. */
     internal var kclassImpl: IrClass? = null
 
+    /** `KTypeImpl` (package kotlin.reflect) of the stdlib sources (what `typeOf<T>()` creates), if present in the module. */
+    internal var ktypeImpl: IrClass? = null
+
     /** `kotlin.enums.EnumEntriesImpl` (what `Color.entries` creates), if present in the module. */
     internal var entriesImpl: IrClass? = null
 
@@ -112,6 +115,7 @@ class Ir2Mir {
     fun convert(module: IrModule, sourceName: String): MirModule {
         entriesImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == "kotlin.enums.EnumEntriesImpl" }
         kclassImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == REFLECT_PKG + ".KClassImpl" }
+        ktypeImpl = module.files.flatMap { it.declarations }.filterIsInstance<IrClass>().firstOrNull { it.kotlinFqName == REFLECT_PKG + ".KTypeImpl" }
         closure.analyze(module)
         // pass 1: classes and top-level declarations
         val tops = ArrayList<Pair<IrFile, IrSimpleFunction>>()

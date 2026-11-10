@@ -9,6 +9,17 @@ package mini.internal
 
 fun typeName(o: Any): String = o.javaClass.name
 
+fun typeIsNamed(o: Any?, name: String): Boolean {
+    if (o == null) return false
+    fun walk(c: Class<*>?): Boolean {
+        if (c == null) return false
+        if (c.name == name) return true
+        for (i in c.interfaces) if (walk(i)) return true
+        return walk(c.superclass)
+    }
+    return walk(o.javaClass)
+}
+
 fun identityHashCode(o: Any?): Int = System.identityHashCode(o)
 
 fun stringSubstring(s: String, start: Int, end: Int): String = (s as java.lang.String).substring(start, end)

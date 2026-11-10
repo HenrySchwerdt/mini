@@ -133,6 +133,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         }
         unsupported(c, "$name of a type that is not an enum class")
     }
+    // typeOf<T>(): a KTypeImpl made from the static type
+    if (parent is IrFile && parent.packageFqName == REFLECT_PKG && name == "typeOf" && owner.isInline && c.typeArguments.size == 1) return typeOfCall(c, out)
     memoryApiCall(c, owner, out)?.let { return it }
     // `arrayOf` / `emptyArray` are made here, not called: the array records the element type of the call (docs/memory-model.md, "Reified object arrays")
     if (parent is IrFile && parent.packageFqName == "kotlin" && (name == "arrayOf" || name == "emptyArray")) arrayFunction(c, name, "kotlin", out)?.let { return it }
