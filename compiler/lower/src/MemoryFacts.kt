@@ -48,11 +48,14 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     val failures = ArrayList<String>()
     val strictFailures = ArrayList<String>()
 
+    /** The body the checker reasons about: a suspend function as written (before the state machine), else its body. */
+    private fun memoryBodyOf(f: IrFunction): IrBody? = f.memoryBody ?: f.body
+
     /** The body of [f] lowered on demand (null when it has none or cannot be lowered); used for the inferred summaries of callees. */
     private fun bodyOf(f: IrFunction): List<MStmt>? {
         if (bodies.containsKey(f)) return bodies[f]
         bodies[f] = null
-        val b = f.body ?: return null
+        val b = memoryBodyOf(f) ?: return null
         val saved = curFile
         curFile = fileOf(f) ?: saved
         val r = try { Lowerer(f).lowerFunctionBody(b) } catch (e: Exception) { null } finally { curFile = saved }
@@ -528,7 +531,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     }
 
     private fun lowerFunction(f: IrSimpleFunction): MFunction? {
-        val body = f.body ?: return null
+        val body = memoryBodyOf(f) ?: return null
         val m = funOf(f)
         return try {
             val lw = Lowerer(f)
@@ -924,7 +927,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             for (p in f.parameters) params.add(declareLocal(p))
             scopeIds[f] = id
             val body = ArrayList<MStmt>()
-            val b = f.body
+            val b = memoryBodyOf(f)
             if (b is IrBlockBody) {
                 for (s in b.statements) stmt(s, body)
             } else if (b is IrExpressionBody) {
@@ -975,7 +978,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     body.add(MStmt.Decl(l, b ?: MExpr.Opaque(l.type, pos(p)), MAnnot.NONE, pos(p)))
                 }
             }
-            val b = f.body
+            val b = memoryBodyOf(f)
             if (b is IrBlockBody) {
                 for (s in b.statements) stmt(s, body)
             } else if (b is IrExpressionBody) {

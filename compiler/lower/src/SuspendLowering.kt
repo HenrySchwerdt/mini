@@ -781,6 +781,7 @@ fun Ast2Ir.lowerSuspendBody(fn: IrFunction, body0: IrBlockBody): IrBlockBody {
         if (orig != null && isUnit(orig)) stmts.add(IrReturn(fn, nullConst(), sema.nothingType))
         return IrBlockBody(stmts)
     }
+    fn.memoryBody = snapshotForMemory(fn, body)
     return b.build(body)
 }
 
