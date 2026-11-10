@@ -450,7 +450,7 @@ def main():
         for d in sorted(missing, key=lambda d: -score(d))[:a.top]:
             print('%6d  %s  %s' % (score(d), d.pkg, fmt(d)))
     if a.json:
-        json.dump([{'pkg': d.pkg, 'decl': fmt(d), 'file': d.file, 'uses': score(d), 'experimental': d.opt} for d in missing],
+        json.dump([{'pkg': d.pkg, 'decl': fmt(d), 'file': d.file, 'line': d.line, 'uses': score(d), 'experimental': d.opt} for d in missing],
                   open(a.json, 'w'), indent=0)
 
 if __name__ == '__main__':

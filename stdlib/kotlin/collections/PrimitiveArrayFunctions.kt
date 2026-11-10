@@ -473,8 +473,8 @@ public fun ByteArray.sortedArrayDescending(): ByteArray {
 }
 public fun ByteArray.sorted(): List<Byte> = sortedArray().toList()
 public fun ByteArray.sortedDescending(): List<Byte> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> ByteArray.sortedBy(selector: (Byte) -> R): List<Byte> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> ByteArray.sortedByDescending(selector: (Byte) -> R): List<Byte> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> ByteArray.sortedBy(crossinline selector: (Byte) -> R): List<Byte> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> ByteArray.sortedByDescending(crossinline selector: (Byte) -> R): List<Byte> = toList().sortedByDescending(selector)
 public fun ByteArray.sortedWith(comparator: Comparator<in Byte>): List<Byte> = toList().sortedWith(comparator)
 public fun ByteArray.binarySearch(element: Byte, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex
@@ -955,8 +955,8 @@ public fun ShortArray.sortedArrayDescending(): ShortArray {
 }
 public fun ShortArray.sorted(): List<Short> = sortedArray().toList()
 public fun ShortArray.sortedDescending(): List<Short> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> ShortArray.sortedBy(selector: (Short) -> R): List<Short> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> ShortArray.sortedByDescending(selector: (Short) -> R): List<Short> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> ShortArray.sortedBy(crossinline selector: (Short) -> R): List<Short> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> ShortArray.sortedByDescending(crossinline selector: (Short) -> R): List<Short> = toList().sortedByDescending(selector)
 public fun ShortArray.sortedWith(comparator: Comparator<in Short>): List<Short> = toList().sortedWith(comparator)
 public fun ShortArray.binarySearch(element: Short, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex
@@ -1437,8 +1437,8 @@ public fun IntArray.sortedArrayDescending(): IntArray {
 }
 public fun IntArray.sorted(): List<Int> = sortedArray().toList()
 public fun IntArray.sortedDescending(): List<Int> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> IntArray.sortedBy(selector: (Int) -> R): List<Int> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> IntArray.sortedByDescending(selector: (Int) -> R): List<Int> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> IntArray.sortedBy(crossinline selector: (Int) -> R): List<Int> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> IntArray.sortedByDescending(crossinline selector: (Int) -> R): List<Int> = toList().sortedByDescending(selector)
 public fun IntArray.sortedWith(comparator: Comparator<in Int>): List<Int> = toList().sortedWith(comparator)
 public fun IntArray.binarySearch(element: Int, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex
@@ -1919,8 +1919,8 @@ public fun LongArray.sortedArrayDescending(): LongArray {
 }
 public fun LongArray.sorted(): List<Long> = sortedArray().toList()
 public fun LongArray.sortedDescending(): List<Long> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> LongArray.sortedBy(selector: (Long) -> R): List<Long> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> LongArray.sortedByDescending(selector: (Long) -> R): List<Long> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> LongArray.sortedBy(crossinline selector: (Long) -> R): List<Long> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> LongArray.sortedByDescending(crossinline selector: (Long) -> R): List<Long> = toList().sortedByDescending(selector)
 public fun LongArray.sortedWith(comparator: Comparator<in Long>): List<Long> = toList().sortedWith(comparator)
 public fun LongArray.binarySearch(element: Long, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex
@@ -2401,8 +2401,8 @@ public fun DoubleArray.sortedArrayDescending(): DoubleArray {
 }
 public fun DoubleArray.sorted(): List<Double> = sortedArray().toList()
 public fun DoubleArray.sortedDescending(): List<Double> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> DoubleArray.sortedBy(selector: (Double) -> R): List<Double> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> DoubleArray.sortedByDescending(selector: (Double) -> R): List<Double> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> DoubleArray.sortedBy(crossinline selector: (Double) -> R): List<Double> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> DoubleArray.sortedByDescending(crossinline selector: (Double) -> R): List<Double> = toList().sortedByDescending(selector)
 public fun DoubleArray.sortedWith(comparator: Comparator<in Double>): List<Double> = toList().sortedWith(comparator)
 public fun DoubleArray.binarySearch(element: Double, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex
@@ -2883,8 +2883,8 @@ public fun FloatArray.sortedArrayDescending(): FloatArray {
 }
 public fun FloatArray.sorted(): List<Float> = sortedArray().toList()
 public fun FloatArray.sortedDescending(): List<Float> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> FloatArray.sortedBy(selector: (Float) -> R): List<Float> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> FloatArray.sortedByDescending(selector: (Float) -> R): List<Float> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> FloatArray.sortedBy(crossinline selector: (Float) -> R): List<Float> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> FloatArray.sortedByDescending(crossinline selector: (Float) -> R): List<Float> = toList().sortedByDescending(selector)
 public fun FloatArray.sortedWith(comparator: Comparator<in Float>): List<Float> = toList().sortedWith(comparator)
 public fun FloatArray.binarySearch(element: Float, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex
@@ -3335,8 +3335,8 @@ public fun CharArray.sortedArrayDescending(): CharArray {
 }
 public fun CharArray.sorted(): List<Char> = sortedArray().toList()
 public fun CharArray.sortedDescending(): List<Char> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> CharArray.sortedBy(selector: (Char) -> R): List<Char> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> CharArray.sortedByDescending(selector: (Char) -> R): List<Char> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> CharArray.sortedBy(crossinline selector: (Char) -> R): List<Char> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> CharArray.sortedByDescending(crossinline selector: (Char) -> R): List<Char> = toList().sortedByDescending(selector)
 public fun CharArray.sortedWith(comparator: Comparator<in Char>): List<Char> = toList().sortedWith(comparator)
 public fun CharArray.binarySearch(element: Char, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex
