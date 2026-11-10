@@ -1,9 +1,16 @@
 /* Slow paths of the small-object allocator (see alloc_small.h). */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include "alloc_small.h"
 
 #if MK_SMALL_ALLOC
 
 #include "lock.h"
+
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
 
 /* relaxed atomics for the unlocked hint read of the central pool size */
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -15,7 +22,29 @@
 #endif
 
 #define CHUNK_FIRST ((size_t)16 << 10)
-#define CHUNK_MAX ((size_t)256 << 10)
+#define CHUNK_MAX ((size_t)2 << 20)
+#define HUGE_PAGE ((size_t)2 << 20)
+
+/* The memory of a bump chunk. Chunks of 2 MiB (the size they grow to) are 2 MiB aligned and offered to the kernel as transparent huge
+ * pages (Linux, where THP is set to madvise): a program that walks a big graph of small objects in random order is bound by TLB
+ * misses (4 KiB pages), and huge pages remove most of them. Nothing is committed that the bump pointer does not reach in the
+ * end: a chunk is carved front to back. */
+static unsigned char *chunk_alloc(size_t chunk) {
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+    if (chunk >= HUGE_PAGE) {
+        unsigned char *raw = mmap(NULL, chunk + HUGE_PAGE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (raw != (unsigned char *)MAP_FAILED) {
+            unsigned char *mem = (unsigned char *)(((uintptr_t)raw + HUGE_PAGE - 1) & ~(uintptr_t)(HUGE_PAGE - 1));
+            if (mem > raw) munmap(raw, (size_t)(mem - raw));
+            size_t tail = (size_t)((raw + chunk + HUGE_PAGE) - (mem + chunk));
+            if (tail > 0) munmap(mem + chunk, tail);
+            madvise(mem, chunk, MADV_HUGEPAGE);
+            return mem;
+        }
+    }
+#endif
+    return malloc(chunk);
+}
 
 MK_TLS MkSmallCache mk_small_cache;
 
@@ -103,7 +132,7 @@ void mk_small_full(size_t cls) {
     t->count[cls] = 0;
 }
 
-/* `free` is empty and the bump chunk cannot serve the class */
+/* `free` is empty and the bump chunk cannot serve the class (mk_small_carve) */
 void *mk_small_refill(size_t cls) {
     MkSmallCache *t = &mk_small_cache;
     if (!t->registered) mk_small_register();
@@ -131,20 +160,33 @@ void *mk_small_refill(size_t cls) {
     }
 
     /* 3. fresh memory from the thread's bump chunk */
+    size_t chunk = t->next_chunk != 0 ? t->next_chunk : CHUNK_FIRST;
+    unsigned char *mem = chunk_alloc(chunk);
+    if (mem == NULL) return NULL;
+    MK_STAT_SMALL(MK_SMALL_STAT_CHUNK, chunk);
+    t->bump = mem; /* the tail of the old chunk is abandoned (< 320 bytes) */
+    t->end = mem + chunk;
+    if (chunk < CHUNK_MAX) chunk *= 2;
+    t->next_chunk = chunk;
+    return mk_small_carve(cls);
+}
+
+/* A block of a size that divides a cache line (16, 32, 64 bytes: the alignment is the largest power of two that divides the size, at
+ * most 64) is carved at that alignment, so that it never straddles two lines (a 32 byte object at an offset of 48 modulo 64 needs two
+ * cache misses for its header and its fields). The bytes that the alignment skips (16, 32 or 48) become one free block of that size. */
+void *mk_small_carve(size_t cls) {
+    MkSmallCache *t = &mk_small_cache;
     size_t sz = cls * MK_SMALL_GRAN;
-    if ((size_t)(t->end - t->bump) < sz) {
-        size_t chunk = t->next_chunk != 0 ? t->next_chunk : CHUNK_FIRST;
-        unsigned char *mem = malloc(chunk);
-        if (mem == NULL) return NULL;
-        MK_STAT_SMALL(MK_SMALL_STAT_CHUNK, chunk);
-        t->bump = mem; /* the tail of the old chunk is abandoned (< 256 bytes) */
-        t->end = mem + chunk;
-        if (chunk < CHUNK_MAX) chunk *= 2;
-        t->next_chunk = chunk;
+    size_t align = sz & (~sz + 1u);
+    if (align > 64) align = 64;
+    unsigned char *p = t->bump;
+    size_t pad = (size_t)(-(uintptr_t)p & (align - 1));
+    if ((size_t)(t->end - p) >= sz + pad) {
+        if (pad != 0) mk_small_free(p, pad / MK_SMALL_GRAN);
+        t->bump = p + pad + sz;
+        return p + pad;
     }
-    void *b = t->bump;
-    t->bump += sz;
-    return b;
+    return mk_small_refill(cls);
 }
 
 #endif /* MK_SMALL_ALLOC */

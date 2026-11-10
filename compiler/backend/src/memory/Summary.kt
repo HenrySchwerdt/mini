@@ -175,7 +175,12 @@ object Summaries {
             is MExpr.Local -> carried[e.local.id] ?: emptySet()
             is MExpr.Move -> carriedOf(e.target)
             is MExpr.Lambda -> capturedParams(e.captures)
-            is MExpr.New -> capturedParams(e.captures)
+            is MExpr.New -> {
+                val out = HashSet<Int>(capturedParams(e.captures))
+                // an object of a Managed class that only keeps a function value in a property (`MapSequence(this, transform)`) carries what the function borrows
+                for ((i, a) in e.args.withIndex()) if (holdsClosureOnly(e, i)) { out += paramsOf(a); out += carriedOf(a) }
+                out
+            }
             is MExpr.Call -> {
                 val sum = of(e.fn)
                 val out = HashSet<Int>()
@@ -184,6 +189,17 @@ object Summaries {
             }
             else -> emptySet()
         }
+
+        /** Argument [i] of the allocation [e] is a function value that the Managed class stores in a property and does nothing else with. */
+        fun holdsClosureOnly(e: MExpr.New, i: Int): Boolean {
+            val c = e.cls ?: return false
+            if (c.mode == MemMode.Strict) return false
+            val p = e.ctor.params.getOrNull(i) ?: return false
+            if (p.isContext || !p.owned || !isFunctionType(p.local.type)) return false
+            return of(e.ctor)?.escapes?.get(i)?.startsWith("is stored into a field of") == true
+        }
+
+        fun isFunctionType(t: MType): Boolean = t.tk == TK.Other && (t.display.startsWith("Function") || t.display.startsWith("SuspendFunction"))
 
         fun capturedParams(caps: List<MLocal>): Set<Int> {
             val out = HashSet<Int>()
@@ -241,7 +257,10 @@ object Summaries {
                     escape0(s.value, "returned")
                     // a returned closure over parameters lends them to the result; an instance of a local class cannot (the result is an owner)
                     val cs = carriedOf(s.value)
-                    if (s.value !is MExpr.New && !fn.ret.type.tracked) carry += cs else for (i in cs) esc.putIfAbsent(i, "is captured by an object that is returned")
+                    // (an object of a Managed class, e.g. the `object : Sequence` of `sequence { }`, only holds the closure like a function value: the result carries it)
+                    val nw = s.value as? MExpr.New
+                    val owner = nw != null && (nw.cls == null || nw.cls.mode == MemMode.Strict)
+                    if (!owner && !fn.ret.type.tracked) carry += cs else for (i in cs) esc.putIfAbsent(i, "is captured by an object that is returned")
                 }
                 is MStmt.Throw -> escape(s.value, "thrown")
                 is MStmt.Scope -> if (s.kind == ScopeKind.Thread) for (c in s.captures) { alias[c.id]?.forEach { esc.putIfAbsent(it, "captured by a thread") }; carried[c.id]?.forEach { esc.putIfAbsent(it, "captured by a thread") } }
@@ -269,7 +288,7 @@ object Summaries {
                 is MExpr.New -> for ((i, a) in e.args.withIndex()) {
                     val p = e.ctor.params.getOrNull(i) ?: continue
                     if (p.isContext) continue
-                    if (p.owned) escape(a, "is stored into `${e.cls?.name?.substringAfterLast('.') ?: "an object"}` (constructor parameter `${p.local.name}`)")
+                    if (p.owned && !holdsClosureOnly(e, i)) escape(a, "is stored into `${e.cls?.name?.substringAfterLast('.') ?: "an object"}` (constructor parameter `${p.local.name}`)")
                 }
                 is MExpr.Free -> escape(e.target, "is released")
                 is MExpr.Move -> escape(e.target, "is moved")
