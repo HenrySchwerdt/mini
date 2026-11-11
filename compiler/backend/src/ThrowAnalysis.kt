@@ -53,14 +53,20 @@ internal class ThrowAnalysis(
 
     /** Calls to imported functions use their MIR effects when available; unresolved calls are conservatively throwing. */
     fun objectGetMayThrow(classCName: String): Boolean {
-        val ctor = objectCtors[classCName] ?: return false
+        val ctor = objectCtors()[classCName] ?: return false
         return ctor in mayThrow
     }
 
-    private val objectCtors: HashMap<String, String> by lazy {
+    // computed on first use (a plain cache instead of `by lazy`: the stage0 compilers cannot compile a lazy lambda that reads a property)
+    private var objectCtorsCache: HashMap<String, String>? = null
+
+    private fun objectCtors(): HashMap<String, String> {
+        val cached = objectCtorsCache
+        if (cached != null) return cached
         val m = HashMap<String, String>()
         for (c in module.classes) { val k = c.objectCtor; if (k != null) m[c.cName] = k }
-        m
+        objectCtorsCache = m
+        return m
     }
 
     fun callMayThrow(cName: String): Boolean = cName in mayThrow || !byName.containsKey(cName)
