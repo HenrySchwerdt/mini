@@ -45,12 +45,29 @@ public class Condition internal constructor(private val owner: Lock) {
         sysCondInit(storage)
     }
 
+    /**
+     * Waits for a signal (spurious returns are possible: loop on the predicate). When the thread is interrupted it throws
+     * InterruptedException, and the [Lock] is *released* by then (so the plain `lock(); ...; await(); ...; unlock()` code of the library needs
+     * no `finally`); the JVM-style conditions of java.util.concurrent.locks keep the lock held instead.
+     */
     public fun await() {
-        sysCondWait(storage, owner.storage)
+        try {
+            java.lang.interruptibleWait(storage, owner.storage, -1L)
+        } catch (e: InterruptedException) {
+            owner.unlock()
+            throw e
+        }
     }
 
-    /** Waits at most [nanos] nanoseconds; true when the time ran out. */
-    public fun awaitNanos(nanos: Long): Boolean = sysCondWaitNanos(storage, owner.storage, nanos)
+    /** Waits at most [nanos] nanoseconds; true when the time ran out. Interrupts as [await] does. */
+    public fun awaitNanos(nanos: Long): Boolean {
+        try {
+            return java.lang.interruptibleWait(storage, owner.storage, nanos)
+        } catch (e: InterruptedException) {
+            owner.unlock()
+            throw e
+        }
+    }
 
     public fun signal() {
         sysCondSignal(storage)
