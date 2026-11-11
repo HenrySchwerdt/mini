@@ -684,7 +684,7 @@ if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK
 run_one() { # "<suite>|<id>|<cmd>"
     local suite id cmd out rc
     suite="${1%%|*}"; local rest="${1#*|}"; id="${rest%%|*}"; cmd="${rest#*|}"
-    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|realworld-leak|realworld-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
+    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
     # shellcheck disable=SC2086
     out="$(eval "$cmd" 2>&1)"; rc=$?
     local f="$W/res/$(echo "$suite-$id" | tr '/ ' '__')"
