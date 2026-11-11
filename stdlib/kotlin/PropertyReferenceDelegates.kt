@@ -5,6 +5,7 @@
 package kotlin
 
 import kotlin.reflect.KMutableProperty0
+import kotlin.reflect.KMutableProperty1
 import kotlin.reflect.KProperty
 import kotlin.reflect.KProperty0
 import kotlin.reflect.KProperty1
@@ -16,3 +17,7 @@ public operator fun <V> KMutableProperty0<V>.setValue(thisRef: Any?, property: A
 }
 
 public operator fun <T, V> KProperty1<T, V>.getValue(thisRef: T, property: Any?): V = get(thisRef)
+
+public operator fun <T, V> KMutableProperty1<T, V>.setValue(thisRef: T, property: KProperty<*>, value: V) {
+    set(thisRef, value)
+}

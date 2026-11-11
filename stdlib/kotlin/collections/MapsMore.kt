@@ -89,13 +89,13 @@ public inline fun <K, V, M : MutableMap<in K, in V>> Map<out K, V>.filterTo(dest
     return destination
 }
 
-public fun <K, V> Map<out K, V>.minus(keys: Iterable<K>): Map<K, V> {
+public operator fun <K, V> Map<out K, V>.minus(keys: Iterable<K>): Map<K, V> {
     val result = LinkedHashMap<K, V>(this)
     for (k in keys) result.remove(k)
     return result
 }
 
-public fun <K, V> Map<out K, V>.plus(pairs: Iterable<Pair<K, V>>): Map<K, V> {
+public operator fun <K, V> Map<out K, V>.plus(pairs: Iterable<Pair<K, V>>): Map<K, V> {
     val result = LinkedHashMap<K, V>(this)
     for ((k, v) in pairs) result.put(k, v)
     return result

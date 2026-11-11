@@ -1,0 +1,260 @@
+== ByteArray
+[1, 2, 3, 3, 5]
+[5, 3, 3, 2, 1]
+[1, 2, 3, 3, 5]
+[3, 1, 2, 5]
+{3=v3, 1=v1, 2=v2, 5=v5}
+[0, 3, 1, 1, 2, 2, 3, 3, 4, 5]
+{3=[x3, x3], 1=[x1], 2=[x2], 5=[x5]}
+[2, 5]
+[3, 1]
+[3, 1, 2, 5, 7]
+5
+1
+5
+1
+null
+null
+NSEE
+NSEE
+14
+null
+14
+14
+null
+14
+null
+[3, 4, 6, 9, 14]
+== ShortArray
+[1, 2, 3, 3, 5]
+[5, 3, 3, 2, 1]
+[1, 2, 3, 3, 5]
+[3, 1, 2, 5]
+{3=v3, 1=v1, 2=v2, 5=v5}
+[0, 3, 1, 1, 2, 2, 3, 3, 4, 5]
+{3=[x3, x3], 1=[x1], 2=[x2], 5=[x5]}
+[2, 5]
+[3, 1]
+[3, 1, 2, 5, 7]
+5
+1
+5
+1
+null
+null
+NSEE
+NSEE
+14
+null
+14
+14
+null
+14
+null
+[3, 4, 6, 9, 14]
+== IntArray
+[1, 2, 3, 3, 5]
+[5, 3, 3, 2, 1]
+[1, 2, 3, 3, 5]
+[3, 1, 2, 5]
+{3=v3, 1=v1, 2=v2, 5=v5}
+[0, 3, 1, 1, 2, 2, 3, 3, 4, 5]
+{3=[x3, x3], 1=[x1], 2=[x2], 5=[x5]}
+[2, 5]
+[3, 1]
+[3, 1, 2, 5, 7]
+5
+1
+5
+1
+null
+null
+NSEE
+NSEE
+14
+null
+14
+14
+null
+14
+null
+[3, 4, 6, 9, 14]
+== LongArray
+[1, 2, 3, 3, 5]
+[5, 3, 3, 2, 1]
+[1, 2, 3, 3, 5]
+[3, 1, 2, 5]
+{3=v3, 1=v1, 2=v2, 5=v5}
+[0, 3, 1, 1, 2, 2, 3, 3, 4, 5]
+{3=[x3, x3], 1=[x1], 2=[x2], 5=[x5]}
+[2, 5]
+[3, 1]
+[3, 1, 2, 5, 7]
+5
+1
+5
+1
+null
+null
+NSEE
+NSEE
+14
+null
+14
+14
+null
+14
+null
+[3, 4, 6, 9, 14]
+== FloatArray
+[1.5, 2.5, 3.5, 3.5, 5.5]
+[5.5, 3.5, 3.5, 2.5, 1.5]
+[1.5, 2.5, 3.5, 3.5, 5.5]
+[3.5, 1.5, 2.5, 5.5]
+{3.5=v3.5, 1.5=v1.5, 2.5=v2.5, 5.5=v5.5}
+[0, 3.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5.5]
+{3.5=[x3.5, x3.5], 1.5=[x1.5], 2.5=[x2.5], 5.5=[x5.5]}
+[2.5, 5.5]
+[3.5, 1.5]
+[3.5, 1.5, 2.5, 5.5, 7.5]
+5.5
+1.5
+5.5
+1.5
+null
+null
+NSEE
+NSEE
+16.5
+null
+16.5
+16.5
+null
+16.5
+null
+[3.5, 5.0, 7.5, 11.0, 16.5]
+== DoubleArray
+[1.5, 2.5, 3.5, 3.5, 5.5]
+[5.5, 3.5, 3.5, 2.5, 1.5]
+[1.5, 2.5, 3.5, 3.5, 5.5]
+[3.5, 1.5, 2.5, 5.5]
+{3.5=v3.5, 1.5=v1.5, 2.5=v2.5, 5.5=v5.5}
+[0, 3.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5.5]
+{3.5=[x3.5, x3.5], 1.5=[x1.5], 2.5=[x2.5], 5.5=[x5.5]}
+[2.5, 5.5]
+[3.5, 1.5]
+[3.5, 1.5, 2.5, 5.5, 7.5]
+5.5
+1.5
+5.5
+1.5
+null
+null
+NSEE
+NSEE
+16.5
+null
+16.5
+16.5
+null
+16.5
+null
+[3.5, 5.0, 7.5, 11.0, 16.5]
+== CharArray
+[a, b, c, c, e]
+[e, c, c, b, a]
+[a, b, c, c, e]
+[c, a, b, e]
+{c=vc, a=va, b=vb, e=ve}
+[0, c, 1, a, 2, b, 3, c, 4, e]
+{c=[xc, xc], a=[xa], b=[xb], e=[xe]}
+[b, e]
+[c, a]
+[c, a, b, e, g]
+e
+a
+e
+a
+null
+null
+NSEE
+NSEE
+e
+null
+e
+e
+null
+e
+null
+[c, c, c, c, e]
+494
+247.0
+== BooleanArray
+[false, false, true, true, true]
+[true, true, true, false, false]
+[false, false, true, true, true]
+[true, false]
+{true=vtrue, false=vfalse}
+[0, true, 1, false, 2, true, 3, true, 4, false]
+{true=[xtrue, xtrue, xtrue], false=[xfalse, xfalse]}
+[false]
+[true]
+[true, false]
+true
+false
+true
+false
+null
+null
+NSEE
+NSEE
+true
+null
+true
+true
+null
+true
+null
+[true, true, false, true, true]
+true
+false
+true
+false
+1
+0
+1
+0
+true
+false
+true
+false
+3
+4.5
+== Array<T>
+[c, a, b, c, e, z]
+[x, y]
+IAE
+[x, y]
+{c=vc, a=va, b=vb, e=ve}
+[0, c, 1, a, 2, b, 3, c, 4, e]
+{c=[xc, xc], a=[xa], b=[xb], e=[xe]}
+[c, b, e]
+[a, e]
+[c, b]
+[c, a, b, e, q]
+e!
+a!
+e!
+a!
+ca1b2c3e4
+ec3b2a1c0
+ec3b2a1c0
+ecbac
+[c, ca1, ca1b2, ca1b2c3, ca1b2c3e4]
+null
+null
+null
+[]
+null
+b
+a

@@ -287,8 +287,9 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                         val eg = ArrayList<List<Candidate>>()
                         extensionGroups("invoke", typeWithFlowVar(v, vt), eg)
                         for (g in eg) {
-                            for (c in g) c.invokeVar = v
-                            groups.add(g)
+                            val fitting = ArrayList<Candidate>()
+                            for (c in g) if (extFits(c.fn, typeWithFlowVar(v, vt))) { c.invokeVar = v; fitting.add(c) }
+                            if (fitting.isNotEmpty()) groups.add(fitting)
                         }
                     }
                 }
@@ -408,6 +409,7 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                             val eg = ArrayList<List<Candidate>>()
                             extensionGroups("invoke", pt, eg)
                             for (g in eg) for (ic in g) {
+                                if (!extFits(ic.fn, pt)) continue
                                 ic.invokeProp = x
                                 il.add(ic)
                             }
