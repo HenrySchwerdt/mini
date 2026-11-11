@@ -1402,6 +1402,21 @@ form): a call of such a method yields a loan of the receiver's owner, so `f()` a
 lives (`s165`). A *local class or anonymous object* returned from such a method (`inner_receivers_super`, `localExtendsInner`) stays M0109: its instance is a
 tracked allocation that the caller must own while it holds a loan of the receiver; the model has no owner that borrows.
 
+**Round strict-4c: a false negative found while looking at that case.** `fun reader(): Reader = object : Reader { override fun get() = n }` (an anonymous
+object of a Strict interface type that reads the receiver, or a parameter) was *accepted* when it was returned directly (`return object : ...`), while
+the same object returned through a local (`val r = object ...; return r`) or a local class (`return R()`) was M0109. The caller of the first form got an
+owned result without a loan: `val r = c.reader(); c.free(); r.get()` was a use after free that nobody reported. The cause was two-fold: the
+return of a tracked closure object with captures was only checked when the declared result was owned, and a diagnostic at the anonymous object
+had no source position and was dropped. Now every return of a closure object (anonymous object, local class instance) that borrows the receiver or a
+parameter, from a function whose declared result is a Strict type (an interface or `Any` included), is M0109 (`s172`, `s173`, `s174`). Returning
+such an object as a *function value* is unchanged (the `carries` summary, `s165`/`s166`).
+
+Why the accepting direction stays out of reach (analysis, no code): an object that owns nothing but borrows its receiver needs an *owned value that
+borrows* at the call site. The result's static type is a Strict class or interface, so the caller of a Strict function keeps no reference counts for it
+and would never release the counted closure object (a leak), and `r.free()` on it would deallocate memory that reference counting owns. Either the call
+site needs a loan result for tracked types with the object kept by counts (a new value category in checker and in both backends) or the object is
+declared in the language as non-owning (spec change). That is the same gap as in the strict-4a analysis (an owner needs a holder-aware count).
+
 **Coverage of round strict-3**
 
 Corpus `s148`-`s166` (18 programs: 7 accepted and run, 11 REJECT; `s164` is not used). `scripts/strict-corpus.sh --run`: 158 programs, 0 false positives, 0 false negatives, 0 wrong code, 0 run failures.
