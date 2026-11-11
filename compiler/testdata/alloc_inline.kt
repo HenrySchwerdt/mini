@@ -1,5 +1,5 @@
 // inline allocation of small class instances (CEmitter mkh_alloc_inline): free-list reuse, bump chunks, sizes from 16 to more than 64 bytes,
-// cyclic (armed) and plain classes, zeroed fields in reused blocks, a collector run, objects made on another thread
+// cyclic (armed) and plain classes, zeroed fields in reused blocks, a collector run (another thread: alloc_inline_threads.kt)
 class P1(var a: Int)                                   // 24 bytes
 class P3(var a: Long, var b: Long, var c: Long)        // 40 bytes
 class P5(var a: Long, var b: Long, var c: Long, var d: Long, var e: Long, var f: Long, var g: Long) // 72 bytes: not inline
@@ -59,9 +59,5 @@ fun main() {
     var t = 0L
     for (b in big) t += b.a + b.j
     println(t)
-    val results = ArrayList<Long>()
-    val th = Thread { results.add(churn(10000) + keep(1000)) }
-    th.start(); th.join()
-    println(results[0])
     println(churn(1000))
 }
