@@ -213,7 +213,7 @@ t_c() { # <src> [asan]
         return 0
     fi
     # shellcheck disable=SC2086
-    "$CC" -std=c17 -O1 -Wall $WNO -Werror -I "$INCLUDE" -I "$TESTDATA" "$c" $extra "$RTLIB" -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "C compiler failed (-Wall -Werror):"; head -20 "$W/$name.cc"; return 1; }
+    "$CC" -std=c17 -O1 ${CWARN:--Wall $WNO -Werror} -I "$INCLUDE" -I "$TESTDATA" "$c" $extra "$RTLIB" -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "C compiler failed (-Wall -Werror):"; head -20 "$W/$name.cc"; return 1; }
     run_and_compare "$name" "$src" "$exe" "c" none
 }
 
@@ -240,9 +240,13 @@ t_llvm() { # <src> [asan]
         return 0
     fi
     # shellcheck disable=SC2086
-    clang -O1 -Wall $WNO -Werror -Wno-override-module -Wno-unused-command-line-argument -I "$INCLUDE" -I "$TESTDATA" "$ll" $extra "$RTLIB" -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "clang failed on the IR:"; head -20 "$W/$name.cc"; return 1; }
+    clang -O1 ${CWARN:--Wall $WNO -Werror} -Wno-override-module -Wno-unused-command-line-argument -I "$INCLUDE" -I "$TESTDATA" "$ll" $extra "$RTLIB" -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "clang failed on the IR:"; head -20 "$W/$name.cc"; return 1; }
     run_and_compare "$name" "$src" "$exe" "llvm" none
 }
+
+# the generated programs of the fuzzer contain tautologies (`x > x`, `2 ^ 5`) the C compiler warns about: no -Werror for them
+t_fuzz() { CWARN=-w t_c "$@"; }
+t_fuzz_llvm() { CWARN=-w t_llvm "$@"; }
 
 t_llvm_variant() { # <flag>: rc_stress through native-driver with the flag
     local flag="$1" src="$TESTDATA/rc_stress.kt" name="rc_stress_v${1//-/_}"
@@ -616,7 +620,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
+export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -651,8 +655,8 @@ want_suite stress-leak && for f in $(stress_progs); do add stress-leak "$(basena
 want_suite stress-llvm-leak && for f in $(stress_progs); do add stress-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 # tools/fuzz/smoke: fixed programs of the differential fuzzer with the kotlinc/JVM output stored as <name>.out (docs/fuzzing.md), no JVM needed
 fuzz_progs() { find "$ROOT/tools/fuzz/smoke" -maxdepth 1 -name '*.kt' 2>/dev/null | LC_ALL=C sort; }
-want_suite fuzz && for f in $(fuzz_progs); do add fuzz "$(basename "$f" .kt)" "t_c $f"; done
-want_suite fuzz-llvm && for f in $(fuzz_progs); do add fuzz-llvm "$(basename "$f" .kt)" "t_llvm $f"; done
+want_suite fuzz && for f in $(fuzz_progs); do add fuzz "$(basename "$f" .kt)" "t_fuzz $f"; done
+want_suite fuzz-llvm && for f in $(fuzz_progs); do add fuzz-llvm "$(basename "$f" .kt)" "t_fuzz_llvm $f"; done
 want_suite fuzz-leak && for f in $(fuzz_progs); do add fuzz-leak "$(basename "$f" .kt)" "t_c $f asan"; done
 want_suite fuzz-llvm-leak && for f in $(fuzz_progs); do add fuzz-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done

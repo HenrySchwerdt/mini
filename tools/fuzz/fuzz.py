@@ -460,9 +460,19 @@ def cmd_save(a):
     os.makedirs(a.dest, exist_ok=True)
     seeds = list(range(lo, hi))
     progs = {s: make_program(s, a.size) for s in seeds}
-    for i in range(0, len(seeds), a.batch):
-        chunk = seeds[i : i + a.batch]
-        outs, errs = jvm_batch(tools, {s: progs[s] for s in chunk}, work)
+    expdir = os.path.join(tools.out, "expected")
+    cached = {}
+    for s in seeds:  # the expectations of an earlier `run` (same program text)
+        f = os.path.join(expdir, "%d.%s.out" % (s, hashlib.sha1(progs[s].encode()).hexdigest()[:10]))
+        if os.path.exists(f):
+            o = open(f).read()
+            if not o.startswith("<<kotlinc rejected>>"):
+                cached[s] = o
+    todo = [s for s in seeds if s not in cached]
+    for i in range(0, len(todo) + (0 if todo else 1), a.batch):
+        chunk = todo[i : i + a.batch]
+        outs, errs = jvm_batch(tools, {s: progs[s] for s in chunk}, work) if chunk else ({}, {})
+        outs.update(cached if i == 0 else {})
         for s, o in outs.items():
             base = os.path.join(a.dest, "fuzz%04d" % s)
             with open(base + ".kt", "w") as f:
