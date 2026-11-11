@@ -104,6 +104,8 @@ internal class AVal(
     val initFields: Map<String, Int>? = null,
     /** The value is a closure (or an instance of a local class) that borrows the owners in [refs] through its captures. */
     val caps: Boolean = false,
+    /** The closure is a [MExpr.Lambda.child]. */
+    val child: Boolean = false,
 ) {
     val tracked: Boolean get() = type.tracked
 

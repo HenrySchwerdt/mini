@@ -224,7 +224,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
             val init = if (init0 != null && init0.type == TNothing) null else init0
             if (s in closure.boxed) {
                 // captured `var`: lives in a heap cell shared with the closures
-                val rc = refClassFor(t)
+                val rc = cellFor(s)
                 val l = MirLocal(localCounter++, s.name, rc.type)
                 locals[s] = l
                 val cell = if (init != null && init.isOwned()) tmpOf(init, out) else init
@@ -251,7 +251,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
             val owner = s.owner
             val l = localOf(owner, s)
             if (owner in closure.boxed) {
-                val rc = refClassFor(declType(owner))
+                val rc = cellFor(owner)
                 out += MirStmt.SetField(MirExpr.Local(l), rc.cName, "value", rc.valueType, bindValue(s.value, rc.valueType, out))
             } else out += MirStmt.Assign(l, bindValue(s.value, l.type, out))
         }

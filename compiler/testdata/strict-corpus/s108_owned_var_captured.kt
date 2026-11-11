@@ -1,4 +1,4 @@
-// REJECT M0112: an owned `var` captured by a closure lives in a counted cell that keeps the object
+// ACCEPT: a closure that only reads a captured `var` owner borrows it like a `val` (the heap cell of the variable does not count the owner)
 @file:MemoryMode(Mode.Strict)
 
 import mini.memory.*
