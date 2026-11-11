@@ -42,6 +42,8 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
     /** the argument expression being checked: its expected type is a hint only (K2 resolves arguments independently) */
     var argNode: Expr? = null
     var lambdaLabel: String? = null
+    /** the expression being checked is (part of) an argument of a call, not inside a lambda body of it */
+    var inArgCall = false
 
     // ---- small helpers ---------------------------------------------------------------------------------------------
 

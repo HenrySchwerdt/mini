@@ -804,6 +804,25 @@ Regression tests: `compiler/testdata/conformance9a_misc.kt`, `conformance9a_coro
 
 What was looked at and left: `failInInitializer1/2` (needs `ExceptionInInitializerError` and a failure state for file facades: `ObjectGet` would have to count as throwing in both emitters and `mk_object_init` remember the failure), `kt7017` (reified `T` captured by an object in an inline function: local classes are lowered once, not per instantiation), `nothingValueException` (inference of `Nothing` from `in`/`out` projections), `override val cause` of a Throwable subclass, builder inference with postponed type variables, adapted references with `vararg` passed as an array, boxed identity of small values and strings.
 
+## Tenth round (a) (branch claude/conformance-10a)
+
+Starting point: 5898 / 5953 (35 compile-error, 5 ice, 12 runtime-fail, 1 crash, 2 timeout). Result: 5915 / 5953 (99.36 %) on the tree merged with main, compared per test with the baseline: no regression, 17 tests fixed (a further timeout, `coroutines/kt51530`, passes alone and timed out under machine load).
+
+| fix | tests |
+|---|---:|
+| builder inference: an unconstrained type variable that is a type argument of a lambda's receiver / parameter type (`MutableList<E>.() -> Unit`, `Consumer<T>`) stays open while the body is checked (`Sema.openVars`); calls in the body add bounds to it (taken back after a failed or unchosen overload attempt, `Attempt.openDelta`), it is fixed with the call and the records made in the body are rewritten (`zonkRecords`); only inside another builder lambda for a call that is an argument | 7 |
+| ExceptionInInitializerError / NoClassDefFoundError: `ObjectGet` counts as throwing when the initialiser may; `mk_object_init` wraps an Exception (an Error passes), remembers the failed slot (later access raises NoClassDefFoundError), the fast path is unchanged | 2 |
+| joined function types (`if (c) { { 1 } } else { { 1f } }`), `Unit` is no bound for the last statement of a builder lambda | 1 |
+| nested classifiers visible in the header of the primary constructor; enum entry arguments are no instance scope | 1 |
+| `Enum` as a value (companion), adapted references that pass a `vararg` as an array, reference without expected type picks an overload, `Foo<String>::Inner` outer type arguments | 3 |
+| a receiver of function type of an inline function is no inlinable lambda (`inline fun (() -> String).f()`), `invoke()` on an implicit function-typed receiver | 1 |
+| virtual `Throwable.cause` (vtable slot 4) | 1 |
+| `in T` against an `out` projection infers `Nothing` | 1 |
+
+Regression tests: `compiler/testdata/conformance10a_builder.kt`, `conformance10a_init.kt`, `conformance10a_misc.kt` (`uninit_field_npe` now expects the ExceptionInInitializerError of a failing object initialiser).
+
+Left: generic inner classes lose the outer type arguments (`E<IC>.Inner().foo()`, `innerGenericConstuctor`, `kt27706Generic`), `kt7017` (local classes are lowered once, not per inline expansion), a lambda with an inlined call in an enum entry argument crashes the compiler (`kt20651_inlineLambda`), `eqNullableToPrimitiveWithSideEffects`, boxed small-value identity, the remaining ICEs and one-off inference cases listed in `tools/conformance/results/summary.md`.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

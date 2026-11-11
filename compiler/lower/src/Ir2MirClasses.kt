@@ -420,7 +420,7 @@ internal fun Ir2Mir.slotsOf(c: IrClass): List<IrSimpleFunction> = slotCache.getO
     if (builtinOf(c) != null) {
         // runtime exception classes: vtable slot 3 is Throwable.message
         val sup = superclassOf(c)
-        return@getOrPut if (sup != null) slotsOf(sup) else listOfNotNull(messageRootOf(c))
+        return@getOrPut if (sup != null) slotsOf(sup) else listOfNotNull(messageRootOf(c), causeRootOf(c))
     }
     val base = superclassOf(c)?.let { slotsOf(it) } ?: emptyList()
     val own = classFunctions(c).filter { f ->
@@ -437,7 +437,7 @@ internal fun Ir2Mir.slotsOf(c: IrClass): List<IrSimpleFunction> = slotCache.getO
 
 internal fun Ir2Mir.implClass(c: IrClass, root: IrSimpleFunction): String? {
     if (c.kotlinFqName == "kotlin.Number" && root.name == "toChar") return "mk_number_to_char_default"
-    if (builtinOf(c) != null) return if (root === builtinMessageRoot) "mk_throwable_message" else null
+    if (builtinOf(c) != null) return if (root === builtinMessageRoot) "mk_throwable_message" else if (root === builtinCauseRoot) "mk_throwable_cause" else null
     val g = classFunctions(c).firstOrNull { topClass(it) === root }
     val sup = superclassOf(c)
     if (g != null) {
