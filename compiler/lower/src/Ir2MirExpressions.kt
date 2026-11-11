@@ -89,11 +89,11 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
             val msg = MirExpr.StringConst("lateinit property " + owner.name + " has not been initialized")
             body += MirStmt.Throw(tmpOf(newBuiltin("MkUninitializedPropertyAccessException", msg), body))
             // a captured lateinit var lives in a cell: the test is on its value
-            val cur: MirExpr = if (owner in closure.boxed) refClassFor(declType(owner)).let { rc -> MirExpr.FieldGet(MirExpr.Local(l), rc.cName, "value", rc.valueType) } else MirExpr.Local(l)
+            val cur: MirExpr = if (owner in closure.boxed) cellFor(owner).let { rc -> MirExpr.FieldGet(MirExpr.Local(l), rc.cName, "value", rc.valueType) } else MirExpr.Local(l)
             out += MirStmt.If(MirExpr.Binary(BinaryOp.IdEq, cur, MirExpr.NullConst()), body, emptyList())
         }
         if (owner in closure.boxed) {
-            val rc = refClassFor(declType(owner))
+            val rc = cellFor(owner)
             MirExpr.FieldGet(MirExpr.Local(l), rc.cName, "value", rc.valueType)
         } else MirExpr.Local(l)
         }

@@ -17,7 +17,10 @@ package mini.backend.memory
 class FnSummary(
     /** Parameter index (into [MFun.params]) -> why the parameter escapes. */
     val escapes: Map<Int, String>,
-    /** Parameters that a closure created in the body captures and the function returns: the result borrows them (it does not keep them alive). */
+    /**
+     * Parameters that a closure created in the body captures and the function returns: the result borrows them (it does not keep them alive).
+     * [RECEIVER] stands for the receiver (`fun peek(): () -> Int = { n }`: the closure reads `this.n`, so it is a loan of the receiver).
+     */
     val carries: Set<Int> = emptySet(),
 ) {
     fun escapes(i: Int): Boolean = escapes.containsKey(i)
@@ -173,6 +176,26 @@ object Summaries {
         /** Local id -> parameter indices captured by the closure(s) the local may hold. */
         val carried = HashMap<Int, MutableSet<Int>>()
         val carry = LinkedHashSet<Int>()
+        /** Locals that hold a closure which captures the receiver of [fn]. */
+        val recvCarriers = HashSet<Int>()
+
+        /** Does the closure [e] evaluates to capture the receiver of [fn] (directly, through a local that holds such a closure, or a call that carries its receiver)? */
+        fun carriesReceiver(e: MExpr?): Boolean {
+            val rid = fn.receiver?.local?.id ?: return false
+            return when (e) {
+                is MExpr.Local -> e.local.id in recvCarriers
+                is MExpr.Move -> carriesReceiver(e.target)
+                is MExpr.Lambda -> e.captures.any { it.id == rid || it.id in recvCarriers }
+                is MExpr.Call -> {
+                    val sum = of(e.fn)
+                    sum != null && sum.carries.any { i ->
+                        if (i == RECEIVER) e.receiver.let { r -> r is MExpr.Local && r.local.id == rid } || carriesReceiver(e.receiver)
+                        else e.args.getOrNull(i).let { a -> a is MExpr.Local && a.local.id == rid || carriesReceiver(a) }
+                    }
+                }
+                else -> false
+            }
+        }
 
         /** Parameters captured by the closure [e] evaluates to (a lambda, an instance of a local class, a call that returns a closure over its arguments). */
         fun carriedOf(e: MExpr?): Set<Int> = when (e) {
@@ -251,6 +274,7 @@ object Summaries {
         }
 
         fun carry(l: MLocal, v: MExpr?) {
+            if (carriesReceiver(v)) recvCarriers.add(l.id)
             val cs = carriedOf(v)
             if (cs.isNotEmpty()) carried.getOrPut(l.id) { HashSet() }.addAll(cs)
         }
@@ -267,7 +291,10 @@ object Summaries {
                     // (an object of a Managed class, e.g. the `object : Sequence` of `sequence { }`, only holds the closure like a function value: the result carries it)
                     val nw = s.value as? MExpr.New
                     val owner = nw != null && (nw.cls == null || nw.cls.mode == MemMode.Strict)
-                    if (!owner && !fn.ret.type.tracked) carry += cs else for (i in cs) esc.putIfAbsent(i, "is captured by an object that is returned")
+                    if (!owner && !fn.ret.type.tracked) {
+                        carry += cs
+                        if (carriesReceiver(s.value)) carry += RECEIVER
+                    } else for (i in cs) esc.putIfAbsent(i, "is captured by an object that is returned")
                 }
                 is MStmt.Throw -> escape(s.value, "thrown")
                 is MStmt.Scope -> if (s.kind == ScopeKind.Thread) for (c in s.captures) { alias[c.id]?.forEach { esc.putIfAbsent(it, "captured by a thread") }; carried[c.id]?.forEach { esc.putIfAbsent(it, "captured by a thread") } }

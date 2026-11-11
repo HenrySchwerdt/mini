@@ -163,6 +163,12 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
     var isSuspend = false
     /** the body of a `suspend inline` function before the state machine was built (calls with suspending lambdas expand this) */
     var suspendInlineTemplate: IrBlockBody? = null
+    /**
+     * The body of a suspend function with suspension points before the state machine was built, kept for the ownership checker only (code
+     * generation never reads it): the checker reasons about the function as written (locals live across a suspension point, a suspension is
+     * a call), not about the flattened `when (label)` loop. Null when the function has none or the body cannot be copied.
+     */
+    var memoryBody: IrBlockBody? = null
     /** the declared return type of a suspend function (its IR return type is Any?: the value or COROUTINE_SUSPENDED) */
     var origReturnType: Type? = null
     var isOperator = false

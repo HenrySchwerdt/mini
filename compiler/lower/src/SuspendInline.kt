@@ -73,7 +73,7 @@ private class RetCtx(val res: IrVariable?) {
     var loop: IrDoWhileLoop? = null
 }
 
-private class Copier(val a: Ast2Ir, val subst: Map<TypeParamSym, Type>, var parent: IrDeclarationParent) {
+private class Copier(val a: Ast2Ir, val subst: Map<TypeParamSym, Type>, var parent: IrDeclarationParent, val forMemory: Boolean = false) {
     val vars = HashMap<IrValueDeclaration, IrValueDeclaration>()
     val loops = HashMap<IrLoop, IrLoop>()
     val fns = HashMap<IrFunction, IrFunction>()
@@ -154,7 +154,8 @@ private class Copier(val a: Ast2Ir, val subst: Map<TypeParamSym, Type>, var pare
         val saved = parent
         parent = nf
         try {
-            when (val b = f.body) {
+            // for the ownership checker a nested suspend lambda is copied as written (before its state machine was built)
+            when (val b = if (forMemory) f.memoryBody ?: f.body else f.body) {
                 is IrBlockBody -> nf.body = IrBlockBody(ArrayList(b.statements.map { stmt(it, null) }))
                 is IrExpressionBody -> nf.body = IrExpressionBody(expr(b.expression, null))
                 else -> {}
@@ -419,6 +420,33 @@ private class SuspendInliner(val a: Ast2Ir, val fn: IrFunction) {
 internal fun Ast2Ir.expandSuspendingInlineCalls(fn: IrFunction, body: IrBlockBody) {
     if (!containsSuspensionPoint(body)) return
     SuspendInliner(this, fn).run(body)
+}
+
+/** Does [e] declare a local function, class or delegated property? (the checker's closure analysis knows only the original declarations) */
+private fun declaresLocal(e: IrElement): Boolean {
+    if (e is IrClass || e is IrLocalDelegatedProperty || e is IrSimpleFunction) return true
+    val ch = ArrayList<IrElement>()
+    if (e is IrFunctionExpression) {
+        // the lambda itself is fine, what it declares is not
+        val b = (e.function.memoryBody ?: e.function.body) ?: return false
+        ch.add(b)
+    } else irChildren(e, ch)
+    for (c in ch) if (declaresLocal(c)) return true
+    return false
+}
+
+/**
+ * A copy of the body of the suspend function [fn] as it was written, for the ownership checker ([IrFunction.memoryBody]); null when it declares
+ * local functions or classes (the checker then analyses the state machine, which is safe but rejects owners that live across a suspension point).
+ */
+internal fun Ast2Ir.snapshotForMemory(fn: IrFunction, body: IrBlockBody): IrBlockBody? {
+    for (s in body.statements) if (declaresLocal(s)) return null
+    return try {
+        val c = Copier(this, emptyMap(), fn, true)
+        IrBlockBody(ArrayList(body.statements.map { c.stmt(it, null) }))
+    } catch (x: Exception) {
+        null
+    }
 }
 
 /** A copy of [body] (of [fn]) that later changes of the original do not affect. */

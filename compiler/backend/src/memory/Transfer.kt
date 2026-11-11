@@ -13,6 +13,8 @@ internal class UnitInfo(
     val fn: MFun? = null,
     /** Parameter slot id -> index in [MFun.params]. */
     val paramIndex: Map<Int, Int> = emptyMap(),
+    /** Ids of the locals this lambda unit captures from the function around it. */
+    val capturedIds: Set<Int> = emptySet(),
 )
 
 private const val HEAP_CLASS = "mini.memory.Heap"
@@ -349,7 +351,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                     p.owned -> if (ctor) "is stored into a field of the new object" else "is consumed by `$fnName` (`@Owned` parameter `${p.local.name}`)"
                     else -> Summaries.escapeReason(fn, i)?.let { "is kept by `$fnName`, whose parameter `${p.local.name}` $it" }
                 }
-                if (why != null) { escapeClosure(v, why); continue }
+                if (why != null) { if (v.child) escapeChild(v, why) else escapeClosure(v, why); continue }
                 if (!v.tracked) { arenaEscapeArg(v); continue }
             }
             if (p == null || p.isContext) { if (!v.tracked) arenaEscapeArg(v); continue }
@@ -415,7 +417,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val carries: Set<Int> = Summaries.of(fn)?.carries ?: emptySet()
             if (carries.isEmpty()) return AVal.untracked(rt, e.pos)
             val refs = LinkedHashSet<Int>()
-            for (i in carries) args.getOrNull(i)?.let { a -> if (!a.fresh && !a.isNull) refs += a.refs }
+            for (i in carries) {
+                // the closure the callee returns reads its receiver (`fun peek(): () -> Int = { n }`): it is a loan of the receiver
+                val a = if (i == FnSummary.RECEIVER) rv else args.getOrNull(i)
+                if (a != null && !a.fresh && !a.isNull) refs += a.refs
+            }
             return if (refs.isEmpty()) AVal.untracked(rt, e.pos) else AVal(rt, false, -1, refs, emptySet(), false, false, e.pos, caps = true)
         }
         if ((fn.mode == MemMode.Managed || fn.external) && fn.ret.annot.borrowed == null) return AVal.untracked(rt, e.pos)
@@ -579,7 +585,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
      * count references to a Strict object, so it must not outlive the owner. Returns the owners borrowed and the arena sites seen;
      * where the closure goes decides later (a use after the owner is gone is M0101, an escape is M0112, see [escapeClosure]).
      */
-    private fun captureOf(captures: List<MLocal>, pos: Pos): Pair<Set<Int>, Set<Site>> {
+    private fun captureOf(captures: List<MLocal>, pos: Pos, assigned: Set<Int>? = null): Pair<Set<Int>, Set<Site>> {
         val refs = LinkedHashSet<Int>()
         val arena = HashSet<Site>()
         for (c in captures) {
@@ -598,9 +604,12 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (s2.bits and B != 0) {
                 refs += rootsOf(c.id)
             } else if (s2.bits and O != 0) {
-                if (c.isVar) {
+                if (c.isVar && (assigned == null || c.id in assigned)) {
+                    // a lambda that does not assign the variable only reads the owner the variable holds when it runs (the heap cell of
+                    // the variable does not count it): it borrows the variable like a `val`, whatever the variable holds later is checked at the
+                    // use. A variable the closure assigns (or a local class that might) would change the owner behind the checker's back.
                     diag(
-                        "M0112", pos, "owned `var ${c.name}` is captured by a closure", "the closure shares a reference-counting cell with the variable and keeps `${c.name}` alive",
+                        "M0112", pos, "owned `var ${c.name}` is captured by a closure", "the closure assigns the variable (or may: a local class), so the owner it holds changes behind the checker's back",
                         "capture a `val` (`val ${c.name}2 = ${c.name}`), or pass `${c.name}` as a parameter", slot = c.id,
                     )
                     put(c.id, Slot(X, s2.refs, s2.sites, s2.vpos))
@@ -613,9 +622,25 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     }
 
     private fun evalLambda(e: MExpr.Lambda, env: Env): AVal {
-        val (refs, arena) = captureOf(e.captures, e.pos)
+        // the captured `var`s of tracked type that the lambda (or a lambda inside it) assigns
+        val vars = HashSet<Int>()
+        for (c in e.captures) if (c.isVar && c.type.tracked) vars += c.id
+        val assigned = HashSet<Int>()
+        if (vars.isNotEmpty()) MemoryChecker.walk(e.body, enterLambdas = true, onStmt = { if (it is MStmt.Assign && it.local.id in vars) assigned += it.local.id }, onExpr = {})
+        val (refs, arena) = captureOf(e.captures, e.pos, assigned)
         queue(e, env.ctx)
-        return AVal(MType.OTHER, false, -1, refs, arena, false, false, e.pos, caps = refs.isNotEmpty())
+        return AVal(MType.OTHER, false, -1, refs, arena, false, false, e.pos, caps = refs.isNotEmpty(), child = e.child)
+    }
+
+    /**
+     * The block of a `launch` / `async` that its structured scope joins before the call returns that owns the block: it may borrow what the
+     * unit around it borrowed from the function that called the scope builder (those owners live until the builder returns), but not an owner
+     * or loan that belongs to the block itself (it can be freed before the child runs).
+     */
+    private fun escapeChild(v: AVal, how: String) {
+        val bad = v.refs.filter { it !in u.capturedIds }
+        if (bad.isEmpty()) return
+        escapeClosure(AVal(v.type, v.fresh, v.src, bad.toSet(), v.sites, v.nullable, v.isNull, v.pos, caps = true), how)
     }
 
     /**
