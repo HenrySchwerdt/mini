@@ -1515,7 +1515,7 @@ static inline __attribute__((always_inline, unused)) MkObject *mkh_alloc_inline(
     o->type = ti;
     o->refcount = 1;
     o->flags = ((uint32_t)cls << 8) | (armed ? MK_FLAG_ARMED : 0u);
-    if (armed) mk_cycles_alloc_bytes += cls * 16;
+    if (armed) MK_CYCLES_ADD(cls * 16);
     return o;
 }
 #else

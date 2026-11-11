@@ -126,6 +126,12 @@ extern size_t mk_cycles_alloc_bytes;
 extern volatile int mk_cycles_ready; /* the collector is installed (set by the first armed allocation) */
 #endif
 
+extern size_t mk_cycles_alloc_bytes;
+/* The allocation volume counter is a heuristic: a lost update between threads is harmless, but the access is a relaxed atomic load and store
+ * (no data race for ThreadSanitizer; a plain mov, add, mov on x86-64 and arm64, not a locked instruction). */
+#define MK_CYCLES_ADD(n) __atomic_store_n(&mk_cycles_alloc_bytes, __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED) + (n), __ATOMIC_RELAXED)
+
+
 /* Slow path of the generated `<object>_get` accessors of Kotlin `object`s and file classes holding top-level properties:
  * creates the instance and runs its initialiser once, also when threads race on the first access. `*slot` is published
  * (release store) only after the initialiser returned, so readers that see a non-NULL slot see an initialised object;

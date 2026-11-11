@@ -31,9 +31,6 @@ MK_TLS MkAllocCtx mk_tls_ctx;
 void *(*mk_arena_marker)(MkAllocator *self, size_t size, size_t align);
 void *(*mk_arena_zeroed_hook)(MkAllocator *arena, size_t size);
 size_t mk_cycles_alloc_bytes; /* (defined here, next to its only writer: a direct access) */
-/* The volume counter is a heuristic: lost updates between threads are harmless, but the accesses are relaxed atomics so that they are no
- * data race (a plain load and store on every target: no cost on the single-thread path). */
-#define MK_CYCLES_ADD(n) __atomic_store_n(&mk_cycles_alloc_bytes, __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED) + (n), __ATOMIC_RELAXED)
 
 /* malloc/free underneath both the Rc and the Heap allocator. Stateless, so
  * trivially thread-safe. */
