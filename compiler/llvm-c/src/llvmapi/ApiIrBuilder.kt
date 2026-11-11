@@ -394,6 +394,7 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
         IrOp.FMUL -> LLVMBuildFMul(builder, a, b, nm)
         IrOp.FDIV -> LLVMBuildFDiv(builder, a, b, nm)
         IrOp.FREM -> LLVMBuildFRem(builder, a, b, nm)
+        IrOp.ADDNSW -> LLVMBuildNSWAdd(builder, a, b, nm)
     }
 
     override fun bin(op: IrOp, a: ApiVal, b: ApiVal, name: String): ApiVal {

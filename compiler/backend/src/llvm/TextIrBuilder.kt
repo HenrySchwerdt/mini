@@ -328,6 +328,7 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
 
     private fun opText(op: IrOp): String = when (op) {
         IrOp.ADD -> "add"
+        IrOp.ADDNSW -> "add nsw"
         IrOp.SUB -> "sub"
         IrOp.MUL -> "mul"
         IrOp.SDIV -> "sdiv"

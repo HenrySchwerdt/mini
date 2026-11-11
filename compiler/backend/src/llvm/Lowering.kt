@@ -1,5 +1,6 @@
 package mini.backend.llvm
 
+import mini.backend.CEmitter
 import mini.backend.arrayElemTypeInfoType
 import mini.backend.arrayCastFlags
 import mini.backend.ANY_CNAME
@@ -1676,8 +1677,32 @@ private class Lowering<V : Any, B : Any>(
         startBlock(namedBlock(brk(s.label)))
     }
 
+    /** `for (i in a until b)` over Int / Long, no step: `cur < last <= MAX`, so `cur + 1` does not wrap (`add nsw`), and the loop is a plain counting loop (CEmitter.plainLoops). */
+    private fun plainForRange(s: MirStmt.ForRange) {
+        val t = s.variable.type
+        val lty = ity(t)
+        val curSlot = b.alloca(lty, "cur" + lblCounter)
+        lblCounter++
+        store(expr(s.start), curSlot)
+        val last = expr(s.end)
+        val bodyL = newLabel("frbody")
+        val advL = newLabel("fradv")
+        condBr(icmp(IrCmp.SLT, load(t, curSlot), last), bodyL, namedBlock(brk(s.label)))
+        startBlock(bodyL)
+        store(load(t, curSlot), slot(s.variable))
+        scope(s.body, loop = s.label, mid = {
+            if (cont(s.label) in usedLabels) startBlock(namedBlock(cont(s.label)))
+        })
+        val cur = load(t, curSlot)
+        val nv = b.bin(IrOp.ADDNSW, cur, if (t === TLong) b.constInt(IrType.I64, 1L) else c32(1), "")
+        store(nv, curSlot)
+        condBr(icmp(IrCmp.SLT, nv, last), bodyL, namedBlock(brk(s.label)))
+        startBlock(namedBlock(brk(s.label)))
+    }
+
     fun forRange(s: MirStmt.ForRange) {
         val t = s.variable.type
+        if (CEmitter.plainLoops && s.step == null && s.ascending && !s.inclusive && (t === TInt || t === TLong)) { plainForRange(s); return }
         val lty = ity(t)
         val curSlot = b.alloca(lty, "cur" + lblCounter)
         lblCounter++
