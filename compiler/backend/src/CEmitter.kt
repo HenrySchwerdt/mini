@@ -859,6 +859,7 @@ object CEmitter {
             is MirExpr.RuntimeCall -> ThrowAnalysis.runtimeCallThrows(e.cName)
             is MirExpr.VCall, is MirExpr.ICall -> throwing.dynamicMayThrow
             is MirExpr.New -> e.ctorCName in throwing.mayThrow
+            is MirExpr.ObjectGet -> throwing.objectGetMayThrow(e.classCName)
             is MirExpr.Unbox, is MirExpr.NotNull -> true
             is MirExpr.Cast -> e.mode == MirExpr.CastMode.Checked
             is MirExpr.Binary -> (e.op == BinaryOp.Div || e.op == BinaryOp.Rem) && (e.left.type == TInt || e.left.type == TLong) &&

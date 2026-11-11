@@ -27,6 +27,8 @@ class Sema {
     private val ownerCache = HashMap<String, Any?>()
     private val classCache = HashMap<String, ClassSym?>()
     var debug = false
+    /** type variables whose lambda argument is being analysed with the variable unfixed (builder inference): their bounds grow while the body is checked */
+    val openVars = ArrayList<TypeVariable>()
 
     fun packageInfo(name: String): PackageInfo {
         var p = packages[name]
