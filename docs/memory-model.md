@@ -1354,8 +1354,21 @@ of the state machine; the freed object is the `Box` that `b.free()` returned a m
 Verified under AddressSanitizer + LeakSanitizer on the C and the LLVM backend: corpus `s148` (an owner between two suspension points, a plain
 object), `s149` (owner across `delay`, `runBlocking` block and suspend function), `s150` (across `await`, `join`, suspend calls), `s151` (moved
 into a suspend function, loops, `try/finally`); REJECT `s152` (use after free across `delay`, M0101), `s153` (never freed, M0102), `s154`
-(use after the move into a suspend function, M0104). Not supported (as before): returning an owner from a suspend function (`suspend fun
-make(): @Owned Box` is typed `Any?` in the lowered signature: M0111/M0102, conservative).
+(use after the move into a suspend function, M0104). Round strict-4b lifts the old restriction on returning an owner from a suspend function (`suspend fun make(): @Owned Box`):
+
+* *The checker sees the declared type.* The lowered signature is `Any?`, which carries no ownership (M0111/M0102 before). `IrFunction.memoryReturnsDeclared`
+  (set by `lowerSuspendBody` when the body is kept as written: no suspension point, or `memoryBody`) makes `MemoryFacts.declaredReturnType` use
+  `origReturnType`, so `@Owned`/`@Borrowed` on the result and the tracked result type are checked like for any Strict function. A suspend function whose
+  body could not be kept (local functions or classes in it) keeps the lowered `Any?` view. A *library* suspend function (stub, no body) is still seen as `Any?`.
+* *Code generation.* The result of the call travels as `Any?` through the hoisted `$tmp` cell of the caller's state machine and, when the callee
+  suspended, through the `Result` that resumes it. Both held a counted reference to the object while the caller freed it (heap-use-after-free at the
+  cell's or the result's dispose). Fixes: the hoisted result cell of a call whose declared result is a Strict class is a borrowed cell
+  (`IrVariable.suspendResultType`, `Ir2Mir.cellBorrowed`; `Tracking.borrowedField`/`rcField` now honour `borrowed` on `mk.Ref` cells of any reference
+  type), and `CoroutineImpl.resumeValue` moves the value out of the `Result` (`Result.value` is a `var` for this) so the result no longer owns it.
+* Corpus: ACCEPT `s167` (return, pass on from another suspend function, branches, free after `join`; ASan + LSan on the C and the LLVM backend),
+  REJECT `s168` (use after free, M0101), `s169` (never freed, M0102), `s170` (a borrowed parameter returned as owned, M0109), `s171` (returned after it moved into
+  a suspend function, M0104). Still rejected: an owner returned *through a lambda* (`async { make() }`, the `Deferred` is Managed).
+  Not supported: a suspend function of a library built with an older compiler (no declared type in its stub).
 
 **Structured children (`launch` inside `runBlocking`)**
 

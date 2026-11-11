@@ -366,6 +366,7 @@ private class SmBuilder(val a: Ast2Ir, val fn: IrFunction) {
         val rb = newBlock()
         val cb = newBlock()
         val tv = tmp(anyN)
+        tv.suspendResultType = origType
         emit(set(labelVar, a.constInt(rb.id)))
         // the result is checked in a variable of the block, not in a hoisted one: a suspension object that stayed in the
         // heap cell of the function would keep the continuation it refers to alive (a reference cycle)
@@ -780,9 +781,11 @@ fun Ast2Ir.lowerSuspendBody(fn: IrFunction, body0: IrBlockBody): IrBlockBody {
         val stmts = ArrayList<IrStatement>(body.statements)
         val orig = fn.origReturnType
         if (orig != null && isUnit(orig)) stmts.add(IrReturn(fn, unitValue(), sema.nothingType))
+        fn.memoryReturnsDeclared = true
         return IrBlockBody(stmts)
     }
     fn.memoryBody = snapshotForMemory(fn, body)
+    fn.memoryReturnsDeclared = fn.memoryBody != null
     return b.build(body)
 }
 

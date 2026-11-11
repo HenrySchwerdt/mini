@@ -169,6 +169,8 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
      * a call), not about the flattened `when (label)` loop. Null when the function has none or the body cannot be copied.
      */
     var memoryBody: IrBlockBody? = null
+    /** The ownership checker sees the declared return type ([origReturnType]) of this suspend function: its body was kept as written. */
+    var memoryReturnsDeclared = false
     /** the declared return type of a suspend function (its IR return type is Any?: the value or COROUTINE_SUSPENDED) */
     var origReturnType: Type? = null
     var isOperator = false
@@ -252,6 +254,8 @@ class IrVariable(override var name: String, override var type: Type, var isVar: 
     var sym: VarSym? = null
     /** annotations written on the type (`val b: @Owned Box = a`) */
     var typeAnnotations: List<IrAnnotation> = emptyList()
+    /** The hoisted result of a suspend call (type `Any?`): the type the callee declares; a Strict class there makes the cell borrowed. */
+    var suspendResultType: Type? = null
 }
 
 class IrProperty(val name: String, val sym: PropSym?) : IrDeclaration() {
