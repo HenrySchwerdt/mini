@@ -534,9 +534,13 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             if (off < 0 || off > 1) continue
             val eps = ops.allParams(ef)
             var found = false
-            for (mode in 0..1) {
-                if (mode == 1 && fn.params.none { it.isVararg }) break
-                val map = adaptMapping(fn.params, off, eps.size, mode == 1) ?: continue
+            for (combo in 0..7) {
+                // mode 1: an array for the vararg; [give]: elements the vararg leaves to the parameters after it (`(Int, String, Int)` for `f(a: Int, vararg b: String, c: Int = 0)`)
+                val mode = combo / 4
+                val give = combo % 4
+                if (mode == 1 && (give > 0 || fn.params.none { it.isVararg })) continue
+                if (mode == 0 && give > 0 && fn.params.none { it.isVararg }) continue
+                val map = adaptMapping(fn.params, off, eps.size, mode == 1, give) ?: continue
                 val sys = ConstraintSystem(sema)
                 val mm = HashMap<TypeParamSym, Type>()
                 sys.addVariables(c.tps, mm)
@@ -688,7 +692,7 @@ class AdaptedRef(val map: AdaptMap, val receiverCount: Int) {
  * ones that are left over (after the required parameters behind it); the parameters beyond the expected ones need a default or are
  * `vararg`. Null when that does not work, or when the reference is not adapted at all.
  */
-fun adaptMapping(params: List<VarSym>, off: Int, n: Int, arrayVararg: Boolean = false): AdaptMap? {
+fun adaptMapping(params: List<VarSym>, off: Int, n: Int, arrayVararg: Boolean = false, give: Int = 0): AdaptMap? {
     if (n < off) return null
     val starts = IntArray(params.size)
     val counts = IntArray(params.size)
@@ -704,9 +708,10 @@ fun adaptMapping(params: List<VarSym>, off: Int, n: Int, arrayVararg: Boolean = 
                 if (!params[k].hasDefault && !params[k].isVararg) req++
                 k++
             }
-            var take = n - i - req
+            var take = n - i - req - give
             // an array given for the vararg parameter itself (`(IntArray, String) -> Unit` for `foo(vararg xs: Int, s: String = "")`): it is spread
             if (arrayVararg) take = if (i < n) 1 else 0
+            if (take < 0 && give > 0) return null
             if (take < 0) take = 0
             counts[j] = take
             i += take

@@ -213,7 +213,7 @@ class Sema {
 
     private val defaultImports = listOf(
         "kotlin", "kotlin.annotation", "kotlin.collections", "kotlin.comparisons", "kotlin.io", "kotlin.ranges",
-        "kotlin.sequences", "kotlin.text", "jav" + "a.lang", "kotlin" + ".j" + "vm",
+        "kotlin.sequences", "kotlin.text", "kotlin.native", "jav" + "a.lang", "kotlin" + ".j" + "vm",
     )
 
     /** a package ([PackageInfo]) or a class ([ClassSym]) named by a dotted path, or null */
