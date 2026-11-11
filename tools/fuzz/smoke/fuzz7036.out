@@ -1,0 +1,32 @@
+ 
+co28 -> null failed
+[2000]
+1
+cleanup0
+base t0 0
+cleanup1
+sub s1 2 c
+cleanup7
+outer
+[2, 5, 11, 23, 47, 95, 191, 383]
+0
+9303
+[0, 1, 3, 7, 15, 31, 63, 127, 255, 511]
+P7(a=-7, b=kotlin, c=1000)
+P7(a=-166, b=kotlin, c=9223372036854775807)
+true
+true
+-7kotlin1000
+1005
+2
+false
+9
+188
+9
+188
+9
+188
+9
+188
+[28]
+1

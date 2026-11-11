@@ -124,10 +124,28 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     return guardUnsetGetterResult(c, r, out)
 }
 
+/** `s + x` of the standard library (String.plus): the operands of a left-nested chain `a + b + c` in order, or null when [c] is not such a call. */
+private fun stringPlusOperands(c: IrExpression, into: ArrayList<IrExpression>): Boolean {
+    if (c !is IrCall || c.callee.name != "plus" || c.arguments.size != 2) return false
+    val l = c.arguments[0] ?: return false
+    val r = c.arguments[1] ?: return false
+    val p = c.callee.parent
+    val std = (p is IrClass && p.kotlinFqName == "kotlin.String") || (p is IrFile && p.packageFqName == "kotlin")
+    if (!std || l.type.classFqName != "kotlin.String" || Reachability.cSymbol(c.callee) != null) return false
+    if (!stringPlusOperands(l, into)) into.add(l)
+    into.add(r)
+    return true
+}
+
 internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     val owner = c.callee
     val name = owner.name
     val parent = owner.parent
+    // `a + b + c ...` of strings: one concatenation (the pieces of a template) instead of one string per `+`
+    if (ConcatOptions.numbers && name == "plus" && c.arguments.size == 2 && c.arguments[0] is IrCall) {
+        val parts = ArrayList<IrExpression>()
+        if (stringPlusOperands(c, parts) && parts.size > 2) return stringConcat(IrStringConcatenation(parts, c.type), out)
+    }
 
     lateinitIsInitialized(c, name, if (parent is IrClass) parent.kotlinFqName else (parent as? IrFile)?.packageFqName ?: "", out)?.let { return it }
     // natively implemented function (@CSymbol, docs/stdlib.md)
@@ -580,9 +598,10 @@ internal fun Ir2Mir.primitiveMember(
             TByte, TShort -> MirExpr.Convert(recv, TInt)
             TChar -> MirExpr.Convert(recv, TInt)
             TBoolean -> MirExpr.Conditional(recv, MirExpr.IntConst(1231), MirExpr.IntConst(1237))
-            TLong -> MirExpr.Convert(
-                MirExpr.Binary(BinaryOp.Xor, recv, MirExpr.Binary(BinaryOp.Ushr, recv, MirExpr.IntConst(32))), TInt,
-            )
+            TLong -> {
+                val r1 = if (isPure(recv)) recv else tmpOfPlain(recv, out) // used twice: evaluated once
+                MirExpr.Convert(MirExpr.Binary(BinaryOp.Xor, r1, MirExpr.Binary(BinaryOp.Ushr, r1, MirExpr.IntConst(32))), TInt)
+            }
             else -> anyMember(2, v, c, out)
         }
         "equals" -> if (v.size == 2) return anyMember(1, v, c, out)
@@ -591,10 +610,13 @@ internal fun Ir2Mir.primitiveMember(
     if (cls == "kotlin.Boolean") {
         return when (name) {
             "not" -> MirExpr.Unary(UnaryOp.Not, recv)
-            "compareTo" -> MirExpr.Conditional(
-                MirExpr.Binary(BinaryOp.Eq, recv, v[1]), MirExpr.IntConst(0),
-                MirExpr.Conditional(recv, MirExpr.IntConst(1), MirExpr.IntConst(-1)),
-            )
+            "compareTo" -> {
+                val r1 = if (isPure(recv)) recv else tmpOfPlain(recv, out) // used twice: evaluated once
+                MirExpr.Conditional(
+                    MirExpr.Binary(BinaryOp.Eq, r1, v[1]), MirExpr.IntConst(0),
+                    MirExpr.Conditional(r1, MirExpr.IntConst(1), MirExpr.IntConst(-1)),
+                )
+            }
             "and" -> MirExpr.Binary(BinaryOp.And, recv, v[1])
             "or" -> MirExpr.Binary(BinaryOp.Or, recv, v[1])
             "xor" -> MirExpr.Binary(BinaryOp.Xor, recv, v[1])
@@ -628,11 +650,13 @@ internal fun Ir2Mir.primitiveMember(
         if (t == TDouble || t == TFloat) {
             return MirExpr.RuntimeCall("mk_double_compare", listOf(convertTo(a, TDouble, c), convertTo(b, TDouble, c)), TInt)
         }
-        // (a > b) - (a < b) with Int result
+        // (a > b) - (a < b) with Int result; both operands are used twice, so an operand with effects (`x.compareTo(f())`) is evaluated once, in order
+        val a1 = if (isPure(a)) a else tmpOfPlain(a, out)
+        val b1 = if (isPure(b)) b else tmpOfPlain(b, out)
         return MirExpr.Binary(
             BinaryOp.Sub,
-            convertTo(MirExpr.Conditional(MirExpr.Binary(BinaryOp.Gt, a, b), MirExpr.IntConst(1), MirExpr.IntConst(0)), TInt, c),
-            MirExpr.Conditional(MirExpr.Binary(BinaryOp.Lt, a, b), MirExpr.IntConst(1), MirExpr.IntConst(0)),
+            convertTo(MirExpr.Conditional(MirExpr.Binary(BinaryOp.Gt, a1, b1), MirExpr.IntConst(1), MirExpr.IntConst(0)), TInt, c),
+            MirExpr.Conditional(MirExpr.Binary(BinaryOp.Lt, a1, b1), MirExpr.IntConst(1), MirExpr.IntConst(0)),
         )
     }
 

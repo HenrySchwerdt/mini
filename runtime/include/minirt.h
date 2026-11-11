@@ -357,6 +357,15 @@ MkString *mk_string_concat3(const MkString *a, const MkString *b, const MkString
 MkString *mk_string_concat4(const MkString *a, const MkString *b, const MkString *c, const MkString *d);
 MkString *mk_string_concat5(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e);
 MkString *mk_string_concat6(const MkString *a, const MkString *b, const MkString *c, const MkString *d, const MkString *e, const MkString *f);
+/* a + b + c ... with Int / Long / Char operands among the strings: two bits per part in `mask` (0 = the string, 1 = decimal digits of the number,
+ * 2 = the character), the number in the part's MkLong slot; one allocation, no string per number (string.c) */
+MkString *mk_string_concat_m3(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2);
+MkString *mk_string_concat_m4(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2,
+                              const MkString *s3, MkLong v3);
+MkString *mk_string_concat_m5(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2,
+                              const MkString *s3, MkLong v3, const MkString *s4, MkLong v4);
+MkString *mk_string_concat_m6(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2,
+                              const MkString *s3, MkLong v3, const MkString *s4, MkLong v4, const MkString *s5, MkLong v5);
 MkString *mk_string_from_int(MkInt value);
 MkString *mk_string_from_long(MkLong value);
 MkString *mk_string_from_float(MkFloat value); /* Kotlin/JVM Float.toString */

@@ -261,13 +261,16 @@ static const char digits2[201] =
     "8081828384858687888990919293949596979899";
 
 size_t mk_i64_length(int64_t value) {
+    static const uint64_t pow10[20] = {1ULL, 10ULL, 100ULL, 1000ULL, 10000ULL, 100000ULL, 1000000ULL, 10000000ULL, 100000000ULL, 1000000000ULL,
+                                       10000000000ULL, 100000000000ULL, 1000000000000ULL, 10000000000000ULL, 100000000000000ULL,
+                                       1000000000000000ULL, 10000000000000000ULL, 100000000000000000ULL, 1000000000000000000ULL,
+                                       10000000000000000000ULL};
     uint64_t u = value < 0 ? 0u - (uint64_t)value : (uint64_t)value;
-    size_t n = 1;
-    while (u >= 100u) {
-        u /= 100u;
-        n += 2;
-    }
-    if (u >= 10u) n++;
+    /* the digit count from the bit length (log10(2) ~ 1233/4096), corrected by one table compare */
+    uint64_t w = u | 1u; /* 0 has one digit; the powers of ten above 1 are even, so the compare is unchanged */
+    unsigned bits = 64u - (unsigned)__builtin_clzll(w);
+    unsigned t = (bits * 1233u) >> 12;
+    size_t n = (size_t)t + (w >= pow10[t] ? 1u : 0u);
     return n + (value < 0 ? 1u : 0u);
 }
 
@@ -320,6 +323,86 @@ MkString *mk_string_from_long(MkLong value) {
 }
 
 MkString *mk_string_from_int(MkInt value) { return mk_string_from_long(value); }
+
+/* `a + b + c ...` with Int / Long / Char operands among the strings, in one allocation and without a string per number: part i is the string s[i]
+ * (kind 0; NULL is "null"), the decimal digits of v[i] (kind 1) or the character v[i] (kind 2); `mask` holds the kind of part i in bits 2i and 2i+1. */
+static inline __attribute__((always_inline)) MkString *catm_n(unsigned mask, size_t n, const MkString *const *s, const int64_t *v) {
+    size_t lens[6];
+    size_t total = 0;
+    bool narrow = true;
+    for (size_t i = 0; i < n; i++) {
+        unsigned k = (mask >> (2 * i)) & 3u;
+        if (k == 0) {
+            total += s[i] ? (size_t)s[i]->length : 4;
+            if (s[i] != NULL && !mk_string_is_latin1(s[i])) narrow = false;
+        } else if (k == 1) {
+            lens[i] = mk_i64_length(v[i]);
+            total += lens[i];
+        } else {
+            total += 1;
+            if (v[i] > 0xFF || v[i] < 0) narrow = false;
+        }
+    }
+    if (narrow) {
+        MkString *r = string_alloc8(total);
+        uint8_t *out = (uint8_t *)(void *)r->chars;
+        for (size_t i = 0; i < n; i++) {
+            unsigned k = (mask >> (2 * i)) & 3u;
+            if (k == 0) {
+                const uint8_t *c = s[i] ? mk_string_bytes(s[i]) : null_bytes;
+                size_t len = s[i] ? (size_t)s[i]->length : 4;
+                copy_short(out, c, len);
+                out += len;
+            } else if (k == 1) {
+                size_t len = lens[i];
+                mk_i64_write8(v[i], out, len);
+                out += len;
+            } else {
+                *out++ = (uint8_t)v[i];
+            }
+        }
+        return r;
+    }
+    MkString *r = string_alloc(total);
+    MkChar *out = r->chars;
+    for (size_t i = 0; i < n; i++) {
+        unsigned k = (mask >> (2 * i)) & 3u;
+        if (k == 0) {
+            out = put_wide(out, s[i]);
+        } else if (k == 1) {
+            size_t len = lens[i];
+            mk_i64_write(v[i], out, len);
+            out += len;
+        } else {
+            *out++ = (MkChar)v[i];
+        }
+    }
+    return r;
+}
+
+MkString *mk_string_concat_m3(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2) {
+    const MkString *const s[3] = {s0, s1, s2};
+    const int64_t v[3] = {v0, v1, v2};
+    return catm_n((unsigned)mask, 3, s, v);
+}
+MkString *mk_string_concat_m4(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2,
+                              const MkString *s3, MkLong v3) {
+    const MkString *const s[4] = {s0, s1, s2, s3};
+    const int64_t v[4] = {v0, v1, v2, v3};
+    return catm_n((unsigned)mask, 4, s, v);
+}
+MkString *mk_string_concat_m5(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2,
+                              const MkString *s3, MkLong v3, const MkString *s4, MkLong v4) {
+    const MkString *const s[5] = {s0, s1, s2, s3, s4};
+    const int64_t v[5] = {v0, v1, v2, v3, v4};
+    return catm_n((unsigned)mask, 5, s, v);
+}
+MkString *mk_string_concat_m6(MkInt mask, const MkString *s0, MkLong v0, const MkString *s1, MkLong v1, const MkString *s2, MkLong v2,
+                              const MkString *s3, MkLong v3, const MkString *s4, MkLong v4, const MkString *s5, MkLong v5) {
+    const MkString *const s[6] = {s0, s1, s2, s3, s4, s5};
+    const int64_t v[6] = {v0, v1, v2, v3, v4, v5};
+    return catm_n((unsigned)mask, 6, s, v);
+}
 
 MkString *mk_string_from_float(MkFloat value) {
     char buf[64];

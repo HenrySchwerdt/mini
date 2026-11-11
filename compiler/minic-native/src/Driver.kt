@@ -22,6 +22,7 @@ import mini.backend.llvm.LlvmEmitter
 import mini.backend.llvm.LlvmTarget
 import mini.io.readTextFile
 import mini.io.writeTextFile
+import mini.lower.ConcatOptions
 import mini.lower.LowerDiagnostics
 import mini.backend.memory.DiagJson
 import mini.backend.memory.DiagRender
@@ -421,6 +422,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         reportMemory(report, name, werror, brief, diag)
         return
     }
+    ConcatOptions.numbers = optOptions.on("concat-numbers")
     val unoptimized = try {
         if (separateMlibs && ordered.isNotEmpty()) {
             val userModule = lowerToMirAgainstLibs(inputs, ordered, name, lineDirs, { report -> reportMemory(report, name, werror, false, diag) })
