@@ -142,7 +142,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     val name = owner.name
     val parent = owner.parent
     // `a + b + c ...` of strings: one concatenation (the pieces of a template) instead of one string per `+`
-    if (name == "plus" && c.arguments.size == 2 && c.arguments[0] is IrCall) {
+    if (ConcatOptions.numbers && name == "plus" && c.arguments.size == 2 && c.arguments[0] is IrCall) {
         val parts = ArrayList<IrExpression>()
         if (stringPlusOperands(c, parts) && parts.size > 2) return stringConcat(IrStringConcatenation(parts, c.type), out)
     }
