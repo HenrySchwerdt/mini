@@ -9,6 +9,9 @@ import mini.concurrent.Condition
 import mini.concurrent.Lock
 import mini.internal.*
 
+/** `java.lang.Object`: `Any` (its `wait`, `notify` and `notifyAll` are the extension functions of kotlin.synchronized). */
+public typealias Object = Any
+
 public fun interface Runnable {
     public fun run()
 }
@@ -52,6 +55,9 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
     private var interruptedFlag = false
     private val state = Lock()
     private val done: Condition = state.newCondition()
+    private val sleepCond = LongArray(16)
+    private var waitCond: LongArray? = null
+    private var waitMutex: LongArray? = null
 
     public var name: String
     public var id: Long = 0L
@@ -60,6 +66,7 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
     public var priority: Int = 5
 
     init {
+        sysCondInit(sleepCond)
         ThreadRegistry.lock.lock()
         val n = ThreadRegistry.nextIndex
         if (name == null) ThreadRegistry.nextIndex = n + 1
@@ -145,10 +152,31 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
         state.unlock()
     }
 
+    /**
+     * Sets the interrupt flag and wakes the thread if it sleeps, waits in [join], in a [Condition] / a blocking queue / a latch /
+     * a semaphore or in `Object.wait`: the waiting call throws [InterruptedException] (and clears the flag).
+     */
     public fun interrupt() {
         state.lock()
         interruptedFlag = true
+        sysCondBroadcast(sleepCond)
+        val c = waitCond
+        val m = waitMutex
         state.unlock()
+        if (c != null && m != null) {
+            // wake the condition variable the thread waits on; its mutex is taken for that, so the thread is surely inside the wait. If the
+            // mutex stays taken (the interrupting thread holds it itself) the wait ends at its next slice, see interruptibleWait.
+            var tries = 0
+            while (tries < 200) {
+                if (sysTryLock(m)) {
+                    sysCondBroadcast(c)
+                    sysUnlock(m)
+                    break
+                }
+                sysThreadYield()
+                tries++
+            }
+        }
     }
 
     public val isInterrupted: Boolean
@@ -167,13 +195,40 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
         return r
     }
 
+    internal fun throwIfInterrupted() {
+        if (clearInterrupt()) throw InterruptedException()
+    }
+
+    internal fun setWaiting(cond: LongArray?, mutex: LongArray?) {
+        state.lock()
+        waitCond = cond
+        waitMutex = mutex
+        state.unlock()
+    }
+
+    /** Sleeps; the sleep ends early (with InterruptedException) when the thread is interrupted. */
+    internal fun sleepNanos(nanos: Long) {
+        val end = sysMonotonicNanos() + nanos
+        state.lock()
+        while (!interruptedFlag) {
+            val left = end - sysMonotonicNanos()
+            if (left <= 0L) break
+            sysCondWaitNanos(sleepCond, state.storage, left)
+        }
+        val was = interruptedFlag
+        interruptedFlag = false
+        state.unlock()
+        if (was) throw InterruptedException("sleep interrupted")
+    }
+
     public override fun toString(): String = "Thread[#" + id + "," + name + "," + priority + "]"
 
     public companion object {
         private var mainThread: Thread? = null
 
         public fun sleep(millis: Long) {
-            sysSleepNanos(millis * 1000000L)
+            if (millis < 0L) throw IllegalArgumentException("timeout value is negative")
+            currentThread().sleepNanos(millis * 1000000L)
         }
 
         /** Hints the scheduler to run another thread. */
@@ -207,6 +262,27 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
             sysThreadYield()
         }
     }
+}
+
+/**
+ * One wait on a condition variable that the thread can be interrupted in: a wait of at most one second (a longer wait is repeated by the
+ * callers, which loop on their predicates anyway), registered with the thread so that [Thread.interrupt] can wake it.
+ * [nanos] < 0: without a limit. True when the time given ran out.
+ */
+internal fun interruptibleWait(cond: LongArray, mutex: LongArray, nanos: Long): Boolean {
+    val t = Thread.currentThread()
+    t.throwIfInterrupted()
+    t.setWaiting(cond, mutex)
+    val slice = 1000000000L
+    var timedOut = false
+    if (nanos in 0L..slice) {
+        timedOut = sysCondWaitNanos(cond, mutex, nanos)
+    } else {
+        sysCondWaitNanos(cond, mutex, slice)
+    }
+    t.setWaiting(null, null)
+    t.throwIfInterrupted()
+    return timedOut
 }
 
 /** A value per thread. Subclass and override [initialValue], or use [withInitial]. */

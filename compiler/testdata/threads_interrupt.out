@@ -1,0 +1,31 @@
+== interrupt
+interrupted;flag=false
+pre-interrupted sleep
+false
+false
+1
+2
+holds lock again: true
+3
+4
+5
+6
+false
+== wait / notify
+[woken]
+true
+not owner
+[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+== @Synchronized
+40000
+40000
+40000
+40002
+40002
+== ConcurrentHashMap segments
+500
+160000
+[0, 1, 2]
+true
+false
+true

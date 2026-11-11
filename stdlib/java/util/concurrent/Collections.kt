@@ -28,81 +28,110 @@ public class ConcurrentHashMap<K, V>(initialCapacity: Int) : ConcurrentMap<K, V>
         putAll(m)
     }
 
-    private val lock = Lock()
-    private val map = HashMap<K, V>()
+    // 32 segments, each a HashMap behind its own mutex: operations on keys of different segments run in parallel
+    private val locks = Array<Lock>(SEGMENTS) { Lock() }
+    private val maps = Array<HashMap<K, V>>(SEGMENTS) { HashMap<K, V>() }
+
+    private fun segmentOf(key: Any?): Int {
+        val h = if (key == null) 0 else key.hashCode()
+        return (h xor (h ushr 16)) and (SEGMENTS - 1)
+    }
 
     public override val size: Int
         get() {
-            lock.lock()
-            val r = map.size
-            lock.unlock()
-            return r
+            var n = 0
+            for (i in 0 until SEGMENTS) {
+                locks[i].lock()
+                n += maps[i].size
+                locks[i].unlock()
+            }
+            return n
         }
 
-    public override fun isEmpty(): Boolean = size == 0
+    public override fun isEmpty(): Boolean {
+        for (i in 0 until SEGMENTS) {
+            locks[i].lock()
+            val e = maps[i].isEmpty()
+            locks[i].unlock()
+            if (!e) return false
+        }
+        return true
+    }
 
     public override fun containsKey(key: K): Boolean {
-        lock.lock()
-        val r = map.containsKey(key)
-        lock.unlock()
+        val s = segmentOf(key)
+        locks[s].lock()
+        val r = maps[s].containsKey(key)
+        locks[s].unlock()
         return r
     }
 
     public override fun containsValue(value: V): Boolean {
-        lock.lock()
-        val r = map.containsValue(value)
-        lock.unlock()
-        return r
+        for (i in 0 until SEGMENTS) {
+            locks[i].lock()
+            val r = maps[i].containsValue(value)
+            locks[i].unlock()
+            if (r) return true
+        }
+        return false
     }
 
     public override fun get(key: K): V? {
-        lock.lock()
-        val r = map[key]
-        lock.unlock()
+        val s = segmentOf(key)
+        locks[s].lock()
+        val r = maps[s][key]
+        locks[s].unlock()
         return r
     }
 
     public override fun put(key: K, value: V): V? {
-        lock.lock()
-        val r = map.put(key, value)
-        lock.unlock()
+        val s = segmentOf(key)
+        locks[s].lock()
+        val r = maps[s].put(key, value)
+        locks[s].unlock()
         return r
     }
 
     public override fun remove(key: K): V? {
-        lock.lock()
-        val r = map.remove(key)
-        lock.unlock()
+        val s = segmentOf(key)
+        locks[s].lock()
+        val r = maps[s].remove(key)
+        locks[s].unlock()
         return r
     }
 
     public fun remove(key: K, value: V): Boolean {
-        lock.lock()
+        val s = segmentOf(key)
+        locks[s].lock()
         var r = false
-        if (map.containsKey(key) && map[key] == value) {
-            map.remove(key)
+        val m = maps[s]
+        if (m.containsKey(key) && m[key] == value) {
+            m.remove(key)
             r = true
         }
-        lock.unlock()
+        locks[s].unlock()
         return r
     }
 
     public override fun putAll(from: Map<out K, V>) {
-        lock.lock()
-        map.putAll(from)
-        lock.unlock()
+        for (e in from.entries) put(e.key, e.value)
     }
 
     public override fun clear() {
-        lock.lock()
-        map.clear()
-        lock.unlock()
+        for (i in 0 until SEGMENTS) {
+            locks[i].lock()
+            maps[i].clear()
+            locks[i].unlock()
+        }
     }
 
     private fun copy(): LinkedHashMap<K, V> {
-        lock.lock()
-        val c = LinkedHashMap<K, V>(map)
-        lock.unlock()
+        val c = LinkedHashMap<K, V>()
+        for (i in 0 until SEGMENTS) {
+            locks[i].lock()
+            c.putAll(maps[i])
+            locks[i].unlock()
+        }
         return c
     }
 
@@ -116,84 +145,101 @@ public class ConcurrentHashMap<K, V>(initialCapacity: Int) : ConcurrentMap<K, V>
         get() = copy().entries
 
     public override fun putIfAbsent(key: K, value: V): V? {
-        lock.lock()
-        val cur = map[key]
-        if (cur == null) map.put(key, value)
-        lock.unlock()
+        val s = segmentOf(key)
+        locks[s].lock()
+        val cur = maps[s][key]
+        if (cur == null) maps[s].put(key, value)
+        locks[s].unlock()
         return cur
     }
 
     public override fun replace(key: K, value: V): V? {
-        lock.lock()
+        val s = segmentOf(key)
+        locks[s].lock()
         var r: V? = null
-        if (map.containsKey(key)) r = map.put(key, value)
-        lock.unlock()
+        if (maps[s].containsKey(key)) r = maps[s].put(key, value)
+        locks[s].unlock()
         return r
     }
 
     public override fun replace(key: K, oldValue: V, newValue: V): Boolean {
-        lock.lock()
+        val s = segmentOf(key)
+        locks[s].lock()
         var ok = false
-        if (map.containsKey(key) && map[key] == oldValue) {
-            map.put(key, newValue)
+        val m = maps[s]
+        if (m.containsKey(key) && m[key] == oldValue) {
+            m.put(key, newValue)
             ok = true
         }
-        lock.unlock()
+        locks[s].unlock()
         return ok
     }
 
     public override fun computeIfAbsent(key: K, mappingFunction: Function<in K, out V>): V {
-        lock.lock()
-        var cur = map[key]
+        val s = segmentOf(key)
+        locks[s].lock()
+        var cur = maps[s][key]
         if (cur == null) {
             cur = mappingFunction.apply(key)
-            if (cur != null) map.put(key, cur)
+            if (cur != null) maps[s].put(key, cur)
         }
-        lock.unlock()
+        locks[s].unlock()
         return cur!!
     }
 
     public override fun computeIfPresent(key: K, remappingFunction: BiFunction<in K, in V, out V?>): V? {
-        lock.lock()
-        val cur = map[key]
+        val s = segmentOf(key)
+        locks[s].lock()
+        val m = maps[s]
+        val cur = m[key]
         var r: V? = null
         if (cur != null) {
             r = remappingFunction.apply(key, cur)
-            if (r != null) map.put(key, r) else map.remove(key)
+            if (r != null) m.put(key, r) else m.remove(key)
         }
-        lock.unlock()
+        locks[s].unlock()
         return r
     }
 
     public override fun compute(key: K, remappingFunction: BiFunction<in K, in V?, out V?>): V? {
-        lock.lock()
-        val r = remappingFunction.apply(key, map[key])
-        if (r != null) map.put(key, r) else map.remove(key)
-        lock.unlock()
+        val s = segmentOf(key)
+        locks[s].lock()
+        val m = maps[s]
+        val r = remappingFunction.apply(key, m[key])
+        if (r != null) m.put(key, r) else m.remove(key)
+        locks[s].unlock()
         return r
     }
 
     public override fun merge(key: K, value: V, remappingFunction: BiFunction<in V, in V, out V?>): V? {
-        lock.lock()
-        val cur = map[key]
+        val s = segmentOf(key)
+        locks[s].lock()
+        val m = maps[s]
+        val cur = m[key]
         val r = if (cur == null) value else remappingFunction.apply(cur, value)
-        if (r != null) map.put(key, r) else map.remove(key)
-        lock.unlock()
+        if (r != null) m.put(key, r) else m.remove(key)
+        locks[s].unlock()
         return r
     }
 
     public fun getOrDefault(key: Any?, defaultValue: V): V {
-        lock.lock()
+        val s = segmentOf(key)
+        locks[s].lock()
         @Suppress("UNCHECKED_CAST")
         val k = key as K
-        val r = if (map.containsKey(k)) map[k] as V else defaultValue
-        lock.unlock()
+        val m = maps[s]
+        val r = if (m.containsKey(k)) m[k] as V else defaultValue
+        locks[s].unlock()
         return r
     }
 
     override fun equals(other: Any?): Boolean = other is Map<*, *> && copy() == other
     override fun hashCode(): Int = copy().hashCode()
     override fun toString(): String = copy().toString()
+
+    private companion object {
+        const val SEGMENTS = 32
+    }
 }
 
 public interface BlockingQueue<E> : MutableCollection<E> {
