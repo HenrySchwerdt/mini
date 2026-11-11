@@ -199,7 +199,50 @@ internal fun Ir2Mir.ownFields(c: IrClass): List<IrField> = c.declarations.flatMa
     }
 }
 
+/** the state [enterGroup] changed */
+internal class GroupState(val classes: HashMap<ClassSym, IrClass?>, val subst: HashMap<TypeParamSym, Type>)
+
+/** Makes the local class symbols of [g] denote its classes and binds its reified type arguments, until [exitGroup]. */
+internal fun Ir2Mir.enterGroup(g: LocalGroup?, bind: Boolean): GroupState? {
+    if (g == null) return null
+    val a = LowerState.ctx ?: return null
+    val saved = HashMap<ClassSym, IrClass?>()
+    for ((s, c) in g.classes) {
+        saved[s] = a.classMap[s]
+        a.classMap[s] = c
+    }
+    val st = HashMap(typeSubst)
+    if (bind) typeSubst.putAll(g.subst)
+    return GroupState(saved, st)
+}
+
+internal fun Ir2Mir.exitGroup(s: GroupState?) {
+    if (s == null) return
+    val a = LowerState.ctx ?: return
+    for ((k, v) in s.classes) {
+        if (v != null) a.classMap[k] = v
+        if (v == null) a.classMap.remove(k)
+    }
+    typeSubst.clear()
+    typeSubst.putAll(s.subst)
+}
+
 internal fun Ir2Mir.registerMembers(info: ClassInfo) {
+    val gs = enterGroup(info.ir.localGroup, true)
+    try { registerMembers0(info) } finally { exitGroup(gs) }
+}
+
+internal fun Ir2Mir.convertMembers(info: ClassInfo): List<MirFunction> {
+    val gs = enterGroup(info.ir.localGroup, true)
+    try { return convertMembers0(info) } finally { exitGroup(gs) }
+}
+
+internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
+    val gs = enterGroup(info.ir.localGroup, true)
+    try { return buildClass0(info) } finally { exitGroup(gs) }
+}
+
+private fun Ir2Mir.registerMembers0(info: ClassInfo) {
     val c = info.ir
     val taken = HashSet<String>()
     for (f in classFunctions(c)) {
@@ -235,7 +278,7 @@ internal fun Ir2Mir.registerMembers(info: ClassInfo) {
 internal fun IrFunction.extensionReceiverParameter(): IrValueParameter? =
     parameters.firstOrNull { it.kind == IrParameterKind.ExtensionReceiver }
 
-internal fun Ir2Mir.convertMembers(info: ClassInfo): List<MirFunction> {
+private fun Ir2Mir.convertMembers0(info: ClassInfo): List<MirFunction> {
     val out = ArrayList<MirFunction>()
     val c = info.ir
     if (c.kotlinFqName == "kotlin.Number") return out   // the members are the runtime's (boxed numbers) or the user class's
@@ -466,7 +509,7 @@ internal fun Ir2Mir.findImpl(c: IrClass, m: IrSimpleFunction): IrSimpleFunction?
     return if (hasBody(m)) m else null
 }
 
-internal fun Ir2Mir.buildClass(info: ClassInfo): MirClass {
+private fun Ir2Mir.buildClass0(info: ClassInfo): MirClass {
     val c = info.ir
     val isInterface = c.kind == IrClassKind.INTERFACE
     val ifaces = if (isInterface) allInterfaces(c).filter { it !== c } else allInterfaces(c)
