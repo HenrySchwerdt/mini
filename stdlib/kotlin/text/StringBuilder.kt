@@ -136,6 +136,19 @@ public class StringBuilder : Appendable {
             i++
             j--
         }
+        // a surrogate pair stays a pair, in its original order (as java.lang.StringBuilder.reverse)
+        var k = 0
+        val n = length
+        while (k < n - 1) {
+            val lo = sbCharAt(buf, k).code
+            val hi = sbCharAt(buf, k + 1).code
+            if (lo in 0xDC00..0xDFFF && hi in 0xD800..0xDBFF) {
+                sbSetCharAt(buf, k, hi.toChar())
+                sbSetCharAt(buf, k + 1, lo.toChar())
+                k++
+            }
+            k++
+        }
         return this
     }
 

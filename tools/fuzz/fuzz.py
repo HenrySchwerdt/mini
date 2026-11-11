@@ -23,6 +23,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen  # noqa: E402
+import genstrict  # noqa: E402
 
 MAIN_MARK = "// --- main ---"
 GEN_MARK = "// --- generated ---"
@@ -36,6 +37,7 @@ class Tools:
         self.rtlib = os.path.join(self.root, "build/native/lib/libminirt.a")
         self.include = os.path.join(self.root, "runtime/include")
         self.kotlinc = a.kotlinc or os.environ.get("KOTLINC") or shutil.which("kotlinc") or "/tmp/claude-0/kc/kotlinc/bin/kotlinc"
+        self.kx = os.environ.get("KOTLINX_COROUTINES") or os.path.join(os.path.dirname(os.path.dirname(self.kotlinc)), "lib", "kotlinx-coroutines-core-jvm.jar")
         self.out = os.path.abspath(a.out)
         os.makedirs(self.out, exist_ok=True)
         mlib = os.path.join(self.root, "build/native/lib/stdlib.mlib")
@@ -76,7 +78,8 @@ class Tools:
 def split_for_jvm(text, pkg):
     """The program without `main`, in package `pkg` (so that many programs compile in one kotlinc run)."""
     i = text.index(MAIN_MARK)
-    return "package %s\n%s" % (pkg, text[:i])
+    # mini.coroutines is kotlinx.coroutines on the JVM (the API subset the generator uses is the same)
+    return "package %s\n%s" % (pkg, text[:i].replace("import mini.coroutines.*", "import kotlinx.coroutines.*"))
 
 
 def make_program(seed, size):
@@ -109,7 +112,7 @@ def jvm_batch(tools, programs, workdir):
             with open(os.path.join(d, "Driver.kt"), "w") as f:
                 f.write("\n".join(drv) + "\n")
             jar = os.path.join(d, "o.jar")
-            r = subprocess.run([tools.kotlinc, d, "-include-runtime", "-d", jar, "-nowarn"], capture_output=True, text=True, timeout=900)
+            r = subprocess.run([tools.kotlinc, d, "-include-runtime", "-d", jar, "-nowarn", "-cp", tools.kx], capture_output=True, text=True, timeout=900)
             if r.returncode != 0:
                 bad = {}
                 for m in re.finditer(r"^(?:e: )?(?:file://)?\S*?/(p\w+)\.kt:(\d+):(\d+):? (?:error: )?(.*)$", r.stderr, re.M):
@@ -121,7 +124,7 @@ def jvm_batch(tools, programs, workdir):
                         errors[names[pkg]] = msg
                         live.pop(names[pkg], None)
                 continue
-            run = subprocess.run(["java", "-Xss64m", "-jar", jar], capture_output=True, text=True, timeout=900)
+            run = subprocess.run(["java", "-Xss64m", "-cp", jar + os.pathsep + tools.kx, "DriverKt"], capture_output=True, text=True, timeout=900)
             cur = None
             buf = {}
             so = run.stdout[:-1] if run.stdout.endswith("\n") else run.stdout
@@ -148,6 +151,15 @@ def run_variant(tools, text, variant, work, timeout=30):
     src = os.path.join(work, "p.kt")
     with open(src, "w") as f:
         f.write(text)
+    if variant.startswith("strict"):
+        # the memory checker must accept the program (a verdict M0xxx is a false positive or a generator bug), then the build runs
+        # like the plain variants: strict-asan = c-asan, strict-llvm-asan = llvm-asan, strict = c
+        chk = subprocess.run([tools.minic, "--check", "--brief", src] + tools.stdargs, capture_output=True, text=True)
+        codes = sorted(set(re.findall(r"M0\d+", chk.stdout + chk.stderr)))
+        if codes or chk.returncode != 0:
+            full = subprocess.run([tools.minic, "--check", src] + tools.stdargs, capture_output=True, text=True)
+            return "strict-rejected", "", " ".join(codes) + "\n" + (full.stdout + full.stderr)[:900]
+        variant = variant[len("strict-"):] or "c"
     llvm = variant.startswith("llvm")
     asan = variant.endswith("asan")
     ir = os.path.join(work, "p.ll" if llvm else "p.c")
@@ -228,6 +240,8 @@ def cmd_run(a):
     seeds = list(range(lo, hi))
     work = os.path.join(tools.out, "work")
     os.makedirs(work, exist_ok=True)
+    if a.strict:
+        return run_strict(a, tools, variants, seeds, work)
     expdir = os.path.join(tools.out, "expected")
     faildir = os.path.join(tools.out, "fail")
     os.makedirs(expdir, exist_ok=True)
@@ -291,6 +305,44 @@ def cmd_run(a):
     return 0
 
 
+def run_strict(a, tools, variants, seeds, work):
+    """Strict programs have no JVM counterpart: they must be accepted by the checker and run clean (the sanitizer variants)."""
+    faildir = os.path.join(tools.out, "fail")
+    os.makedirs(faildir, exist_ok=True)
+    progs = {s: genstrict.generate(s, a.size) for s in seeds}
+    stats = {}
+    t0 = time.time()
+
+    def one(sv):
+        s, v = sv
+        w = os.path.join(work, "s%d.%s" % (s, v))
+        try:
+            kind, detail, out = run_variant(tools, progs[s], v, w)
+        finally:
+            shutil.rmtree(w, ignore_errors=True)
+        if kind == "ok":
+            return s, v, "pass", ""
+        base = os.path.join(faildir, "strict%d.%s.%s" % (s, v, kind))
+        with open(base + ".kt", "w") as f:
+            f.write(progs[s])
+        with open(base + ".txt", "w") as f:
+            f.write(detail + "\n")
+        return s, v, kind, detail
+
+    jobs = [(s, v) for s in seeds for v in variants]
+    with cf.ThreadPoolExecutor(a.jobs) as ex:
+        for n, (s, v, kind, detail) in enumerate(ex.map(one, jobs)):
+            stats[(v, kind)] = stats.get((v, kind), 0) + 1
+            if kind != "pass":
+                print("seed %d %s: %s %s" % (s, v, kind, detail.strip().split("\n")[0][:160]), flush=True)
+            if (n + 1) % 100 == 0:
+                print("... %d/%d runs, %.0fs" % (n + 1, len(jobs), time.time() - t0), flush=True)
+    print("\nsummary (%d strict seeds):" % len(seeds))
+    for (v, kind), n in sorted(stats.items()):
+        print("  %-16s %-16s %d" % (v, kind, n))
+    return 0
+
+
 # ---------------------------------------------------------------------------------------------------------------------- reduce
 def balanced_spans(lines, lo, hi):
     """All line spans [i, j] of lines[lo:hi] that can be removed without unbalancing braces: a statement or a whole block."""
@@ -314,6 +366,10 @@ def protected(lines):
     gen_start = next((k for k, l in enumerate(lines) if l.strip() == GEN_MARK), 0)
     main_start = next((k for k, l in enumerate(lines) if l.strip() == MAIN_MARK), len(lines))
     prot = set(range(0, gen_start + 1)) | set(range(main_start, len(lines)))
+    for k, l in enumerate(lines):  # a strict program: `fun main() {` and its closing brace
+        if l.startswith("fun main()") and main_start == len(lines):
+            prot.add(k)
+            prot.add(len(lines) - 1)
     for k, l in enumerate(lines):
         if l.startswith("fun run()"):
             prot.add(k)
@@ -330,21 +386,26 @@ def cmd_reduce(a):
         tools.build_rt_asan()
     work = os.path.join(tools.out, "work")
     os.makedirs(work, exist_ok=True)
-    text = open(a.file).read() if a.file else make_program(a.seed, a.size)
-    # the failure class to preserve
-    exp = None
-    outs, errs = jvm_batch(tools, {"orig": text}, work)
-    if "orig" not in outs:
-        print("kotlinc rejects the program: %s" % errs)
-        return 1
-    exp = outs["orig"]
-    kind0, detail0, _ = judge(tools, text, exp, a.variant, os.path.join(work, "red0"))
+    if a.strict:
+        text = open(a.file).read() if a.file else genstrict.generate(a.seed, a.size)
+        exp = None
+        kind0, detail0, _ = run_variant(tools, text, a.variant, os.path.join(work, "red0"))
+        kind0 = "pass" if kind0 == "ok" else kind0
+    else:
+        text = open(a.file).read() if a.file else make_program(a.seed, a.size)
+        # the failure class to preserve
+        outs, errs = jvm_batch(tools, {"orig": text}, work)
+        if "orig" not in outs:
+            print("kotlinc rejects the program: %s" % errs)
+            return 1
+        exp = outs["orig"]
+        kind0, detail0, _ = judge(tools, text, exp, a.variant, os.path.join(work, "red0"))
     shutil.rmtree(os.path.join(work, "red0"), ignore_errors=True)
     if kind0 == "pass":
         print("the program passes on %s" % a.variant)
         return 1
     print("reducing a %s failure on %s: %s" % (kind0, a.variant, detail0.split("\n")[0][:200]))
-    sig = re.sub(r"\d+", "N", detail0.split("\n")[0][:60]) if kind0 in ("ice", "sanitizer", "leak", "compile-error", "cc-error") else ""
+    sig = re.sub(r"\d+", "N", detail0.strip().split("\n")[0][:60]) if kind0 in ("ice", "sanitizer", "leak", "compile-error", "cc-error", "strict-rejected") else ""
     lines = text.rstrip("\n").split("\n")
     rounds = 0
     while True:
@@ -356,8 +417,18 @@ def cmd_reduce(a):
                 continue
             cands.append((i, j))
         cands.sort(key=lambda s: -(s[1] - s[0]))
+        def strict_fails(text, tag):
+            w = os.path.join(work, "red.s" + str(tag))
+            try:
+                kind, detail, _ = run_variant(tools, text, a.variant, w)
+            finally:
+                shutil.rmtree(w, ignore_errors=True)
+            return kind == kind0 and (not sig or re.sub(r"\d+", "N", detail.strip().split("\n")[0][:60]) == sig)
+
         def still_fails(text):
             """-> True when kotlinc accepts the program and mini fails on it in the same way."""
+            if a.strict:
+                return strict_fails(text, "x")
             outs, _ = jvm_batch(tools, {"x": text}, work)
             if "x" not in outs:
                 return False
@@ -374,12 +445,17 @@ def cmd_reduce(a):
             progs = {}
             for n, (i, j) in enumerate(chunk):
                 progs["c%d" % n] = "\n".join(lines[:i] + lines[j + 1 :]) + "\n"
-            outs, errs = jvm_batch(tools, progs, work)
+            if a.strict:
+                outs = {k: "" for k in progs}  # no JVM: the candidate is judged by mini alone
+            else:
+                outs, errs = jvm_batch(tools, progs, work)
             valid = [(n, outs["c%d" % n]) for n in range(len(chunk)) if "c%d" % n in outs]
 
             def test(nv):
                 n, e = nv
                 w = os.path.join(work, "red.%d" % n)
+                if a.strict:
+                    return n, strict_fails(progs["c%d" % n], n)
                 try:
                     kind, detail, _ = judge(tools, progs["c%d" % n], e, a.variant, w)
                 finally:
@@ -494,6 +570,8 @@ def main():
         p.add_argument("--size", type=int, default=14)
         p.add_argument("--batch", type=int, default=40)
         p.add_argument("--variants", default="c")
+        if name in ("run", "reduce"):
+            p.add_argument("--strict", action="store_true", help="Strict-mode programs (genstrict.py): no JVM, the checker must accept them and the sanitizers stay quiet")
         if name in ("run", "save"):
             p.add_argument("--seeds", required=True)
         if name == "save":
