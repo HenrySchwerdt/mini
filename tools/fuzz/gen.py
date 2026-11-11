@@ -532,6 +532,83 @@ class Gen:
             parts.append(lines)
             self.classes.append({"kind": "ext", "name": nm})
 
+
+        # --- feature bank: object graphs with cycles, operators, delegation, companions, inner classes, exceptions, varargs ---
+        if self.chance(0.7):
+            nn = self.fresh("N")
+            lines = [
+                "class %s(var v: Int) {" % nn,
+                "    var next: %s? = null" % nn,
+                "    var back: %s? = null" % nn,
+                "    val kids = ArrayList<%s>()" % nn,
+                "    fun sum(depth: Int): Int { var s = v; if (depth > 0) { for (k in kids) s += k.sum(depth - 1) * 3 }; return s }",
+                "}",
+                "fun ring%s(n: Int, base: Int): %s {" % (nn, nn),
+                "    val first = %s(base)" % nn,
+                "    var cur = first",
+                "    for (i in 1 until n) { val x = %s(base + i); cur.next = x; x.back = cur; cur.kids.add(x); cur = x }" % nn,
+                "    cur.next = first; first.back = cur",
+                "    return first",
+                "}",
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "graph", "name": nn})
+        if self.chance(0.7):
+            vc = self.fresh("V")
+            lines = [
+                "data class %s(val x: Int, val y: Int) : Comparable<%s> {" % (vc, vc),
+                "    operator fun plus(o: %s) = %s(x + o.x, y + o.y)" % (vc, vc),
+                "    operator fun times(k: Int) = %s(x * k, y * k)" % vc,
+                "    operator fun unaryMinus() = %s(-x, -y)" % vc,
+                "    operator fun get(i: Int) = if (i == 0) x else y",
+                "    operator fun invoke(k: Int) = x * k + y",
+                "    override fun compareTo(other: %s): Int = (x * 31 + y).compareTo(other.x * 31 + other.y)" % vc,
+                "    companion object { val ZERO = %s(0, 0); fun of(a: Int) = %s(a, a + 1) }" % (vc, vc),
+                "}",
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "vec", "name": vc})
+        if self.chance(0.6) and any(c["kind"] == "iface" for c in self.classes):
+            ic = [c for c in self.classes if c["kind"] == "iface"][0]
+            wn = self.fresh("W")
+            lines = [
+                "class %s(private val inner: %s, val extra: Int) : %s by inner {" % (wn, ic["name"], ic["name"]),
+                "    val lazyVal: Int by lazy { extra * 2 + 1 }",
+                "    var watched: Int = 0",
+                "        set(v) { field = v + extra }",
+                "    inner class In(val q: Int) { fun both(x: Int) = x + q + extra }",
+                "}",
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "deleg", "name": wn, "iface": ic})
+        if self.chance(0.7):
+            ex = self.fresh("X")
+            lines = [
+                "open class %s(msg: String, val code: Int, cause: Throwable? = null) : Exception(msg, cause)" % ex,
+                "class %sSub(msg: String, code: Int, cause: Throwable?) : %s(msg, code, cause)" % (ex, ex),
+                "fun thrower%s(n: Int): Int {" % ex,
+                "    try {",
+                "        if (n %% 3 == 0) throw %s(\"t\" + n, n)" % ex,
+                "        if (n %% 3 == 1) throw %sSub(\"s\" + n, n * 2, IllegalStateException(\"c\"))" % ex,
+                "        return n",
+                "    } finally {",
+                "        println(\"cleanup\" + n)",
+                "    }",
+                "}",
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "exc", "name": ex})
+        if self.chance(0.7):
+            vf = self.fresh("misc")
+            lines = [
+                "fun %sVar(vararg xs: Int, scale: Int = 2, bias: Int = 1): Int { var s = bias; for (x in xs) s = s * 31 + x * scale; return s }" % vf,
+                "inline fun <T> %sTwice(f: () -> T): Pair<T, T> = Pair(f(), f())" % vf,
+                "tailrec fun %sGcd(a: Int, b: Int): Int = if (b == 0) a else %sGcd(b, a %% b)" % (vf, vf),
+                "typealias %sPair = Pair<Int, String>" % vf,
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "misc", "name": vf})
+
         # top-level functions with statements (no recursion into later ones)
         for _ in range(r.randint(1, 4)):
             self.gen_function(parts)
@@ -979,6 +1056,72 @@ class Gen:
             o = c["name"]
             out.append(self.show("%s.next(%s and 15)" % (o, ex("Int", 1))))
             out.append(self.show("%s.log" % o))
+        elif k == "graph":
+            nn = c["name"]
+            g = self.fresh("g")
+            out.append("val %s = ring%s(%d, %s)" % (g, nn, r.randint(1, 6), ex("Int", 1)))
+            out.append(self.show("%s.sum(%d)" % (g, r.randint(0, 3))))
+            out.append(self.show("%s.next!!.next!!.v + %s.back!!.v" % (g, g)))
+            if self.chance(0.6):
+                out.append("%s.kids.add(%s(%s))" % (g, nn, ex("Int", 1)))
+                out.append("%s.kids[0].next = %s" % (g, g))
+                out.append(self.show("%s.kids.size + %s.sum(2)" % (g, g)))
+            if self.chance(0.5):
+                out.append("%s.next = null; %s.back = null" % (g, g))
+                out.append(self.show("%s.next?.v ?: -1" % g))
+        elif k == "vec":
+            vc = c["name"]
+            a, b = self.fresh("va"), self.fresh("vb")
+            out.append("val %s = %s(%s, %s)" % (a, vc, ex("Int", 1), ex("Int", 1)))
+            out.append("val %s = %s.of(%s)" % (b, vc, ex("Int", 1)))
+            out.append(self.show("%s + %s * 3" % (a, b)))
+            out.append(self.show("-%s" % a))
+            out.append(self.show("%s[0] + %s[1] + %s(%s)" % (a, b, a, ex("Int", 1))))
+            out.append(self.show("%s < %s" % (a, b)))
+            out.append(self.show("listOf(%s, %s, %s.ZERO).sorted()" % (a, b, vc)))
+            out.append(self.show("listOf(%s, %s).maxOrNull()" % (a, b)))
+            out.append(self.show("listOf(%s, %s).sortedByDescending { it.y }" % (a, b)))
+        elif k == "deleg":
+            wn = c["name"]
+            iface = c["iface"]
+            w = self.fresh("w")
+            out.append("val %s = %s(%s(%s), %s)" % (w, wn, self.pick(iface["impls"]), ex("Int", 1), ex("Int", 1)))
+            out.append(self.show("%s.score(%s)" % (w, ex("Int", 1))))
+            out.append(self.show("%s.tag()" % w))
+            out.append(self.show("%s.lazyVal + %s.lazyVal" % (w, w)))
+            out.append("%s.watched = %s" % (w, ex("Int", 1)))
+            out.append(self.show("%s.watched" % w))
+            out.append(self.show("%s.In(%s).both(%s)" % (w, ex("Int", 1), ex("Int", 1))))
+        elif k == "exc":
+            ex_ = c["name"]
+            out.append("for (n in 0 until %d) {" % r.randint(1, 5))
+            out.append("    try {")
+            out.append("        println(thrower%s(n))" % ex_)
+            out.append("    } catch (e: %sSub) {" % ex_)
+            out.append('        println("sub " + e.message + " " + e.code + " " + e.cause?.message)')
+            out.append("    } catch (e: %s) {" % ex_)
+            out.append('        println("base " + e.message + " " + e.code)')
+            out.append("    }")
+            out.append("}")
+            out.append("val r%s = try { thrower%s(%s and 7) } catch (e: Exception) { -1 } finally { println(\"outer\") }" % (self.fresh(""), ex_, ex("Int", 1)))
+        elif k == "misc":
+            m = c["name"]
+            out.append(self.show("%sVar(%s, %s, scale = %s)" % (m, ex("Int", 1), ex("Int", 1), ex("Int", 1))))
+            out.append(self.show("%sVar(bias = %s)" % (m, ex("Int", 1))))
+            out.append(self.show("%sTwice { %s }" % (m, ex("Int", 1))))
+            out.append(self.show("%sGcd(%s and 1023, %s and 1023)" % (m, ex("Int", 1), ex("Int", 1))))
+            out.append(self.show("%sVar(*intArrayOf(1, 2, %s))" % (m, ex("Int", 1))))
+            lv = self.fresh("lf")
+            out.append("fun %s(a: Int): Int = a * %s + %s" % (lv, self.lit("Int"), ex("Int", 1)))
+            out.append(self.show("(1..3).map(::%s)" % lv))
+            out.append("outer@ for (a in 0 until 4) { for (b in 0 until 4) { if (a * b == %d) continue@outer; if (a + b > %d) break@outer; println(a * 10 + b) } }" % (r.randint(0, 6), r.randint(2, 6)))
+            out.append("var dw = 0; do { dw += %d } while (dw < %d)" % (r.randint(1, 3), r.randint(3, 12)))
+            out.append(self.show("dw"))
+            out.append(self.show("when { %s -> \"p\"; %s -> \"q\"; else -> \"r\" }" % (ex("Boolean", 2), ex("Boolean", 2))))
+            out.append(self.show("arrayOf(\"b\", \"a\", %s).sortedArray().joinToString()" % ex("String", 1)))
+            out.append(self.show("Array(%d) { i -> IntArray(i + 1) { j -> i * j } }.map { it.sum() }" % r.randint(1, 4)))
+            out.append(self.show("buildString { append(%s); append('-'); append(%s) }" % (ex("Int", 1), ex("String", 1))))
+            out.append(self.show("Triple(%s, %s, %s).toList()" % (ex("Int", 1), ex("String", 1), ex("Boolean", 1))))
         elif k == "ext":
             out.append(self.show("%s.%sA(%s)" % (ex("Int", 1), c["name"], ex("Int", 1))))
             out.append(self.show("%s.%sB(%s)" % (ex("String", 1), c["name"], ex("Int", 1))))
