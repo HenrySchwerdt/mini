@@ -456,7 +456,8 @@ private fun Ast2Ir.convertArg(a: Arg, label: String?, expected: Type?): IrExpres
         val sf = if (vt0 is FunType && !vt0.suspend && !vt0.nullable) ops.samFunType(expected) else null
         if (sf != null && sf.suspend && vt0 is FunType && vt0.receiver == null == (sf.receiver == null)) return samConversion(suspendConvertedValue(v, vt0, sf), irType(expected))
     }
-    val samClassValue = expected is ClassType && expected.cls.isFunInterface && rec(u)?.type.let { it is ClassType && !it.cls.isFunInterface && ops.asSuper(it, expected.cls) == null && ops.asFunType(it) != null }
+    val samClassValue = expected is ClassType && expected.cls.isFunInterface && rec(u)?.type.let { it is ClassType && !it.cls.isFunInterface && ops.asSuper(it, expected.cls) == null && ops.asFunType(it) != null } ||
+        (expected is ClassType && expected.cls.isFunInterface && rec(u)?.type.let { it is TypeParamType && ops.asSuper(it, expected.cls) == null && ops.funSupersOf(it).isNotEmpty() })
     if (expected is ClassType && expected.cls.isFunInterface && (rec(u)?.type is FunType || u is CallableRefExpr || samClassValue)) {
         val vt = rec(u)?.type
         if (vt is FunType && vt.nullable) {
