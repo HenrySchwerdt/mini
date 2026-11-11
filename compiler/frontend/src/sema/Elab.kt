@@ -59,6 +59,13 @@ fun BodyChecker.fillReceivers(info: CallInfo, recv: RecvInfo?, callee: Expr) {
     }
     if (recv is ClassRecv && dref == null) {
         val o = fn.owner
-        if (o != null && (o.isObject || o.isCompanion) && fn.kind != FunKind.CONSTRUCTOR) info.dispatch = RecvUse(null, false, RecvRef(o, null, true), null)
+        if (o != null && (o.isObject || o.isCompanion) && fn.kind != FunKind.CONSTRUCTOR) {
+            info.dispatch = RecvUse(null, false, RecvRef(o, null, true), null)
+        } else if (o != null && fn.kind != FunKind.CONSTRUCTOR && fn.kind != FunKind.SYNTH && fn.receiver == null) {
+            // `A.f()` where the companion object of `A` extends a class (`companion object Default : Base64(...)`): `f` is a member the
+            // companion inherits, so the companion object is the dispatch receiver
+            val oc = if (recv.cls.isObject) recv.cls else recv.cls.companion
+            if (oc != null && oc !== o) info.dispatch = RecvUse(null, false, RecvRef(oc, null, true), null)
+        }
     }
 }

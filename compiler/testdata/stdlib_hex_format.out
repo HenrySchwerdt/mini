@@ -1,0 +1,49 @@
+01020aff
+01020AFF
+000000ff
+ffffffff
+00000000000000ff
+1234
+fe
+10, -1
+127
+-1
+16
+4660
+00-25 4A-6F 94-B9 DE
+0xFF
+0x0
+255
+10, 11, 12
+254a6f
+00010203
+04050607
+0809
+false
+true
+0
+HexFormat(
+    upperCase = false,
+    bytes = BytesHexFormat(
+        bytesPerLine = 2147483647,
+        bytesPerGroup = 2147483647,
+        groupSeparator = "  ",
+        byteSeparator = "",
+        bytePrefix = "",
+        byteSuffix = ""
+    ),
+    number = NumberHexFormat(
+        prefix = "",
+        suffix = "",
+        removeLeadingZeros = false,
+        minLength = 1
+    )
+)
+ab
+deadbeef
+255
+3735928559
+NFE Expected a hexadecimal digit at index 0, but was x
+NFE Expected exactly 2 hexadecimal digits at index 2, but was "3" of length 1
+10
+000000ff

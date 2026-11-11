@@ -5,7 +5,6 @@
 package kotlin.time
 
 import kotlin.math.roundToLong
-import mini.internal.nanoTime
 
 public enum class DurationUnit(internal val nanos: Long) {
     NANOSECONDS(1L),
@@ -264,32 +263,3 @@ public fun Double.toDuration(unit: DurationUnit): Duration {
 public operator fun Int.times(duration: Duration): Duration = duration * this
 
 public operator fun Double.times(duration: Duration): Duration = duration * this
-
-// ---- time sources --------------------------------------------------------------------------------
-
-public class TimeMark internal constructor(private val startNanos: Long) {
-    public fun elapsedNow(): Duration = Duration(nanoTime() - startNanos)
-    public fun hasPassedNow(): Boolean = nanoTime() - startNanos >= 0L
-}
-
-public interface TimeSource {
-    public fun markNow(): TimeMark
-
-    public object Monotonic : TimeSource {
-        override fun markNow(): TimeMark = TimeMark(nanoTime())
-    }
-}
-
-public inline fun measureTime(block: () -> Unit): Duration {
-    val mark = TimeSource.Monotonic.markNow()
-    block()
-    return mark.elapsedNow()
-}
-
-public data class TimedValue<T>(val value: T, val duration: Duration)
-
-public inline fun <T> measureTimedValue(block: () -> T): TimedValue<T> {
-    val mark = TimeSource.Monotonic.markNow()
-    val result = block()
-    return TimedValue(result, mark.elapsedNow())
-}
