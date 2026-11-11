@@ -63,6 +63,7 @@ static inline void mk_cycles_ensure(void) {
     if (__builtin_expect(mk_cycles_hooks.candidate == NULL, 0)) mk_cycles_install();
 }
 #define MK_ARMABLE(type) ((type)->trace != NULL && mk_cycles_hooks.candidate != NULL)
+MkObject *mk_alloc_sized_armed(const MkTypeInfo *type, size_t size); /* alloc.c: default allocator, armed (the collector must be installed) */
 MkObject *mk_alloc_sized_plain(const MkTypeInfo *type, size_t size); /* alloc.c: default allocator, never armed */
 const MkString *mk_throwable_virtual_to_string(MkObject *o); /* classes.c */
 void mk_release_drain(void); /* object.c: disposes what mk_release queued because the stack was deep (end of main, end of a thread) */
