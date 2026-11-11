@@ -288,7 +288,12 @@ internal fun Ir2Mir.memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<
     }
 
     val d: Dispatch = if (c.superQualifier != null) {
-        val t = resolveFake(f)
+        var t = resolveFake(f)
+        // unqualified `super.size` of `class B : Collection<String>, A0`: the supertype that implements the member, not the abstract one
+        if (!hasBody(t) && t.parameters.firstOrNull()?.kind == IrParameterKind.DispatchReceiver) {
+            val cur = currentFunction?.parent as? IrClass
+            if (cur != null) superImplementation(cur, t, 0)?.let { t = it }
+        }
         if (parentClass(t)?.let { isAny(it) } == true) Dispatch.AnyMember(anyMember(topClass(f) ?: f) ?: unsupported(c, "super call of '${f.name}'"))
         else Dispatch.Direct(t)
     } else dispatchOfValue(f)
@@ -730,4 +735,22 @@ internal fun Ir2Mir.charSequenceMember(c: IrCall, name: String, out: MutableList
         "get" -> MirExpr.RuntimeCall("mk_cs_get", listOf(a, v[1], ti), TChar)
         else -> MirExpr.RuntimeCall("mk_cs_sub_sequence", listOf(a, v[1], v[2], ti), anyType)
     }
+}
+
+/** a function with a body that [abstractFn] is also named and shaped like, in the supertypes of [cls] */
+private fun Ir2Mir.superImplementation(cls: IrClass, abstractFn: IrSimpleFunction, depth: Int): IrSimpleFunction? {
+    if (depth > 8) return null
+    for (t in cls.superTypes) {
+        val sc = t.classOrNull ?: continue
+        for (d in sc.declarations) {
+            val fn: IrSimpleFunction? = when (d) {
+                is IrSimpleFunction -> d
+                is IrProperty -> if (abstractFn.name.startsWith("<set-")) d.setter else d.getter
+                else -> null
+            }
+            if (fn != null && fn.name == abstractFn.name && fn.parameters.size == abstractFn.parameters.size && hasBody(fn)) return fn
+        }
+        superImplementation(sc, abstractFn, depth + 1)?.let { return it }
+    }
+    return null
 }
