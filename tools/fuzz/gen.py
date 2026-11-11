@@ -53,6 +53,8 @@ class Gen:
         self.funs = []  # (name, [param types], ret type) top-level generated functions
         self.classes = []  # (kind, ...) described below
         self.uses_co = False
+        self.pure = 0  # > 0: no calls that print (the selector of sortedBy is called a different number of times on the JVM)
+        self.effects = self.r.random() < 0.5  # expressions with side effects (tick): double or misordered evaluation
         self.env = Env()
 
     # ------------------------------------------------------------------ helpers
@@ -102,7 +104,9 @@ class Gen:
         if d <= 0:
             return self.var_or_lit("Int", env)
         r = self.r
-        k = r.randint(0, 27)
+        k = r.randint(0, 27) if not self.effects else r.randint(0, 36)
+        if self.pure and (k in (24, 25, 27) or k >= 28):
+            k = 0
         s = lambda t, dd=None: self.expr(t, d - 1 if dd is None else dd, env)
         if k <= 3:
             return self.var_or_lit("Int", env)
@@ -158,6 +162,24 @@ class Gen:
             return self.int_when(d - 1, env)
         if k == 27 and self.lambdas(env, "Int"):
             return self.call_lambda(self.pick(self.lambdas(env, "Int")), d - 1, env)
+        if k == 28:
+            return "tick(%s)" % s("Int")
+        if k == 29:
+            return "tick(%s).%s(tick(%s))" % (s("Int"), self.pick(["coerceAtLeast", "coerceAtMost"]), s("Int"))
+        if k == 30:
+            return "tick(%s).compareTo(tick(%s))" % (s("Int"), s("Int"))
+        if k == 31:
+            return "(if (tick(%s) > tick(%s)) tick(%s) else tick(%s))" % (s("Int"), s("Int"), s("Int"), s("Int"))
+        if k == 32:
+            return "(tick(%s) %s tick(%s))" % (s("Int"), self.pick(["+", "-", "*", "and", "xor", "shl"]), s("Int"))
+        if k == 33:
+            return "tick(%s).let { it + tick(%s) }" % (s("Int"), s("Int"))
+        if k == 34:
+            return "tickL(%s).compareTo(tickL(%s))" % (s("Long"), s("Long"))
+        if k == 35:
+            return "tickL(%s).toInt()" % s("Long")
+        if k == 36:
+            return "(tickC(%s) - tickC(%s))" % (s("Char"), s("Char"))
         return self.var_or_lit("Int", env)
 
     def lambdas(self, env, ret):
@@ -266,6 +288,10 @@ class Gen:
             return "(%s %s %s)" % (s("Char"), self.pick(["<", "==", ">="]), s("Char"))
         if k == 13:
             return "%s.isLetter()" % s("Char")
+        if self.effects and not self.pure and k == 14 and r.random() < 0.5:
+            return self.pick(["(tick(%s) in %d..%d)", "(tick(%s) !in %d..%d)"]) % (s("Int"), r.randint(-5, 5), r.randint(6, 90))
+        if self.effects and not self.pure and k == 14:
+            return "(tickB(%s) %s tickB(%s))" % (s("Boolean"), self.pick(["&&", "||", "xor"]), s("Boolean"))
         return "(%s == null)" % self.nullable_int(d - 1, env)
 
     def e_Char(self, d, env):
@@ -326,7 +352,7 @@ class Gen:
             return "%s.lowercase()" % s("String")
         if k == 21:
             return "%s.substringBefore(%s)" % (s("String"), self.lit("String"))
-        if k == 22 and self.classes:
+        if k == 22 and self.classes and not self.pure:
             c = self.pick(self.classes)
             if c["kind"] in ("data", "class"):
                 return "%s.toString()" % self.new_obj(c, d - 1, env)
@@ -361,7 +387,10 @@ class Gen:
         if k == 10:
             return "%s.distinct()" % src()
         if k == 11:
-            return "%s.sortedBy { %s }" % (src(), self.lambda_body("it", d - 1, env))
+            self.pure += 1
+            body = self.lambda_body("it", d - 1, env)
+            self.pure -= 1
+            return "%s.sortedBy { %s }" % (src(), body)
         if k == 12:
             return "%s.zip(%s) { a, b -> a * 3 + b }" % (src(), src())
         if k == 13:
@@ -533,6 +562,13 @@ class Gen:
             self.classes.append({"kind": "ext", "name": nm})
 
 
+        if self.effects:
+            parts.append([
+                'fun tick(v: Int): Int { println("t" + v); return v }',
+                'fun tickL(v: Long): Long { println("tl" + v); return v }',
+                'fun tickB(v: Boolean): Boolean { println("tb" + v); return v }',
+                'fun tickC(v: Char): Char { println("tc" + v); return v }',
+            ])
         # --- feature bank: object graphs with cycles, operators, delegation, companions, inner classes, exceptions, varargs ---
         if self.chance(0.7):
             nn = self.fresh("N")
@@ -608,6 +644,78 @@ class Gen:
             ]
             parts.append(lines)
             self.classes.append({"kind": "misc", "name": vf})
+
+
+        # --- feature bank 2: initialisation order, enums with bodies, inline and non-local returns, delegates, ranges at the edges ---
+        if self.chance(0.6):
+            ic = self.fresh("Init")
+            lines = [
+                "fun trace%s(s: String, v: Int): Int { println(s + v); return v }" % ic,
+                "open class %s(val a: Int) {" % ic,
+                "    val b = trace%s(\"b\", a + %s)" % (ic, r.randint(1, 9)),
+                "    init { trace%s(\"init1\", a) }" % ic,
+                "    val c: Int = trace%s(\"c\", b * 2)" % ic,
+                "    constructor(s: String) : this(s.length) { trace%s(\"sec\", 0) }" % ic,
+                "    init { trace%s(\"init2\", c) }" % ic,
+                "    open val d: Int get() = a + b",
+                "}",
+                "class %sKid(x: Int) : %s(x + 1) {" % (ic, ic),
+                "    val e = trace%s(\"e\", x)" % ic,
+                "    override val d: Int get() = super.d * 2 + e",
+                "}",
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b2init", "name": ic})
+        if self.chance(0.6):
+            en = self.fresh("Op")
+            lines = [
+                "enum class %s(val sym: String) {" % en,
+                "    ADD(\"+\") { override fun apply(a: Int, b: Int) = a + b },",
+                "    MUL(\"*\") { override fun apply(a: Int, b: Int) = a * b },",
+                "    SHL(\"<<\") { override fun apply(a: Int, b: Int) = a shl (b and 31); override fun toString() = \"shift\" };",
+                "    abstract fun apply(a: Int, b: Int): Int",
+                "}",
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b2enum", "name": en})
+        if self.chance(0.7):
+            nm = self.fresh("flow")
+            lines = [
+                "inline fun %sFirst(xs: List<Int>, p: (Int) -> Boolean): Int { for (x in xs) { if (p(x)) return x }; return -1 }" % nm,
+                "fun %sNonLocal(xs: List<Int>): Int { xs.forEach { if (it %% 7 == 3) return it * 100 }; return xs.size }" % nm,
+                "fun %sLabeled(xs: List<Int>): Int { var s = 0; xs.forEach lit@{ if (it < 0) return@lit; s += it }; return s }" % nm,
+                "fun %sScope(x: Int): String = x.let { it + 1 }.also { println(\"also\" + it) }.takeIf { it %% 2 == 0 }?.toString() ?: with(StringBuilder()) { append(x); append(\"!\"); toString() }" % nm,
+                "fun %sLocal(n: Int): Int { fun fact(k: Int): Int { return if (k <= 1) 1 else k * fact(k - 1) }; var tot = 0; for (i in 0..(n and 7)) tot += fact(i); return tot }" % nm,
+                "fun %sLoopClosures(n: Int): List<Int> { val fs = ArrayList<() -> Int>(); for (i in 0 until (n and 3) + 1) { fs.add { i * 10 } }; var j = 0; while (j < 2) { val k = j; fs.add { k + 100 }; j++ }; return fs.map { it() } }" % nm,
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b2flow", "name": nm})
+        if self.chance(0.6):
+            dn = self.fresh("Del")
+            lines = [
+                "class %sRef(var raw: Int) { operator fun getValue(t: Any?, p: kotlin.reflect.KProperty<*>): Int = raw * 2; operator fun setValue(t: Any?, p: kotlin.reflect.KProperty<*>, v: Int) { raw = v + 1 } }" % dn,
+                "class %s {" % dn,
+                "    var viaRef by %sRef(%d)" % (dn, r.randint(0, 9)),
+                "    var observed: Int by kotlin.properties.Delegates.observable(0) { _, o, n -> println(\"obs \" + o + \"->\" + n) }",
+                "    val computed: String by lazy { println(\"computing\"); \"v\" + viaRef }",
+                "    lateinit var late: String",
+                "}",
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b2del", "name": dn})
+        if self.chance(0.5):
+            dm = self.fresh("Dia")
+            lines = [
+                "interface %sA { fun hi(): String = \"A\" }" % dm,
+                "interface %sB : %sA { override fun hi(): String = \"B\" + super.hi() }" % (dm, dm),
+                "interface %sC : %sA { override fun hi(): String = \"C\" + super.hi() }" % (dm, dm),
+                "class %sD : %sB, %sC { override fun hi(): String = \"D\" + super<%sB>.hi() + super<%sC>.hi() }" % (dm, dm, dm, dm, dm),
+                "interface %sSrc<out T> { fun get(): T }" % dm,
+                "class %sBox<T>(val v: T) : %sSrc<T> { override fun get(): T = v }" % (dm, dm),
+                "fun %sSum(xs: List<%sSrc<Number>>): Int = xs.sumOf { it.get().toInt() }" % (dm, dm),
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b2dia", "name": dm})
 
         # top-level functions with statements (no recursion into later ones)
         for _ in range(r.randint(1, 4)):
@@ -920,6 +1028,9 @@ class Gen:
             out.append("val %s = generateSequence(%s) { if (it > %d || it < -%d) null else it * 2 + 1 }" % (v, ex("Int", 1) + " and 1023", r.randint(10, 500), r.randint(10, 500)))
             out.append(self.show("%s.toList()" % v))
             return
+        if k == 33 and self.effects:
+            self.effect_stmt(out, env)
+            return
         if k == 19 and self.classes:
             c = self.pick(self.classes)
             self.class_stmt(out, c, env)
@@ -1003,6 +1114,31 @@ class Gen:
             return
         out.append(self.show(ex("Int")))
 
+    def effect_stmt(self, out, env):
+        r = self.r
+        ex = lambda t, d=2: self.expr(t, d, env)
+        a, i = self.fresh("ea"), self.fresh("ei")
+        out.append("val %s = IntArray(4) { it + 1 }" % a)
+        out.append("var %s = %s and 3" % (i, ex("Int", 1)))
+        for _ in range(r.randint(1, 3)):
+            out.append(self.pick([
+                "%s[tick(%s++ and 3)] += tick(%s)" % (a, i, ex("Int", 1)),
+                "%s[tick(%s and 3)]++" % (a, i),
+                "%s[%s++ and 3] = tick(%s) + %s" % (a, i, ex("Int", 1), i),
+                "%s[tick(%s and 3)] = %s[tick((%s + 1) and 3)] * tick(%s)" % (a, i, a, i, ex("Int", 1)),
+                "%s = tick(%s) + %s++ + tick(%s)" % (i, ex("Int", 1), i, ex("Int", 1)),
+                "%s += %s++ * tick(%s)" % (i, i, ex("Int", 1)),
+            ]))
+        out.append(self.show("%s.contentToString() + %s" % (a, i)))
+        sv = self.fresh("es")
+        out.append("var %s = %s" % (sv, ex("String", 1)))
+        out.append("%s += tick(%s)" % (sv, ex("Int", 1)))
+        out.append("%s = %s + tickL(%s) + tickC(%s)" % (sv, sv, ex("Long", 1), ex("Char", 1)))
+        out.append(self.show(sv))
+        out.append(self.show('"x${tick(%s)}y${tickL(%s)}z"' % (ex("Int", 1), ex("Long", 1))))
+        out.append(self.show("when (tick(%s)) { 1 -> tick(10); in 2..9 -> tick(20); else -> tick(30) }" % ex("Int", 1)))
+        out.append(self.show("tickL(%s).hashCode() + tickB(%s).hashCode()" % (ex("Long", 1), ex("Boolean", 1))))
+
     def _with(self, env, name, ty):
         e = Env(env)
         e.add(name, ty)
@@ -1069,6 +1205,41 @@ class Gen:
             if self.chance(0.5):
                 out.append("%s.next = null; %s.back = null" % (g, g))
                 out.append(self.show("%s.next?.v ?: -1" % g))
+            kk = r.randint(0, 3)
+            acc, i = self.fresh("acc"), self.fresh("i")
+            if kk == 0:
+                # cyclic garbage in a loop: rings, a node that holds itself, a list that holds itself, a closure over both
+                out.append("var %s = 0L" % acc)
+                out.append("for (%s in 0 until %d) {" % (i, r.randint(20, 400)))
+                out.append("    val r = ring%s(1 + %s %% 7, %s)" % (nn, i, i))
+                out.append("    r.kids.add(r)")
+                out.append("    val holder = ArrayList<Any>()")
+                out.append("    holder.add(r); holder.add(holder)")
+                out.append("    val f: () -> Int = { r.v + holder.size }")
+                out.append("    %s += f() + r.sum(2)" % acc)
+                out.append("}")
+                out.append(self.show(acc))
+            elif kk == 1:
+                m = self.fresh("m")
+                out.append("val %s = HashMap<Int, %s>()" % (m, nn))
+                out.append("for (%s in 0 until %d) { val x = %s(%s); x.next = %s[(%s + 1) %% 17]; %s[%s %% 17] = x }" % (i, r.randint(20, 300), nn, i, m, i, m, i))
+                out.append(self.show("%s.values.sumOf { v -> var n = 0; var c: %s? = v; while (c != null && n < 30) { n++; c = c.next }; n }" % (m, nn)))
+            elif kk == 2:
+                inner, outer = self.fresh("in"), self.fresh("out")
+                out.append("val %s = ArrayList<Int>()" % inner)
+                out.append("val %s = ArrayList<List<Int>>()" % outer)
+                out.append("repeat(%d) { %s.add(it * %s); %s.add(%s) }" % (r.randint(1, 5), inner, ex("Int", 1), outer, inner))
+                out.append(self.show(outer))
+                out.append("%s.clear()" % inner)
+                out.append(self.show(outer))
+            else:
+                box = self.fresh("box")
+                out.append("val %s = IntArray(1)" % box)
+                fs = self.fresh("fs")
+                out.append("val %s = ArrayList<() -> Int>()" % fs)
+                out.append("for (%s in 0 until %d) { %s.add { %s[0] += %s; %s[0] } }" % (i, r.randint(1, 6), fs, box, i, box))
+                out.append(self.show("%s.map { it() }" % fs))
+                out.append(self.show("%s[0]" % box))
         elif k == "vec":
             vc = c["name"]
             a, b = self.fresh("va"), self.fresh("vb")
@@ -1115,13 +1286,53 @@ class Gen:
             out.append("fun %s(a: Int): Int = a * %s + %s" % (lv, self.lit("Int"), ex("Int", 1)))
             out.append(self.show("(1..3).map(::%s)" % lv))
             out.append("outer@ for (a in 0 until 4) { for (b in 0 until 4) { if (a * b == %d) continue@outer; if (a + b > %d) break@outer; println(a * 10 + b) } }" % (r.randint(0, 6), r.randint(2, 6)))
-            out.append("var dw = 0; do { dw += %d } while (dw < %d)" % (r.randint(1, 3), r.randint(3, 12)))
-            out.append(self.show("dw"))
+            dw = self.fresh("dw")
+            out.append("var %s = 0; do { %s += %d } while (%s < %d)" % (dw, dw, r.randint(1, 3), dw, r.randint(3, 12)))
+            out.append(self.show(dw))
             out.append(self.show("when { %s -> \"p\"; %s -> \"q\"; else -> \"r\" }" % (ex("Boolean", 2), ex("Boolean", 2))))
             out.append(self.show("arrayOf(\"b\", \"a\", %s).sortedArray().joinToString()" % ex("String", 1)))
             out.append(self.show("Array(%d) { i -> IntArray(i + 1) { j -> i * j } }.map { it.sum() }" % r.randint(1, 4)))
             out.append(self.show("buildString { append(%s); append('-'); append(%s) }" % (ex("Int", 1), ex("String", 1))))
             out.append(self.show("Triple(%s, %s, %s).toList()" % (ex("Int", 1), ex("String", 1), ex("Boolean", 1))))
+        elif k == "b2init":
+            n = c["name"]
+            out.append("val %s = %s(%s)" % (self.fresh("o"), n, ex("Int", 1)))
+            o2 = self.fresh("o")
+            out.append("val %s = %sKid(%s)" % (o2, n, ex("Int", 1)))
+            out.append(self.show("%s.d + %s.a" % (o2, o2)))
+            out.append("val %s = %s(%s)" % (self.fresh("o"), n, ex("String", 1)))
+        elif k == "b2enum":
+            n = c["name"]
+            out.append(self.show("%s.values().map { it.apply(%s, %s) }" % (n, ex("Int", 1), ex("Int", 1))))
+            out.append(self.show("%s.values().joinToString { it.sym + it }" % n))
+            out.append(self.show("%s.valueOf(\"%s\").ordinal" % (n, self.pick(["ADD", "MUL", "SHL"]))))
+            out.append(self.show("when (%s.%s) { %s.ADD, %s.MUL -> \"arith\"; %s.SHL -> \"bit\" }" % (n, self.pick(["ADD", "MUL", "SHL"]), n, n, n)))
+        elif k == "b2flow":
+            n = c["name"]
+            out.append(self.show("%sFirst(%s) { it > %d }" % (n, ex("List<Int>", 2), r.randint(-3, 20))))
+            out.append(self.show("%sNonLocal(%s)" % (n, ex("List<Int>", 2))))
+            out.append(self.show("%sLabeled(%s)" % (n, ex("List<Int>", 2))))
+            out.append(self.show("%sScope(%s)" % (n, ex("Int", 1))))
+            out.append(self.show("%sLocal(%s)" % (n, ex("Int", 1))))
+            out.append(self.show("%sLoopClosures(%s)" % (n, ex("Int", 1))))
+        elif k == "b2del":
+            n = c["name"]
+            d = self.fresh("dl")
+            out.append("val %s = %s()" % (d, n))
+            out.append(self.show("%s.viaRef" % d))
+            out.append("%s.viaRef = %s" % (d, ex("Int", 1)))
+            out.append(self.show("%s.viaRef" % d))
+            out.append("%s.observed = %s" % (d, ex("Int", 1)))
+            out.append("%s.observed = %s" % (d, ex("Int", 1)))
+            out.append(self.show("%s.computed + %s.computed" % (d, d)))
+            out.append("try { println(%s.late) } catch (e: UninitializedPropertyAccessException) { println(\"uninit\") }" % d)
+            out.append("%s.late = %s" % (d, ex("String", 1)))
+            out.append(self.show("%s.late.length" % d))
+        elif k == "b2dia":
+            n = c["name"]
+            out.append(self.show("%sD().hi()" % n))
+            out.append(self.show("%sSum(listOf(%sBox(%s), %sBox(%s.toLong())))" % (n, n, ex("Int", 1), n, ex("Int", 1))))
+            out.append(self.show("(%sD() as %sA).hi().length" % (n, n)))
         elif k == "ext":
             out.append(self.show("%s.%sA(%s)" % (ex("Int", 1), c["name"], ex("Int", 1))))
             out.append(self.show("%s.%sB(%s)" % (ex("String", 1), c["name"], ex("Int", 1))))

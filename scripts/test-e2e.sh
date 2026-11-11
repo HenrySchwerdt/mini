@@ -15,6 +15,8 @@
 #                structures built and dropped over and over). stress-leak / stress-llvm-leak: LeakSanitizer clean, output equals .out;
 #                stress-rss: the peak RSS (scripts/peak-rss.py) with 4x the rounds stays within 25 percent (+8 MiB) of the peak with
 #                1x, and under the limit in `<name>.rss` (KiB) when there is one: memory must not grow with the number of rounds
+#   fuzz       tools/fuzz/smoke: 50 fixed programs of the differential fuzzer (docs/fuzzing.md) against the stored kotlinc output; fuzz-llvm,
+#                fuzz-leak, fuzz-llvm-leak: the LLVM backend, the sanitizers, both
 #   llvm       like `c`, through the LLVM backend (MIR -> textual LLVM IR -> clang)
 #   llvm-leak  the sanitizer run on the LLVM build
 #   llvm-variants  --stats, --no-rc-opt, --no-strict and --no-conv through bin/native-driver (needs NATIVE_DRIVER)
@@ -58,7 +60,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -647,6 +649,12 @@ want_suite strict-llvm-leak && for f in $(strict_runnable); do add strict-llvm-l
 stress_progs() { find "$TESTDATA/stress" -maxdepth 1 -name '*.kt' 2>/dev/null | LC_ALL=C sort; }
 want_suite stress-leak && for f in $(stress_progs); do add stress-leak "$(basename "$f" .kt)" "t_c $f asan"; done
 want_suite stress-llvm-leak && for f in $(stress_progs); do add stress-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
+# tools/fuzz/smoke: fixed programs of the differential fuzzer with the kotlinc/JVM output stored as <name>.out (docs/fuzzing.md), no JVM needed
+fuzz_progs() { find "$ROOT/tools/fuzz/smoke" -maxdepth 1 -name '*.kt' 2>/dev/null | LC_ALL=C sort; }
+want_suite fuzz && for f in $(fuzz_progs); do add fuzz "$(basename "$f" .kt)" "t_c $f"; done
+want_suite fuzz-llvm && for f in $(fuzz_progs); do add fuzz-llvm "$(basename "$f" .kt)" "t_llvm $f"; done
+want_suite fuzz-leak && for f in $(fuzz_progs); do add fuzz-leak "$(basename "$f" .kt)" "t_c $f asan"; done
+want_suite fuzz-llvm-leak && for f in $(fuzz_progs); do add fuzz-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
 want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib stubCache t_mlib_stubcache; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; add multifile classChainAcrossFiles t_multifile_layout; }
@@ -656,7 +664,7 @@ total="$(wc -l < "$LISTFILE" | tr -d ' ')"
 if [ "$LIST" = 1 ]; then awk -F'|' '{ print $1 "::" $2 }' "$LISTFILE"; echo "$total tests" >&2; exit 0; fi
 
 # runtime objects for the sanitizer / stats flavours, once
-if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak)\|' "$LISTFILE"; then
+if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak)\|' "$LISTFILE"; then
     if [ -n "$SANCC" ]; then build_rt "$W/rt-asan" "$SANCC" $SAN_FLAGS; else echo "test-e2e: no C compiler can link the sanitizer runtimes: the leak suites are skipped" >&2; fi
 fi
 if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK_STATS; fi
