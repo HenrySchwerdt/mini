@@ -1,0 +1,47 @@
+== Thread
+true
+false
+false
+my-thread
+renamed
+worker-x
+5
+already started
+main
+kt-thread
+true
+true
+true
+false
+== ThreadLocal
+null
+7
+null
+41
+true
+null
+== atomics
+80000
+160010
+true
+false
+true
+true
+b
+160000
+160000
+160006
+b
+== locks
+40000
+false
+false
+1
+2
+true
+false
+8000
+8000
+40000
+waiter released
+false

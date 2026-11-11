@@ -529,7 +529,10 @@ void mk_sys_cond_broadcast(MkObject *cond);
 /* Starts a thread running the Kotlin function `() -> Unit`; the handle (0 on failure) is joined with mk_sys_thread_join.
  * The first thread switches every reference count operation of the process to atomic. */
 int64_t mk_sys_thread_start(MkObject *fn);
-void mk_sys_thread_join(int64_t handle);
+void mk_sys_thread_join(int64_t handle);   /* waits for the end of the thread; gives the handle up */
+void mk_sys_thread_detach(int64_t handle); /* gives the handle up without waiting */
+int64_t mk_sys_thread_id(void); /* 1 for the thread that started the first thread, then in start order */
+void mk_sys_thread_yield(void);
 
 /* Atomics on element 0 of an IntArray / LongArray / object array (reference cell). */
 int32_t mk_atomic_int_get(MkObject *a);
