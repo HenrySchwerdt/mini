@@ -116,7 +116,10 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     val expRet = ef?.ret
     val expRetFixed = if (expRet != null) (cs?.resolveFixed(expRet) ?: expRet) else null
     // (`() -> Unit?` takes any value of the lambda body: `{ null }` is no Unit lambda)
-    if (expRetFixed != null && ops.isUnit(expRetFixed) && !expRetFixed.nullable) {
+    // (a result type variable that only the expected type bounds by Unit: `val u: Unit = remember { null }`)
+    val unitVar = expRetFixed is VarType && !expRetFixed.nullable && expRetFixed.v.fixed == null && expRetFixed.v.equal.isEmpty() && expRetFixed.v.lower.isEmpty() &&
+        expRetFixed.v.upper.any { it is ClassType && ops.isUnit(it) && !it.nullable }
+    if (unitVar || (expRetFixed != null && ops.isUnit(expRetFixed) && !expRetFixed.nullable)) {
         ret = sema.unitType
     } else {
         val types = ArrayList<Type>()
@@ -223,6 +226,15 @@ class RefCand(val sym: Sym, val params: List<Type>, val ret: Type, val tps: List
     var objType: Type? = null
     /** the scope group the candidate came from (a `::f` without receiver): the innermost group wins */
     var level = 0
+    /** `value::ext` of a generic extension: the type of the bound receiver, which determines the type parameters */
+    var boundRecv: Type? = null
+}
+
+internal fun BodyChecker.seedBoundReceiver(sys: ConstraintSystem, mm: HashMap<TypeParamSym, Type>, c: RefCand) {
+    val br = c.boundRecv ?: return
+    val fn = c.sym as? FunSym ?: return
+    val r = fn.receiver ?: return
+    sys.addSub(br, ops.substitute(r, mm))
 }
 
 internal fun BodyChecker.funRefCand(c: Candidate, bound: Boolean, out: ArrayList<RefCand>) {
@@ -442,7 +454,11 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             val ext = ArrayList<List<Candidate>>()
             extensionGroups(name, vt, ext)
             if (cands.isEmpty()) for (g in ext) for (c in g) {
-                if (extFits(c.fn, vt)) funRefCand(Candidate(c.fn, c.subst, null), true, cands)
+                if (extFits(c.fn, vt)) {
+                    val before = cands.size
+                    funRefCand(Candidate(c.fn, c.subst, null), true, cands)
+                    for (k in before until cands.size) cands[k].boundRecv = vt
+                }
             }
             if (cands.isEmpty()) for (lf in localExtensionFuns(name)) if (extFits(lf, vt)) funRefCand(Candidate(lf, HashMap(), null), true, cands)
         }
@@ -472,6 +488,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         val sys = ConstraintSystem(sema)
         val mm = HashMap<TypeParamSym, Type>()
         sys.addVariables(c.tps, mm)
+        seedBoundReceiver(sys, mm, c)
         if (ef != null) {
             val ps = ArrayList<Type>()
             for (p in c.params) ps.add(ops.substitute(p, mm))
@@ -503,6 +520,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         val sys = ConstraintSystem(sema)
         val mm = HashMap<TypeParamSym, Type>()
         sys.addVariables(c.tps, mm)
+        seedBoundReceiver(sys, mm, c)
         chosen = c
         cs = sys
         m = mm
@@ -516,12 +534,17 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             if (off < 0 || off > 1) continue
             val eps = ops.allParams(ef)
             var found = false
-            for (mode in 0..1) {
-                if (mode == 1 && fn.params.none { it.isVararg }) break
-                val map = adaptMapping(fn.params, off, eps.size, mode == 1) ?: continue
+            for (combo in 0..7) {
+                // mode 1: an array for the vararg; [give]: elements the vararg leaves to the parameters after it (`(Int, String, Int)` for `f(a: Int, vararg b: String, c: Int = 0)`)
+                val mode = combo / 4
+                val give = combo % 4
+                if (mode == 1 && (give > 0 || fn.params.none { it.isVararg })) continue
+                if (mode == 0 && give > 0 && fn.params.none { it.isVararg }) continue
+                val map = adaptMapping(fn.params, off, eps.size, mode == 1, give) ?: continue
                 val sys = ConstraintSystem(sema)
                 val mm = HashMap<TypeParamSym, Type>()
                 sys.addVariables(c.tps, mm)
+                seedBoundReceiver(sys, mm, c)
                 var ok = true
                 var i = 0
                 while (i < off && ok) {
@@ -669,7 +692,7 @@ class AdaptedRef(val map: AdaptMap, val receiverCount: Int) {
  * ones that are left over (after the required parameters behind it); the parameters beyond the expected ones need a default or are
  * `vararg`. Null when that does not work, or when the reference is not adapted at all.
  */
-fun adaptMapping(params: List<VarSym>, off: Int, n: Int, arrayVararg: Boolean = false): AdaptMap? {
+fun adaptMapping(params: List<VarSym>, off: Int, n: Int, arrayVararg: Boolean = false, give: Int = 0): AdaptMap? {
     if (n < off) return null
     val starts = IntArray(params.size)
     val counts = IntArray(params.size)
@@ -685,9 +708,10 @@ fun adaptMapping(params: List<VarSym>, off: Int, n: Int, arrayVararg: Boolean = 
                 if (!params[k].hasDefault && !params[k].isVararg) req++
                 k++
             }
-            var take = n - i - req
+            var take = n - i - req - give
             // an array given for the vararg parameter itself (`(IntArray, String) -> Unit` for `foo(vararg xs: Int, s: String = "")`): it is spread
             if (arrayVararg) take = if (i < n) 1 else 0
+            if (take < 0 && give > 0) return null
             if (take < 0) take = 0
             counts[j] = take
             i += take
