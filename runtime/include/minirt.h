@@ -96,6 +96,36 @@ MkObject *mk_alloc(const MkTypeInfo *type);
 MkObject *mk_alloc_armed(const MkTypeInfo *type);
 MkObject *mk_alloc_plain(const MkTypeInfo *type);
 
+/* The thread-local cache of the small-object allocator (runtime/src/alloc_small.h describes it); generated code takes a block of a
+ * constant size class from it inline (mkh_alloc_inline of the C prelude) and calls mk_alloc_armed / mk_alloc_plain when the cache cannot serve. */
+#define MK_SMALL_CLASSES_PUBLIC 17
+typedef struct MkSmallCache {
+    void *free[MK_SMALL_CLASSES_PUBLIC];
+    void *tail[MK_SMALL_CLASSES_PUBLIC]; /* the oldest block of `free` (valid while count > 0) */
+    void *spare[MK_SMALL_CLASSES_PUBLIC]; /* a full batch or NULL */
+    void *spare_tail[MK_SMALL_CLASSES_PUBLIC];
+    uint32_t count[MK_SMALL_CLASSES_PUBLIC];
+    unsigned char *bump, *end;
+    size_t next_chunk;
+    int registered;
+} MkSmallCache;
+/* Inline allocation: only where the runtime itself uses the small allocator (see alloc_small.h MK_SMALL_ALLOC) and nothing counts allocations. */
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(MK_STATS) && !defined(MK_PLAIN_MALLOC) && !defined(_WIN32) && !defined(__wasm__) && \
+    !defined(__SANITIZE_ADDRESS__) && !defined(MK_NO_INLINE_ALLOC)
+#if defined(__has_feature)
+#if !__has_feature(address_sanitizer)
+#define MK_INLINE_ALLOC 1
+#endif
+#else
+#define MK_INLINE_ALLOC 1
+#endif
+#endif
+#ifdef MK_INLINE_ALLOC
+extern _Thread_local MkSmallCache mk_small_cache;
+extern size_t mk_cycles_alloc_bytes;
+extern volatile int mk_cycles_ready; /* the collector is installed (set by the first armed allocation) */
+#endif
+
 /* Slow path of the generated `<object>_get` accessors of Kotlin `object`s and file classes holding top-level properties:
  * creates the instance and runs its initialiser once, also when threads race on the first access. `*slot` is published
  * (release store) only after the initialiser returned, so readers that see a non-NULL slot see an initialised object;

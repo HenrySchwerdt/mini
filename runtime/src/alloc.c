@@ -84,6 +84,10 @@ size_t mk_object_block_size(const MkTypeInfo *type) {
 static inline void zero_small(void *b, size_t cls) {
     uint64_t *p = (uint64_t *)b;
     switch (cls) {
+    case 8: p[14] = 0; p[15] = 0; /* fallthrough */
+    case 7: p[12] = 0; p[13] = 0; /* fallthrough */
+    case 6: p[10] = 0; p[11] = 0; /* fallthrough */
+    case 5: p[8] = 0; p[9] = 0; /* fallthrough */
     case 4: p[6] = 0; p[7] = 0; /* fallthrough */
     case 3: p[4] = 0; p[5] = 0; /* fallthrough */
     case 2: p[2] = 0; p[3] = 0; /* fallthrough */
@@ -111,6 +115,17 @@ MK_ALWAYS_INLINE MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size, b
     return object;
 }
 #endif
+
+/* A block for an object that may be part of a cycle (the storage of an ArrayList): the small allocator directly, armed. */
+MkObject *mk_alloc_sized_armed(const MkTypeInfo *type, size_t size) {
+#if MK_SMALL_ALLOC
+    if (size >= sizeof(MkObject) && size <= MK_SMALL_MAX) {
+        MkObject *object = alloc_small_rc(type, size, true);
+        if (object != NULL) return object;
+    }
+#endif
+    return mk_alloc_sized(NULL, type, size);
+}
 
 MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, size_t size,
                               const char *site) {
