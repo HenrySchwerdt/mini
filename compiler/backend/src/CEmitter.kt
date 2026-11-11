@@ -55,7 +55,10 @@ object CEmitter {
         return Result(c, plan, tr, st.reasons)
     }
 
-    private class Scope(val locals: List<MirLocal>, val loop: MirLabel?)
+    private class Scope(val locals: List<MirLocal>, val loop: MirLabel?) {
+        /** locals released early (and set to NULL) in this scope: exits emitted after that point do not release them again */
+        val killed = HashSet<Int>()
+    }
 
     private class State(val module: MirModule, val rcPlan: RcPlan?, val tr: Tracking) {
         var curFn: MirFunction? = null
@@ -491,11 +494,21 @@ object CEmitter {
             for (i in from downTo to) {
                 for (l in scopes[i].locals.asReversed()) {
                     if (l === keep || l.id in dead || l.id in pending) continue
+                    if (isKilled(l, from)) continue
                     // exception exits are cold and repeated at every call that can throw: plain calls keep the C small
                     sb.append(if (cold) "${ind(d)}mk_release((MkObject *)${lname(l)});\n" else "${ind(d)}${rel(lname(l), if (l.id in (fplan?.ownedParams?.map { it.id } ?: emptyList())) "owned parameter released at exit" else "owned local released at scope exit")};\n")
                 }
             }
             return sb.toString()
+        }
+
+        fun isKilled(l: MirLocal, from: Int): Boolean {
+            var j = 0
+            while (j <= from && j < scopes.size) {
+                if (l.id in scopes[j].killed) return true
+                j++
+            }
+            return false
         }
 
         fun isBorrowed(l: MirLocal) = fplan?.isBorrowed(l) == true
@@ -522,6 +535,7 @@ object CEmitter {
                 if (l.id in dead || l.id in pending) continue
                 out.append(ind(d)).append(rel(lname(l), "last use")).append(";\n")
                 out.append(ind(d)).append(lname(l)).append(" = NULL;\n")
+                if (scopes.isNotEmpty()) scopes[scopes.size - 1].killed.add(l.id)
             }
         }
 
