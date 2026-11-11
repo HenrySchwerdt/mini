@@ -23,6 +23,9 @@
 #   memcheck   `minic-native --check --brief` over testdata/memory and memory-extra equals the .diag files
 #   memrun     the accepted programs of testdata/memory (.out) built and run (programs using constructs the C backend cannot
 #                lower yet, or threads, are skipped and counted)
+#   realworld, realworld-llvm, realworld-leak, realworld-llvm-leak   tests/realworld: everyday Kotlin programs (100-600 lines, standard
+#                library only) with the expected output of the reference compiler: C backend, LLVM backend and the sanitizer builds of both
+#                (docs/realworld.md; the outputs are made by tests/realworld/gen-expected.sh)
 #   strict     compiler/testdata/strict-corpus: everyday Strict programs; `// ACCEPT` ones must pass the checker (and, with a .out,
 #                build and run to it), `// REJECT Mxxxx` ones must be rejected with exactly that code (scripts/strict-corpus.sh)
 #   multifile  several input files, reachability pruning, all user files are memory-checked
@@ -58,7 +61,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss realworld realworld-leak)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -635,6 +638,11 @@ want_suite c && for f in $(progs); do add c "$(basename "$f" .kt)" "t_c $f"; don
 want_suite leak && for f in $(leakable); do add leak "${f#"$TESTDATA"/}" "t_c $f asan"; done
 want_suite llvm && for f in $(progs); do add llvm "$(basename "$f" .kt)" "t_llvm $f"; done
 want_suite llvm-leak && for f in $(leakable); do add llvm-leak "${f#"$TESTDATA"/}" "t_llvm $f asan"; done
+rw_progs() { find "$ROOT/tests/realworld" -maxdepth 1 -name '*.kt' | LC_ALL=C sort; }
+want_suite realworld && for f in $(rw_progs); do add realworld "$(basename "$f" .kt)" "t_c $f"; done
+want_suite realworld-llvm && for f in $(rw_progs); do add realworld-llvm "$(basename "$f" .kt)" "t_llvm $f"; done
+want_suite realworld-leak && for f in $(rw_progs); do add realworld-leak "$(basename "$f" .kt)" "t_c $f asan"; done
+want_suite realworld-llvm-leak && for f in $(rw_progs); do add realworld-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite llvm-variants && for v in --stats --no-rc-opt --no-strict --no-conv; do add llvm-variants "rc_stress $v" "t_llvm_variant $v"; done
 want_suite llvm-api && for f in $(progs); do add llvm-api "$(basename "$f" .kt)" "t_llvm_api $f"; done
 want_suite memcheck && for f in $(find "$TESTDATA/memory" "$TESTDATA/memory-extra" -maxdepth 1 -name '*.kt' | LC_ALL=C sort); do add memcheck "${f#"$TESTDATA"/}" "t_memcheck $f"; done
@@ -656,7 +664,7 @@ total="$(wc -l < "$LISTFILE" | tr -d ' ')"
 if [ "$LIST" = 1 ]; then awk -F'|' '{ print $1 "::" $2 }' "$LISTFILE"; echo "$total tests" >&2; exit 0; fi
 
 # runtime objects for the sanitizer / stats flavours, once
-if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak)\|' "$LISTFILE"; then
+if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|realworld-leak|realworld-llvm-leak)\|' "$LISTFILE"; then
     if [ -n "$SANCC" ]; then build_rt "$W/rt-asan" "$SANCC" $SAN_FLAGS; else echo "test-e2e: no C compiler can link the sanitizer runtimes: the leak suites are skipped" >&2; fi
 fi
 if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK_STATS; fi
@@ -664,7 +672,7 @@ if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK
 run_one() { # "<suite>|<id>|<cmd>"
     local suite id cmd out rc
     suite="${1%%|*}"; local rest="${1#*|}"; id="${rest%%|*}"; cmd="${rest#*|}"
-    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
+    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|realworld-leak|realworld-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
     # shellcheck disable=SC2086
     out="$(eval "$cmd" 2>&1)"; rc=$?
     local f="$W/res/$(echo "$suite-$id" | tr '/ ' '__')"

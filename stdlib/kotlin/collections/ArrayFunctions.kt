@@ -79,7 +79,7 @@ public fun <T> Array<out T>.toMutableList(): MutableList<T> {
 }
 public fun <T> Array<out T>.toSet(): Set<T> = toMutableList().toSet()
 public fun <T> Array<out T>.toMutableSet(): MutableSet<T> = toMutableList().toMutableSet()
-public fun <T> Array<out T>.toHashSet(): HashSet<T> = HashSet<T>(toMutableList())
+public fun <T> Array<out T>.toHashSet(): HashSet<T> = toCollection(HashSet<T>(mapCapacity(size)))
 
 public fun <T> Array<T>.reverse() {
     var i = 0

@@ -1,0 +1,36 @@
+members: M001 ann (day 1), M002 ben
+  book 'Dune' by Herbert, 612 pages (long)
+  book 'Emma' by Austen, 320 pages
+  book 'Ubik' by Dick, 96 pages (short)
+  dvd 'Alien' (1h57)
+  magazine 'Byte' #12
+  book 'Solaris' by Lem, 204 pages
+day 1: 6 items, 0 loaned, 2 members
+  ann got 'Dune' until day 15
+  ben failed: 'Dune' is already loaned to M001
+  ben failed: no such item: 999
+  ann got 'Alien' until day 8
+  ann got 'Byte' until day 4
+  ann failed: M001 reached the limit of 3 loans
+  ben got 'Ubik' until day 15
+after a week: [Alien (1d late), Byte (5d late)]
+fines paid: [25, 125]
+giving back unknown: 0
+[Dune (15d late), Ubik (15d late)]
+fines: [375, 0] -> ann owes 525
+  ann failed: M001 owes 525 cents
+ann can borrow: false, ben can borrow: true
+ben still has Ubik
+-- ledger
+day 1: M001 borrowed 'Dune', due day 15
+day 1: M001 borrowed 'Alien', due day 8
+day 1: M001 borrowed 'Byte', due day 4
+day 1: M002 borrowed 'Ubik', due day 15
+day 9: M001 returned 'Alien', fine 25
+day 9: M001 returned 'Byte', fine 125
+day 30: M001 returned 'Dune', fine 375
+books 4, others 2; long books: [Dune, Emma]
+[Alien:7, Byte:3]
+true
+Dvd(isbn=4, title=y, minutes=90)
+M007 7

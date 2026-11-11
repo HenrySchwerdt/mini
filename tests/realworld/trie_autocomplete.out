@@ -1,0 +1,16 @@
+words: 17, nodes: 62
+th*: [the, then, thick, through]
+suggest 'th': [(the, 5), (then, 1), (thick, 1)]
+suggest 'q': [(quick, 1), (quickly, 1)]
+contains: [true, false, false, true]
+count(the)=5 count(cat)=0
+remove dog: true, again: false, nodes: 59
+d*: []
+lcp: inter
+quikc -> quick (distance 2)
+brwon -> brown (distance 2)
+lasy -> lazy (distance 1)
+forst -> forest (distance 1)
+xyz -> (no suggestion) (distance 3)
+[(app, 9), (apt, 7), (apple, 5)]
+[app, apt, apple, apply, bat]
