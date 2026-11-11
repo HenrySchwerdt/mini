@@ -376,29 +376,70 @@ internal fun Ir2Mir.concat(a: MirExpr, b: MirExpr, out: MutableList<MirStmt>): M
     return tmpOf(MirExpr.RuntimeCall("mk_string_concat", listOf(a, b), TString), out)
 }
 
+/** `-Xno-concat-numbers` clears [numbers]: an Int / Long / Char piece of a concatenation is then converted to a string of its own first. */
+object ConcatOptions {
+    var numbers = true
+}
+
 internal fun Ir2Mir.stringConcat(e: IrStringConcatenation, out: MutableList<MirStmt>): MirExpr {
     val vals = operands(e.arguments, out)
-    // the pieces as strings; neighbouring constants are joined here
+    // the pieces; neighbouring constants are joined here. An Int / Long / Char piece stays a number (kind 1 / 2): the concatenation writes its digits
+    // itself (mk_string_concat_mN), no string is made for it. A string piece has kind 0.
     val parts = ArrayList<MirExpr>()
+    val kinds = ArrayList<Int>()
     for (v in vals) {
+        val numeric = !e.arrayContent && ConcatOptions.numbers && (v.type == TInt || v.type == TLong || v.type == TChar) &&
+            v !is MirExpr.IntConst && v !is MirExpr.LongConst
+        if (numeric) {
+            parts.add(v)
+            kinds.add(if (v.type == TChar) 2 else 1)
+            continue
+        }
         val s = if (e.arrayContent && arrayKindOf(v.type) != null) tmpOf(MirExpr.RuntimeCall("mk_array_content_to_string", listOf(v), TString), out)
+        else if (v is MirExpr.IntConst) MirExpr.StringConst(v.value.toString())
+        else if (v is MirExpr.LongConst) MirExpr.StringConst(v.value.toString())
         else toStringExpr(v, e, out)
         val last = if (parts.isEmpty()) null else parts[parts.size - 1]
-        if (last is MirExpr.StringConst && s is MirExpr.StringConst) parts[parts.size - 1] = MirExpr.StringConst(last.value + s.value)
-        else parts.add(s)
+        if (last is MirExpr.StringConst && kinds[kinds.size - 1] == 0 && s is MirExpr.StringConst) parts[parts.size - 1] = MirExpr.StringConst(last.value + s.value)
+        else { parts.add(s); kinds.add(0) }
     }
     if (parts.isEmpty()) return MirExpr.StringConst("")
     // up to six pieces per call: one allocation instead of one per `+`
     var acc = parts[0]
+    var accKind = kinds[0]
     var next = 1
+    if (parts.size == 1 && accKind != 0) return toStringExpr(acc, e, out)
     while (next < parts.size) {
         val take = minOf(5, parts.size - next)
         val args = ArrayList<MirExpr>()
-        args.add(acc)
-        for (k in 0 until take) args.add(parts[next + k])
+        val ks = ArrayList<Int>()
+        args.add(acc); ks.add(accKind)
+        for (k in 0 until take) { args.add(parts[next + k]); ks.add(kinds[next + k]) }
         next += take
-        acc = if (args.size == 2) concat(args[0], args[1], out)
-        else tmpOf(MirExpr.RuntimeCall("mk_string_concat" + args.size, args, TString), out)
+        acc = if (ks.all { it == 0 }) {
+            if (args.size == 2) concat(args[0], args[1], out)
+            else tmpOf(MirExpr.RuntimeCall("mk_string_concat" + args.size, args, TString), out)
+        } else if (args.size == 2) {
+            // a number and one more piece: the cheap form is the number's string
+            val a = if (ks[0] == 0) args[0] else toStringExpr(args[0], e, out)
+            val b = if (ks[1] == 0) args[1] else toStringExpr(args[1], e, out)
+            concat(a, b, out)
+        } else {
+            var mask = 0
+            val cargs = ArrayList<MirExpr>()
+            cargs.add(MirExpr.IntConst(0))
+            for (k in args.indices) {
+                mask = mask or (ks[k] shl (2 * k))
+                if (ks[k] == 0) { cargs.add(args[k]); cargs.add(MirExpr.LongConst(0L)) }
+                else {
+                    cargs.add(MirExpr.NullConst(TString))
+                    cargs.add(if (args[k].type == TLong) args[k] else MirExpr.Convert(if (args[k].type == TChar) MirExpr.Convert(args[k], TInt) else args[k], TLong))
+                }
+            }
+            cargs[0] = MirExpr.IntConst(mask)
+            tmpOf(MirExpr.RuntimeCall("mk_string_concat_m" + args.size, cargs, TString), out)
+        }
+        accKind = 0
     }
     return acc
 }

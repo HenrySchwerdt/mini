@@ -56,7 +56,14 @@ public class StringBuilder : Appendable {
         return this
     }
 
-    // one overload for String and CharSequence: both mangle to the same C symbol, so a separate String overload cannot coexist
+    // the String overload has its own C symbol (JvmName): a call with a String argument is small enough to be inlined, no type test
+    @kotlin.jvm.JvmName("appendString")
+    public fun append(value: String?): StringBuilder {
+        sbAppendString(buf, value ?: "null")
+        return this
+    }
+
+    // an overload for CharSequence (a String argument takes the one above)
     public override fun append(value: CharSequence?): StringBuilder {
         if (value is String) {
             sbAppendString(buf, value)

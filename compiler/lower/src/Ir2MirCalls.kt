@@ -124,10 +124,28 @@ internal fun Ir2Mir.call(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     return guardUnsetGetterResult(c, r, out)
 }
 
+/** `s + x` of the standard library (String.plus): the operands of a left-nested chain `a + b + c` in order, or null when [c] is not such a call. */
+private fun stringPlusOperands(c: IrExpression, into: ArrayList<IrExpression>): Boolean {
+    if (c !is IrCall || c.callee.name != "plus" || c.arguments.size != 2) return false
+    val l = c.arguments[0] ?: return false
+    val r = c.arguments[1] ?: return false
+    val p = c.callee.parent
+    val std = (p is IrClass && p.kotlinFqName == "kotlin.String") || (p is IrFile && p.packageFqName == "kotlin")
+    if (!std || l.type.classFqName != "kotlin.String" || Reachability.cSymbol(c.callee) != null) return false
+    if (!stringPlusOperands(l, into)) into.add(l)
+    into.add(r)
+    return true
+}
+
 internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     val owner = c.callee
     val name = owner.name
     val parent = owner.parent
+    // `a + b + c ...` of strings: one concatenation (the pieces of a template) instead of one string per `+`
+    if (name == "plus" && c.arguments.size == 2 && c.arguments[0] is IrCall) {
+        val parts = ArrayList<IrExpression>()
+        if (stringPlusOperands(c, parts) && parts.size > 2) return stringConcat(IrStringConcatenation(parts, c.type), out)
+    }
 
     lateinitIsInitialized(c, name, if (parent is IrClass) parent.kotlinFqName else (parent as? IrFile)?.packageFqName ?: "", out)?.let { return it }
     // natively implemented function (@CSymbol, docs/stdlib.md)
