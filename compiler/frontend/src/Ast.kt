@@ -242,6 +242,8 @@ class DotExpr(val receiver: Expr, val safe: Boolean, val selector: Expr) : Expr(
 class CallableRefExpr(val receiver: Expr?, val name: String) : Expr() {
     /** `A<Int>::f`: the type arguments written on the receiver class */
     var typeArgs: List<TypeArg> = emptyList()
+    /** `String?::f`: the receiver type is nullable */
+    var nullableRecv = false
 }
 
 class LambdaParam(val mods: Modifiers?, val names: List<DestructEntry>?, val name: String?, val type: TypeRef?) : Ast()

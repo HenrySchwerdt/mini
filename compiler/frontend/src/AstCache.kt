@@ -160,7 +160,7 @@ private class AstWriter {
             is CallExpr -> { head(54, n); node(n.callee); list(n.typeArgs); list(n.args); list(n.lambdas) }
             is IndexExpr -> { head(55, n); node(n.receiver); list(n.indices) }
             is DotExpr -> { head(56, n); node(n.receiver); bool(n.safe); node(n.selector) }
-            is CallableRefExpr -> { head(57, n); node(n.receiver); str(n.name); list(n.typeArgs) }
+            is CallableRefExpr -> { head(57, n); node(n.receiver); str(n.name); list(n.typeArgs); bool(n.nullableRecv) }
             is LambdaParam -> { head(58, n); node(n.mods); list(n.names); str(n.name); node(n.type) }
             is LambdaExpr -> { head(59, n); list(n.params); bool(n.hasArrow); list(n.body); str(n.explicitLabel) }
             is AnonFunExpr -> { head(60, n); node(n.fn) }
@@ -349,6 +349,7 @@ private class AstReader(private val text: String, from: Int) {
             57 -> {
                 val c = CallableRefExpr(expr(), s())
                 c.typeArgs = list()
+                c.nullableRecv = bool()
                 c
             }
             58 -> LambdaParam(mods(), listN(), str(), type())
