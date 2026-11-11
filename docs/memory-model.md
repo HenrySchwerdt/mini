@@ -562,7 +562,9 @@ Until then: container classes with owning fields, or Managed classes in collecti
       them, so the caller treats the result as a loan of the arguments); it may never be returned over a local owner;
     - it must not be stored into a field or a global, returned over a local owner, kept by a callee (summary says the
       parameter escapes), captured by a thread or constructor-stored: **M0112**, naming the owner and where the closure goes;
-    - an owned **`var`** captured by a closure: M0112 (the `var` lives in a counted cell shared with the closure).
+    - an owned **`var`** captured by a closure that only reads it borrows it like a `val` (the heap cell of the variable does not count the
+      owner, see "Owners across suspension points" below; whatever the variable holds when the closure runs is checked at that use). A closure
+      that *assigns* the variable (or a local class, which might) is M0112: it would replace the owner behind the checker's back.
   * Capture of a **borrowed** value: the closure borrows what the value borrows; if it escapes, M0109 (the loan outlives its lender).
   * Capture of an **arena object** if the lambda leaves the arena scope: M0105
     (position: the lambda).
@@ -1289,8 +1291,11 @@ Causes after the fixes (`--list` prints the program behind every row):
    releasing the collection afterwards would read freed memory. What is needed is the owning collection of 5.4 (`OwnedList<T>`) or a
    non-retaining array like the borrowing capture fields of closures, plus a rule that a temporary collection of loans dies within its
    statement. Neither exists yet; every such program is rejected with M0110 (never accepted), so this costs usability, not soundness.
-2. *Closures over a `var` owner* (the closure shares a reference-counting cell with the variable) and closures returned from a
-   function that borrows `this` (`inner_receivers_super`).
+2. *Closures over a `var` owner*: fixed (read-only closures borrow the variable, see "Owners across suspension points"). Left: a local
+   class or anonymous object returned from a method that captures `this` (`inner_receivers_super`, `localExtendsInner`): the instance is a
+   tracked allocation the caller must own, but it holds a loan of the receiver; there is no "owned value that borrows" in the model (the
+   `carries` summaries only describe untracked results such as function values, which are already accepted: a lambda returned from a
+   method that captures `this`).
 3. *Coroutines*: fixed, see "Coroutine starters keep their block" below.
 
 **Coroutine starters keep their block (soundness fix)**
@@ -1314,10 +1319,80 @@ because the block is only the *extension receiver* of `block.startCoroutine(c, c
 * `Thread { }` / `thread { }` already moved their captures (the owner is dead afterwards: M0107 on `free`, corpus `s141`).
 * Price: user code that calls `startCoroutine` itself on a block that completes synchronously (empty context) is now rejected unless
   its own wrapper declares the block `@Borrowed` (3 programs of the coverage sets, `conf6b_prop_recv_invoke`, `conf6b_sam_suspend`);
-  a launched block inside `runBlocking` that captures an owner declared *outside* is M0109 (a loan escapes), though it would be safe.
+  a launched block inside `runBlocking` that captures an owner declared *outside* was M0109 (a loan escapes) though it is safe, see
+  "Structured children" below.
 
 Corpus: `s135`-`s144` (REJECT: launch, async, produce, GlobalScope.launch, startCoroutine, createCoroutine, Thread, dispatcher,
 channel send, launching wrapper) and `s145`, `s146` (ACCEPT: structured scopes, a launched block that only uses a copied value).
+
+**Owners across suspension points (reference count underflow)**
+
+`runBlocking { val b = Box(7); delay(1); println(b.v); b.free() }` was rejected (M0107, "`b` is borrowed", or M0102 for the same program
+without the `free`), and the forms that were accepted aborted at run time: `suspend fun f() { delay(1); val b = Box(7); println(b.v); b.free() }`
+died with `fatal: reference count underflow` (AddressSanitizer: `heap-use-after-free` in `mk_release`, called from the dispose of the closure
+of the state machine; the freed object is the `Box` that `b.free()` returned a moment before). Two independent causes:
+
+1. *Code generation.* Every local of a `suspend` function (and of a `runBlocking`/`launch` lambda) is hoisted into the function and captured by
+   the `step` lambda of the state machine, i.e. it lives in a heap cell (`mk.Ref`). The cell was an ordinary counted reference: the
+   constructor retained the stored object and the dispose of the cell released it. Strict code stores a tracked object into the cell without a
+   count (no reference counts for tracked values in Strict functions), and `free()` returns the memory at once, so the cell's release
+   read and decremented a dead object. Fix (`Ir2MirClosures.cellFor`): in Strict code the cell of a variable of tracked class is a
+   *borrowed* cell (`mk.RefB...`, field `borrowed`: neither the store nor the dispose touch a count); the owner is the one the checker proved
+   (it frees or moves it). The exception is a variable that only ever receives stack-like (`auto`: no allocator visible, nothing escapes)
+   objects: nobody frees those, so their cell keeps the count of one and releases it (otherwise they leak). The decision is made once per variable and
+   is conservative in the leaking direction (any `context(...)` in the function, an allocation that is not a plain constructor call: borrowed cell).
+   The same fix repairs a captured `var` that holds a borrowed tracked reference (its cell retained the first value but not later stores).
+2. *The checker saw the state machine.* The checker analysed the lowered code, the flattened `while (true) when (label)` loop whose locals
+   are captured `var`s of the `step` lambda: every owner that lived across a suspension point was a borrowed capture of the lambda
+   (M0107 on `free`, "overwritten" M0102 on the loop edge). `SuspendLowering` now keeps a copy of the body as written (`IrFunction.memoryBody`,
+   copied by the inliner's `Copier` with nested suspend lambdas copied as written, too) and `MemoryFacts` reads that copy; code generation never
+   does. A suspension point is an ordinary call there, which is sound because a suspend call is structured: the caller's frame lives until the call
+   returns, and a coroutine that is cancelled at a suspension point never runs the rest of its body (the owners it held are leaked, as with an
+   exception, never used after free). Bodies that declare local functions or classes keep the old view (their closure analysis refers to the
+   original declarations).
+
+Verified under AddressSanitizer + LeakSanitizer on the C and the LLVM backend: corpus `s148` (an owner between two suspension points, a plain
+object), `s149` (owner across `delay`, `runBlocking` block and suspend function), `s150` (across `await`, `join`, suspend calls), `s151` (moved
+into a suspend function, loops, `try/finally`); REJECT `s152` (use after free across `delay`, M0101), `s153` (never freed, M0102), `s154`
+(use after the move into a suspend function, M0104). Not supported (as before): returning an owner from a suspend function (`suspend fun
+make(): @Owned Box` is typed `Any?` in the lowered signature: M0111/M0102, conservative).
+
+**Structured children (`launch` inside `runBlocking`)**
+
+A block handed to `launch`/`async` may borrow an owner that was declared *outside* the structured scope. The soundness argument has three parts:
+
+* `runBlocking`, `coroutineScope`, `supervisorScope`, `withTimeout`, `withTimeoutOrNull` do not return before the block *and every
+  coroutine started with its scope* is complete (a job completes when its body and all its children have; the tests `s159` pins it). The owner
+  outside is alive during the call: the block only borrows it (`@Borrowed block`, so it cannot free it), and the caller cannot free it while it
+  is in the call. The parameter carries `@kotlin.internal.JoinsChildren`.
+* The checker (`MemoryFacts.markStructured`, `Interp.escapeChild`) treats a `launch`/`async` block as a *child* only when it is called on the
+  scope parameter of the innermost lambda being analysed, that lambda is a structured scope (or itself a child), and no `context` argument is given
+  (`launch(Job())`, `launch(Dispatchers.Default)` have their own parent or thread; `GlobalScope`, a `CoroutineScope(ctx)` object, a scope captured by
+  another closure are not). A child may capture only what its unit captured from the function around it: an owner or a loan of an owner that
+  belongs to the structured block itself can be freed before the child runs (M0112, `s160`). Everything else is still M0109/M0112 (`s161`-`s163`).
+* A child of a scope that has already been cancelled is not registered with it, so the scope does not wait for it. It used to start anyway;
+  `launch` and `async` now complete such a child with a `CancellationException` without running its block (like kotlinx.coroutines), so a child that is
+  not joined never runs.
+
+**Closures over a `var` owner**
+
+`var b = Box(1); val f = { b.v }; ...; b.free(); b = Box(2); f()` is accepted: with a borrowed cell nothing keeps the old object alive, and the closure
+reads whatever the variable holds when it runs, which the checker tracks as it tracks any use of `b` (`s155`; `s156` use after free, `s157` a closure that
+assigns the variable, `s158` returned: REJECT). `s108` changed from REJECT to ACCEPT.
+
+**Closures returned from methods that borrow `this`**
+
+A lambda returned from a method that captures the receiver (`fun peek(): () -> Int = { n }`) was already accepted, but the summary only knew
+parameters: the result was an unrelated function value, so `val f = c.peek(); c.free(); f()` was a use after free that nobody reported
+(a false negative found while writing `s165`). The summary's `carries` set now also holds the receiver (`FnSummary.RECEIVER`, `~-1` in the `.mlib` text
+form): a call of such a method yields a loan of the receiver's owner, so `f()` after `c.free()` is M0101 (`s166`) and the closure may be used while the owner
+lives (`s165`). A *local class or anonymous object* returned from such a method (`inner_receivers_super`, `localExtendsInner`) stays M0109: its instance is a
+tracked allocation that the caller must own while it holds a loan of the receiver; the model has no owner that borrows.
+
+**Coverage of round strict-3**
+
+Corpus `s148`-`s166` (18 programs: 7 accepted and run, 11 REJECT; `s164` is not used). `scripts/strict-corpus.sh --run`: 158 programs, 0 false positives, 0 false negatives, 0 wrong code, 0 run failures.
+`test-e2e.sh`: `strict` 158, `strict-leak` 97 (accepted programs under ASan + LSan, C backend), `strict-llvm-leak` 97 (LLVM backend), all green.
 
 **Strict values in collections: what was found, and why it stays M0110**
 

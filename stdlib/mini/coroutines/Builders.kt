@@ -36,13 +36,14 @@ private class DeferredCoroutine<T>(parentContext: CoroutineContext) : AbstractCo
 /** Starts a coroutine that runs [block] and returns its [Job]. The coroutine is a child of the job of the scope. */
 public fun CoroutineScope.launch(context: CoroutineContext = EmptyCoroutineContext, block: suspend CoroutineScope.() -> Unit): Job {
     val c = StandaloneCoroutine(coroutineContext + context)
-    block.startCoroutine(c, c)
+    // a child of a scope that was cancelled is not registered with it, so the scope does not wait for it: it must not start
+    if (c.isActive) block.startCoroutine(c, c) else c.resumeWith(Result.failure<Unit>(CancellationException("Parent job is cancelled")))
     return c
 }
 
 public fun <T> CoroutineScope.async(context: CoroutineContext = EmptyCoroutineContext, block: suspend CoroutineScope.() -> T): Deferred<T> {
     val c = DeferredCoroutine<T>(coroutineContext + context)
-    block.startCoroutine(c, c)
+    if (c.isActive) block.startCoroutine(c, c) else c.resumeWith(Result.failure<T>(CancellationException("Parent job is cancelled")))
     return c
 }
 
@@ -67,7 +68,7 @@ private class BlockingCoroutine<T>(parentContext: CoroutineContext, private val 
 }
 
 /** Runs [block] in a new coroutine on an event loop of the calling thread and blocks until it and its children are complete. */
-public fun <T> runBlocking(context: CoroutineContext = EmptyCoroutineContext, @mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T {
+public fun <T> runBlocking(context: CoroutineContext = EmptyCoroutineContext, @mini.memory.Borrowed @kotlin.internal.JoinsChildren block: suspend CoroutineScope.() -> T): T {
     val loop = EventLoop()
     val c = BlockingCoroutine<T>(context + loop, loop)
     block.startCoroutine(c, c)
@@ -89,13 +90,13 @@ private open class ScopeCoroutine<T>(parentContext: CoroutineContext, private va
     protected open fun finalCause(cause: Throwable): Throwable = cause
 }
 
-public suspend fun <T> coroutineScope(@mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
+public suspend fun <T> coroutineScope(@mini.memory.Borrowed @kotlin.internal.JoinsChildren block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
     val c = ScopeCoroutine<T>(cont.context, cont)
     block.startCoroutine(c, c)
 }
 
 /** Like [coroutineScope], but a failing child does not cancel the scope or the other children. */
-public suspend fun <T> supervisorScope(@mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
+public suspend fun <T> supervisorScope(@mini.memory.Borrowed @kotlin.internal.JoinsChildren block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
     val c = SupervisorScopeCoroutine<T>(cont.context, cont)
     block.startCoroutine(c, c)
 }
@@ -161,14 +162,14 @@ private class TimeoutCoroutine<T>(parentContext: CoroutineContext, caller: Conti
 }
 
 /** Runs [block]; when it takes longer than [millis] milliseconds it is cancelled and a [TimeoutCancellationException] is thrown. */
-public suspend fun <T> withTimeout(millis: Long, @mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
+public suspend fun <T> withTimeout(millis: Long, @mini.memory.Borrowed @kotlin.internal.JoinsChildren block: suspend CoroutineScope.() -> T): T = suspendCoroutine { cont ->
     val c = TimeoutCoroutine<T>(cont.context, cont, millis)
     val d = dispatcherOf(cont.context) ?: Dispatchers.Unconfined as CoroutineDispatcher
     c.arm(d)
     block.startCoroutine(c, c)
 }
 
-public suspend fun <T> withTimeoutOrNull(millis: Long, @mini.memory.Borrowed block: suspend CoroutineScope.() -> T): T? {
+public suspend fun <T> withTimeoutOrNull(millis: Long, @mini.memory.Borrowed @kotlin.internal.JoinsChildren block: suspend CoroutineScope.() -> T): T? {
     try {
         return withTimeout(millis, block)
     } catch (e: TimeoutCancellationException) {
