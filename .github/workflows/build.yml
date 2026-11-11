@@ -205,7 +205,7 @@ jobs:
               fi
               (cd compiler && ../build/native/bin/mini build -p native-driver)
               export NATIVE_DRIVER="$PWD/compiler/build/debug/native-driver"
-              scripts/test-e2e.sh --suite llvm --suite llvm-leak --suite llvm-variants
+              scripts/test-e2e.sh --suite llvm --suite llvm-leak --suite llvm-variants --suite fuzz-llvm --suite fuzz-llvm-leak
               if [ "$RUNNER_OS" = Linux ]; then
                 # bootstrap through the LLVM backend, then through the LLVM C API; the API compiler runs the llvm-api suite
                 # (stage0 = the compiler of this checkout that the Toolchain step built from the release)
