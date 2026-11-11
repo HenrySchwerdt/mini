@@ -18,10 +18,17 @@ class TypeOps(private val sema: Sema) {
                 return if (t.nullable) makeNullable(r) else r
             }
             is ClassType -> {
-                if (t.args.isEmpty()) return t
+                var o = t.outer
+                if (o != null) o = substitute(o, m) as ClassType
+                else if (t.cls.isInner) {
+                    // the implicit outer instance: `Inner` inside `Outer<T>` seen through `Outer<String>`
+                    val oc = t.cls.outer
+                    if (oc != null && outerTypeParamsIn(oc, m)) o = substitute(oc.thisType(), m) as ClassType
+                }
+                if (t.args.isEmpty() && o === t.outer) return t
                 val args = ArrayList<TArg>()
                 for (a in t.args) args.add(substArg(a, m))
-                return ClassType(t.cls, args, t.nullable)
+                return ClassType(t.cls, args, t.nullable, o)
             }
             is FunType -> {
                 val r = t.receiver
@@ -79,7 +86,26 @@ class TypeOps(private val sema: Sema) {
     }
 
     /** substitution of the type parameters of [c] by the arguments of [t] (star projections become the bound, `Any?` here) */
+    /** whether [m] substitutes a type parameter of [c] or of a class it is inner to */
+    fun outerTypeParamsIn(c: ClassSym, m: Map<TypeParamSym, Type>): Boolean {
+        var k: ClassSym? = c
+        while (k != null) {
+            for (tp in k.typeParams) if (m.containsKey(tp)) return true
+            k = if (k.isInner) k.outer else null
+        }
+        return false
+    }
+
     fun substOf(t: ClassType): Map<TypeParamSym, Type> {
+        val to = t.outer ?: return substOf0(t)
+        val om = substOf(to)
+        if (t.cls.typeParams.isEmpty()) return om
+        val m = HashMap<TypeParamSym, Type>(om)
+        m.putAll(substOf0(t))
+        return m
+    }
+
+    private fun substOf0(t: ClassType): Map<TypeParamSym, Type> {
         if (t.cls.typeParams.isEmpty()) return emptyMap()
         val m = HashMap<TypeParamSym, Type>()
         var i = 0
@@ -186,7 +212,7 @@ class TypeOps(private val sema: Sema) {
                         args.add(TArg(n, a.variance))
                     } else args.add(a)
                 }
-                return if (changed) ClassType(t.cls, args, t.nullable) else t
+                return if (changed) ClassType(t.cls, args, t.nullable, t.outer) else t
             }
             is FunType -> {
                 val r = t.receiver

@@ -178,9 +178,12 @@ fun Sema.checkProp(p: PropSym) {
         val gc = BodyChecker(this, file)
         val ls = LocalScope(accBase)
         val gt = if (g.returnType != null) resolveType(g.returnType, accBase) else p.type
-        val fv = VarSym("field", gt ?: ErrType("field"), true, false, g.start)
-        fv.isField = true
-        ls.vars["field"] = fv
+        // `val p get() = field` (no initializer, no type): no backing field exists, `field` is an ordinary name (K2)
+        if (!(init == null && deleg == null && needsInference && d.setter == null && g.returnType == null)) {
+            val fv = VarSym("field", gt ?: ErrType("field"), true, false, g.start)
+            fv.isField = true
+            ls.vars["field"] = fv
+        }
         gc.scope = ls
         val target = ReturnTarget(null, gt, null, false)
         target.suspendAccessor = p.has("suspend")

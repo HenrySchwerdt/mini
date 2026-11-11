@@ -41,6 +41,7 @@ class Ast2Ir(val sema: Sema, val userPaths: Set<String>, val libPaths: Set<Strin
     val funMap = HashMap<FunSym, IrFunction>()
     val propMap = HashMap<PropSym, IrProperty>()
     val entryMap = HashMap<EnumEntrySym, IrEnumEntry>()
+    val samCtorTargets = HashMap<FunSym, IrSimpleFunction>()
     val varMap = HashMap<VarSym, IrValueDeclaration>()
     val functionClasses = HashMap<Int, IrClass>()
     val allClasses = ArrayList<IrClass>()

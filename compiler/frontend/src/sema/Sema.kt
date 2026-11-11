@@ -524,6 +524,21 @@ class Sema {
             }
         }
         val c = cur
+        // `Foo<String>.Inner<B>`: the type arguments of the outer class
+        var outerType: ClassType? = null
+        if (c is ClassSym && c.isInner && i - 2 >= idx && i >= 2) {
+            val oc = c.outer
+            val pa = segs[i - 2].args
+            if (oc != null && pa.isNotEmpty() && pa.size == oc.typeParams.size) {
+                val oargs = ArrayList<TArg>()
+                for (a in pa) {
+                    val t = a.type
+                    if (a.star || t == null) oargs.add(TArg(null, Variance.INV))
+                    else oargs.add(TArg(resolveType0(t, scope, file), if (a.variance == "out") Variance.OUT else if (a.variance == "in") Variance.IN else Variance.INV))
+                }
+                outerType = ClassType(oc, oargs, false)
+            }
+        }
         when (c) {
             is TypeParamSym -> return TypeParamType(c, false, false)
             is ClassSym -> {
@@ -533,12 +548,12 @@ class Sema {
                         val st = ArrayList<TArg>()
                         for (tp in c.typeParams) st.add(TArg(null, Variance.INV))
                         if (!bareTypeOk) error(file, ref.start, "type arguments expected for " + c.name)
-                        return ClassType(c, st, false)
+                        return ClassType(c, st, false, outerType)
                     }
                     error(file, ref.start, "wrong number of type arguments for " + c.name)
                     return ErrType("type argument count")
                 }
-                return ClassType(c, args, false)
+                return ClassType(c, args, false, outerType)
             }
             is TypeAliasSym -> {
                 val e = expandAlias(c)
