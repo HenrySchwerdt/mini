@@ -745,7 +745,7 @@ class Gen:
                 "data class %sAdd(val l: %s, val r: %s) : %s" % (en, en, en, en),
                 "data class %sMul(val l: %s, val r: %s) : %s" % (en, en, en, en),
                 "data class %sNeg(val e: %s) : %s" % (en, en, en),
-                "object %sZero : %s" % (en, en),
+                "object %sZero : %s { override fun toString() = \"Zero\" }" % (en, en),
                 "fun eval%s(e: %s): Int = when (e) {" % (en, en),
                 "    is %sNum -> e.v" % en,
                 "    is %sAdd -> eval%s(e.l) + eval%s(e.r)" % (en, en, en),
@@ -834,6 +834,9 @@ class Gen:
             ]
             parts.append(lines)
             self.classes.append({"kind": "b3cor", "name": cn})
+
+        if self.chance(0.8):
+            self.classes.append({"kind": "b3lim", "name": "lim"})
 
         # top-level functions with statements (no recursion into later ones)
         for _ in range(r.randint(1, 4)):
@@ -943,6 +946,9 @@ class Gen:
         r = self.r
         k = r.randint(0, 34)
         ex = lambda t, d=3: self.expr(t, d, env)
+        if self.classes and depth > 0 and self.chance(0.25):
+            self.class_stmt(out, self.pick(self.classes), env)
+            return
         if k <= 3:
             ty = self.pick(["Int", "Int", "Long", "String", "Boolean", "List<Int>", "Char", "Double"])
             v = self.fresh()
@@ -1624,7 +1630,7 @@ class Gen:
             out.append("    js.forEach { it.join() }")
             out.append("    println(acc)")
             out.append("}")
-        elif k == "b3misc":
+        elif k == "b3misc" or k == "b3lim":
             out.extend(self.limits_stmts(env))
         elif k == "ext":
             out.append(self.show("%s.%sA(%s)" % (ex("Int", 1), c["name"], ex("Int", 1))))

@@ -94,12 +94,31 @@ class SGen:
             "",
             "fun wrap(b: @Owned Box, t: Int): @Owned Holder = Holder(b, t)",
             "",
+            "fun firstOf(h: Holder): @Borrowed Box? = h.item",
+            "",
+            "fun maybe(c: Boolean, v: Int): @Owned Box? = if (c) Box(v) else null",
+            "",
+            "@AllocatedBy(Heap::class)",
+            "class Tree(val v: Int, var l: Tree?, var r: Tree?)",
+            "",
+            "fun build(d: Int, v: Int): @Owned Tree? = if (d <= 0) null else Tree(v, build(d - 1, v * 2), build(d - 1, v * 2 + 1))",
+            "",
+            "fun sumTree(t: Tree?): Int = if (t == null) 0 else t.v + sumTree(t.l) + sumTree(t.r)",
+            "",
+            "@AllocatedBy(Heap::class)",
+            "class Res(val name: String) : AutoCloseable {",
+            "    override fun close() { println(\"close \" + name) }",
+            "}",
+            "",
+            "@AllocatedBy(Heap::class)",
+            "class Pair2(var a: Box?, var b: Box?)",
+            "",
         ]
         return d
 
     # ---- scenarios; each returns a list of lines and uses only its own locals and the int variables in `iv`
     def scenario(self, iv, depth):
-        k = self.r.randint(0, 17)
+        k = self.r.randint(0, 23)
         return getattr(self, "s%d" % k)(iv, depth)
 
     def s0(self, iv, depth):  # create, use, free
@@ -260,6 +279,40 @@ class SGen:
             "    }",
             "}",
         ]
+
+    def s18(self, iv, depth):  # borrowed result used before the owner is freed
+        h = self.fresh("h")
+        return ["val %s = wrap(Box(%s), %s)" % (h, self.num(iv), self.num(iv)), "val f%s = firstOf(%s)" % (h, h), "println(f%s?.v)" % h, "%s.free()" % h]
+
+    def s19(self, iv, depth):  # an owning result that may be null
+        m = self.fresh("m")
+        return ["val %s = maybe(%s, %s)" % (m, self.cond(iv), self.num(iv)), "println(%s?.v)" % m, "%s.free()" % m]
+
+    def s20(self, iv, depth):  # a tree built by recursion, freed with its root
+        t = self.fresh("t")
+        return ["val %s = build(%d, %s)" % (t, self.r.randint(0, 4), self.num(iv)), "println(sumTree(%s))" % t, "%s.free()" % t]
+
+    def s21(self, iv, depth):  # AutoCloseable owners: use {} and free()
+        r = self.fresh("r")
+        if self.chance(0.5):
+            return ["Res(\"%s\").use { println(\"using \" + it.name) }" % r]
+        return ["val %s = Res(\"%s\")" % (r, r), "println(%s.name)" % r, "%s.free()" % r]
+
+    def s22(self, iv, depth):  # an object with two owned fields: move one out, put it back, free the owner
+        p, x = self.fresh("p"), self.fresh("x")
+        return [
+            "val %s = Pair2(Box(%s), Box(%s))" % (p, self.num(iv), self.num(iv)),
+            "val %s = %s.a.move()" % (x, p),
+            "%s.a = null" % p,
+            "println(%s?.v)" % x,
+            "%s.free()" % x,
+            "println(%s.b?.v)" % p,
+            "%s.free()" % p,
+        ]
+
+    def s23(self, iv, depth):  # let on a nullable owner, then free
+        c = self.fresh("c")
+        return ["val %s = maybe(%s, %s)" % (c, self.cond(iv), self.num(iv)), "%s?.let { println(it.v) }" % c, "%s.free()" % c]
 
     # ---- wrappers: a block inside a loop, an if, a helper function
     def block(self, iv, depth):
