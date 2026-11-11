@@ -197,7 +197,11 @@ fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boole
         val inner = ArrayList<Candidate>()
         for (site in ops.closure(t)) {
             val nc = site.cls.nested[name]
-            if (nc != null && nc.isInner) inner.addAll(ctorCandidates(nc))
+            if (nc != null && nc.isInner) {
+                // the outer type arguments: `E<IC>.Inner()`
+                val os = ops.substOf(site)
+                for (c0 in ctorCandidates(nc)) inner.add(if (os.isEmpty()) c0 else Candidate(c0.fn, os, c0.extRecv))
+            }
         }
         if (inner.isNotEmpty()) groups.add(inner)
         // `outer.OI(...)` where `typealias OI = Outer.Inner`
@@ -353,7 +357,10 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 // `with(outer) { Inner() }`: an inner class of the receiver
                 if (nrt2 is ClassType || nrt2 is TypeParamType) for (site in ops.closure(nrt2)) {
                     val nc = site.cls.nested[name]
-                    if (nc != null && nc.isInner) groups.add(ctorCandidates(nc))
+                    if (nc != null && nc.isInner) {
+                        val os = ops.substOf(site)
+                        groups.add(ctorCandidates(nc).map { c0 -> if (os.isEmpty()) c0 else Candidate(c0.fn, os, c0.extRecv) })
+                    }
                 }
                 seenRecv = true
             }

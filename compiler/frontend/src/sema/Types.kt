@@ -19,8 +19,9 @@ sealed class Type {
     abstract fun withNullable(n: Boolean): Type
 }
 
-class ClassType(val cls: ClassSym, val args: List<TArg>, override val nullable: Boolean) : Type() {
-    override fun withNullable(n: Boolean): Type = if (n == nullable) this else ClassType(cls, args, n)
+/** [outer]: the type of the outer instance of an inner class (`Foo<String>.Inner`); null: the implicit one (the outer's own type parameters). */
+class ClassType(val cls: ClassSym, val args: List<TArg>, override val nullable: Boolean, val outer: ClassType? = null) : Type() {
+    override fun withNullable(n: Boolean): Type = if (n == nullable) this else ClassType(cls, args, n, outer)
 }
 
 class TypeParamType(val tp: TypeParamSym, override val nullable: Boolean, val definitelyNotNull: Boolean) : Type() {

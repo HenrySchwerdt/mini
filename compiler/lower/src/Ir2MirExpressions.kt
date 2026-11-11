@@ -158,6 +158,17 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
                 return if (e.operator == IrTypeOperator.INSTANCEOF) isFn else MirExpr.Unary(UnaryOp.Not, isFn)
             }
             val target = mirType(e.typeOperand, e)
+            if (target is TPtr) {
+                // a C pointer is no object: `p is NativePtr?` is true, `p is NativePtr` is a null test of the address
+                val pv = if (v is MirExpr.Local || v is MirExpr.NullConst || v.type !is TPtr) v else tmpOfPlain(v, out)
+                val nullableOp = e.typeOperand.isMarkedNullable()
+                val res: MirExpr = when {
+                    nullableOp -> { if (pv is MirExpr.Call) out += MirStmt.Eval(pv); MirExpr.BooleanConst(true) }
+                    pv.type is TPtr -> MirExpr.Unary(UnaryOp.Not, MirExpr.Binary(BinaryOp.IdEq, pv, MirExpr.NullConst(TPtr(true))))
+                    else -> { if (pv is MirExpr.Call) out += MirStmt.Eval(pv); MirExpr.BooleanConst(false) }
+                }
+                return if (e.operator == IrTypeOperator.INSTANCEOF) res else MirExpr.Unary(UnaryOp.Not, res)
+            }
             if (target == TNothing || target === TNull) {
                 // `x is Nothing` is never true, `x is Nothing?` is `x == null`
                 if (!(target === TNull && v.type.isRef) && v is MirExpr.Call) out += MirStmt.Eval(v)
@@ -224,6 +235,11 @@ internal fun Ir2Mir.typeOperator(e: IrTypeOperatorCall, out: MutableList<MirStmt
             if (target == TUnit) {
                 if (v is MirExpr.Call) out += MirStmt.Eval(v)
                 return MirExpr.UnitValue
+            }
+            if (target is TPtr) {
+                // a C pointer cast: the address is the same, a value that is no pointer can only be null
+                if (v.type is TPtr) return v
+                if (v.type === TNull || v is MirExpr.NullConst) return MirExpr.NullConst(TPtr(true))
             }
             if (v.type == TUnit && target.isRef) v = unitAsRef(v, out) // `f() as Any` where f returns Unit
             if (v.type.isPrimitive) v = coerceOperand(v, anyNullable, e, out)
