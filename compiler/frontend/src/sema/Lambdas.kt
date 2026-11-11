@@ -444,6 +444,20 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             if (cands.isEmpty()) for (lf in localExtensionFuns(name)) if (extFits(lf, vt)) funRefCand(Candidate(lf, HashMap(), null), true, cands)
         }
     }
+    if (cands.isEmpty() && name == "invoke" && rcv != null) {
+        // `f::invoke` of a function-typed value: the function value itself
+        val rv = (resolveReceiver(rcv, null) as? ValueRecv)?.type
+        val af = if (rv is FunType) rv else if (rv != null) ops.asFunType(rv) else null
+        if (af != null) {
+            val cls = sema.kRefClass("KFunction", ops.allParams(af).size)
+            val args = ArrayList<TArg>()
+            for (p in ops.allParams(af)) args.add(TArg(p, Variance.INV))
+            args.add(TArg(af.ret, Variance.INV))
+            val t0 = ClassType(cls, args, false)
+            record(e, t0, null).kind = "fnvalue"
+            return if (af.suspend) FunType(null, ops.allParams(af), af.ret, false, true) else t0
+        }
+    }
     if (cands.isEmpty()) {
         err(e.start, "unresolved callable reference '" + name + "'")
         return ErrType("callable reference")

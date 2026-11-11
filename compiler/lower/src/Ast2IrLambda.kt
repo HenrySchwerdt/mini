@@ -160,6 +160,7 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         if (isClassQualifier(rv)) return IrClassReference(irType(arg), t)
         return IrGetClass(convert(rv), t)
     }
+    if (r.kind == "fnvalue") return convert(e.receiver ?: fail(e, "invoke reference without receiver"))
     val sym = r.callee
     val adapted = r.extra as? AdaptedRef
     if (sym is FunSym && adapted != null) return adaptedRef(e, r, adapted, sym)
