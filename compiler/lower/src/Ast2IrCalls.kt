@@ -666,6 +666,11 @@ fun Ast2Ir.andOr(e: BinaryExpr, and: Boolean): IrExpression {
     return IrWhen(branches, sema.booleanType, "OROR")
 }
 
+fun Ast2Ir.isNumericType(t: Type): Boolean {
+    val n = ops.makeNotNull(t).classFqName
+    return isPrimitiveName(n)
+}
+
 fun Ast2Ir.isFloating(t: Type): Boolean {
     val n = ops.makeNotNull(t).classFqName
     return n == "kotlin.Double" || n == "kotlin.Float"
@@ -679,7 +684,7 @@ fun Ast2Ir.equality(e: BinaryExpr): IrExpression {
     if (!ident && (rec(unparen(e.left))?.smart != null || rec(unparen(e.right))?.smart != null)) {
         val lt = rec(unparen(e.left))?.let { it.smart ?: it.type }
         val rt = rec(unparen(e.right))?.let { it.smart ?: it.type }
-        smartIeee = lt != null && rt != null && isFloating(lt) && isFloating(rt)
+        smartIeee = lt != null && rt != null && (isFloating(lt) || isFloating(rt)) && isNumericType(lt) && isNumericType(rt)
     }
     var l = if (ident) convert(e.left) else if (smartIeee) convert(e.left) else convertEqOperand(e.left)
     var r = if (ident) convert(e.right) else if (smartIeee) convert(e.right) else convertEqOperand(e.right)
@@ -794,6 +799,20 @@ fun Ast2Ir.convertNumber(e: IrExpression, to: String): IrExpression {
         "kotlin.Float" -> "toFloat"
         "kotlin.Double" -> "toDouble"
         else -> "toInt"
+    }
+    if (e.type.nullable) {
+        // a nullable operand (smart cast `x is Int?`): null stays null
+        val tmp = newTemp("num", e.type, e)
+        val nn = irType(ops.makeNotNull(e.type))
+        val conv = convertNumber(IrTypeOperatorCall(IrTypeOperator.IMPLICIT_CAST, nn, getValue(tmp), nn), to)
+        val rt = irType(ops.makeNullable(sema.classTypeOf(to)))
+        val branches = ArrayList<IrBranch>()
+        branches.add(IrBranch(eqNull(getValue(tmp)), nullConst()))
+        branches.add(IrBranch(constBool(true), conv))
+        val stmts = ArrayList<IrStatement>()
+        stmts.add(tmp)
+        stmts.add(IrWhen(branches, rt, null))
+        return IrBlock(stmts, rt, "NUM_CONV")
     }
     val call = IrCall(memberFunNamed(e.type, name, 0), sema.classTypeOf(to))
     call.arguments.add(e)
