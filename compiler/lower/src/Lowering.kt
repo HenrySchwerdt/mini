@@ -43,6 +43,7 @@ fun buildIr(inputs: List<LowerInput>): IrModule {
     if (errors.isNotEmpty()) throw LowerDiagnostics(errors, structured)
     val builder = Ast2Ir(sema, user, lib)
     val module = builder.build()
+    builder.specializeReifiedLocalClasses()
     val stored = HashMap<String, mini.backend.memory.FnSummary>()
     for (i in inputs) if (i.summaries.isNotEmpty()) stored.putAll(mini.backend.memory.SummaryText.parse(i.summaries))
     module.summaries = stored

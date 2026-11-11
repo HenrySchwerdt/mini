@@ -205,7 +205,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     }
     if (parent is IrClass && isEnumSpecial(parent, owner)) return enumSpecialCall(c, parent, owner.name, out)
     if (parent is IrClass && parent.kotlinFqName == "kotlin.Unit") unitMember(c, name, out)?.let { return it }
-    if (parent is IrClass && parent.kotlinFqName == "kotlin.CharSequence" && (name == "toString" || name == "equals" || name == "hashCode")) {
+    if (parent is IrClass && (parent.kotlinFqName == "kotlin.CharSequence" || parent.kotlinFqName == "kotlin.Comparable") && (name == "toString" || name == "equals" || name == "hashCode")) {
         // the Any members seen through CharSequence (fake overrides of the interface)
         val vals = operands(c.arguments.map { it ?: unsupported(c, "omitted argument") }, out)
         return anyMember(if (name == "toString") 0 else if (name == "equals") 1 else 2, vals, c, out)

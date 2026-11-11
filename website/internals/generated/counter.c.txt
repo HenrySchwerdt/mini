@@ -18,7 +18,7 @@ static void *const kc_Counter_vt[] = {(void *)mk_any_to_string, (void *)mk_any_e
 static const MkTypeInfo kc_Counter_ti = {"Counter", sizeof(struct kc_Counter), &mk_type_Any, NULL, kc_Counter_vt, 3, NULL, 0, NULL};
 
 MKH_FN MkObject *kc_Counter_C_AI_new(MkInt a0) {
-    MkObject *o = mk_alloc_plain(&kc_Counter_ti);
+    MkObject *o = mkh_alloc_inline(&kc_Counter_ti, sizeof(struct kc_Counter), 0);
     kc_Counter_C_AI(o, a0);
     return o;
 }

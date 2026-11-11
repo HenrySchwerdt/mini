@@ -110,6 +110,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
     val savedSubst = HashMap(typeSubst)
     val boundLambdas = ArrayList<IrValueParameter>()
     val shadowedLambdas = HashMap<IrValueParameter, InlineLambda>()
+    val groupState = enterGroup(callee.localGroup, false)
     try {
         for ((i, tp) in callee.typeParameters.withIndex()) {
             val a = c.typeArguments.getOrNull(i)
@@ -174,6 +175,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
         locals = savedLocals
         typeSubst.clear()
         typeSubst.putAll(savedSubst)
+        exitGroup(groupState)
     }
 }
 
