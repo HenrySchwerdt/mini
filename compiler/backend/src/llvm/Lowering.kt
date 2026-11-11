@@ -889,7 +889,7 @@ private class Lowering<V : Any, B : Any>(
                 b.br(fill)
                 b.appendBlock(fill)
                 val blk = b.phi(ptr, head, pop, p, bumpOk)
-                for (k in 0 until cls * 2) b.store(c64(0), b.gep(blk, c64(k * 8), true, "z"), 8)
+                for (k in 0 until cls * 2) b.store(c64(0), b.gep(blk, c64(k * 8), true, ""), 8)
                 b.store(ti, blk, 8)
                 b.store(c32(1), b.gep(blk, c64(layouts.refcountOffset), true, "rcp"), 4)
                 b.store(c32((cls shl 8) or (if (armed) 64 else 0)), b.gep(blk, c64(layouts.refcountOffset + 4), true, "flp"), 4)
