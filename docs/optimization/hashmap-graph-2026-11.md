@@ -69,18 +69,11 @@ The wall gap to Rust (2.2x) is the same as the instruction gap (2.4x), IPC is al
   would need unboxed element storage for lists of objects with a single owner, or an acyclicity analysis (`Node.out` is only ever filled with
   `Node`s from `nodes`, but proving that is whole-program).
 
-## Lookup without a temporary key (not done)
+## Lookup without a temporary key (done later)
 
-Per word the temporary `substring` is about 95 instructions to build (the Kotlin wrapper 28, `mk_string_substring` 47, the inline small
-allocation 20), 12 to retain as `lastKey`, 12 for the parameter release in `put`, about 45 to free: roughly 19 percent of the instructions of
-wordcount. Measured per word (callgrind, 724 instructions before this branch): main 248, `findNode` 128 (hash 43, compare 45), `put` 54,
-`setValue` 20, releases 59, substring 95. The range-lookup idea (`findNodeRange(s, a, b)` hashing and comparing the characters in place,
-`putRange` building the key only when the entry is new) needs more than a stdlib helper: the pattern is `val w = text.substring(a, b)`
-followed by `counts[w]` and `counts[w] = c + 1`, so a MIR pass would have to prove that `w`, `text`, `a`, `b` are not changed between the
-definition and the uses, that every use is a borrowing `findNode` or a `put`, keep the bounds check at the original place (the
-`IndexOutOfBounds` must come from the same statement), and add the new callee after reachability pruning. The pass was not written: it is
-specific to the get-then-put idiom and the risk to exception order and to the string ABI shared by both emitters is higher than the gain
-(about -15 percent of the instructions of this one benchmark). A slice representation of `String` remains the general answer.
+Per word the temporary `substring` was about 95 instructions to build, 12 to retain as `lastKey`, 12 for the parameter release in `put`,
+about 45 to free: roughly 19 percent of the instructions of wordcount. It is not made any more: see
+[perf-11-2026-11.md](perf-11-2026-11.md) (`substr-key`, a MIR pass, `HashMap.findNodeRange` / `putRange` / `putRangeAt`).
 
 ## Validation
 

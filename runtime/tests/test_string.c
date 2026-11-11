@@ -105,6 +105,29 @@ int main(void) {
     mk_release(&a->header); mk_release(&b->header);
     mk_release(&c->header); mk_release(&d->header);
 
+    /* the hash and the equality of a range without making the substring (map lookups with a substring key) */
+    {
+        MkString *t = U("say hello kotlin \xC3\xA4\xC3\xB6");  /* Latin-1 */
+        MkString *w = U("x \xE4\xB8\xAD\xE6\x96\x87 hello \xF0\x9F\x98\x80");    /* UTF-16 */
+        MkString *hello = U("hello"), *chinese = U("\xE4\xB8\xAD\xE6\x96\x87"), *empty = U(""), *aou = U("\xC3\xA4\xC3\xB6");
+        CHECK_EQ_INT(mk_string_hash_range(t, 4, 9), mk_string_hash(hello));
+        CHECK(mk_string_equals_range(hello, t, 4, 9));
+        CHECK(!mk_string_equals_range(hello, t, 4, 8));
+        CHECK(!mk_string_equals_range(hello, t, 5, 10));
+        CHECK(mk_string_equals_range(aou, t, 17, 19));
+        CHECK_EQ_INT(mk_string_hash_range(w, 2, 4), mk_string_hash(chinese));
+        CHECK(mk_string_equals_range(chinese, w, 2, 4));
+        CHECK(mk_string_equals_range(hello, w, 5, 10));          /* a Latin-1 key against a range of a UTF-16 string */
+        CHECK_EQ_INT(mk_string_hash_range(w, 5, 10), mk_string_hash(hello));
+        CHECK(!mk_string_equals_range(chinese, t, 0, 2));
+        CHECK_EQ_INT(mk_string_hash_range(t, 3, 3), 0);
+        CHECK(mk_string_equals_range(empty, t, 7, 7));
+        CHECK(!mk_string_equals_range(NULL, t, 7, 7));
+        CHECK(!mk_string_equals_range(hello, t, 7, 7));
+        mk_release(&t->header); mk_release(&w->header); mk_release(&hello->header); mk_release(&chinese->header);
+        mk_release(&empty->header); mk_release(&aou->header);
+    }
+
     /* concat */
     a = U("foo"); b = U("\xC3\xA4r");
     s = mk_string_concat(a, b);

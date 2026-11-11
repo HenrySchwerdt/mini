@@ -24,6 +24,21 @@ class MirSerialUnitTest {
     }
 
     @Test
+    fun exactClassTestSurvivesTheRoundTrip() {
+        val t = TObject("A", "kc_A", false)
+        val v = MirLocal(0, "v", TObject("kotlin.Any", ANY_CNAME, true))
+        val body = listOf(
+            MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(v), t)),
+            MirStmt.Eval(MirExpr.IsInstance(MirExpr.Local(v), t, true)),
+        )
+        val f = MirFunction("t.f", "kt_t_Df", listOf(v), TUnit, body)
+        val text = MirWriter.write(MirModule("t.kt", listOf(f)))
+        assertTrue(text.contains("(isx ") && text.contains("(is "), text)
+        val back = MirReader.read(text).functions.single().body.map { ((it as MirStmt.Eval).expr as MirExpr.IsInstance).exact }
+        assertEquals(listOf(false, true), back)
+    }
+
+    @Test
     fun writtenTextIsAscii() {
         val text = MirWriter.write(
             MirModule(
