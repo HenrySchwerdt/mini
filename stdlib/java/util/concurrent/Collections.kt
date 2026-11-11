@@ -28,7 +28,9 @@ public class ConcurrentHashMap<K, V>(initialCapacity: Int) : ConcurrentMap<K, V>
         putAll(m)
     }
 
-    // 32 segments, each a HashMap behind its own mutex: operations on keys of different segments run in parallel
+    // SEGMENTS maps, each behind its own mutex (a power of two). It is 1: with 8 threads the segmented map measured 2 to 3 times slower than
+    // one mutex, because every access to a shared object costs atomic reference count updates (docs/threads.md); the code stays segmented
+    // so that the number can be raised where it pays.
     // (one object per segment: loading it from the array costs one reference count pair, not two)
     private val segs = Array<Segment<K, V>>(SEGMENTS) { Segment<K, V>() }
 
@@ -243,7 +245,7 @@ public class ConcurrentHashMap<K, V>(initialCapacity: Int) : ConcurrentMap<K, V>
     override fun toString(): String = copy().toString()
 
     private companion object {
-        const val SEGMENTS = 32
+        const val SEGMENTS = 1
     }
 }
 
