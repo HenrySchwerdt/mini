@@ -67,7 +67,7 @@ internal fun Ir2Mir.mirType(t: Type, at: IrElement): MirType {
         // Comparable values are boxed primitives, strings or user objects: represented as Any (compareTo: mk_compare_to)
         // CharSequence values are a String or an object of a class that implements the interface (mk_cs_*): Any as well
         // (an `Enum<*>` value is an object of some enum class: its members read the hidden fields every enum class starts with)
-        "kotlin.Any", "kotlin.Comparable", "kotlin.Number", "kotlin.CharSequence", "kotlin.Enum" -> if (nullable) anyNullable else anyType
+        "kotlin.Any", "kotlin.Comparable", "kotlin.Number", "kotlin.CharSequence", "kotlin.Enum", "kotlin.Function" -> if (nullable) anyNullable else anyType
         else -> {
             val c = t.classOrNull
             val inl = if (c != null && c in classInfos) inlineTypeOf(c) else null

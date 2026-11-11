@@ -37,6 +37,10 @@ see ordinary IR).
   sequence builders hands its value up as the *return value* of the suspension, a `SuspendMarker` subclass), the suspension
   object is checked in a block-local variable and not kept in a heap cell, and handlers drop their function when disposed.
   All coroutine tests run clean under the leak checker (C and LLVM).
+* **Strict mode.** The heap cell of a hoisted local that holds an instance of a Strict class does not count it (the owner is the one the
+  ownership checker proved; `free()` returns the memory at once), and the checker reads a copy of the body as written (`IrFunction.memoryBody`,
+  taken before the state machine is built), not the flattened loop: an owner may live across a suspension point and be freed afterwards
+  (docs/memory-model.md, "Owners across suspension points"). `launch` / `async` do not start a child of a scope that was already cancelled.
 * **Sema.** `suspend` function types resolve, lambdas whose expected type is a suspend function type are suspend lambdas, and a
   call of a suspend function outside a suspend function or suspend lambda is an error (`Suspend function 'f' should be called
   only from a coroutine or another suspend function`).

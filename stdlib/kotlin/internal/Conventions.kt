@@ -30,6 +30,15 @@ internal annotation class ReturnsBorrowed
 @Retention(AnnotationRetention.BINARY)
 internal annotation class NoHeapEffects
 
+/**
+ * `@JoinsChildren` on the `suspend CoroutineScope.() -> T` block of a scope builder (`runBlocking`, `coroutineScope`, ...): the callee runs the
+ * block and does not return before every coroutine that the block starts with its scope (`launch` / `async` without an explicit context) is
+ * complete. Such a child cannot outlive what the caller of the builder owns: the ownership checker lets it borrow the owners the block borrows.
+ */
+@Target(AnnotationTarget.VALUE_PARAMETER)
+@Retention(AnnotationRetention.BINARY)
+internal annotation class JoinsChildren
+
 /** `@TakesOwnership` on a parameter: the callee owns the reference it is given (stores it or releases it at its exits). */
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.BINARY)
