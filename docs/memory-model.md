@@ -1389,6 +1389,11 @@ form): a call of such a method yields a loan of the receiver's owner, so `f()` a
 lives (`s165`). A *local class or anonymous object* returned from such a method (`inner_receivers_super`, `localExtendsInner`) stays M0109: its instance is a
 tracked allocation that the caller must own while it holds a loan of the receiver; the model has no owner that borrows.
 
+**Coverage of round strict-3**
+
+Corpus `s148`-`s166` (18 programs: 7 accepted and run, 11 REJECT; `s164` is not used). `scripts/strict-corpus.sh --run`: 158 programs, 0 false positives, 0 false negatives, 0 wrong code, 0 run failures.
+`test-e2e.sh`: `strict` 158, `strict-leak` 97 (accepted programs under ASan + LSan, C backend), `strict-llvm-leak` 97 (LLVM backend), all green.
+
 **Strict values in collections: what was found, and why it stays M0110**
 
 The obvious design (moving an owner into `listOf(p, q)` / `ArrayList.add`, the collection's reference counting then frees it) was
