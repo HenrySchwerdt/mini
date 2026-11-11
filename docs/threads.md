@@ -56,7 +56,7 @@ fields, as on the JVM. Ownership transfer is the Strict mode `move` into a threa
 | Atomics (`.atomic`) | `AtomicInteger`, `AtomicLong`, `AtomicBoolean`, `AtomicReference` with the JVM method names (`incrementAndGet`, `compareAndSet`, `updateAndGet`, `accumulateAndGet`, ...) |
 | Locks (`.locks`) | `Lock`, `Condition`, `ReentrantLock` (reentrant, `tryLock(time)`, conditions with `await` / `awaitNanos` / `signal`), `ReentrantReadWriteLock` (no fairness) |
 | Synchronizers | `TimeUnit`, `CountDownLatch`, `Semaphore`, `CyclicBarrier` |
-| Collections | `ConcurrentHashMap` (32 segments with a mutex each; `putIfAbsent`, `computeIfAbsent`, `compute`, `merge`, `replace`, snapshots as views), `ConcurrentLinkedQueue`, `BlockingQueue` with `LinkedBlockingQueue`, `ArrayBlockingQueue`, `LinkedBlockingDeque` (one mutex, two conditions), `CopyOnWriteArrayList` |
+| Collections | `ConcurrentHashMap` (one mutex by default, `SEGMENTS` in `Collections.kt` selects lock striping, see Benchmark; `putIfAbsent`, `computeIfAbsent`, `compute`, `merge`, `replace`, snapshots as views), `ConcurrentLinkedQueue`, `BlockingQueue` with `LinkedBlockingQueue`, `ArrayBlockingQueue`, `LinkedBlockingDeque` (one mutex, two conditions), `CopyOnWriteArrayList` |
 | Executors | `Executor`, `ExecutorService`, `ScheduledExecutorService`, `Executors.newFixedThreadPool` / `newSingleThreadExecutor` / `newCachedThreadPool` / `newWorkStealingPool` / `newScheduledThreadPool`, `Future`, `FutureTask`, `Callable`, `submit`, `invokeAll`, `invokeAny`, `shutdown`, `shutdownNow`, `awaitTermination`, `close` (`schedule` runs the task on a worker that sleeps for the delay; no periodic scheduling) |
 | `CompletableFuture` | `supplyAsync`, `runAsync`, `completedFuture`, `thenApply`, `thenAccept`, `thenRun`, `thenCompose`, `thenCombine`, `exceptionally`, `whenComplete`, `allOf`, `join`, `get`, `complete`, `completeExceptionally` |
 | Exceptions | `ExecutionException`, `TimeoutException`, `CancellationException`, `RejectedExecutionException`, `BrokenBarrierException`, `CompletionException` |
@@ -71,7 +71,7 @@ Kotlin code reads them. Where a lambda reaches both a function-type overload and
 * No daemon threads, no thread priorities, no thread groups.
 * The pools are simple (one queue, one mutex): no work stealing, no `ForkJoinPool`, no periodic scheduling, no `ThreadPoolExecutor` tuning API besides
   the factory methods; workers of a pool that is never shut down die with the process.
-* The concurrent collections use locks (one per segment for `ConcurrentHashMap`, one per queue) and snapshot iteration instead of the lock-free JVM
+* The concurrent collections use locks (one for `ConcurrentHashMap`, one per queue) and snapshot iteration instead of the lock-free JVM
   designs. Every object that several threads touch pays an atomic reference count operation per access (docs/memory-model.md), so they scale
   less well than on the JVM.
 * A program is ended when `main` returns: running threads are not waited for.
@@ -129,3 +129,24 @@ and the cycle-candidate flag reads, and the cast cache of the C backend are fixe
 
 `bench/concurrent/concurrent.kt` (`bench/run.sh --only concurrent`): 8 threads merging into one `ConcurrentHashMap`, 4 producers and 4 consumers on an
 `ArrayBlockingQueue`, atomics. It runs on Mini and on Kotlin/JVM with the same source.
+
+`ConcurrentHashMap` has a segmented implementation (`SEGMENTS` in `stdlib/java/util/concurrent/Collections.kt`, a mutex and a `HashMap` per segment), but the
+default is **1 segment**, i.e. one lock. Measured (8 threads, 8 x 250000 `merge` calls over 4096 keys): about 350 ms with one lock, 900 to 1250 ms with 32
+segments. While threads run, reference counts are atomic, and the segments' tables and the shared keys and values then bounce between cores; that cost is
+larger than the lock contention it removes. The segmented code stays so that the measurement can be repeated when the reference counting changes.
+
+### Single-thread cost
+
+Callgrind instruction counts (total `Ir`, `-O2`), main (49fa76e) against threads-2; the relaxed atomics of the cast cache, the allocation volume counter
+(`MK_CYCLES_ADD`, also on the inline allocation path) and the thread check of the reference array dispose are free on x86-64 (plain `mov`) and cost no
+measurable time. The dispose check is made once per array, not per item.
+
+| Benchmark | main `Ir` | threads-2 `Ir` | Change |
+|---|---|---|---|
+| binarytrees | 11314941690 | 11314941694 | +0.00% |
+| strbuild | 10039189131 | 10039189134 | +0.00% |
+| json | 3598407125 | 3606143112 | +0.21% |
+| graph | 5205994449 | 5205293139 | -0.01% |
+| wordcount | 13651171043 | 13651364494 | +0.00% |
+| nbody | 8875278114 | 8875278111 | -0.00% |
+| hello world (bytes) | 19072 | 19072 | equal |

@@ -36,11 +36,16 @@ static bool is_plain(const MkObject *o) {
 }
 
 void mk_retain(MkObject *object) {
-    if (object == NULL || is_plain(object)) {
+    if (object == NULL) {
         MK_STAT_RETAIN(0);
         return;
     }
-    if ((__atomic_load_n(&object->flags, __ATOMIC_RELAXED) & MK_FLAG_SHARED) || __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
+    const uint32_t flags = __atomic_load_n(&object->flags, __ATOMIC_RELAXED); /* (one load for both tests, as with a plain read) */
+    if (flags & (MK_FLAG_STATIC | MK_FLAG_STACK)) {
+        MK_STAT_RETAIN(0);
+        return;
+    }
+    if ((flags & MK_FLAG_SHARED) || __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED)) {
         MK_STAT_RETAIN(2);
         uint32_t old = mk_atomic_fetch_add(&object->refcount, 1u);
         if (old == 0u || old == UINT32_MAX) mk_panic("reference count overflow or resurrection");
