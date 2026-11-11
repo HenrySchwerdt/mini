@@ -236,6 +236,8 @@ sealed class MExpr {
         val body: List<MStmt>,
         val captures: List<MLocal>,
         override val pos: Pos,
+        /** The block of a `launch` / `async` (default context) started with the scope of a `@JoinsChildren` block: the scope joins it before the call that owns the block returns. */
+        val child: Boolean = false,
     ) : MExpr() {
         override val type: MType get() = MType.OTHER
     }

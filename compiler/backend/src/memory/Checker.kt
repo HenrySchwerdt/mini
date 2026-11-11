@@ -149,7 +149,7 @@ object MemoryChecker {
     ) {
         val b = CfgBuilder(unitId, params.map { it.local }, ctx0)
         val cfg = b.build(body)
-        val info = UnitInfo(base.fnName, base.retOwned, base.retTracked, base.noAlloc, b.declared, b.names, base.isLambda, base.fn, base.paramIndex)
+        val info = UnitInfo(base.fnName, base.retOwned, base.retTracked, base.noAlloc, b.declared, b.names, base.isLambda, base.fn, base.paramIndex, base.capturedIds)
         val pending = ArrayList<Pair<MExpr.Lambda, Ctx>>()
         val interp = Interp(info, sink) { l, c -> if (pending.none { it.first.id == l.id }) pending += l to c }
 
@@ -193,7 +193,7 @@ object MemoryChecker {
             val lp = l.params.map { MParam(it) }
             runUnit(
                 l.id, lp, l.body, c,
-                UnitInfo(info.fnName, false, false, info.noAlloc, emptySet(), emptyMap(), true), sink, l.captures,
+                UnitInfo(info.fnName, false, false, info.noAlloc, emptySet(), emptyMap(), true, capturedIds = l.captures.map { it.id }.toSet()), sink, l.captures,
             )
         }
     }

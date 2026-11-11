@@ -48,11 +48,14 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     val failures = ArrayList<String>()
     val strictFailures = ArrayList<String>()
 
+    /** The body the checker reasons about: a suspend function as written (before the state machine), else its body. */
+    private fun memoryBodyOf(f: IrFunction): IrBody? = f.memoryBody ?: f.body
+
     /** The body of [f] lowered on demand (null when it has none or cannot be lowered); used for the inferred summaries of callees. */
     private fun bodyOf(f: IrFunction): List<MStmt>? {
         if (bodies.containsKey(f)) return bodies[f]
         bodies[f] = null
-        val b = f.body ?: return null
+        val b = memoryBodyOf(f) ?: return null
         val saved = curFile
         curFile = fileOf(f) ?: saved
         val r = try { Lowerer(f).lowerFunctionBody(b) } catch (e: Exception) { null } finally { curFile = saved }
@@ -528,7 +531,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     }
 
     private fun lowerFunction(f: IrSimpleFunction): MFunction? {
-        val body = f.body ?: return null
+        val body = memoryBodyOf(f) ?: return null
         val m = funOf(f)
         return try {
             val lw = Lowerer(f)
@@ -555,6 +558,12 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         private val subst = HashMap<IrValueDeclaration, MExpr>()
         private val loopLabels = HashMap<IrLoop, Int>()
         private val frames = ArrayList<CaptureFrame>()
+        /** The lambdas (and thread lambdas) being lowered, innermost last. */
+        private val lambdaFns = ArrayList<IrFunction>()
+        /** Lambdas that are the block of a `@JoinsChildren` parameter, or the block of a `launch` / `async` child of one. */
+        private val structuredFns = HashSet<IrFunction>()
+        /** Lambdas that are the block of a child (`launch` / `async`, default context) of a structured scope. */
+        private val childFns = HashSet<IrFunction>()
         private val scopeIds = HashMap<IrFunction, Int>()
         private val scopeResults = HashMap<Int, MLocal?>()
 
@@ -920,18 +929,20 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             val frame = CaptureFrame(id)
             frames.add(frame)
             val f = fe.function
+            lambdaFns.add(f)
             val params = ArrayList<MLocal>()
             for (p in f.parameters) params.add(declareLocal(p))
             scopeIds[f] = id
             val body = ArrayList<MStmt>()
-            val b = f.body
+            val b = memoryBodyOf(f)
             if (b is IrBlockBody) {
                 for (s in b.statements) stmt(s, body)
             } else if (b is IrExpressionBody) {
                 body.add(MStmt.Return(expr(b.expression, body), id, pos(b.expression)))
             }
             frames.removeAt(frames.size - 1)
-            return MExpr.Lambda(id, params, body, frame.captures.toList(), pos(fe))
+            lambdaFns.removeAt(lambdaFns.size - 1)
+            return MExpr.Lambda(id, params, body, frame.captures.toList(), pos(fe), f in childFns)
         }
 
         /**
@@ -960,6 +971,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 frame = CaptureFrame(id)
                 frames.add(frame)
             }
+            lambdaFns.add(f)
             val body = ArrayList<MStmt>()
             // bind lambda parameters
             var bi = 0
@@ -975,13 +987,14 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                     body.add(MStmt.Decl(l, b ?: MExpr.Opaque(l.type, pos(p)), MAnnot.NONE, pos(p)))
                 }
             }
-            val b = f.body
+            val b = memoryBodyOf(f)
             if (b is IrBlockBody) {
                 for (s in b.statements) stmt(s, body)
             } else if (b is IrExpressionBody) {
                 val e = b.expression
                 if (res != null) body.add(MStmt.Assign(res, expr(e, body), pos(e))) else stmtExpr(e, body)
             }
+            lambdaFns.removeAt(lambdaFns.size - 1)
             var captures: List<MLocal> = emptyList()
             if (frame != null) {
                 frames.removeAt(frames.size - 1)
@@ -1250,6 +1263,36 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             return rec(c)
         }
 
+        private fun unwrapLambda(a: IrExpression?): IrFunctionExpression? = when (a) {
+            is IrFunctionExpression -> a
+            is IrTypeOperatorCall -> unwrapLambda(a.argument)
+            else -> null
+        }
+
+        /**
+         * Structured concurrency for the ownership checker: the block of a `@JoinsChildren` parameter is a structured scope; the block of
+         * a `launch` / `async` that is called on the scope of the innermost lambda being lowered (a structured one) with the default context is a
+         * child that the scope joins before the builder call returns ([MExpr.Lambda.child]). Any other receiver (`GlobalScope`, a scope
+         * object, a scope captured by a closure) or an explicit context (a `Job()` of its own) is not.
+         */
+        private fun markStructured(c: IrCall, m: MFun, ps: List<IrValueParameter>, p: IrValueParameter, a: IrExpression) {
+            val blk = unwrapLambda(a) ?: return
+            if (hasAnnotation(p.annotations, JOINS_CHILDREN)) { structuredFns.add(blk.function); return }
+            if ((m.qname != "mini.coroutines.launch" && m.qname != "mini.coroutines.async") || p.name != "block") return
+            var recvArg: IrExpression? = null
+            for ((k, q) in ps.withIndex()) {
+                if (q.kind == IrParameterKind.ExtensionReceiver || q.kind == IrParameterKind.DispatchReceiver) recvArg = c.arguments[k]
+                if (q.name == "context" && c.arguments[k] != null) return
+            }
+            var r: IrExpression? = recvArg
+            while (r is IrTypeOperatorCall) r = r.argument
+            val owner = (r as? IrGetValue)?.owner as? IrValueParameter ?: return
+            val cur = lambdaFns.lastOrNull() ?: return
+            if (owner.parent !== cur || cur !in structuredFns) return
+            structuredFns.add(blk.function)
+            childFns.add(blk.function)
+        }
+
         private fun generalCall(c: IrCall, callee: IrSimpleFunction, out: MutableList<MStmt>): MExpr {
             val m = funOf(callee)
             val ps = callee.parameters
@@ -1259,6 +1302,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             var i = 0
             for (p in ps) {
                 val a = args[i]
+                if (a != null) markStructured(c, m, ps, p, a)
                 var v: MExpr = if (a == null) MExpr.Opaque(mapType(p.type), pos(c)) else expr(a, out)
                 if (v is MExpr.Local && v.pos.line == 0) v = MExpr.Local(v.local, pos(c))   // the function value of `f(x)` has no position of its own
                 if (p.kind == IrParameterKind.DispatchReceiver || p.kind == IrParameterKind.ExtensionReceiver) {
@@ -1416,6 +1460,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         const val ALLOCATED_BY = "mini.memory.AllocatedBy"
         const val NO_ALLOC = "mini.memory.NoAlloc"
         const val THREAD_BOUNDARY = "mini.memory.ThreadBoundary"
+        const val JOINS_CHILDREN = "kotlin.internal.JoinsChildren"
         const val TAKES_OWNERSHIP = "kotlin.internal.TakesOwnership"
 
         private val PRIMS = mapOf(
