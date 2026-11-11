@@ -1847,8 +1847,8 @@ private class Lowering<V : Any, B : Any>(
                 val o = expr(e.operand)
                 val use = typeCheckPlan.uses[e]
                 val tgt = e.target
-                if (tgt === TString || tgt === TNString || tgt is TBoxed) {
-                    exactTypeCheck(o, typeInfoOf(tgt)) // final types: the type word is compared (CEmitter's mkh_is_exact)
+                if (tgt === TString || tgt === TNString || tgt is TBoxed || (e.exact && !(tgt is TObject && tgt.elem != null))) {
+                    exactTypeCheck(o, typeInfoOf(tgt)) // final types, and classes that nothing extends (MirExpr.IsInstance.exact): the type word is compared (CEmitter's mkh_is_exact)
                 } else if (tgt is TObject && tgt.elem != null) {
                     rt("mk_array_is", TBoolean, listOf(TString, TString, TInt), listOf(o, typeInfoOf(arrayElemTypeInfoType(tgt.elem!!)), c32(arrayCastFlags(tgt))))
                 } else if (use == null) {

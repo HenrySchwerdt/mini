@@ -437,8 +437,11 @@ sealed class MirExpr {
         override val type: MirType get() = to
     }
 
-    /** `operand is target` (null gives false). Boxed types test for the box. */
-    class IsInstance(val operand: MirExpr, val target: MirType) : MirExpr() {
+    /**
+     * `operand is target` (null gives false). Boxed types test for the box. [exact] (set by the whole-program pass opt/ExactIs.kt):
+     * no class has [target] as a superclass, so the test is "not null and the type word is the target's type info".
+     */
+    class IsInstance(val operand: MirExpr, val target: MirType, val exact: Boolean = false) : MirExpr() {
         override val type: MirType get() = TBoolean
     }
 

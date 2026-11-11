@@ -60,7 +60,7 @@ open class MirTransform {
         is MirExpr.Box -> { val o = expr(e.operand); if (o === e.operand) e else MirExpr.Box(o, e.to) }
         is MirExpr.Unbox -> { val o = expr(e.operand); if (o === e.operand) e else MirExpr.Unbox(o, e.to) }
         is MirExpr.Cast -> { val o = expr(e.operand); if (o === e.operand) e else MirExpr.Cast(o, e.to, e.mode) }
-        is MirExpr.IsInstance -> { val o = expr(e.operand); if (o === e.operand) e else MirExpr.IsInstance(o, e.target) }
+        is MirExpr.IsInstance -> { val o = expr(e.operand); if (o === e.operand) e else MirExpr.IsInstance(o, e.target, e.exact) }
         is MirExpr.NotNull -> { val o = expr(e.operand); if (o === e.operand) e else MirExpr.NotNull(o) }
         is MirExpr.FieldGet -> { val o = expr(e.obj); if (o === e.obj) e else MirExpr.FieldGet(o, e.owner, e.field, e.type) }
         is MirExpr.VCall -> {

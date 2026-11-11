@@ -433,7 +433,7 @@ private class MirWriterImpl {
                 sb.append("(cast "); expr(e.operand); sb.append(' '); type(e.to); sb.append(' ')
                 sb.append(castMode(e.mode)).append(')')
             }
-            is MirExpr.IsInstance -> { sb.append("(is "); expr(e.operand); sb.append(' '); type(e.target); sb.append(')') }
+            is MirExpr.IsInstance -> { sb.append(if (e.exact) "(isx " else "(is "); expr(e.operand); sb.append(' '); type(e.target); sb.append(')') }
             is MirExpr.NotNull -> { sb.append("(nn "); expr(e.operand); sb.append(')') }
             is MirExpr.FieldGet -> {
                 sb.append("(get "); expr(e.obj); sb.append(' '); str(e.owner); sb.append(' ')
@@ -958,6 +958,7 @@ private class MirReaderImpl {
             "unbox" -> { need(it, 3, tag); return MirExpr.Unbox(expr(it[1]), type(it[2])) }
             "cast" -> { need(it, 4, tag); return MirExpr.Cast(expr(it[1]), type(it[2]), castMode(atom(it[3]))) }
             "is" -> { need(it, 3, tag); return MirExpr.IsInstance(expr(it[1]), type(it[2])) }
+            "isx" -> { need(it, 3, tag); return MirExpr.IsInstance(expr(it[1]), type(it[2]), true) }
             "nn" -> { need(it, 2, tag); return MirExpr.NotNull(expr(it[1])) }
             "get" -> { need(it, 5, tag); return MirExpr.FieldGet(expr(it[1]), str(it[2]), str(it[3]), type(it[4])) }
             "vcall" -> {
