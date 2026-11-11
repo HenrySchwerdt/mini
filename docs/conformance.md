@@ -825,11 +825,11 @@ Left: generic inner classes lose the outer type arguments (`E<IC>.Inner().foo()`
 
 ## Eleventh round (a) (branch claude/conformance-11a)
 
-Starting point: 5915 / 5953 (25 compile-error, 2 ice, 8 runtime-fail, 1 crash, 2 timeout, plus the 10a left-over list). Result: see the numbers at the end of this section.
+Starting point: 5915 / 5953 (25 compile-error, 2 ice, 8 runtime-fail, 1 crash, 2 timeout, plus the 10a left-over list). Result: 5933 / 5953 (99.66 %) on the tree merged with main, compared per test with the 10a results: no regression, 18 tests fixed (one of them, `coroutines/kt51530`, is the load-dependent timeout of the earlier run). 20 failures remain.
 
 | fix | tests |
 |---|---:|
-| generic inner classes keep the type arguments of the outer class: `ClassType.outer` (set by `Foo<String>.Inner<B>` types and by `outer.Inner(...)` / `with(outer) { Inner() }` constructor calls, substituted and zonked with the type; `substOf` of such a type includes the outer parameters; an `Inner` without `outer` is substituted through its implicit outer `Outer<T>`) | 6 |
+| generic inner classes keep the type arguments of the outer class: `ClassType.outer` (set by `Foo<String>.Inner<B>` types and by `outer.Inner(...)` / `with(outer) { Inner() }` constructor calls, substituted and zonked with the type; `substOf` of such a type includes the outer parameters; an `Inner` without `outer` is substituted through its implicit outer `Outer<T>`) | 4 |
 | `a?.x == f()` with a primitive right operand: the comparison happens inside the safe call, `f()` is not evaluated when `a` is null (K2) | 1 |
 | an inline call (`run { }`) in an enum entry argument: `return` of the expanded body had no enclosing function | 1 |
 | `val p get() = field` (no initialiser, no type): `field` is an ordinary name (K2), not the backing field | 1 |
