@@ -133,6 +133,8 @@ class IrClass(val name: String, val sym: ClassSym?) : IrDeclaration(), IrDeclara
     /** the fully qualified name, for local classes the enclosing function path */
     var fqName: String = name
     var membersBuilt = false
+    /** a local class of a clone of an inline function with reified type parameters (Ast2IrSpecialize.kt) */
+    var localGroup: LocalGroup? = null
 
     val constructors: List<IrConstructor>
         get() {
@@ -155,6 +157,8 @@ abstract class IrFunction(var name: String) : IrDeclaration(), IrDeclarationPare
     var visibility: String = "public"
     var modality: IrModality = IrModality.FINAL
     var isInline = false
+    /** the clone of an inline function made for one list of reified type arguments */
+    var localGroup: LocalGroup? = null
     var isExternal = false
     var isSuspend = false
     /** the body of a `suspend inline` function before the state machine was built (calls with suspending lambdas expand this) */

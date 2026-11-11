@@ -245,7 +245,7 @@ static void run_dispose(MkObject *o) {
 
 size_t mk_cycles_collect(void) {
     mk_cycles_ensure(); /* (an explicit collection of a program that allocates traced types through mk_alloc) */
-    if (in_collect || mk_threads_running != 0 || roots_n == 0) return 0;
+    if (in_collect || __atomic_load_n(&mk_threads_running, __ATOMIC_ACQUIRE) != 0 || roots_n == 0) return 0;
     in_collect = true;
     MkObject **list = roots;
     size_t n = roots_n, list_cap = roots_cap;
@@ -317,7 +317,7 @@ size_t mk_cycles_collect(void) {
     /* allocation volume: the next collection after twice the bytes that survived this one (the live heap triples at most) */
     uint64_t live_bytes = work_bytes > garbage_bytes ? work_bytes - garbage_bytes : 0;
     alloc_limit = (live_bytes * 3 > MIN_ALLOC_LIMIT ? (size_t)(live_bytes * 3) : MIN_ALLOC_LIMIT) * backoff;
-    mk_cycles_alloc_bytes = 0;
+    __atomic_store_n(&mk_cycles_alloc_bytes, 0, __ATOMIC_RELAXED);
     if (trace_enabled < 0) { const char *e = getenv("MINI_GC_TRACE"); trace_enabled = e != NULL && e[0] != '\0' && e[0] != '0'; }
     if (trace_enabled) fprintf(stderr, "[cycles] roots=%zu visited=%llu (%llu bytes survive) freed=%zu next: %zu roots or %zu bytes\n", n, (unsigned long long)work, (unsigned long long)live_bytes, freed_now, threshold, alloc_limit);
     in_collect = false;
@@ -334,7 +334,7 @@ static inline void roots_lock_release(void) { __atomic_store_n(&roots_lock, 0, _
 static void cycles_candidate(MkObject *o) {
     bool threaded = __atomic_load_n(&mk_threads_active, __ATOMIC_RELAXED) != 0;
     if (threaded) roots_lock_acquire();
-    if (o->flags & MK_FLAG_ARMED) { /* (re-checked under the lock) */
+    if (__atomic_load_n(&o->flags, __ATOMIC_RELAXED) & MK_FLAG_ARMED) { /* (re-checked under the lock) */
         if (!(threaded && roots_n >= MAX_THREADED_ROOTS) && roots_n < MAX_SLOTS) {
             if (roots_n == roots_cap) {
                 roots_cap = roots_cap ? roots_cap * 2 : 1024;
@@ -352,7 +352,10 @@ static void cycles_candidate(MkObject *o) {
         }
     }
     if (threaded) roots_lock_release();
-    if (((roots_n >= threshold && backoff == 1) || mk_cycles_alloc_bytes >= alloc_limit) && mk_threads_running == 0) mk_cycles_collect();
+    /* (a collection needs that no Kotlin thread runs: test that first, so the buffer counters are read only when nobody can change them) */
+    if (__atomic_load_n(&mk_threads_running, __ATOMIC_ACQUIRE) == 0 &&
+        ((roots_n >= threshold && backoff == 1) || __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED) >= alloc_limit))
+        mk_cycles_collect();
 }
 
 /* Called by mk_release when the count of a BUFFERED object reached zero: it is DYING while its dispose runs (a collection that
@@ -379,7 +382,7 @@ static void cycles_forget(MkObject *o) {
  * (LeakSanitizer must not see garbage cycles) and with MINI_GC_AT_EXIT=1 (valgrind and friends). */
 static size_t cycles_at_exit(void) {
     size_t total = 0, n;
-    if (mk_threads_running != 0) return 0;
+    if (__atomic_load_n(&mk_threads_running, __ATOMIC_ACQUIRE) != 0) return 0;
 #if defined(__SANITIZE_ADDRESS__)
     int wanted = 1;
 #elif defined(__has_feature)
@@ -407,4 +410,5 @@ void mk_cycles_install(void) {
     mk_cycles_hooks.release_armed = mk_release_armed;
     mk_cycles_hooks.drain = mk_release_drain_armed;
     mk_cycles_hooks.candidate = cycles_candidate; /* (last: it is the test of mk_cycles_armed_alloc) */
+    mk_cycles_ready = 1;
 }

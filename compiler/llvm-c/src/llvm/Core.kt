@@ -176,6 +176,7 @@ const val LLVMAttributeFunctionIndex = -1
 @CName("LLVMBuildCondBr") external fun LLVMBuildCondBr(b: LLVMBuilderRef, ifCond: LLVMValueRef, then: LLVMBasicBlockRef, els: LLVMBasicBlockRef): LLVMValueRef
 @CName("LLVMBuildUnreachable") external fun LLVMBuildUnreachable(b: LLVMBuilderRef): LLVMValueRef
 
+@CName("LLVMBuildNSWAdd") external fun LLVMBuildNSWAdd(b: LLVMBuilderRef, lhs: LLVMValueRef, rhs: LLVMValueRef, name: CPointer<ByteVar>): LLVMValueRef
 @CName("LLVMBuildAdd") external fun LLVMBuildAdd(b: LLVMBuilderRef, lhs: LLVMValueRef, rhs: LLVMValueRef, name: CPointer<ByteVar>): LLVMValueRef
 @CName("LLVMBuildSub") external fun LLVMBuildSub(b: LLVMBuilderRef, lhs: LLVMValueRef, rhs: LLVMValueRef, name: CPointer<ByteVar>): LLVMValueRef
 @CName("LLVMBuildMul") external fun LLVMBuildMul(b: LLVMBuilderRef, lhs: LLVMValueRef, rhs: LLVMValueRef, name: CPointer<ByteVar>): LLVMValueRef

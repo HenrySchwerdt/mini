@@ -13,7 +13,47 @@ public fun thread(
     priority: Int = -1,
     block: () -> Unit,
 ): java.lang.Thread {
-    val t = java.lang.Thread(block)
+    val t = java.lang.Thread(block, name)
+    if (isDaemon) t.isDaemon = true
+    if (priority > 0) t.priority = priority
     if (start) t.start()
     return t
+}
+
+/** Runs [action] with the lock held. */
+public inline fun <T> java.util.concurrent.locks.Lock.withLock(action: () -> T): T {
+    lock()
+    try {
+        return action()
+    } finally {
+        unlock()
+    }
+}
+
+public inline fun <T> java.util.concurrent.locks.ReentrantReadWriteLock.read(action: () -> T): T {
+    val rl = readLock()
+    rl.lock()
+    try {
+        return action()
+    } finally {
+        rl.unlock()
+    }
+}
+
+public inline fun <T> java.util.concurrent.locks.ReentrantReadWriteLock.write(action: () -> T): T {
+    val wl = writeLock()
+    wl.lock()
+    try {
+        return action()
+    } finally {
+        wl.unlock()
+    }
+}
+
+public inline fun <T : Any> java.lang.ThreadLocal<T>.getOrSet(default: () -> T): T {
+    val v = get()
+    if (v != null) return v
+    val d = default()
+    set(d)
+    return d
 }

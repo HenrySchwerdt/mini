@@ -77,7 +77,55 @@ static void alloc_worker(void *arg) {
     }
 }
 
+/* Thread ids: stable per thread, distinct between threads. */
+static void id_worker(void *arg) {
+    int64_t *slot = arg;
+    slot[0] = mk_sys_thread_id();
+    mk_sys_thread_yield();
+    slot[1] = mk_sys_thread_id();
+}
+
+/* The per-thread data slot: every thread sees only its own object, the slot keeps a reference, and clearing it releases it. */
+static const MkTypeInfo T_Slot = {"Slot", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
+static void slot_worker(void *arg) {
+    MkObject **out = arg;
+    out[0] = mk_sys_thread_data(); /* nothing stored by this thread: NULL */
+    MkObject *mine = mk_alloc(&T_Slot);
+    mk_sys_thread_set_data(mine);
+    mk_release(mine); /* the slot holds the reference */
+    out[1] = mk_sys_thread_data();
+    mk_sys_thread_set_data(NULL);
+}
+
 int main(void) {
+    MkObject *main_slot = mk_alloc(&T_Slot);
+    mk_sys_thread_set_data(main_slot);
+    mk_release(main_slot);
+    MkObject *slots[2][2] = {{NULL, NULL}, {NULL, NULL}};
+    mk_test_thread_t slot_threads[2];
+    for (int i = 0; i < 2; i++) CHECK(test_thread_create(&slot_threads[i], slot_worker, slots[i]) == 0);
+    for (int i = 0; i < 2; i++) CHECK(test_thread_join(&slot_threads[i]) == 0);
+    for (int i = 0; i < 2; i++) {
+        CHECK(slots[i][0] == NULL);
+        CHECK(slots[i][1] != NULL);
+        CHECK(slots[i][1] != main_slot);
+        mk_release(slots[i][1]);
+    }
+    MkObject *got = mk_sys_thread_data();
+    CHECK(got == main_slot);
+    mk_release(got);
+    mk_sys_thread_set_data(NULL);
+    int64_t main_id = mk_sys_thread_id();
+    CHECK_EQ_INT(main_id, mk_sys_thread_id());
+    int64_t ids[THREADS][2];
+    mk_test_thread_t it[THREADS];
+    for (int i = 0; i < THREADS; i++) CHECK(test_thread_create(&it[i], id_worker, ids[i]) == 0);
+    for (int i = 0; i < THREADS; i++) CHECK(test_thread_join(&it[i]) == 0);
+    for (int i = 0; i < THREADS; i++) {
+        CHECK_EQ_INT(ids[i][0], ids[i][1]);
+        CHECK(ids[i][0] != main_id);
+        for (int j = 0; j < i; j++) CHECK(ids[i][0] != ids[j][0]);
+    }
     MkAllocator *dbg = mk_debug_allocator_create(mk_heap_allocator());
     CHECK((mk_allocator_traits(dbg) & MK_ALLOCATOR_THREAD_SAFE) != 0);
     mk_test_thread_t at[THREADS];

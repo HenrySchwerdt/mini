@@ -24,6 +24,7 @@
 #define MK_POSIX_THREADS 1
 #include <errno.h>
 #include <pthread.h>
+#include <sched.h>
 #include <time.h>
 #include <unistd.h>
 #endif
@@ -192,16 +193,17 @@ static void call_function0(MkObject *fn) {
     mk_panic("thread body is not a function");
 }
 
+/* The operating-system thread is detached at once (its resources go back when it ends). A MkThread is shared by the thread itself and
+ * by the handle that mk_sys_thread_start returned: `refs` counts both, the last one frees it. */
 typedef struct MkThread {
-#if defined(_WIN32)
-    HANDLE handle;
-#elif defined(MK_POSIX_THREADS)
-    pthread_t handle;
-#else
-    int unused;
-#endif
     MkObject *fn;
+    int refs;
+    int done; /* the thread has run to its end (set before the thread's own reference goes) */
 } MkThread;
+
+static void thread_unref(MkThread *th) {
+    if (__atomic_sub_fetch(&th->refs, 1, __ATOMIC_ACQ_REL) == 0) free(th);
+}
 
 static void run_thread_body(MkThread *th) {
     call_function0(th->fn);
@@ -214,8 +216,11 @@ static void run_thread_body(MkThread *th) {
     }
     mk_release(th->fn);
     th->fn = NULL;
+    mk_sys_thread_set_data(NULL);
     mk_release_drain();
     __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST); /* the last reference count operation of this thread */
+    __atomic_store_n(&th->done, 1, __ATOMIC_RELEASE);
+    thread_unref(th);
 }
 
 #if defined(_WIN32)
@@ -232,31 +237,70 @@ static void *thread_main(void *p) {
 
 #endif /* threads */
 
+/* A small id per thread: the thread that starts the first thread (normally main) is 1, the others follow in start order. */
+static _Thread_local int64_t tl_thread_id = 0;
+static int64_t thread_id_counter = 0;
+
+int64_t mk_sys_thread_id(void) {
+    if (tl_thread_id == 0) tl_thread_id = __atomic_add_fetch(&thread_id_counter, 1, __ATOMIC_SEQ_CST);
+    return tl_thread_id;
+}
+
+/* One object per thread that the library keeps there (java.lang.Thread stores its Thread object): the slot holds a reference. */
+static _Thread_local MkObject *tl_thread_data = NULL;
+
+MkObject *mk_sys_thread_data(void) {
+    MkObject *d = tl_thread_data;
+    if (d != NULL) mk_retain(d);
+    return d;
+}
+
+void mk_sys_thread_set_data(MkObject *o) {
+    MkObject *old = tl_thread_data;
+    if (o != NULL) mk_retain(o);
+    tl_thread_data = o;
+    mk_release(old);
+}
+
+void mk_sys_thread_yield(void) {
+#if defined(_WIN32)
+    SwitchToThread();
+#elif defined(MK_POSIX_THREADS)
+    sched_yield();
+#endif
+}
+
 /* Starts a thread that runs the Kotlin function [fn]; returns a handle for mk_sys_thread_join, or 0 when threads are not supported. */
 int64_t mk_sys_thread_start(MkObject *fn) {
 #if defined(_WIN32) || defined(MK_POSIX_THREADS)
     MkThread *th = (MkThread *)malloc(sizeof(MkThread));
     if (th == NULL) mk_panic("out of memory");
+    (void)mk_sys_thread_id(); /* the starting thread gets its id before any thread it starts */
     /* from now on all reference counts are atomic: everything the thread can reach may be shared */
     __atomic_store_n(&mk_threads_active, 1, __ATOMIC_SEQ_CST);
     __atomic_fetch_add(&mk_threads_running, 1, __ATOMIC_SEQ_CST);
     mk_retain(fn);
     th->fn = fn;
+    th->refs = 2;
+    th->done = 0;
 #if defined(_WIN32)
-    th->handle = CreateThread(NULL, 0, thread_main, th, 0, NULL);
-    if (th->handle == NULL) {
+    HANDLE h = CreateThread(NULL, 0, thread_main, th, 0, NULL);
+    if (h == NULL) {
         __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST);
         mk_release(fn);
         free(th);
         return 0;
     }
+    CloseHandle(h); /* detached: the thread's resources go back when it ends */
 #else
-    if (pthread_create(&th->handle, NULL, thread_main, th) != 0) {
+    pthread_t h;
+    if (pthread_create(&h, NULL, thread_main, th) != 0) {
         __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST);
         mk_release(fn);
         free(th);
         return 0;
     }
+    pthread_detach(h);
 #endif
     return (int64_t)(intptr_t)th;
 #else
@@ -266,17 +310,23 @@ int64_t mk_sys_thread_start(MkObject *fn) {
 #endif
 }
 
+/* Waits until the thread has run to its end, then gives up the handle (the handle is invalid afterwards). */
 void mk_sys_thread_join(int64_t h) {
 #if defined(_WIN32) || defined(MK_POSIX_THREADS)
     MkThread *th = (MkThread *)(intptr_t)h;
     if (th == NULL) return;
-#if defined(_WIN32)
-    WaitForSingleObject(th->handle, INFINITE);
-    CloseHandle(th->handle);
+    while (__atomic_load_n(&th->done, __ATOMIC_ACQUIRE) == 0) mk_sys_thread_yield();
+    thread_unref(th);
 #else
-    pthread_join(th->handle, NULL);
+    (void)h;
 #endif
-    free(th);
+}
+
+/* Gives up the handle without waiting (the thread frees what is left of it when it ends). */
+void mk_sys_thread_detach(int64_t h) {
+#if defined(_WIN32) || defined(MK_POSIX_THREADS)
+    MkThread *th = (MkThread *)(intptr_t)h;
+    if (th != NULL) thread_unref(th);
 #else
     (void)h;
 #endif

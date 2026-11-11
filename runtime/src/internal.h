@@ -40,6 +40,7 @@ extern volatile int mk_threads_active;
 extern volatile int mk_threads_running;
 /* cycles.c */
 extern size_t mk_cycles_alloc_bytes; /* bytes of candidate-capable objects allocated since the last collection (allocation volume trigger) */
+extern volatile int mk_cycles_ready; /* the collector is installed (object.c, set by mk_cycles_install) */
 enum { MK_CYCLES_DYING = 5 };
 /* The collector is reached through this table (defined in object.c, filled in by mk_cycles_install in cycles.c): the code of
  * cycles.c is only reachable from the allocation of a candidate-capable object (alloc.c), so a program that never makes one
@@ -63,6 +64,7 @@ static inline void mk_cycles_ensure(void) {
     if (__builtin_expect(mk_cycles_hooks.candidate == NULL, 0)) mk_cycles_install();
 }
 #define MK_ARMABLE(type) ((type)->trace != NULL && mk_cycles_hooks.candidate != NULL)
+MkObject *mk_alloc_sized_armed(const MkTypeInfo *type, size_t size); /* alloc.c: default allocator, armed (the collector must be installed) */
 MkObject *mk_alloc_sized_plain(const MkTypeInfo *type, size_t size); /* alloc.c: default allocator, never armed */
 const MkString *mk_throwable_virtual_to_string(MkObject *o); /* classes.c */
 void mk_release_drain(void); /* object.c: disposes what mk_release queued because the stack was deep (end of main, end of a thread) */

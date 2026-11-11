@@ -362,6 +362,8 @@ private class SuspendInliner(val a: Ast2Ir, val fn: IrFunction) {
                 } else if (containsSuspensionPoint(lf.body) || returnsFrom(lf.body, fn)) need = true
             }
         }
+        // a suspend inline function is a real call (its lambdas are no longer expanded in place) unless it is expanded here
+        if (!need && callee.isSuspend && template != null && c.arguments.any { it is IrFunctionExpression }) need = true
         if (!need) return null
         if (budget-- <= 0) return null
         val body = template ?: callee.body as? IrBlockBody ?: return null
