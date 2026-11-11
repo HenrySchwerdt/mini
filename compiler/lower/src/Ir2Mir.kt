@@ -104,6 +104,8 @@ class Ir2Mir {
 
     /** The hidden name and ordinal parameters of the enum-body constructor being converted. */
     internal var unitClass: TObject? = null
+    /** the marker interface of the function objects of suspend lambdas and references (`x is SuspendFunction0<*>`) */
+    internal var suspendMarker: TObject? = null
 
     /** the loop of the `tailrec` function being converted, if any (Ir2MirTailrec) */
     internal var tailLoop: TailLoop? = null

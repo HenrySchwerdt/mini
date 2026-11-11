@@ -315,7 +315,7 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
     if (currentReturn == TUnit) {
         stmt(s.value, out)
         val un = unitAsNull
-        leaveThrough(0, out) { it += MirStmt.Return(if (un) MirExpr.NullConst(anyNullable) else null) }
+        leaveThrough(0, out) { it += MirStmt.Return(if (un) unitInstance() else null) }
     } else {
         returnValue(s.value, out)
     }

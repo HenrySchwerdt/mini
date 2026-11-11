@@ -109,6 +109,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
     val savedLocals = HashMap(locals)
     val savedSubst = HashMap(typeSubst)
     val boundLambdas = ArrayList<IrValueParameter>()
+    val shadowedLambdas = HashMap<IrValueParameter, InlineLambda>()
     try {
         for ((i, tp) in callee.typeParameters.withIndex()) {
             val a = c.typeArguments.getOrNull(i)
@@ -124,6 +125,8 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
             if ((arg == null) != (pass == 1)) continue
             val lam = if (arg != null && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true) inlineLambdaOf(arg) else null
             if (lam != null) {
+                // the same function expanded inside its own lambda argument (`consumer { consumer(f()) }`): the inner call has its own parameter value
+                inlineLambdaParams[p]?.let { shadowedLambdas[p] = it }
                 inlineLambdaParams[p] = lam
                 boundLambdas += p
                 continue
@@ -142,6 +145,8 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
             val l = MirLocal(localCounter++, p.name.ifEmpty { "p$i" }, t)
             out += MirStmt.Declare(l, v)
             locals[p] = l
+            // (the argument is lowered above: it may read the outer binding of the parameter)
+            if (inlineLambdaParams.containsKey(p)) shadowedLambdas[p] = inlineLambdaParams.remove(p)!!
         }
         // an inline member of an inner class: the outer instances (`this@E`) are reached through the `$outer` fields of the receiver
         val dispatchParam = params.firstOrNull { it.kind == IrParameterKind.DispatchReceiver }
@@ -165,6 +170,7 @@ internal fun Ir2Mir.inlineCall(c: IrCall, callee: IrSimpleFunction, out: Mutable
         return if (r is MirExpr.Local) coerceFlexible(r, expected, c, out) else r
     } finally {
         for (p in boundLambdas) inlineLambdaParams.remove(p)
+        for ((p, l) in shadowedLambdas) inlineLambdaParams[p] = l
         locals = savedLocals
         typeSubst.clear()
         typeSubst.putAll(savedSubst)

@@ -132,6 +132,7 @@ EXC(MkUninitializedPropertyAccessException, "kotlin.UninitializedPropertyAccessE
 EXC(MkNotImplementedError, "kotlin.NotImplementedError", MkError_ti, NULL)
 EXC(MkNegativeArraySizeException, "java.lang.NegativeArraySizeException", MkRuntimeException_ti, NULL)
 EXC(MkAssertionError, "java.lang.AssertionError", MkError_ti, NULL)
+EXC(MkKotlinNothingValueException, "kotlin.KotlinNothingValueException", MkRuntimeException_ti, NULL)
 
 void mk_throwable_init(MkObject *self, const MkString *message, MkObject *cause) {
     MkThrowable *t = (MkThrowable *)self;

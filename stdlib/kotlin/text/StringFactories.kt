@@ -16,7 +16,7 @@ public fun String(chars: CharArray, offset: Int, length: Int): String {
     return sb.toString()
 }
 
-public fun CharArray.concatToString(startIndex: Int, endIndex: Int): String = String(this, startIndex, endIndex - startIndex)
+public fun CharArray.concatToString(startIndex: Int = 0, endIndex: Int = this.size): String = String(this, startIndex, endIndex - startIndex)
 
 public fun Char(code: Int): Char {
     if (code < 0 || code > 0xFFFF) throw IllegalArgumentException("Invalid Char code: " + code)

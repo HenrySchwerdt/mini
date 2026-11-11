@@ -8,6 +8,8 @@ class RecvEntry(val cls: ClassSym?, val fn: FunSym?, val lambda: LambdaExpr?, va
 
 /** What the builder knows about the function (or class initializer) whose body it is building. */
 class BodyCtx(val parent: BodyCtx?, val fn: IrFunction?, val label: String?, val isLambda: Boolean) {
+    /** an anonymous function (`fun() { }`): like a lambda for `break` / `continue` when it is the argument of an inline function */
+    var isAnonFun = false
     val recvs = ArrayList<RecvEntry>()
     /** loops being built, innermost last (with their source labels) */
     val loops = ArrayList<IrLoop>()

@@ -272,11 +272,16 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
         }
     }
 
+    // like java.util.AbstractCollection.remove: through the iterator, which a subclass may override (`size` and `get` may not describe the elements)
     override fun remove(element: E): Boolean {
-        val i = indexOf(element)
-        if (i < 0) return false
-        removeAt(i)
-        return true
+        val it = iterator()
+        while (it.hasNext()) {
+            if (it.next() == element) {
+                it.remove()
+                return true
+            }
+        }
+        return false
     }
 
     override fun iterator(): MutableIterator<E> = MutableListIteratorImpl(this, 0)

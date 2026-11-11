@@ -281,3 +281,47 @@ Two rules for library code that came out of round 5b: an `inline` function of th
 the expansion in a program from the precompiled library fails with "construction of '<anonymous>'"; use a private class), and two overloads whose
 erased parameters are equal (`StringBuilder(String)` / `StringBuilder(CharSequence)`) clash as C symbols: write the second one as a factory function.
 The test programs of the stdlib (`compiler/testdata/stdlib_*`) run against `lib/stdlib.mlib`, run them with `scripts/test-e2e.sh --suite c stdlib_`.
+
+## 11. API coverage against the Kotlin stdlib
+
+`tools/stdlib-coverage/coverage.py` lists the public declarations of the Kotlin 2.1 common stdlib (commonMain, generated, the builtins
+and `print`/`readln` of jvmMain from `kotlin-stdlib-sources.jar`, unpacked by `tools/stdlib-coverage/fetch.sh`) that `stdlib/` lacks, keyed by
+package, receiver or class, name and arity. `--list <package>` prints the missing ones, `--top N` ranks them by how often the name occurs
+in the conformance tests. The scan is lexical: deprecated-hidden and `@SinceKotlin` newer than 2.1 declarations are skipped, a member
+may live in a supertype, and an extension counts as present when mini declares it for a supertype of the receiver or as a member.
+
+Coverage per package (current state):
+
+| package | reference | present | missing | coverage |
+|---|---:|---:|---:|---:|
+| `kotlin.collections` | 2940 | 2617 | 323 | 89.0% |
+| `kotlin` | 732 | 672 | 60 | 91.8% |
+| `kotlin.text` | 587 | 562 | 25 | 95.7% |
+| `kotlin.ranges` | 208 | 194 | 14 | 93.3% |
+| `kotlin.sequences` | 186 | 165 | 21 | 88.7% |
+| `kotlin.time` | 138 | 118 | 20 | 85.5% |
+| `kotlin.concurrent.atomics` | 91 | 91 | 0 | 100.0% |
+| `kotlin.math` | 53 | 53 | 0 | 100.0% |
+| `kotlin.reflect` | 50 | 22 | 28 | 44.0% |
+| `kotlin.random` | 41 | 39 | 2 | 95.1% |
+| `kotlin.coroutines` | 40 | 35 | 5 | 87.5% |
+| `kotlin.comparisons` | 33 | 31 | 2 | 93.9% |
+| `kotlin.uuid` | 25 | 25 | 0 | 100.0% |
+| `kotlin.annotation` | 24 | 24 | 0 | 100.0% |
+| `kotlin.contracts` | 19 | 19 | 0 | 100.0% |
+| `kotlin.io.encoding` | 17 | 17 | 0 | 100.0% |
+| `kotlin.jvm` | 16 | 9 | 7 | 56.2% |
+| `kotlin.experimental` | 12 | 10 | 2 | 83.3% |
+| `kotlin.properties` | 12 | 10 | 2 | 83.3% |
+| `kotlin.io` | 6 | 6 | 0 | 100.0% |
+| `kotlin.coroutines.cancellation` | 5 | 2 | 3 | 40.0% |
+| `kotlin.coroutines.intrinsics` | 3 | 3 | 0 | 100.0% |
+| `kotlin.enums` | 2 | 1 | 1 | 50.0% |
+| `kotlin.concurrent` | 1 | 0 | 1 | 0.0% |
+| **total** | **5241** | **4725** | **516** | **90.2%** |
+
+Before this pass: **total**  **5241**  **4433**  **808**  **84.6%** (total row: reference / present / missing / coverage). Added since: Base64,
+HexFormat and the hex conversions, Uuid, `kotlin.concurrent.atomics`, Appendable, Typography, TimeMark / ComparableTimeMark /
+ValueTimeMark / TestTimeSource / measureTime on time sources, `kotlin.experimental` Byte/Short bit operations, Byte/Short floorDiv/mod/rotate,
+`toString(radix)` of the remaining integer types. Open: `typeOf` and the KType family (compiler support), Clock/Instant, DeepRecursiveFunction,
+the long tail of array/sequence `*To`, `maxOfWith` and similar variants.

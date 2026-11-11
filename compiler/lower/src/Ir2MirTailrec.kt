@@ -95,7 +95,7 @@ internal fun Ir2Mir.returnWithTail(e: IrExpression, tl: TailLoop, out: MutableLi
             fun build(i: Int): List<MirStmt> {
                 if (i >= pieces.size) {
                     // an `if` without `else` in a Unit function: falls out of the function
-                    return if (currentReturn == TUnit) listOf(MirStmt.Return(if (unitAsNull) MirExpr.NullConst(anyNullable) else null))
+                    return if (currentReturn == TUnit) listOf(MirStmt.Return(if (unitAsNull) unitInstance() else null))
                     else listOf(MirStmt.Panic("NoWhenBranchMatchedException"))
                 }
                 val (cs, c, body) = pieces[i]
@@ -116,7 +116,7 @@ internal fun Ir2Mir.returnWithTail(e: IrExpression, tl: TailLoop, out: MutableLi
             if (currentReturn == TUnit) {
                 stmt(e, out)
                 val un = unitAsNull
-                leaveThrough(0, out) { it += MirStmt.Return(if (un) MirExpr.NullConst(anyNullable) else null) }
+                leaveThrough(0, out) { it += MirStmt.Return(if (un) unitInstance() else null) }
             } else returnValue(e, out)
         }
     }
