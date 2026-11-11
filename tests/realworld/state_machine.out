@@ -1,0 +1,34 @@
+Idle -> HasMoney(cents=100)
+need 50 more for cola
+HasMoney(cents=100) -> HasMoney(cents=200)
+chips sold out
+unknown item water
+HasMoney(cents=200) -> Dispensing(item=cola, change=50)
+took cola, change 50
+Dispensing(item=cola, change=50) -> Idle
+Idle -> HasMoney(cents=100)
+cola sold out
+refund 100
+HasMoney(cents=100) -> Idle
+Idle -> HasMoney(cents=50)
+HasMoney(cents=50) -> Dispensing(item=gum, change=0)
+took gum, change 0
+Dispensing(item=gum, change=0) -> Idle
+Idle -> HasMoney(cents=10)
+HasMoney(cents=10) -> OutOfOrder(reason=kicked with money inside)
+final: OutOfOrder(reason=kicked with money inside)
+
+RED(30s) GREEN(25s) YELLOW(5s) RED(30s) GREEN(25s) YELLOW(5s) RED(30s)
+elapsed 150 s, cycle 60 s
+
+  (locking after 2 moves)
+[false, true, false, true, true, false, true, true]
+CLOSED --LOCK--> (ignored)
+CLOSED --PUSH--> OPEN
+OPEN --PULL--> (ignored)
+OPEN --PUSH--> CLOSED
+CLOSED --LOCK--> LOCKED
+LOCKED --PUSH--> (ignored)
+LOCKED --UNLOCK--> CLOSED
+CLOSED --PULL--> OPEN
+moves: 5, state: OPEN

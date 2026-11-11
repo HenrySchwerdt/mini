@@ -1,0 +1,32 @@
+top-level init
+-- variance
+3 2 [1, 2, 3, a, b]
+-- operators
+11 22 2 true false (3, 6) true (2, 1) (1, 2) (2, 3) [(1, 5), (2, 5), (3, 5)]
+[0, 10, 20, 1, 11, 21]
+-- enums
++:7, -:-3, *:10, ^:32 multiplication add 3
+-- classes
+out/t/42 42 [out-1, out-2, out-3]
+Base init 5
+Derived init x
+hello from derived 5 derived-base-secret X
+-- inline
+  [sum done]
+55
+String!otherList!null
+21
+-- references
+[6, 4, 2, 6, 4, 2, KOTLIN, JAVA, GO]
+8 x
+(((true, false), digit), [negative, zero, digit, big even, big odd])
+(7, [11, 12, 13])
+-- control flow
+try finally 1
+7
+[12, 13, 21, 23, 31, 32]
+found 3*4
+[1, 4, 7, 10][10, 6, 2][a, b, c, d, e][3, 2, 1]true
+big int -1 43 true
+nonedflt0
+nullset

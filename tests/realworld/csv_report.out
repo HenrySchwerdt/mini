@@ -1,0 +1,26 @@
+parsed 7 rows, 5 columns
+region | product | units | price | note
+north | widget | 10 | 2.50 | first, big order
+south | widget | 4 | 2.75 | 
+north | gadget | 3 | 10.00 | says "rush"
+east | gadget | 7 | 9.50 | two\nlines
+south | gizmo | 12 | 1.25 | 
+east | widget | 1 | 3.00 | late
+
+region    units   revenue
+east         8     69.50
+north       13     55.00
+south       16     26.00
+best sale: gadget in east = 66.50
+gadget=96.50, widget=39.00, gizmo=15.00
+average price: 4.83
+
+name,comment
+"a,b","say ""hi"""
+plain,"multi
+line"
+true
+[[a, b, c], [1, , 3]]
+error: unterminated quoted field
+error: quote inside an unquoted field
+error: row 1: bad units 'many'

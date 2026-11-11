@@ -1,0 +1,33 @@
+parsed 6 of 8 lines
+10.0.0.1      GET    /index.html        200 2326
+10.0.0.2      GET    /missing           404 512
+10.0.0.1      POST   /api/login         302 0
+192.168.1.77  GET    /api/items         200 10240
+10.0.0.3      DELETE /api/items/42      500 128
+10.0.0.2      GET    /index.html        304 0
+errors: [404:/missing, 500:/api/items/42]
+bytes by ip: {10.0.0.1=2326, 10.0.0.2=512, 10.0.0.3=128, 192.168.1.77=10240}
+status classes: {2=2, 3=2, 4=1, 5=1}
+users: [alice, bob]
+query of /api/login: {next=/home}
+query of /api/items: {id=42, sort=asc}
+-- regex API
+[bob@example.com, alice@site.org]
+[[bob, example, com], [alice, site, org]]
+5..19
+mail <BOB> or <ALICE>, not eve@bad.net
+mail [example] or [site], not eve@bad.net
+(false, true)
+[2024, 10, 10]
+[a, b, c, d]
+r*g*l*r *xpr*ss**ns
+([a, b, c, ], [1, 2, 3])
+Camel_Case_String
+(true, false)
+(555) 123-4567 -> 555.123.4567
+555-123-4567 -> 555.123.4567
+5551234567 -> invalid
+555 123-45 -> invalid
+from 05/01/2024 to 31/12/2024
+a aaa [ababc, b]
+(true, 2)

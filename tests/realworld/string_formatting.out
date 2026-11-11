@@ -1,0 +1,39 @@
+   42|42   |00042|+42|ff|FF|10|true
+   3.142|2.50    |3|1.234568e+04|     right|left      |k|%
+cart has 3 items costing 59.97 total
+1,234,567 -003.142 c a b
+11111111 ff 255 11 255 1000000 9223372036854775807 -2147483648
+((((((0.3333333333333333, 0.6666667), 1.0E10), 1.5E-7), 100.0), NaN), -Infinity)
++-------------------------+------+--------+------+
+|          Name           | Qty  | Price  | Note |
++-------------------------+------+--------+------+
+| Widget                  |   12 |   3.50 |  ok  |
+| Gadget with a long name |    7 | 129.99 |  -   |
+| Nut                     | 1000 |   0.02 | bulk |
++-------------------------+------+--------+------+
+|Kotlin is a modern programming|
+|language that makes developers|
+|happier. It is concise, safe, |
+|interoperable and tool        |
+|friendly.                     |
+|Kotlin is a modern programming|
+|language that makes developers|
+|happier.  It is concise, safe,|
+|interoperable     and     tool|
+|friendly.                     |
+[0 B, 1023 B, 1.0 KiB, 1.5 KiB, 4.8 MiB, 3.0 GiB, 4.0 TiB]
+[0s, 59s, 1m 1s, 1h, 1h 1m 1s, 1d 1h 1m 1s, 2d]
+>> Hello WORLD < 16 9 < DLROW olleH >>
+20 NAÏVE CAFÉ – ÜNÏCÖDÉ 16 7
+tab	here "quoted" back\slash $dollar A é
+raw "string" with \n no escapes and 2 template
+((([a, b, , c], [a, b,,c]), padded), hi)
+72 101 108 108 111 Hello abcde d y
+((((-1, true), true), true), true)
+(([one, two, , three], [one, two, three]), [a, b, c])
+**xx**toongongtoo
+Leet abc baa Hello
+subs: otl kot c kn 25
+chars: lD_U?
+1,2,3,4,5 <1-2-3-4-5> a, ...
+ true|c    | null [1, null] [1, 2] {1=a}
