@@ -611,7 +611,8 @@ typedef struct MkThrowable {
     X(MkUnsupportedOperationException)                                                   \
     X(MkNoSuchElementException) X(MkNumberFormatException)                              \
     X(MkUninitializedPropertyAccessException) X(MkNotImplementedError)                   \
-    X(MkNegativeArraySizeException) X(MkAssertionError) X(MkKotlinNothingValueException)
+    X(MkNegativeArraySizeException) X(MkAssertionError) X(MkKotlinNothingValueException)  \
+    X(MkExceptionInInitializerError) X(MkNoClassDefFoundError)
 #define MK_DECLARE_EXCEPTION(Name)                                                       \
     extern const MkTypeInfo Name##_ti;                                                   \
     /* allocates an instance (refcount 1); retains message and cause */                  \

@@ -75,6 +75,7 @@ class Ir2Mir {
     internal var finallyStack = ArrayList<FinCtx>()
     internal val loopFinallyDepth = HashMap<IrLoop, Int>()
     internal var builtinMessageRoot: IrSimpleFunction? = null
+    internal var builtinCauseRoot: IrSimpleFunction? = null
     internal val builtinInfos = HashMap<IrClass, ClassInfo>()
     internal val facades = LinkedHashMap<IrFile, Facade>()
     internal val effectfulInit = HashMap<IrFile, Boolean>()

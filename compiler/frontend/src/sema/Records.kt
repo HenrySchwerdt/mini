@@ -48,7 +48,7 @@ class Access(var dispatch: RecvUse?, var ext: RecvUse?)
  * The resolution of a call: callee, the final type arguments of its own type parameters, the arguments in source order
  * with their parameter binding, the receivers.
  */
-class CallInfo(val fn: FunSym, val typeArgs: List<Type>, val args: List<Arg>, val paramOfArg: IntArray) {
+class CallInfo(val fn: FunSym, var typeArgs: List<Type>, val args: List<Arg>, val paramOfArg: IntArray) {
     var ret: Type? = null
     var paramTypes: List<Type?> = emptyList()
     var dispatch: RecvUse? = null

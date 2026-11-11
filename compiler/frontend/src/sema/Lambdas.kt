@@ -85,6 +85,8 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
     target.inlinable = inlinable && !target.isSuspend
     targets.add(target)
     lambdaDepth++
+    val savedInArg = inArgCall
+    inArgCall = false
     // statements of the body, value of the last expression
     var last: Type = sema.unitType
     var lastIsExpr = false
@@ -105,6 +107,7 @@ fun BodyChecker.analyzeLambda(lam: LambdaExpr, ef: FunType?, cs: ConstraintSyste
         i++
     }
     synthDepth = depth0
+    inArgCall = savedInArg
     lambdaDepth--
     targets.removeAt(targets.size - 1)
     scope = savedScope
@@ -310,7 +313,9 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 }
             }
             val nc = ri.cls.nested[name]
-            if (nc != null) for (c in ctorCandidates(nc)) {
+            if (nc != null) for (c0 in ctorCandidates(nc)) {
+                // the outer type arguments of `Foo<String>::Inner`
+                val c = if (nc.isInner && ct.args.isNotEmpty()) Candidate(c0.fn, HashMap(ops.substOf(ct)).also { it.putAll(c0.subst) }, c0.extRecv) else c0
                 val before = cands.size
                 funRefCand(c, false, cands)
                 // `Outer::Inner` takes the outer instance first
@@ -409,7 +414,10 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             // `outer::Inner`: the constructor of an inner class, bound to the outer instance
             for (site in ops.closure(vt)) {
                 val inc = site.cls.nested[name]
-                if (inc != null && inc.isInner) for (c in ctorCandidates(inc)) funRefCand(c, true, cands)
+                if (inc != null && inc.isInner) for (c0 in ctorCandidates(inc)) {
+                    val st = ops.asSuper(vt, site.cls)
+                    funRefCand(if (st != null && st.args.isNotEmpty()) Candidate(c0.fn, HashMap(ops.substOf(st)).also { it.putAll(c0.subst) }, c0.extRecv) else c0, true, cands)
+                }
             }
             for (mp in members.propsNamed(vt, name)) {
                 if (mp.prop.receiver != null) continue
@@ -472,6 +480,16 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
         m = mm
         break
     }
+    if (chosen == null && ef == null && cands.isNotEmpty()) {
+        // `String::toInt` with no function type to choose by: overloads are no error here, the first one (fewest parameters) is taken
+        val c = cands.minByOrNull { it.params.size }!!
+        val sys = ConstraintSystem(sema)
+        val mm = HashMap<TypeParamSym, Type>()
+        sys.addVariables(c.tps, mm)
+        chosen = c
+        cs = sys
+        m = mm
+    }
     var adapted: AdaptedRef? = null
     if ((chosen == null || cs == null || m == null) && ef != null) {
         for (c in cands) {
@@ -480,36 +498,42 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
             val off = c.params.size - fn.params.size
             if (off < 0 || off > 1) continue
             val eps = ops.allParams(ef)
-            val map = adaptMapping(fn.params, off, eps.size) ?: continue
-            val sys = ConstraintSystem(sema)
-            val mm = HashMap<TypeParamSym, Type>()
-            sys.addVariables(c.tps, mm)
-            var ok = true
-            var i = 0
-            while (i < off && ok) {
-                if (!sys.addSub(eps[i], ops.substitute(c.params[i], mm))) ok = false
-                i++
-            }
-            var j = 0
-            while (j < fn.params.size && ok) {
-                val p = fn.params[j]
-                val pt: Type = if (p.isVararg) ops.substitute(ops.substitute(p.varargElement ?: ErrType("vararg"), c.subst), mm) else ops.substitute(c.params[off + j], mm)
-                var k = 0
-                while (k < map.counts[j] && ok) {
-                    if (!sys.addSub(eps[map.starts[j] + k], pt)) ok = false
-                    k++
+            var found = false
+            for (mode in 0..1) {
+                if (mode == 1 && fn.params.none { it.isVararg }) break
+                val map = adaptMapping(fn.params, off, eps.size, mode == 1) ?: continue
+                val sys = ConstraintSystem(sema)
+                val mm = HashMap<TypeParamSym, Type>()
+                sys.addVariables(c.tps, mm)
+                var ok = true
+                var i = 0
+                while (i < off && ok) {
+                    if (!sys.addSub(eps[i], ops.substitute(c.params[i], mm))) ok = false
+                    i++
                 }
-                j++
+                var j = 0
+                while (j < fn.params.size && ok) {
+                    val p = fn.params[j]
+                    val pt: Type = if (p.isVararg && mode == 0) ops.substitute(ops.substitute(p.varargElement ?: ErrType("vararg"), c.subst), mm) else ops.substitute(c.params[off + j], mm)
+                    var k = 0
+                    while (k < map.counts[j] && ok) {
+                        if (!sys.addSub(eps[map.starts[j] + k], pt)) ok = false
+                        k++
+                    }
+                    j++
+                }
+                if (ok && !ops.isUnit(sys.resolveFixed(ef.ret))) {
+                    if (!sys.addSub(ops.substitute(c.ret, mm), ef.ret)) ok = false
+                }
+                if (!ok) continue
+                chosen = c
+                cs = sys
+                m = mm
+                adapted = AdaptedRef(map, off)
+                found = true
+                break
             }
-            if (ok && !ops.isUnit(sys.resolveFixed(ef.ret))) {
-                if (!sys.addSub(ops.substitute(c.ret, mm), ef.ret)) ok = false
-            }
-            if (!ok) continue
-            chosen = c
-            cs = sys
-            m = mm
-            adapted = AdaptedRef(map, off)
-            break
+            if (found) break
         }
     }
     if (chosen == null || cs == null || m == null) {
@@ -615,7 +639,7 @@ fun unfixedType(t: Type): Boolean {
 }
 
 /** How the expected parameters of a function type map onto the parameters of the function a callable reference was adapted to. */
-class AdaptMap(val starts: IntArray, val counts: IntArray)
+class AdaptMap(val starts: IntArray, val counts: IntArray, val spreadVararg: Boolean = false)
 
 /** A callable reference that needs an adapter: default arguments, `vararg` and a different number of parameters than the target. */
 class AdaptedRef(val map: AdaptMap, val receiverCount: Int) {
@@ -628,7 +652,7 @@ class AdaptedRef(val map: AdaptMap, val receiverCount: Int) {
  * ones that are left over (after the required parameters behind it); the parameters beyond the expected ones need a default or are
  * `vararg`. Null when that does not work, or when the reference is not adapted at all.
  */
-fun adaptMapping(params: List<VarSym>, off: Int, n: Int): AdaptMap? {
+fun adaptMapping(params: List<VarSym>, off: Int, n: Int, arrayVararg: Boolean = false): AdaptMap? {
     if (n < off) return null
     val starts = IntArray(params.size)
     val counts = IntArray(params.size)
@@ -645,6 +669,8 @@ fun adaptMapping(params: List<VarSym>, off: Int, n: Int): AdaptMap? {
                 k++
             }
             var take = n - i - req
+            // an array given for the vararg parameter itself (`(IntArray, String) -> Unit` for `foo(vararg xs: Int, s: String = "")`): it is spread
+            if (arrayVararg) take = if (i < n) 1 else 0
             if (take < 0) take = 0
             counts[j] = take
             i += take
@@ -655,7 +681,7 @@ fun adaptMapping(params: List<VarSym>, off: Int, n: Int): AdaptMap? {
         j++
     }
     if (i != n) return null
-    return AdaptMap(starts, counts)
+    return AdaptMap(starts, counts, arrayVararg)
 }
 
 fun BodyChecker.objectLiteral(e: ObjectLiteral, expected: Type?): Type {

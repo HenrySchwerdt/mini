@@ -1742,6 +1742,7 @@ private class Lowering<V : Any, B : Any>(
         is MirExpr.RuntimeCall -> arrayAccessKind(e.cName) == null && ThrowAnalysis.runtimeCallThrows(e.cName)
         is MirExpr.VCall, is MirExpr.ICall -> throwing.dynamicMayThrow
         is MirExpr.New -> throwing.callMayThrow(e.ctorCName)
+        is MirExpr.ObjectGet -> throwing.objectGetMayThrow(e.classCName)
         // inlined with a cold exit of their own (unboxInline, NotNull, castInline): no test of the pending exception on the fast path
         is MirExpr.Unbox -> e.to is TInline
         is MirExpr.NotNull -> false

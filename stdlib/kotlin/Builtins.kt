@@ -122,6 +122,8 @@ public abstract class Enum<E : Enum<E>> protected constructor() : Comparable<E> 
     public final override fun equals(other: Any?): Boolean
     public final override fun hashCode(): Int
     public override fun toString(): String
+
+    public companion object {}
 }
 
 /** Fixed-size array. Mini has no JVM array classes; `Array<T>` is a runtime object (see docs/stdlib.md). */

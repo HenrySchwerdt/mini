@@ -313,6 +313,14 @@ static MkLock mk_init_lock = MK_LOCK_INIT; /* one lock for all initialisers: the
 static MkInitFrame *mk_init_top;           /* the initialisers running, innermost first; guarded by mk_init_lock */
 static _Thread_local int mk_init_depth;    /* > 0: this thread owns mk_init_lock (a lock is not recursive on every platform) */
 
+/* initialisers that failed (an exception left the constructor): a later access raises NoClassDefFoundError, as the JVM and
+ * Kotlin/Native do. Only the slow path looks here (the slot of a failed initialiser stays NULL); guarded by mk_init_lock. */
+typedef struct MkFailedInit {
+    MkObject **slot;
+    struct MkFailedInit *next;
+} MkFailedInit;
+static MkFailedInit *mk_init_failed;
+
 MkObject *mk_object_init(MkObject **slot, const MkTypeInfo *type, void (*ctor)(MkObject *)) {
     bool owner = mk_init_depth > 0;
     if (!owner) mk_lock(&mk_init_lock);
@@ -323,6 +331,15 @@ MkObject *mk_object_init(MkObject **slot, const MkTypeInfo *type, void (*ctor)(M
         }
     }
     if (o == NULL) {
+        for (MkFailedInit *f = mk_init_failed; f != NULL; f = f->next) {
+            if (f->slot == slot) {
+                char msg[256];
+                snprintf(msg, sizeof msg, "Could not initialize class %s", type->name);
+                mk_raise(&MkNoClassDefFoundError_ti, msg);
+                if (!owner) mk_unlock(&mk_init_lock);
+                return NULL;
+            }
+        }
         o = mk_alloc(type);
         MkInitFrame frame = {slot, o, mk_init_top};
         mk_init_top = &frame;
@@ -330,6 +347,25 @@ MkObject *mk_object_init(MkObject **slot, const MkTypeInfo *type, void (*ctor)(M
         ctor(o);
         mk_init_depth--;
         mk_init_top = frame.prev;
+        if (mk_pending_exception != NULL) {
+            /* the initialiser failed: an Exception becomes the cause of an ExceptionInInitializerError, an Error passes as it is */
+            MkObject *ex = mk_catch();
+            if (!mk_is_instance(ex, &MkError_ti)) {
+                MkObject *wrapped = MkExceptionInInitializerError_new(NULL, ex);
+                mk_release(ex);
+                ex = wrapped;
+            }
+            mk_rethrow(ex);
+            MkFailedInit *f = (MkFailedInit *)malloc(sizeof *f);
+            if (f != NULL) {
+                f->slot = slot;
+                f->next = mk_init_failed;
+                mk_init_failed = f;
+            }
+            mk_release(o);
+            if (!owner) mk_unlock(&mk_init_lock);
+            return NULL;
+        }
         __atomic_store_n(slot, o, __ATOMIC_RELEASE);
     }
     if (!owner) mk_unlock(&mk_init_lock);
