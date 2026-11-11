@@ -77,7 +77,26 @@ static void alloc_worker(void *arg) {
     }
 }
 
+/* Thread ids: stable per thread, distinct between threads. */
+static void id_worker(void *arg) {
+    int64_t *slot = arg;
+    slot[0] = mk_sys_thread_id();
+    mk_sys_thread_yield();
+    slot[1] = mk_sys_thread_id();
+}
+
 int main(void) {
+    int64_t main_id = mk_sys_thread_id();
+    CHECK_EQ_INT(main_id, mk_sys_thread_id());
+    int64_t ids[THREADS][2];
+    mk_test_thread_t it[THREADS];
+    for (int i = 0; i < THREADS; i++) CHECK(test_thread_create(&it[i], id_worker, ids[i]) == 0);
+    for (int i = 0; i < THREADS; i++) CHECK(test_thread_join(&it[i]) == 0);
+    for (int i = 0; i < THREADS; i++) {
+        CHECK_EQ_INT(ids[i][0], ids[i][1]);
+        CHECK(ids[i][0] != main_id);
+        for (int j = 0; j < i; j++) CHECK(ids[i][0] != ids[j][0]);
+    }
     MkAllocator *dbg = mk_debug_allocator_create(mk_heap_allocator());
     CHECK((mk_allocator_traits(dbg) & MK_ALLOCATOR_THREAD_SAFE) != 0);
     mk_test_thread_t at[THREADS];

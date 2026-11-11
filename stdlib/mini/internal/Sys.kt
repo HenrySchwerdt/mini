@@ -50,6 +50,15 @@ public external fun sysThreadStart(fn: () -> Unit): Long
 @CSymbol("mk_sys_thread_join")
 public external fun sysThreadJoin(handle: Long)
 
+@CSymbol("mk_sys_thread_detach")
+public external fun sysThreadDetach(handle: Long)
+
+@CSymbol("mk_sys_thread_id")
+public external fun sysThreadId(): Long
+
+@CSymbol("mk_sys_thread_yield")
+public external fun sysThreadYield()
+
 @CSymbol("mk_atomic_int_get")
 public external fun atomicIntGet(a: IntArray): Int
 
