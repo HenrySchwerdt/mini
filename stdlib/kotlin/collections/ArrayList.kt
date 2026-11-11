@@ -73,7 +73,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     override fun add(index: Int, @TakesOwnership element: E) {
-        if (index < 0 || index > length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
+        if (index < 0 || index > length) mini.internal.throwIndexOutOfSize(index, length)
         ensureCapacity(length + 1)
         var i = length
         while (i > index) {
@@ -165,7 +165,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     private fun checkElementIndex(index: Int) {
-        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfSize(index, length)
     }
 
     // reads the storage directly: no list interface, no index checks beyond the one the loop needs

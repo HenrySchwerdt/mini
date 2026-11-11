@@ -108,6 +108,7 @@ typedef struct MkSmallCache {
     unsigned char *bump, *end;
     size_t next_chunk;
     int registered;
+    size_t cycles_bytes; /* the thread's share of the allocation volume counter of the cycle collector (plain adds, no atomics; see MK_CYCLES_ADD_TLS) */
 } MkSmallCache;
 /* Inline allocation: only where the runtime itself uses the small allocator (see alloc_small.h MK_SMALL_ALLOC) and nothing counts allocations. */
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(MK_STATS) && !defined(MK_PLAIN_MALLOC) && !defined(_WIN32) && !defined(__wasm__) && \
@@ -129,6 +130,9 @@ extern volatile int mk_cycles_ready; /* the collector is installed (set by the f
 extern size_t mk_cycles_alloc_bytes;
 /* The allocation volume counter is a heuristic: a lost update between threads is harmless, but the access is a relaxed atomic load and store
  * (no data race for ThreadSanitizer; a plain mov, add, mov on x86-64 and arm64, not a locked instruction). */
+/* The same for an allocation that goes through the thread's small cache (the inline path of generated code, alloc.c): a plain add to the thread's own
+ * counter. The collector reads the counter of the thread that runs it plus the global one, to which a thread adds its share when it exits. */
+#define MK_CYCLES_ADD_TLS(n) (mk_small_cache.cycles_bytes += (n))
 #define MK_CYCLES_ADD(n) __atomic_store_n(&mk_cycles_alloc_bytes, __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED) + (n), __ATOMIC_RELAXED)
 
 

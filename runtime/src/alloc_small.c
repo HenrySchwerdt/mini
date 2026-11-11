@@ -100,6 +100,10 @@ static int central_pop(size_t cls, Batch *out) {
 static void flush_all(void *unused) {
     (void)unused;
     MkSmallCache *t = &mk_small_cache;
+    if (t->cycles_bytes != 0) { /* the thread's share of the allocation volume goes to the global counter */
+        __atomic_fetch_add(&mk_cycles_alloc_bytes, t->cycles_bytes, __ATOMIC_RELAXED);
+        t->cycles_bytes = 0;
+    }
     for (size_t c = 1; c < MK_SMALL_CLASSES; c++) {
         if (t->spare[c] != NULL) central_push(c, t->spare[c], t->spare_tail[c], MK_SMALL_BATCH);
         if (t->free[c] != NULL) central_push(c, t->free[c], t->tail[c], t->count[c]);
