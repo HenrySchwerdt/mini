@@ -598,9 +598,10 @@ internal fun Ir2Mir.primitiveMember(
             TByte, TShort -> MirExpr.Convert(recv, TInt)
             TChar -> MirExpr.Convert(recv, TInt)
             TBoolean -> MirExpr.Conditional(recv, MirExpr.IntConst(1231), MirExpr.IntConst(1237))
-            TLong -> MirExpr.Convert(
-                MirExpr.Binary(BinaryOp.Xor, recv, MirExpr.Binary(BinaryOp.Ushr, recv, MirExpr.IntConst(32))), TInt,
-            )
+            TLong -> {
+                val r1 = if (isPure(recv)) recv else tmpOfPlain(recv, out) // used twice: evaluated once
+                MirExpr.Convert(MirExpr.Binary(BinaryOp.Xor, r1, MirExpr.Binary(BinaryOp.Ushr, r1, MirExpr.IntConst(32))), TInt)
+            }
             else -> anyMember(2, v, c, out)
         }
         "equals" -> if (v.size == 2) return anyMember(1, v, c, out)
@@ -609,10 +610,13 @@ internal fun Ir2Mir.primitiveMember(
     if (cls == "kotlin.Boolean") {
         return when (name) {
             "not" -> MirExpr.Unary(UnaryOp.Not, recv)
-            "compareTo" -> MirExpr.Conditional(
-                MirExpr.Binary(BinaryOp.Eq, recv, v[1]), MirExpr.IntConst(0),
-                MirExpr.Conditional(recv, MirExpr.IntConst(1), MirExpr.IntConst(-1)),
-            )
+            "compareTo" -> {
+                val r1 = if (isPure(recv)) recv else tmpOfPlain(recv, out) // used twice: evaluated once
+                MirExpr.Conditional(
+                    MirExpr.Binary(BinaryOp.Eq, r1, v[1]), MirExpr.IntConst(0),
+                    MirExpr.Conditional(r1, MirExpr.IntConst(1), MirExpr.IntConst(-1)),
+                )
+            }
             "and" -> MirExpr.Binary(BinaryOp.And, recv, v[1])
             "or" -> MirExpr.Binary(BinaryOp.Or, recv, v[1])
             "xor" -> MirExpr.Binary(BinaryOp.Xor, recv, v[1])
@@ -646,11 +650,13 @@ internal fun Ir2Mir.primitiveMember(
         if (t == TDouble || t == TFloat) {
             return MirExpr.RuntimeCall("mk_double_compare", listOf(convertTo(a, TDouble, c), convertTo(b, TDouble, c)), TInt)
         }
-        // (a > b) - (a < b) with Int result
+        // (a > b) - (a < b) with Int result; both operands are used twice, so an operand with effects (`x.compareTo(f())`) is evaluated once, in order
+        val a1 = if (isPure(a)) a else tmpOfPlain(a, out)
+        val b1 = if (isPure(b)) b else tmpOfPlain(b, out)
         return MirExpr.Binary(
             BinaryOp.Sub,
-            convertTo(MirExpr.Conditional(MirExpr.Binary(BinaryOp.Gt, a, b), MirExpr.IntConst(1), MirExpr.IntConst(0)), TInt, c),
-            MirExpr.Conditional(MirExpr.Binary(BinaryOp.Lt, a, b), MirExpr.IntConst(1), MirExpr.IntConst(0)),
+            convertTo(MirExpr.Conditional(MirExpr.Binary(BinaryOp.Gt, a1, b1), MirExpr.IntConst(1), MirExpr.IntConst(0)), TInt, c),
+            MirExpr.Conditional(MirExpr.Binary(BinaryOp.Lt, a1, b1), MirExpr.IntConst(1), MirExpr.IntConst(0)),
         )
     }
 
