@@ -442,6 +442,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     val module = if (separateMlibs || wasmLib) guarded else MirOpt.run(guarded, optOptions) { line -> errln(line) }
     CEmitter.plainLoops = optOptions.on("plain-loops")
     RcOpt.branchExclusion = optOptions.on("rc-branch-exclusion")
+    RcOpt.readSets = optOptions.on("rc-read-sets")
     CEmitter.inlineAlloc = optOptions.on("inline-alloc")
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (optOptions.layoutStats) LayoutStats.report(module, if (wasm32) 4 else 8) { line -> errln(line) }

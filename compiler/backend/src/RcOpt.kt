@@ -106,6 +106,9 @@ object RcOpt {
     /** `-Xno-rc-branch-exclusion` clears it: an event in the other arm of an `if` then counts as lying between a definition and a use like any other. */
     var branchExclusion = true
 
+    /** `-Xno-rc-read-sets` clears it: the borrowed result of a Kotlin function is then invalidated by any store into a field (not only by the fields the function reads). */
+    var readSets = true
+
     fun analyze(
         module: MirModule,
         tr: Tracking = Tracking(module, false),
@@ -553,7 +556,9 @@ private class RcAnalyzer(
             } else {
                 acc.hasField = true
                 // a borrowed native reads one array slot; a borrowed Kotlin function reads whatever it likes
-                if (e is MirExpr.RuntimeCall) acc.sens.slots = true else acc.sens.unknown = true
+                if (e is MirExpr.RuntimeCall) acc.sens.slots = true
+                else if (e is MirExpr.Call && RcOpt.readSets) acc.sens.orWith(fx.readEff(e.cName))
+                else acc.sens.unknown = true
                 var ok = true
                 for (o in mirChildren(e)) if (o.type.isRef) ok = chainOf(o, acc) && ok
                 ok
