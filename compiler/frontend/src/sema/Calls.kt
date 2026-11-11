@@ -1314,7 +1314,14 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     for (p in expectedFun.params) cs.unfixedVars(cs.resolveFixed(p), free)
                     for (v in free) if (v.equal.isEmpty() && v.lower.isEmpty()) unknown = true
                 }
-                if (expectedFun != null && !unknown) cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
+                // a variable bounded by integer literals only (`test(0, 1, ::byteRange)`) stays open: the reference may make it Byte
+                val litVars = ArrayList<TypeVariable>()
+                if (expectedFun != null && !unknown) {
+                    val free2 = ArrayList<TypeVariable>()
+                    for (p in expectedFun.params) cs.unfixedVars(cs.resolveFixed(p), free2)
+                    for (v in free2) if (v.equal.isEmpty() && v.lower.isNotEmpty() && v.lower.all { it is IntLiteralType }) litVars.add(v)
+                }
+                if (expectedFun != null && !unknown) cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false), litVars)
                 val ef = if (expectedFun != null && !unknown) cs.resolveFixed(expectedFun) as FunType else null
                 val lt = callableRefWith(u, ef, if (pt is FunType || pt is VarType) null else null)
                 cs.addSub(lt, pt)
