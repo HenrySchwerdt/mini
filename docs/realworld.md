@@ -1,6 +1,6 @@
 # Real-world programs
 
-`tests/realworld/` holds 31 programs of the kind found in real projects: 100 to 400 lines each, standard library only, written the way an
+`tests/realworld/` holds 35 programs of the kind found in real projects: 100 to 400 lines each, standard library only, written the way an
 application developer writes Kotlin (data classes, sealed hierarchies, generics, extensions, delegates, DSL builders, coroutines,
 threads, regular expressions, text formatting). They complement the conformance tests (`docs/conformance.md`), which check single language
 features: here a program has to compile, run and print exactly what the reference compiler prints.
@@ -51,6 +51,10 @@ programs do not use JVM-only APIs of the standard library (a `java.util.concurre
 | `graph_algorithms` | union-find, MST, Dijkstra, SCC, topological sort | generic classes, `Triple`, local recursive functions |
 | `bignum_arithmetic` | arbitrary precision naturals | operators, `IntArray` / `LongArray`, secondary constructors |
 | `library_system` | lending model with many language features | sealed interfaces, typealias, `value class`, `invoke`, `Result`, labels |
+| `stdlib_breadth` | about 40 lines of everyday collection, map, math, number and string API calls | stdlib breadth, number formatting |
+| `language_tour` | variance, operator conventions, enums with bodies, inner / local classes, init order, inline variants, references, control flow | language breadth |
+| `tictactoe_minimax` | minimax with alpha-beta over a generic game interface, memoized full tree, Connect Three | generics, interfaces, recursion |
+| `expression_calculator` | tokenizer, shunting-yard, RPN evaluation with functions and variables | sealed tokens, stack machines, error handling |
 | `game_of_life` | Game of Life, rule 30 / 110, Langton's ant, random walk | arrays, bit operations, `Long` overflow |
 
 ## Findings and fixes
@@ -61,6 +65,8 @@ Most programs ran unchanged on the first try. What the programs found:
 |---|---|
 | `fun <T, R> List<T>.f(g: (T) -> R?): List<R> = mapNotNull(g)`: the lower bound `R` of the non-null variable of `mapNotNull` was not `R & Any` | `ConstraintSystem.addSub` strips nullability with `makeNotNull` (Infer.kt) |
 | a `var` declared and assigned inside a lambda (`run { var y = ...; while (y != null) { use(y); y = ... } }`, `sequence { }`) was never smart cast: the names assigned in lambdas counted as captured even when the variable belongs to the lambda | `AstWalk.capturedAssigned` leaves out the variables declared in the lambda (they are found again for lambdas nested in it) |
+| the iteration order of a `HashMap` filled with `putAll` / `toMap(destination)` and of `Array.toHashSet()` differed from the JVM (the JVM sizes an empty table from the argument of `putAll`, and `toHashSet` uses `mapCapacity`) | `HashMap.putAll` pre-sizes like `putMapEntries`, the array `toHashSet` functions use `HashSet(mapCapacity(size))` (stdlib); test `realworld1_hash_order` |
+| programs call `System.currentTimeMillis()`, `System.nanoTime()`, `System.lineSeparator()`, `System.arraycopy`, `System.exit` and `Runtime.getRuntime().availableProcessors()` | a small `java.lang.System` / `Runtime` (stdlib/java/lang/System.kt); test `realworld1_system` |
 | `a > b` where `a` has no `compareTo` was an internal compiler error (`compareTo is not resolved`) | the checker reports `no operator compareTo for T` |
 
 See the list of programs above for the status of each: every program passes the four suites.
