@@ -47,8 +47,41 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
 
     // ---- small helpers ---------------------------------------------------------------------------------------------
 
+    /**
+     * Code of the program that names an `internal` or `private` declaration of a library (an API stub, docs/mlib.md) is an error:
+     * the library is another module. The standard library is left out (programs that suppress INVISIBLE_MEMBER reach into it).
+     */
+    fun checkLibVisibility(node: Ast, s: Sym) {
+        if (file.declOnly) return
+        var lf: FileInfo? = null
+        var internal = false
+        var priv = false
+        var owner: ClassSym? = null
+        when (s) {
+            is FunSym -> { lf = s.file; internal = s.has("internal"); priv = s.has("private"); owner = s.owner }
+            is PropSym -> { lf = s.file; internal = s.has("internal"); priv = s.has("private"); owner = s.owner }
+            is ClassSym -> { lf = s.file; internal = s.has("internal"); priv = s.has("private"); owner = s.outer }
+            else -> return
+        }
+        if (lf == null || !lf.declOnly || s.name.isEmpty()) return
+        // a constructor of an internal class / a member of one is as invisible as the class
+        var o: ClassSym? = owner
+        while (o != null && !internal && !priv) {
+            if (o.has("internal")) internal = true
+            if (o.has("private")) priv = true
+            o = o.outer
+        }
+        if (!internal && !priv) return
+        val pk = lf.pkg
+        if (pk == "kotlin" || pk.startsWith("kotlin.") || pk.startsWith("java.") || pk.startsWith("kotlinx.") || pk == "mini" || pk.startsWith("mini.")) return
+        if (file.text.contains("INVISIBLE_")) return
+        val nm = if (s is FunSym && s.kind == FunKind.CONSTRUCTOR) (s.owner?.name ?: s.name) else s.name
+        err(node.start, "cannot access '" + nm + "': it is " + (if (internal) "internal" else "private") + " in a library")
+    }
+
     fun record(node: Ast, type: Type, callee: Sym?): ExprRec {
         if (callee is FunSym && sema.isLazyStubFun(callee)) sema.checkFun(callee)
+        if (callee != null) checkLibVisibility(node, callee)
         val isNew = rec.get(node) == null
         val r = rec.put(node, if (type is IntLiteralType) ops.literalDefault(type) else type, callee)
         if (isNew && callee is FunSym && node is CallExpr && (callee.invokeSuspend || callee.mods()?.has("suspend") == true)) checkSuspendContext(node.start, callee)

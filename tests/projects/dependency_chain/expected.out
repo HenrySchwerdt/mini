@@ -1,0 +1,10 @@
+core-1.0 user:minLength(3)+maxLength(12)+a user name+mail:notBlank+an e-mail address+age:range(13..120)+tags:unique
+rule notBlank+an e-mail address (from core-1.0)
+ann_1: ok
+A: user: needs at least 3 characters, has 1; user: 'A' does not look like a user name; mail: 'nope' does not look like an e-mail address; age: 12 is outside 13..120; tags: duplicates: [x, y]
+averyverylongname: user: allows at most 12 characters, has 17; mail: 'a@b.c' does not look like an e-mail address; age: 200 is outside 13..120
+bob: ok
+signup.user: needs at least 3 characters, has 1; signup.user: 'A' does not look like a user name; signup.mail: 'nope' does not look like an e-mail address; signup.age: 12 is outside 13..120; signup.tags: duplicates: [x, y]; note: must not be blank
+true
+letter: a is below m
+[x: bad]
