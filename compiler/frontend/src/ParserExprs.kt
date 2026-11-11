@@ -417,6 +417,7 @@ private fun Parser.parsePostfix(): Expr {
             done(m, NodeKind.POSTFIX)
             e = fin(PostfixExpr(op, e), s)
         } else if ((k == Tk.COLONCOLON || (k == Tk.QUEST && la(1) == Tk.COLONCOLON && adjacent(0))) && !interrupted()) {
+            val nullableRef = k == Tk.QUEST
             if (k == Tk.QUEST) advance()
             advance()
             var name = "<missing>"
@@ -427,7 +428,9 @@ private fun Parser.parsePostfix(): Expr {
                 errorPrev("Expecting an identifier or 'class'")
             }
             done(m, NodeKind.CALLABLE_REF)
-            e = fin(CallableRefExpr(e, name), s)
+            val cr2 = CallableRefExpr(e, name)
+            cr2.nullableRecv = nullableRef
+            e = fin(cr2, s)
         } else {
             break
         }

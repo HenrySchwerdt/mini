@@ -287,6 +287,7 @@ fun BodyChecker.callableRefMember(e: CallableRefExpr, ef: FunType?): Type {
                 }
                 ct = ClassType(ct.cls, targs, false)
             }
+            if (e.nullableRecv) ct = ct.withNullable(true) as ClassType
             // `Obj::f` of an object (a companion) is bound to the object
             val objBound = ri.cls.isObject
             for (m in members.funsNamed(ct, name)) {

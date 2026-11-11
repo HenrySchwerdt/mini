@@ -190,6 +190,9 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val ft = FunType(null, listOf(argT), retT, false, false)
         val fe = IrFunctionExpression(fn, ft, "LAMBDA")
         fe.startOffset = e.start
+        // `::KSupplier` written twice is equal: one closure class per fun interface
+        fe.refTarget = samCtorTargets.getOrPut(sym) { IrSimpleFunction(sym.name) }
+        fe.refShape = "samctor"
         return fe
     }
     if (sym is FunSym && sym.kind == FunKind.CONSTRUCTOR && sym.owner != null && sym.owner!!.fqName().let { it == "kotlin.Array" || (it.startsWith("kotlin.") && !it.startsWith("kotlin.U") && it.endsWith("Array") && it.indexOf('.', 7) < 0) }) {
