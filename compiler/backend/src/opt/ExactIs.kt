@@ -24,14 +24,7 @@ internal class ExactIs(module: MirModule) : MirTransform() {
             val s = c.superCName
             if (s != null) hasSub.add(s)
         }
-        val scan = object : MirVisitor() {
-            override fun visit(e: MirExpr) {
-                if (e is MirExpr.RuntimeCall && !e.cName.startsWith("mk_") && !e.cName.startsWith("Mk")) {
-                    val t = e.type
-                    if (t is TObject) foreignRoots.add(t.cName)
-                }
-            }
-        }
+        val scan = ForeignScan(foreignRoots)
         for (f in module.functions) scan.walk(f.body)
     }
 
@@ -78,5 +71,15 @@ internal class ExactIs(module: MirModule) : MirTransform() {
         val b = stmts(f.body)
         if (b === f.body) return f
         return MirFunction(f.qualifiedName, f.cName, f.params, f.returnType, b, f.constructorOf, f.strict, f.returnsBorrowed, f.ownsParams, f.noHeapEffects)
+    }
+}
+
+/** The result classes of the calls of C functions of the program (not the runtime's mk_ / Mk functions). */
+internal class ForeignScan(val roots: HashSet<String>) : MirVisitor() {
+    override fun visit(e: MirExpr) {
+        if (e is MirExpr.RuntimeCall && !e.cName.startsWith("mk_") && !e.cName.startsWith("Mk")) {
+            val t = e.type
+            if (t is TObject) roots.add(t.cName)
+        }
     }
 }

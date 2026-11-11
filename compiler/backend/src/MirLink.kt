@@ -73,17 +73,17 @@ object MirLink {
          * Functions that a MIR pass (opt/SubstrKey.kt) calls in place of others, kept when the others are: the range lookups of `HashMap`
          * and the range test of `substring` live when `findNode` or `put` and `substring` do. True when something new became live.
          */
-        private var companionIndex: Companions.Index? = null
+        private var companionIndex: CompanionIndex? = null
 
         /** True when something new became live (see [Companions]). */
         fun companions(): Boolean {
             var idx = companionIndex
             if (idx == null) {
-                idx = Companions.Index(m.functions)
+                idx = CompanionIndex(m.functions)
                 companionIndex = idx
             }
             var any = false
-            for (f in Companions.missing(idx) { n -> liveF.contains(n) }) {
+            for (f in companionsMissing(idx, liveF)) {
                 if (liveF.add(f.cName)) { workF.add(f); any = true }
             }
             return any
@@ -186,34 +186,34 @@ object MirLink {
  * range lookups `findNodeRange` / `putRange`, and keeps the range test of `substring` (`checkSubstringRange`). They are kept when
  * `substring` and `findNode` (or `put`) are.
  */
-internal object Companions {
-    private val QUALIFIED = setOf(
-        "kotlin.text.substring", "kotlin.text.checkSubstringRange",
-        "kotlin.collections.HashMap.findNode", "kotlin.collections.HashMap.findNodeRange",
-        "kotlin.collections.HashMap.put", "kotlin.collections.HashMap.putRange", "kotlin.collections.HashMap.putRangeAt",
-    )
-
-    class Index(fs: List<MirFunction>) {
-        private val byQ = HashMap<String, MirFunction>()
-        init {
-            for (f in fs) if (QUALIFIED.contains(f.qualifiedName)) byQ[f.qualifiedName + "/" + f.params.size] = f
-        }
-        fun get(q: String, n: Int): MirFunction? = byQ[q + "/" + n]
+internal class CompanionIndex(fs: List<MirFunction>) {
+    private val byQ = HashMap<String, MirFunction>()
+    init {
+        for (f in fs) if (COMPANION_QUALIFIED.contains(f.qualifiedName)) byQ[f.qualifiedName + "/" + f.params.size] = f
     }
+    fun get(q: String, n: Int): MirFunction? = byQ[q + "/" + n]
+}
 
-    /** The companions that are not live yet although their trigger is; [live] tells whether a function (by C name) is. */
-    fun missing(idx: Index, live: (String) -> Boolean): List<MirFunction> {
-        val out = ArrayList<MirFunction>()
-        val sub = idx.get("kotlin.text.substring", 3) ?: return out
-        if (!live(sub.cName)) return out
-        val check = idx.get("kotlin.text.checkSubstringRange", 3) ?: return out
-        val find = idx.get("kotlin.collections.HashMap.findNode", 2)
-        val put = idx.get("kotlin.collections.HashMap.put", 3)
-        val findR = idx.get("kotlin.collections.HashMap.findNodeRange", 4)
-        val putR = idx.get("kotlin.collections.HashMap.putRange", 5)
-        val putA = idx.get("kotlin.collections.HashMap.putRangeAt", 6)
-        if (find != null && findR != null && live(find.cName)) { out.add(findR); out.add(check) }
-        if (put != null && putR != null && putA != null && live(put.cName)) { out.add(putR); out.add(putA); out.add(check) }
-        return out.filter { !live(it.cName) }.distinctBy { it.cName }
-    }
+private val COMPANION_QUALIFIED = setOf(
+    "kotlin.text.substring", "kotlin.text.checkSubstringRange",
+    "kotlin.collections.HashMap.findNode", "kotlin.collections.HashMap.findNodeRange",
+    "kotlin.collections.HashMap.put", "kotlin.collections.HashMap.putRange", "kotlin.collections.HashMap.putRangeAt",
+)
+
+/** The companions that are not live yet although their trigger is; [live] holds the C names of the live functions. */
+internal fun companionsMissing(idx: CompanionIndex, live: Set<String>): List<MirFunction> {
+    val out = ArrayList<MirFunction>()
+    val sub = idx.get("kotlin.text.substring", 3) ?: return out
+    if (!live.contains(sub.cName)) return out
+    val check = idx.get("kotlin.text.checkSubstringRange", 3) ?: return out
+    val find = idx.get("kotlin.collections.HashMap.findNode", 2)
+    val put = idx.get("kotlin.collections.HashMap.put", 3)
+    val findR = idx.get("kotlin.collections.HashMap.findNodeRange", 4)
+    val putR = idx.get("kotlin.collections.HashMap.putRange", 5)
+    val putA = idx.get("kotlin.collections.HashMap.putRangeAt", 6)
+    if (find != null && findR != null && live.contains(find.cName)) { out.add(findR); out.add(check) }
+    if (put != null && putR != null && putA != null && live.contains(put.cName)) { out.add(putR); out.add(putA); out.add(check) }
+    val res = ArrayList<MirFunction>()
+    for (f in out) if (!live.contains(f.cName)) { var dup = false; for (g in res) if (g.cName == f.cName) dup = true; if (!dup) res.add(f) }
+    return res
 }

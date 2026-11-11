@@ -96,9 +96,9 @@ object Devirt {
             while (workF.isNotEmpty()) collect(workF.removeAt(workF.size - 1).body)
             if (hasMain) {
                 // what the MIR passes call in place of other functions (opt/SubstrKey.kt) stays
-                val idx = Companions.Index(m.functions)
+                val idx = CompanionIndex(m.functions)
                 while (true) {
-                    val more = Companions.missing(idx) { n -> reachable.contains(n) }
+                    val more = companionsMissing(idx, reachable)
                     if (more.isEmpty()) break
                     for (f in more) reach(f.cName)
                     while (workF.isNotEmpty()) collect(workF.removeAt(workF.size - 1).body)
