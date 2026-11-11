@@ -1087,6 +1087,10 @@ private class RcAnalyzer(
         if (anyTracked == true) return
         val ctx = ctxStack[ctxStack.size - 1]
         if (ctx.noClose || ctx.index >= ctx.list.size - 1) return
+        // a `continue` before this statement jumps to the end of the body, where the scope would release the local; the early release
+        // (and the skipped release at the end) is only right when no path can bypass it (found by tools/fuzz: a leak per iteration)
+        val loop = ctx.loop
+        if (loop != null) for (k in 0 until ctx.index) if (containsContinue(ctx.list[k], loop)) return
         val used = ArrayList<LocalInfo>()
         for (e in exprs) collectUsed(e, used)
         for (x in used) {

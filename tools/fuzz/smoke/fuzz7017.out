@@ -1,0 +1,39 @@
+1
+[1]
+[1, 89]
+cleanup0
+base t0 0
+cleanup1
+sub s1 2 c
+cleanup2
+2
+cleanup3
+base t3 3
+cleanup4
+sub s4 8 c
+cleanup0
+outer
+382086846
+1000
+-93
+-1
+xy
+null
+-
+162
+null
+-
+162
+null
+-
+162
+null
+-
+162
+71
+5005
+fin
+1
+[[81], [63], [79], [0]]
+[]
+7
