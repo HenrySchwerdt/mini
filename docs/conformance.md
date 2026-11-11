@@ -846,6 +846,23 @@ Regression tests: `compiler/testdata/conformance11a_inner.kt`, `conformance11a_m
 
 Left: `kt7017` (local classes of an inline function are lowered once, not per expansion of a reified type argument; needs a deep copy of `IrClass`), `kt42042` (old-inference leniency for violated bounds), `kt51247` / `conversionCombinations` / `safeCallRangeTo` (context-receiver references, equality of adapted references, literal-typed `::byteRange`), `lateinitInlineClasses`, `inlineSuspendFinally`, `intersectionTypeToFunInterfaceConversion`, `anonymousObjectInExtension`, `enumEntriesNameClashes`, `nestedCallsWithGenericToInt`, `genericCallableReferenceWithReifiedTypeParam`, `objectToPrimitiveWithAssertion`, the atomics / worker / implicit-unsigned tests, boxed small-value identity.
 
+## Twelfth round (branch claude/conformance-12)
+
+Starting point: 5933 / 5953 (main at 7d2b4d0). Result: 5939 / 5953 (99.76 %), compared per test with the 11a results: no regression, 6 tests fixed, 14 failures remain.
+
+| fix | tests |
+|---|---:|
+| local and anonymous classes of an `inline` function with reified type parameters are lowered per expansion: for every list of concrete type arguments called from user code the function is converted a second time into a clone with fresh local classes (`Ast2IrSpecialize.kt`, `LocalGroup`); Ir2Mir lowers the clone's classes with the type arguments bound and lets the class symbols denote the clone's classes while it works on the clone | 1 |
+| C emitter: an exit (pending exception) no longer releases locals that were already released early (and set to NULL): the cleanup lists grew quadratically in a long function; `primitiveArrays` C 8.4 MB -> 0.7 MB, clang 83 s -> 4 s (compile timeout) | 1 |
+| a type parameter bounded by function types (`T : () -> Unit, T : (Boolean) -> Unit`) passed where a fun interface is expected is wrapped (SAM conversion), it was passed as it was (segfault) | 1 |
+| a call of a suspend `inline` function with lambda arguments inside a suspend function is always expanded in the state machine (the lambdas were marked inline but the call stayed a real call: `receiver parameter`) | 1 |
+| `Comparable<T>` receiver: `toString` / `equals` / `hashCode` are the Any members (value class with a `Comparable` property) | 1 |
+| a type variable bounded by integer literals only stays open for a callable reference argument (`test(0, 1, ::byteRange)` makes it Byte) | 1 |
+
+Regression tests: `compiler/testdata/conformance12_reified_local.kt`.
+
+Left: context-receiver references (`kt51247`), equality of adapted references (`conversionCombinations`), `kt42042`, `anonymousObjectInExtension`, `enumEntriesNameClashes`, `nestedCallsWithGenericToInt`, `genericCallableReferenceWithReifiedTypeParam` (`f::g` with a function-typed receiver and a reified extension crashes), `objectToPrimitiveWithAssertion`, atomics / workers / implicit unsigned conversion, boxed small-value identity.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
