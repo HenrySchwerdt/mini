@@ -535,6 +535,8 @@ void mk_sys_thread_join(int64_t handle);   /* waits for the end of the thread; g
 void mk_sys_thread_detach(int64_t handle); /* gives the handle up without waiting */
 int64_t mk_sys_thread_id(void); /* 1 for the thread that started the first thread, then in start order */
 void mk_sys_thread_yield(void);
+MkObject *mk_sys_thread_data(void);              /* the object this thread stored (+1), or NULL */
+void mk_sys_thread_set_data(MkObject *o);        /* stores o (retained; NULL clears) in the slot of this thread */
 
 /* Atomics on element 0 of an IntArray / LongArray / object array (reference cell). */
 int32_t mk_atomic_int_get(MkObject *a);

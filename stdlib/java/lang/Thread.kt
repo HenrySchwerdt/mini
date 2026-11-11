@@ -33,7 +33,6 @@ public open class IllegalMonitorStateException : RuntimeException {
 
 private object ThreadRegistry {
     val lock = Lock()
-    val byId = HashMap<Long, Thread>()
     var nextIndex = 0
     var nextId = 2L
 }
@@ -98,16 +97,11 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
     }
 
     private fun runBody() {
-        val sid = sysThreadId()
-        ThreadRegistry.lock.lock()
-        ThreadRegistry.byId[sid] = this
-        ThreadRegistry.lock.unlock()
+        sysThreadSetData(this)
         try {
             run()
         } finally {
-            ThreadRegistry.lock.lock()
-            ThreadRegistry.byId.remove(sid)
-            ThreadRegistry.lock.unlock()
+            sysThreadSetData(null)
             state.lock()
             finished = true
             done.signalAll()
@@ -224,8 +218,6 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
     public override fun toString(): String = "Thread[#" + id + "," + name + "," + priority + "]"
 
     public companion object {
-        private var mainThread: Thread? = null
-
         public fun sleep(millis: Long) {
             if (millis < 0L) throw IllegalArgumentException("timeout value is negative")
             currentThread().sleepNanos(millis * 1000000L)
@@ -237,22 +229,13 @@ public open class Thread(private val block: (() -> Unit)?, name: String?) : Runn
         }
 
         public fun currentThread(): Thread {
-            val sid = sysThreadId()
-            ThreadRegistry.lock.lock()
-            val t = ThreadRegistry.byId[sid]
-            ThreadRegistry.lock.unlock()
-            if (t != null) return t
+            val d = sysThreadData()
+            if (d != null) return d as Thread
             // the main thread, or a thread that was not started through this class
-            var m = mainThread
-            if (m == null) {
-                val created = Thread(null, "main")
-                created.id = 1L
-                ThreadRegistry.lock.lock()
-                if (mainThread == null) mainThread = created
-                m = mainThread
-                ThreadRegistry.lock.unlock()
-            }
-            return m!!
+            val created = Thread(null, "main")
+            created.id = 1L
+            sysThreadSetData(created)
+            return created
         }
 
         /** Tests and clears the interrupt flag of the current thread. */
