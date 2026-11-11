@@ -863,6 +863,21 @@ Regression tests: `compiler/testdata/conformance12_reified_local.kt`.
 
 Left: context-receiver references (`kt51247`), equality of adapted references (`conversionCombinations`), `kt42042`, `anonymousObjectInExtension`, `enumEntriesNameClashes`, `nestedCallsWithGenericToInt`, `genericCallableReferenceWithReifiedTypeParam` (`f::g` with a function-typed receiver and a reified extension crashes), `objectToPrimitiveWithAssertion`, atomics / workers / implicit unsigned conversion, boxed small-value identity.
 
+## Thirteenth round (branch claude/conformance-13)
+
+Starting point: 5939 / 5953 (round 12). Result: 5945 / 5953 (99.87 %), compared per test with the round 12 results: no regression, 6 tests fixed, 8 failures remain (the run was split in two halves of the test list because of the time limit of the machine).
+
+| fix | tests |
+|---|---:|
+| `value::ext` of a generic extension: the type of the bound receiver determines the type parameters (`callable1::funWithExtensionNoArgs`) | 1 |
+| adapted references: a vararg followed by a defaulted parameter takes fewer elements (`(Int, String, Int)` for `f(a, vararg b, c = 0)`); `kotlin.Function<*>` values (mixed function types in a `mapOf`); the shape of a reference (for equality) includes its parameter types | 1 |
+| a lambda whose result type variable is only bounded by `Unit` by the expected type returns Unit (`val u: Unit = remember { null }`) | 1 |
+| Kotlin/Native compatibility layer on the thread runtime of #101: `kotlin.native.concurrent.Worker` / `Future` / `TransferMode`, `kotlin.concurrent.AtomicInt` / `AtomicLong` / `AtomicReference` (`value`, `incrementAndGet`, ...), the atomic element operations of `IntArray` / `LongArray` / `Array<T>`, `kotlin.native.Platform` / `MemoryModel`, `kotlin.native` as a default import | 3 |
+
+Regression test: `compiler/testdata/conformance13_refs.kt`.
+
+Left: `kt51247` (context-receiver references: the context parameters would be leading parameters of the reference, the adapted-reference lowering has no place for them), `kt42042` (old-inference leniency for violated bounds), `anonymousObjectInExtension`, `enumEntriesNameClashes` (`E::entries` is a static property reference, no `KProperty0` is made for the synthetic `entries`), `objectToPrimitiveWithAssertion`, `signedToUnsignedConversions` (`@ImplicitIntegerCoercion`: Int constants for unsigned parameters), boxed small-value identity (2).
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
