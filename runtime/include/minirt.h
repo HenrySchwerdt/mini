@@ -126,6 +126,12 @@ extern size_t mk_cycles_alloc_bytes;
 extern volatile int mk_cycles_ready; /* the collector is installed (set by the first armed allocation) */
 #endif
 
+extern size_t mk_cycles_alloc_bytes;
+/* The allocation volume counter is a heuristic: a lost update between threads is harmless, but the access is a relaxed atomic load and store
+ * (no data race for ThreadSanitizer; a plain mov, add, mov on x86-64 and arm64, not a locked instruction). */
+#define MK_CYCLES_ADD(n) __atomic_store_n(&mk_cycles_alloc_bytes, __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED) + (n), __ATOMIC_RELAXED)
+
+
 /* Slow path of the generated `<object>_get` accessors of Kotlin `object`s and file classes holding top-level properties:
  * creates the instance and runs its initialiser once, also when threads race on the first access. `*slot` is published
  * (release store) only after the initialiser returned, so readers that see a non-NULL slot see an initialised object;
@@ -565,6 +571,8 @@ void mk_sys_thread_join(int64_t handle);   /* waits for the end of the thread; g
 void mk_sys_thread_detach(int64_t handle); /* gives the handle up without waiting */
 int64_t mk_sys_thread_id(void); /* 1 for the thread that started the first thread, then in start order */
 void mk_sys_thread_yield(void);
+MkObject *mk_sys_thread_data(void);              /* the object this thread stored (+1), or NULL */
+void mk_sys_thread_set_data(MkObject *o);        /* stores o (retained; NULL clears) in the slot of this thread */
 
 /* Atomics on element 0 of an IntArray / LongArray / object array (reference cell). */
 int32_t mk_atomic_int_get(MkObject *a);

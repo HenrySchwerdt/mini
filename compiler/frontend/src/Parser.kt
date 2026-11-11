@@ -994,7 +994,33 @@ class Parser(internal val lex: LexResult) {
         }
         if (kind() == Tk.SEMI) advance()
         done(m, NodeKind.FUN)
+        val synced = hasSynchronizedAnnotation(mods)
+        if (synced && body != null && ctx != CTX_LOCAL) body = synchronizedBody(body, ctx == CTX_CLASS, s)
         return fin(FunDecl(mods, tps, receiver, name, params, ret, cons, body, exprBody), s)
+    }
+
+    /** `@Synchronized` (also written `@kotlin.jvm.Synchronized`) on a function. */
+    private fun hasSynchronizedAnnotation(mods: Modifiers?): Boolean {
+        if (mods == null) return false
+        for (a in mods.annotations()) {
+            val t = a.type
+            if (t is UserType && t.segments.isNotEmpty() && t.segments[t.segments.size - 1].name == "Synchronized") return true
+        }
+        return false
+    }
+
+    /**
+     * The body of a `@Synchronized` function, `synchronized(this) { body }` for a member and `synchronized(Unit) { body }` for a top-level
+     * function (one monitor for all of them): a block body stays a block, an expression body stays an expression.
+     */
+    private fun synchronizedBody(body: Expr, member: Boolean, s: Int): Expr {
+        val lock: Expr = if (member) fin(ThisExpr(null), s) else fin(NameExpr("Unit"), s)
+        val stmts: List<Stmt> = if (body is BlockExpr) body.stmts else listOf<Stmt>(body)
+        val lambda = fin(LambdaExpr(emptyList(), false, stmts), s)
+        val arg = fin(Arg(null, false, lock), s)
+        val call = fin(CallExpr(fin(NameExpr("synchronized"), s), emptyList(), listOf(arg), listOf<Expr>(lambda)), s)
+        if (body is BlockExpr) return fin(BlockExpr(listOf<Stmt>(call)), s)
+        return call
     }
 
     // ---- properties -----------------------------------------------------------------------------------------------

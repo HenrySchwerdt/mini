@@ -26,7 +26,7 @@ enum class IrLinkage { EXTERNAL, INTERNAL, PRIVATE }
 /** Which part of the module a definition goes to (only the text output is ordered by it; the C strings and string literals come first). */
 enum class IrSection { STRINGS, LITERALS, CLASSES, PRELUDE, FUNCTIONS }
 
-enum class IrOp { ADD, SUB, MUL, SDIV, SREM, AND, OR, XOR, SHL, ASHR, LSHR, FADD, FSUB, FMUL, FDIV, FREM }
+enum class IrOp { ADD, ADDNSW, SUB, MUL, SDIV, SREM, AND, OR, XOR, SHL, ASHR, LSHR, FADD, FSUB, FMUL, FDIV, FREM }
 
 /** Integer (I...) and ordered / unordered floating point (F...) comparisons. */
 enum class IrCmp { IEQ, INE, SLT, SLE, SGT, SGE, ULT, ULE, UGT, UGE, FOEQ, FUNE, FOLT, FOLE, FOGT, FOGE }

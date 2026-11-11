@@ -115,16 +115,23 @@ private class ReentrantCondition(private val lock: ReentrantLock) : Condition {
     public override fun await() {
         if (!lock.isHeldByCurrentThread) throw IllegalMonitorStateException()
         val saved = lock.release()
-        sysCondWait(cond, lock.mutex)
-        lock.reacquired(saved)
+        try {
+            java.lang.interruptibleWait(cond, lock.mutex, -1L)
+        } finally {
+            // (the mutex is held again when the wait ends, also when it ends with InterruptedException)
+            lock.reacquired(saved)
+        }
     }
 
     public override fun awaitNanos(nanosTimeout: Long): Long {
         if (!lock.isHeldByCurrentThread) throw IllegalMonitorStateException()
         val start = sysMonotonicNanos()
         val saved = lock.release()
-        if (nanosTimeout > 0L) sysCondWaitNanos(cond, lock.mutex, nanosTimeout)
-        lock.reacquired(saved)
+        try {
+            if (nanosTimeout > 0L) java.lang.interruptibleWait(cond, lock.mutex, nanosTimeout)
+        } finally {
+            lock.reacquired(saved)
+        }
         return nanosTimeout - (sysMonotonicNanos() - start)
     }
 
