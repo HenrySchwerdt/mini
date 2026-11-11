@@ -804,6 +804,48 @@ Regression tests: `compiler/testdata/conformance9a_misc.kt`, `conformance9a_coro
 
 What was looked at and left: `failInInitializer1/2` (needs `ExceptionInInitializerError` and a failure state for file facades: `ObjectGet` would have to count as throwing in both emitters and `mk_object_init` remember the failure), `kt7017` (reified `T` captured by an object in an inline function: local classes are lowered once, not per instantiation), `nothingValueException` (inference of `Nothing` from `in`/`out` projections), `override val cause` of a Throwable subclass, builder inference with postponed type variables, adapted references with `vararg` passed as an array, boxed identity of small values and strings.
 
+## Tenth round (a) (branch claude/conformance-10a)
+
+Starting point: 5898 / 5953 (35 compile-error, 5 ice, 12 runtime-fail, 1 crash, 2 timeout). Result: 5915 / 5953 (99.36 %) on the tree merged with main, compared per test with the baseline: no regression, 17 tests fixed (a further timeout, `coroutines/kt51530`, passes alone and timed out under machine load).
+
+| fix | tests |
+|---|---:|
+| builder inference: an unconstrained type variable that is a type argument of a lambda's receiver / parameter type (`MutableList<E>.() -> Unit`, `Consumer<T>`) stays open while the body is checked (`Sema.openVars`); calls in the body add bounds to it (taken back after a failed or unchosen overload attempt, `Attempt.openDelta`), it is fixed with the call and the records made in the body are rewritten (`zonkRecords`); only inside another builder lambda for a call that is an argument | 7 |
+| ExceptionInInitializerError / NoClassDefFoundError: `ObjectGet` counts as throwing when the initialiser may; `mk_object_init` wraps an Exception (an Error passes), remembers the failed slot (later access raises NoClassDefFoundError), the fast path is unchanged | 2 |
+| joined function types (`if (c) { { 1 } } else { { 1f } }`), `Unit` is no bound for the last statement of a builder lambda | 1 |
+| nested classifiers visible in the header of the primary constructor; enum entry arguments are no instance scope | 1 |
+| `Enum` as a value (companion), adapted references that pass a `vararg` as an array, reference without expected type picks an overload, `Foo<String>::Inner` outer type arguments | 3 |
+| a receiver of function type of an inline function is no inlinable lambda (`inline fun (() -> String).f()`), `invoke()` on an implicit function-typed receiver | 1 |
+| virtual `Throwable.cause` (vtable slot 4) | 1 |
+| `in T` against an `out` projection infers `Nothing` | 1 |
+
+Regression tests: `compiler/testdata/conformance10a_builder.kt`, `conformance10a_init.kt`, `conformance10a_misc.kt` (`uninit_field_npe` now expects the ExceptionInInitializerError of a failing object initialiser).
+
+Left: generic inner classes lose the outer type arguments (`E<IC>.Inner().foo()`, `innerGenericConstuctor`, `kt27706Generic`), `kt7017` (local classes are lowered once, not per inline expansion), a lambda with an inlined call in an enum entry argument crashes the compiler (`kt20651_inlineLambda`), `eqNullableToPrimitiveWithSideEffects`, boxed small-value identity, the remaining ICEs and one-off inference cases listed in `tools/conformance/results/summary.md`.
+
+## Eleventh round (a) (branch claude/conformance-11a)
+
+Starting point: 5915 / 5953 (25 compile-error, 2 ice, 8 runtime-fail, 1 crash, 2 timeout, plus the 10a left-over list). Result: 5933 / 5953 (99.66 %) on the tree merged with main, compared per test with the 10a results: no regression, 18 tests fixed (one of them, `coroutines/kt51530`, is the load-dependent timeout of the earlier run). 20 failures remain.
+
+| fix | tests |
+|---|---:|
+| generic inner classes keep the type arguments of the outer class: `ClassType.outer` (set by `Foo<String>.Inner<B>` types and by `outer.Inner(...)` / `with(outer) { Inner() }` constructor calls, substituted and zonked with the type; `substOf` of such a type includes the outer parameters; an `Inner` without `outer` is substituted through its implicit outer `Outer<T>`) | 4 |
+| `a?.x == f()` with a primitive right operand: the comparison happens inside the safe call, `f()` is not evaluated when `a` is null (K2) | 1 |
+| an inline call (`run { }`) in an enum entry argument: `return` of the expanded body had no enclosing function | 1 |
+| `val p get() = field` (no initialiser, no type): `field` is an ordinary name (K2), not the backing field | 1 |
+| unqualified `super.size` of `class B : Collection<String>, A0`: the implementing supertype, not the abstract one | 1 |
+| `==` of smart-cast numbers of different types with one floating (`x is Double? && y is Int?`): both are promoted to Double, null stays null | 1 |
+| an inline member with a lambda parameter inherited through a fake override (protected inline member of a private base class) is expanded | 1 |
+| `is` / `as` against `NativePtr` / `COpaquePointer` (C pointers are no objects) | 1 |
+| SAM conversion of a function-typed value inside inference (`nullsFirst(f)` with `f: (C, C) -> Int`), `f::invoke` of a function-typed value | 2 |
+| `String?::prop` keeps the nullable receiver (parser flag `CallableRefExpr.nullableRecv`, in the stub cache) | 1 |
+| `::KSupplier` written twice (several files) is one closure class: equal references | 1 |
+| `Map.containsValue(x: Any)` / `containsKey` extensions with the receiver's type arguments widened (stdlib) | 2 |
+
+Regression tests: `compiler/testdata/conformance11a_inner.kt`, `conformance11a_misc.kt`.
+
+Left: `kt7017` (local classes of an inline function are lowered once, not per expansion of a reified type argument; needs a deep copy of `IrClass`), `kt42042` (old-inference leniency for violated bounds), `kt51247` / `conversionCombinations` / `safeCallRangeTo` (context-receiver references, equality of adapted references, literal-typed `::byteRange`), `lateinitInlineClasses`, `inlineSuspendFinally`, `intersectionTypeToFunInterfaceConversion`, `anonymousObjectInExtension`, `enumEntriesNameClashes`, `nestedCallsWithGenericToInt`, `genericCallableReferenceWithReifiedTypeParam`, `objectToPrimitiveWithAssertion`, the atomics / worker / implicit-unsigned tests, boxed small-value identity.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:

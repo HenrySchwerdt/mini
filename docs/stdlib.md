@@ -294,34 +294,63 @@ Coverage per package (current state):
 
 | package | reference | present | missing | coverage |
 |---|---:|---:|---:|---:|
-| `kotlin.collections` | 2940 | 2617 | 323 | 89.0% |
-| `kotlin` | 732 | 672 | 60 | 91.8% |
-| `kotlin.text` | 587 | 562 | 25 | 95.7% |
-| `kotlin.ranges` | 208 | 194 | 14 | 93.3% |
-| `kotlin.sequences` | 186 | 165 | 21 | 88.7% |
-| `kotlin.time` | 138 | 118 | 20 | 85.5% |
+| `kotlin.collections` | 2940 | 2939 | 1 | 100.0% |
+| `kotlin` | 732 | 727 | 5 | 99.3% |
+| `kotlin.text` | 587 | 587 | 0 | 100.0% |
+| `kotlin.ranges` | 208 | 208 | 0 | 100.0% |
+| `kotlin.sequences` | 186 | 186 | 0 | 100.0% |
+| `kotlin.time` | 138 | 138 | 0 | 100.0% |
 | `kotlin.concurrent.atomics` | 91 | 91 | 0 | 100.0% |
 | `kotlin.math` | 53 | 53 | 0 | 100.0% |
-| `kotlin.reflect` | 50 | 22 | 28 | 44.0% |
-| `kotlin.random` | 41 | 39 | 2 | 95.1% |
-| `kotlin.coroutines` | 40 | 35 | 5 | 87.5% |
-| `kotlin.comparisons` | 33 | 31 | 2 | 93.9% |
+| `kotlin.reflect` | 50 | 50 | 0 | 100.0% |
+| `kotlin.random` | 41 | 41 | 0 | 100.0% |
+| `kotlin.coroutines` | 40 | 40 | 0 | 100.0% |
+| `kotlin.comparisons` | 33 | 33 | 0 | 100.0% |
 | `kotlin.uuid` | 25 | 25 | 0 | 100.0% |
 | `kotlin.annotation` | 24 | 24 | 0 | 100.0% |
 | `kotlin.contracts` | 19 | 19 | 0 | 100.0% |
 | `kotlin.io.encoding` | 17 | 17 | 0 | 100.0% |
-| `kotlin.jvm` | 16 | 9 | 7 | 56.2% |
-| `kotlin.experimental` | 12 | 10 | 2 | 83.3% |
-| `kotlin.properties` | 12 | 10 | 2 | 83.3% |
+| `kotlin.jvm` | 16 | 16 | 0 | 100.0% |
+| `kotlin.experimental` | 12 | 12 | 0 | 100.0% |
+| `kotlin.properties` | 12 | 12 | 0 | 100.0% |
 | `kotlin.io` | 6 | 6 | 0 | 100.0% |
-| `kotlin.coroutines.cancellation` | 5 | 2 | 3 | 40.0% |
+| `kotlin.coroutines.cancellation` | 5 | 5 | 0 | 100.0% |
 | `kotlin.coroutines.intrinsics` | 3 | 3 | 0 | 100.0% |
-| `kotlin.enums` | 2 | 1 | 1 | 50.0% |
-| `kotlin.concurrent` | 1 | 0 | 1 | 0.0% |
-| **total** | **5241** | **4725** | **516** | **90.2%** |
+| `kotlin.enums` | 2 | 2 | 0 | 100.0% |
+| `kotlin.concurrent` | 1 | 1 | 0 | 100.0% |
+| **total** | **5241** | **5235** | **6** | **99.9%** |
 
-Before this pass: **total**  **5241**  **4433**  **808**  **84.6%** (total row: reference / present / missing / coverage). Added since: Base64,
+Before this pass: **total**  **5241**  **4433**  **808**  **84.6%** (total row: reference / present / missing / coverage). Added in the first pass: Base64,
 HexFormat and the hex conversions, Uuid, `kotlin.concurrent.atomics`, Appendable, Typography, TimeMark / ComparableTimeMark /
 ValueTimeMark / TestTimeSource / measureTime on time sources, `kotlin.experimental` Byte/Short bit operations, Byte/Short floorDiv/mod/rotate,
-`toString(radix)` of the remaining integer types. Open: `typeOf` and the KType family (compiler support), Clock/Instant, DeepRecursiveFunction,
-the long tail of array/sequence `*To`, `maxOfWith` and similar variants.
+`toString(radix)` of the remaining integer types. The second pass (90.0% to 99.9%) added:
+
+- the long tail of the array families (`Array`, the eight primitive arrays, the four unsigned arrays), ported from the generated sources of
+  kotlin-stdlib: `maxOfWith` / `minOfWith` (and `OrNull`), `associateByTo`, `groupByTo`, `flatMapIndexedTo`, `reduceRightIndexed*`,
+  `runningReduceIndexed`, `union` / `intersect` / `subtract`, the unsigned `scan` / `runningFold` / `foldRight` / `sumOf` / `minOf*` and so on,
+  and the same for `Sequence`, `CharSequence`, `Iterable`, `List` and `Map` (`stdlib/kotlin/collections/*Tail.kt`, `*Generated.kt`);
+- `typeOf<T>()` and the KType family (`KType`, `KTypeProjection`, `KVariance`, `KTypeParameter`, `KClassifier`) and `KClass.isInstance` /
+  `cast` / `safeCast`, see "Reflection" below; `KProperty2.get`, `KMutableProperty2.set`, `KMutableProperty1.setValue`;
+- `DeepRecursiveFunction`, `KotlinVersion`, `kotlin.time.Clock` / `Instant` (ported, the wall clock is `sysWallMillis`), `Duration.toIsoString`,
+  the public `ObservableProperty`, `AbstractCoroutineContextKey` and the polymorphic-key helpers, `CancellationException`, `enumEntries` in
+  `kotlin.enums`, `MatchNamedGroupCollection`, `UIntRange` / `ULongRange` (now in `kotlin.ranges`, with `endExclusive`), `endExclusive` of
+  `IntRange` / `LongRange` / `CharRange`, `toMap` of arrays and sequences of pairs, `Random.nextUBytes`, the deprecated `Char.toByte()` family
+  and the remaining annotation classes (`JvmRecord`, `Volatile`, `Metadata`, ...).
+
+The scan is lexical (see above), so a few members of builtin classes stay listed as missing (`Boolean.Companion`, `Enum.Companion`,
+`Enum(name, ordinal)`, `Number()`, the `Comparator` typealias): they have no use in a native program. The behaviour of the ported functions is
+checked by the conformance-style programs `compiler/testdata/stdlib_*_tail.kt`, `stdlib_typeof.kt`, `stdlib_instant.kt`,
+`stdlib_deep_recursive.kt`, `stdlib_coroutine_keys.kt` and `stdlib_enum_entries.kt`, whose `.out` files were produced by running the same
+sources on the JVM with kotlinc 2.1.20.
+
+### Reflection
+
+Mini has no reflection, but `typeOf<T>()` is supported for static types: the compiler (`Ir2MirReflect.kt`) lowers the call to a `KTypeImpl`
+(`stdlib/kotlin/reflect/KTypes.kt`) built from the text of the type argument, in the format of `KType.toString()` of kotlin-stdlib
+(`kotlin.collections.Map<kotlin.String, kotlin.collections.List<kotlin.Int>?>`, `kotlin.Comparable<in kotlin.Int>`, `Foo<*>`). The type
+parameters of the enclosing inline functions are substituted (`inline fun <reified T> f() = typeOf<List<T>>()`); a type parameter that cannot be
+substituted becomes a `KTypeParameter` (name only, upper bound `Any?`, invariant, not reified). `classifier` gives the `KClass` (equal to
+`Foo::class`), `arguments` the projections, `isMarkedNullable` the nullability; two KTypes are equal when their text is equal. Not available:
+`createType`, `supertypes`, `withNullability`, `javaType`, members of classes. `KClass.isInstance` asks the runtime (`mk_type_is_named`)
+whether the dynamic type or one of its supertypes has the class's name.
+

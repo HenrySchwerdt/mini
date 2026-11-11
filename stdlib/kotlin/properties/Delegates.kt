@@ -24,10 +24,10 @@ public object Delegates {
     public fun <T : Any> notNull(): ReadWriteProperty<Any?, T> = NotNullVar()
 
     public fun <T> observable(initialValue: T, onChange: (property: KProperty<*>, oldValue: T, newValue: T) -> Unit): ReadWriteProperty<Any?, T> =
-        ObservableProperty(initialValue, null, onChange)
+        ObservableVar(initialValue, null, onChange)
 
     public fun <T> vetoable(initialValue: T, onChange: (property: KProperty<*>, oldValue: T, newValue: T) -> Boolean): ReadWriteProperty<Any?, T> =
-        ObservableProperty(initialValue, onChange, null)
+        ObservableVar(initialValue, onChange, null)
 }
 
 private class NotNullVar<T : Any>() : ReadWriteProperty<Any?, T> {
@@ -42,21 +42,41 @@ private class NotNullVar<T : Any>() : ReadWriteProperty<Any?, T> {
     }
 }
 
-private class ObservableProperty<T>(
+public abstract class ObservableProperty<V>(initialValue: V) : ReadWriteProperty<Any?, V> {
+    private var value = initialValue
+
+    protected open fun beforeChange(property: KProperty<*>, oldValue: V, newValue: V): Boolean = true
+
+    protected open fun afterChange(property: KProperty<*>, oldValue: V, newValue: V): Unit {}
+
+    public override fun getValue(thisRef: Any?, property: KProperty<*>): V {
+        return value
+    }
+
+    public override fun setValue(thisRef: Any?, property: KProperty<*>, value: V) {
+        val oldValue = this.value
+        if (!beforeChange(property, oldValue, value)) {
+            return
+        }
+        this.value = value
+        afterChange(property, oldValue, value)
+    }
+
+    override fun toString(): String = "ObservableProperty(value=$value)"
+}
+
+private class ObservableVar<T>(
     initialValue: T,
     private val veto: ((KProperty<*>, T, T) -> Boolean)?,
     private val after: ((KProperty<*>, T, T) -> Unit)?,
-) : ReadWriteProperty<Any?, T> {
-    private var value: T = initialValue
-
-    public override fun getValue(thisRef: Any?, property: KProperty<*>): T = value
-
-    public override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
-        val oldValue = this.value
+) : ObservableProperty<T>(initialValue) {
+    override fun beforeChange(property: KProperty<*>, oldValue: T, newValue: T): Boolean {
         val v = veto
-        if (v != null && !v(property, oldValue, value)) return
-        this.value = value
+        return v == null || v(property, oldValue, newValue)
+    }
+
+    override fun afterChange(property: KProperty<*>, oldValue: T, newValue: T) {
         val a = after
-        if (a != null) a(property, oldValue, value)
+        if (a != null) a(property, oldValue, newValue)
     }
 }

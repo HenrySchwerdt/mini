@@ -104,7 +104,13 @@ public open class CharProgression internal constructor(start: Char, endInclusive
 
 // ---- ranges -------------------------------------------------------------------------------------------
 
-public class IntRange(start: Int, endInclusive: Int) : IntProgression(start, endInclusive, 1), ClosedRange<Int> {
+public class IntRange(start: Int, endInclusive: Int) : IntProgression(start, endInclusive, 1), ClosedRange<Int>, OpenEndRange<Int> {
+    override val endExclusive: Int
+        get() {
+            if (last == Int.MAX_VALUE) error("Cannot return the exclusive upper bound of a range that includes MAX_VALUE.")
+            return last + 1
+        }
+
     override val start: Int get() = first
     override val endInclusive: Int get() = last
 
@@ -124,7 +130,13 @@ public class IntRange(start: Int, endInclusive: Int) : IntProgression(start, end
     }
 }
 
-public class LongRange(start: Long, endInclusive: Long) : LongProgression(start, endInclusive, 1L), ClosedRange<Long> {
+public class LongRange(start: Long, endInclusive: Long) : LongProgression(start, endInclusive, 1L), ClosedRange<Long>, OpenEndRange<Long> {
+    override val endExclusive: Long
+        get() {
+            if (last == Long.MAX_VALUE) error("Cannot return the exclusive upper bound of a range that includes MAX_VALUE.")
+            return last + 1
+        }
+
     override val start: Long get() = first
     override val endInclusive: Long get() = last
 
@@ -145,7 +157,13 @@ public class LongRange(start: Long, endInclusive: Long) : LongProgression(start,
     }
 }
 
-public class CharRange(start: Char, endInclusive: Char) : CharProgression(start, endInclusive, 1), ClosedRange<Char> {
+public class CharRange(start: Char, endInclusive: Char) : CharProgression(start, endInclusive, 1), ClosedRange<Char>, OpenEndRange<Char> {
+    override val endExclusive: Char
+        get() {
+            if (last == Char.MAX_VALUE) error("Cannot return the exclusive upper bound of a range that includes MAX_VALUE.")
+            return (last.code + 1).toChar()
+        }
+
     override val start: Char get() = first
     override val endInclusive: Char get() = last
 

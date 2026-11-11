@@ -43,6 +43,7 @@ fun main() {
     attempt("nullable") { UsesNullable() }
     attempt("lateinit") { UsesLateinit() }
     attempt("own") { Own() }
-    attempt("objects") { println(First.p.first) }
+    // (a failing object initialiser surfaces as ExceptionInInitializerError, as on the JVM; its cause is the NullPointerException)
+    attempt("objects") { try { println(First.p.first) } catch (e: ExceptionInInitializerError) { throw (e.cause as NullPointerException) } }
     println(Fine().len())
 }

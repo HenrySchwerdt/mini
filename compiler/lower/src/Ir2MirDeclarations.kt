@@ -292,7 +292,7 @@ internal fun Ir2Mir.isNoWhenBranch(c: IrCall): Boolean {
 }
 
 internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
-    val f = currentFunction!!
+    val f = currentFunction
     val target = s.returnTarget
     returnTargets[target]?.let { r ->
         // return from an inline function / lambda expanded in place: store the result and leave the expansion
@@ -306,6 +306,7 @@ internal fun Ir2Mir.returnStmt(s: IrReturn, out: MutableList<MirStmt>) {
         leaveThrough(r.finallyDepth, out) { it += MirStmt.Break(r.label) }
         return
     }
+    if (f == null) unsupported(s, "return outside of a function")
     val tl = tailLoop
     if (tl != null && target === f && finallyStack.isEmpty() && hasTailCall(s.value, tl.calls)) {
         returnWithTail(s.value, tl, out)

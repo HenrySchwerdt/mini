@@ -135,7 +135,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     // C interop: external functions of C, the kotlinx.cinterop intrinsics, @CStruct fields
     interopCall(c, owner, out)?.let { return it }
     // enumValues<E>() / enumValueOf<E>(name) / enumEntries<E>(): the generated values / valueOf / entries of E
-    if (parent is IrFile && parent.packageFqName == "kotlin" && owner.isInline && c.typeArguments.size == 1 &&
+    if (parent is IrFile && (parent.packageFqName == "kotlin" || (parent.packageFqName == "kotlin.enums" && name == "enumEntries")) && owner.isInline && c.typeArguments.size == 1 &&
         (name == "enumValues" || name == "enumValueOf" || name == "enumEntries")
     ) {
         val ec = substituted(c.typeArguments[0] ?: unsupported(c, "$name without a type argument")).classOrNull
@@ -144,6 +144,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         }
         unsupported(c, "$name of a type that is not an enum class")
     }
+    // typeOf<T>(): a KTypeImpl made from the static type
+    if (parent is IrFile && parent.packageFqName == REFLECT_PKG && name == "typeOf" && owner.isInline && c.typeArguments.size == 1) return typeOfCall(c, out)
     memoryApiCall(c, owner, out)?.let { return it }
     // `arrayOf` / `emptyArray` are made here, not called: the array records the element type of the call (docs/memory-model.md, "Reified object arrays")
     if (parent is IrFile && parent.packageFqName == "kotlin" && (name == "arrayOf" || name == "emptyArray")) arrayFunction(c, name, "kotlin", out)?.let { return it }
@@ -159,7 +161,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     // an inline member inherited through a fake override (`B().baz<T>()` where `A` declares `inline fun <reified T> baz()`): expand the real one
     if (owner.isInline && owner.isFakeOverride && owner.body == null) {
         val real = resolveFake(owner)
-        if (real !== owner && real.isInline && real.body != null && functionNames[real] != null && real.typeParameters.any { it.reified }) return inlineCall(c, real, out)
+        if (real !== owner && real.isInline && real.body != null && functionNames[real] != null && (real.typeParameters.any { it.reified } || real.parameters.any { p -> p.kind == IrParameterKind.Regular && !p.isNoinline && !p.isCrossinline && p.type.classFqName?.startsWith("kotlin.Function") == true })) return inlineCall(c, real, out)
     }
 
     // lambda-lifted local function
@@ -288,7 +290,12 @@ internal fun Ir2Mir.memberCall(c: IrCall, f: IrSimpleFunction, out: MutableList<
     }
 
     val d: Dispatch = if (c.superQualifier != null) {
-        val t = resolveFake(f)
+        var t = resolveFake(f)
+        // unqualified `super.size` of `class B : Collection<String>, A0`: the supertype that implements the member, not the abstract one
+        if (!hasBody(t) && t.parameters.firstOrNull()?.kind == IrParameterKind.DispatchReceiver) {
+            val cur = currentFunction?.parent as? IrClass
+            if (cur != null) superImplementation(cur, t, 0)?.let { t = it }
+        }
         if (parentClass(t)?.let { isAny(it) } == true) Dispatch.AnyMember(anyMember(topClass(f) ?: f) ?: unsupported(c, "super call of '${f.name}'"))
         else Dispatch.Direct(t)
     } else dispatchOfValue(f)
@@ -730,4 +737,22 @@ internal fun Ir2Mir.charSequenceMember(c: IrCall, name: String, out: MutableList
         "get" -> MirExpr.RuntimeCall("mk_cs_get", listOf(a, v[1], ti), TChar)
         else -> MirExpr.RuntimeCall("mk_cs_sub_sequence", listOf(a, v[1], v[2], ti), anyType)
     }
+}
+
+/** a function with a body that [abstractFn] is also named and shaped like, in the supertypes of [cls] */
+private fun Ir2Mir.superImplementation(cls: IrClass, abstractFn: IrSimpleFunction, depth: Int): IrSimpleFunction? {
+    if (depth > 8) return null
+    for (t in cls.superTypes) {
+        val sc = t.classOrNull ?: continue
+        for (d in sc.declarations) {
+            val fn: IrSimpleFunction? = when (d) {
+                is IrSimpleFunction -> d
+                is IrProperty -> if (abstractFn.name.startsWith("<set-")) d.setter else d.getter
+                else -> null
+            }
+            if (fn != null && fn.name == abstractFn.name && fn.parameters.size == abstractFn.parameters.size && hasBody(fn)) return fn
+        }
+        superImplementation(sc, abstractFn, depth + 1)?.let { return it }
+    }
+    return null
 }

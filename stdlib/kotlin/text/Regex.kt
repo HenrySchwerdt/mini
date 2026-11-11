@@ -19,7 +19,15 @@ public class MatchGroup(public val value: String, public val range: IntRange) {
 
 public interface MatchGroupCollection : Collection<MatchGroup?> {
     public operator fun get(index: Int): MatchGroup?
+}
+
+public interface MatchNamedGroupCollection : MatchGroupCollection {
     public operator fun get(name: String): MatchGroup?
+}
+
+public operator fun MatchGroupCollection.get(name: String): MatchGroup? {
+    val namedGroups = this as? MatchNamedGroupCollection ?: throw UnsupportedOperationException("Retrieving groups by name is not supported on this platform.")
+    return namedGroups[name]
 }
 
 public interface MatchResult {
@@ -237,7 +245,7 @@ public fun String.findAll(regex: Regex): Sequence<MatchResult> = regex.findAll(t
 
 // ---- match results ------------------------------------------------------------------------------------
 
-private class GroupsImpl(private val groupList: List<MatchGroup?>, private val regex: Regex) : AbstractList<MatchGroup?>(), MatchGroupCollection {
+private class GroupsImpl(private val groupList: List<MatchGroup?>, private val regex: Regex) : AbstractList<MatchGroup?>(), MatchNamedGroupCollection {
     override val size: Int
         get() = groupList.size
 

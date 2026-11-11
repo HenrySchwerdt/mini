@@ -103,12 +103,14 @@ class Collector(private val sema: Sema) {
 
         // primary constructor
         val pc = d.primaryCtor
+        // the header of the primary constructor sees the nested classifiers of its class (`class A(val k: Kind) { enum class Kind }`)
+        val ctorScope = ClassScope(c, header, false)
         if (d.kind == ClassKind.CLASS) {
             if (pc != null || (!hasSecondary(d))) {
                 val f = FunSym("<init>", null, c, file)
                 f.kind = FunKind.CONSTRUCTOR
                 f.isPrimary = true
-                f.scope = header
+                f.scope = ctorScope
                 if (pc != null) {
                     f.primaryParams = pc.params
                     f.primaryMods = pc.mods
@@ -122,7 +124,7 @@ class Collector(private val sema: Sema) {
                             val ps = PropSym(p.name, null, p, c, file)
                             ps.start = p.start
                             ps.isVar = p.valVar == "var"
-                            ps.scope = header
+                            ps.scope = ctorScope
                             addTo(c.props, p.name, ps)
                         }
                     }

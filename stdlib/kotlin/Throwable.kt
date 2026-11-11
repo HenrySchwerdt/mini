@@ -109,6 +109,17 @@ public open class KotlinNothingValueException : RuntimeException {
     public constructor(message: String?) : super(message)
 }
 
+public open class ExceptionInInitializerError : Error {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+    public constructor(thrown: Throwable?) : super(null, thrown)
+}
+
+public open class NoClassDefFoundError : Error {
+    public constructor() : super()
+    public constructor(message: String?) : super(message)
+}
+
 public open class UninitializedPropertyAccessException : RuntimeException {
     public constructor() : super()
     public constructor(message: String?) : super(message)

@@ -52,6 +52,23 @@ internal class ThrowAnalysis(
     }
 
     /** Calls to imported functions use their MIR effects when available; unresolved calls are conservatively throwing. */
+    fun objectGetMayThrow(classCName: String): Boolean {
+        val ctor = objectCtors()[classCName] ?: return false
+        return ctor in mayThrow
+    }
+
+    // computed on first use (a plain cache instead of `by lazy`: the stage0 compilers cannot compile a lazy lambda that reads a property)
+    private var objectCtorsCache: HashMap<String, String>? = null
+
+    private fun objectCtors(): HashMap<String, String> {
+        val cached = objectCtorsCache
+        if (cached != null) return cached
+        val m = HashMap<String, String>()
+        for (c in module.classes) { val k = c.objectCtor; if (k != null) m[c.cName] = k }
+        objectCtorsCache = m
+        return m
+    }
+
     fun callMayThrow(cName: String): Boolean = cName in mayThrow || !byName.containsKey(cName)
 
     private fun bodyThrows(f: MirFunction): Boolean = f.body.any { stmt(it) }
@@ -79,7 +96,9 @@ internal class ThrowAnalysis(
     private fun expr(e: MirExpr): Boolean = when (e) {
         is MirExpr.IntConst, is MirExpr.LongConst, is MirExpr.DoubleConst, is MirExpr.BooleanConst, is MirExpr.CharConst,
         is MirExpr.StringConst, MirExpr.UnitValue, is MirExpr.Local, is MirExpr.NullConst, is MirExpr.Unreachable,
-        is MirExpr.CaughtException, is MirExpr.TypeInfoOf, is MirExpr.ObjectGet -> false
+        is MirExpr.CaughtException, is MirExpr.TypeInfoOf -> false
+        // the first access of an object / file facade runs its initialiser: a failing one raises ExceptionInInitializerError
+        is MirExpr.ObjectGet -> objectGetMayThrow(e.classCName)
         is MirExpr.Binary -> expr(e.left) || expr(e.right) || divThrows(e)
         is MirExpr.Unary -> expr(e.operand)
         is MirExpr.Convert -> expr(e.operand)

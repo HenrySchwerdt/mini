@@ -86,6 +86,8 @@ class Attempt(
     val tps: List<TypeParamSym>,
 ) {
     var ok = true
+    /** bounds this attempt added to postponed (builder inference) variables: taken back after the attempt, put in again when it is chosen */
+    var openDelta: List<Triple<TypeVariable, Int, Type>> = emptyList()
 }
 
 class CallRes(val ret: Type, val callee: Sym?, val calleeText: String?, val paramTypes: List<Type?>) {
@@ -195,7 +197,11 @@ fun BodyChecker.memberAndExtensionGroups(t0: Type, name: String, operator: Boole
         val inner = ArrayList<Candidate>()
         for (site in ops.closure(t)) {
             val nc = site.cls.nested[name]
-            if (nc != null && nc.isInner) inner.addAll(ctorCandidates(nc))
+            if (nc != null && nc.isInner) {
+                // the outer type arguments: `E<IC>.Inner()`
+                val os = ops.substOf(site)
+                for (c0 in ctorCandidates(nc)) inner.add(if (os.isEmpty()) c0 else Candidate(c0.fn, os, c0.extRecv))
+            }
         }
         if (inner.isNotEmpty()) groups.add(inner)
         // `outer.OI(...)` where `typealias OI = Outer.Inner`
@@ -285,8 +291,9 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                         val eg = ArrayList<List<Candidate>>()
                         extensionGroups("invoke", typeWithFlowVar(v, vt), eg)
                         for (g in eg) {
-                            for (c in g) c.invokeVar = v
-                            groups.add(g)
+                            val fitting = ArrayList<Candidate>()
+                            for (c in g) if (extFits(c.fn, typeWithFlowVar(v, vt))) { c.invokeVar = v; fitting.add(c) }
+                            if (fitting.isNotEmpty()) groups.add(fitting)
                         }
                     }
                 }
@@ -350,7 +357,10 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                 // `with(outer) { Inner() }`: an inner class of the receiver
                 if (nrt2 is ClassType || nrt2 is TypeParamType) for (site in ops.closure(nrt2)) {
                     val nc = site.cls.nested[name]
-                    if (nc != null && nc.isInner) groups.add(ctorCandidates(nc))
+                    if (nc != null && nc.isInner) {
+                        val os = ops.substOf(site)
+                        groups.add(ctorCandidates(nc).map { c0 -> if (os.isEmpty()) c0 else Candidate(c0.fn, os, c0.extRecv) })
+                    }
                 }
                 seenRecv = true
             }
@@ -406,6 +416,7 @@ fun BodyChecker.unqualifiedGroups(name: String): List<List<Candidate>> {
                             val eg = ArrayList<List<Candidate>>()
                             extensionGroups("invoke", pt, eg)
                             for (g in eg) for (ic in g) {
+                                if (!extFits(ic.fn, pt)) continue
                                 ic.invokeProp = x
                                 il.add(ic)
                             }
@@ -522,6 +533,15 @@ fun BodyChecker.localReceiverFunVar(name: String): Boolean {
 
 /** members of an implicit receiver, then top-level extensions applicable to it */
 fun BodyChecker.addReceiverGroups(rt: Type, name: String, groups: ArrayList<List<Candidate>>, ref: RecvRef? = null) {
+    // `fun (() -> String).f() = invoke()`: the receiver is a function value
+    if (name == "invoke" && ref != null && (rt is FunType || ops.asFunType(rt) != null)) {
+        val ic = invokeCandidates(rt)
+        if (ic.isNotEmpty()) {
+            for (c in ic) c.dispatchRef = ref
+            groups.add(ic)
+            return
+        }
+    }
     val mem = ArrayList<Candidate>()
     for (m in members.funsNamed(rt, name)) {
         if (m.fn.decl?.receiver != null) continue
@@ -731,6 +751,30 @@ fun BodyChecker.shapeOk(arg: Arg, pt: Type): Boolean {
 }
 
 fun BodyChecker.tryCandidate(c: Candidate, args: List<Arg>, typeArgs0: List<Type>?): Attempt? {
+    val open = ArrayList(sema.openVars)
+    if (open.isEmpty()) return tryCandidate0(c, args, typeArgs0)
+    val sizes = IntArray(open.size * 3)
+    for ((k, v) in open.withIndex()) {
+        sizes[k * 3] = v.lower.size
+        sizes[k * 3 + 1] = v.upper.size
+        sizes[k * 3 + 2] = v.equal.size
+    }
+    val att = tryCandidate0(c, args, typeArgs0)
+    val delta = ArrayList<Triple<TypeVariable, Int, Type>>()
+    for ((k, v) in open.withIndex()) {
+        for (j in 0..2) {
+            val l = if (j == 0) v.lower else if (j == 1) v.upper else v.equal
+            while (l.size > sizes[k * 3 + j]) {
+                delta.add(Triple(v, j, l.removeAt(l.size - 1)))
+            }
+        }
+    }
+    delta.reverse()
+    if (att != null) att.openDelta = delta
+    return att
+}
+
+fun BodyChecker.tryCandidate0(c: Candidate, args: List<Arg>, typeArgs0: List<Type>?): Attempt? {
     val fn = c.fn
     val typeArgs = if (c.ignoreTypeArgs) null else typeArgs0
     val params = paramsOf(c)
@@ -982,7 +1026,10 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
         val a = args[i]
         if (a.expr != null && a.type == null && !a.postponed) {
             argNode = AstWalk.unparen(a.expr)
+            val savedInArg = inArgCall
+            inArgCall = true
             val t = expr(a.expr, expectedOf[i])
+            inArgCall = savedInArg
             argNode = null
             a.type = t
         }
@@ -1176,6 +1223,9 @@ fun BodyChecker.leftoverArgs(args: List<Arg>) {
 fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): CallRes {
     val cs = att.cs
     val fn = att.cand.fn
+    // a builder lambda of a call that is an argument of another call is only postponed inside another builder lambda (K2 completes both together)
+    val mayPostpone = !inArgCall || sema.openVars.isNotEmpty()
+    for ((v, kind, t) in att.openDelta) (if (kind == 0) v.lower else if (kind == 1) v.upper else v.equal).add(t)
     lambdaLabel = if (fn.kind == FunKind.CONSTRUCTOR) fn.owner?.name ?: fn.name else fn.name
     var ret: Type
     val it = att.cand.invokeType
@@ -1186,10 +1236,12 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
     } else {
         ret = ops.substitute(sema.returnTypeOf(fn), att.subst)
     }
-    if (expected != null && cs.hasVars(ret)) {
+    // (the last statement of a `() -> Unit` lambda is not bound by Unit: its type may still be a postponed variable)
+    if (expected != null && cs.hasVars(ret) && !(sema.openVars.isNotEmpty() && ops.isUnit(expected) && !expected.nullable)) {
         cs.addSub(ret, expected)
     }
     var i = 0
+    var builderStart = -1
     while (i < args.size) {
         val a = args[i]
         if (a.postponed) {
@@ -1218,7 +1270,18 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                             pk++
                         }
                     }
-                    cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false))
+                    // builder inference: a variable nobody has constrained that is a type argument of the receiver / a parameter
+                    // (`MutableList<E>.() -> Unit`) stays open while the body is checked; the calls in the body constrain it
+                    val postponedVars = ArrayList<TypeVariable>()
+                    if (mayPostpone) {
+                        val cand = ArrayList<TypeVariable>()
+                        val er = expectedFun.receiver
+                        if (er != null) cs.nestedVars(cs.resolveFixed(er), true, cand)
+                        for (ep in expectedFun.params) cs.nestedVars(cs.resolveFixed(ep), true, cand)
+                        for (v in cand) if (v.equal.isEmpty() && v.lower.all { ops.isNothing(it) } && cs.vars.contains(v) && !sema.openVars.contains(v)) postponedVars.add(v)
+                    }
+                    sema.openVars.addAll(postponedVars)
+                    cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false), postponedVars)
                     // result variables that the other arguments determine exactly (`getOrPut(k) { HashSet() }`) are known too
                     val rv = ArrayList<TypeVariable>()
                     cs.unfixedVars(cs.resolveFixed(expectedFun.ret), rv)
@@ -1226,7 +1289,12 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                     val ef = cs.resolveFixed(expectedFun) as FunType
                     inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
                     pendingLabel = postponedLabel(e)
+                    val recStart = rec.order.size
                     val lt = analyzeLambda(u, ef, cs)
+                    sema.openVars.removeAll(postponedVars)
+                    if (postponedVars.isNotEmpty()) {
+                        builderStart = if (builderStart < 0) recStart else minOf(builderStart, recStart)
+                    }
                     cs.addSub(lt, pt)
                     // the lambda is recorded with the final types later
                 } else {
@@ -1255,6 +1323,7 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
         i++
     }
     cs.fixAll()
+    if (builderStart >= 0) zonkRecords(builderStart, cs)
     ret = cs.resolveFixed(ret)
     // final parameter types, for literal completion and lambda records
     val pts = ArrayList<Type?>()
@@ -1340,4 +1409,48 @@ fun BodyChecker.resolveOperator(name: String, recv0: Type, argTypes: List<Type>,
 
 object BodyDummy {
     val node: Ast = LiteralExpr(LitKind.NULL, "")
+}
+
+/** replaces the type variables that were fixed after the body of a builder lambda was checked in every record made since [from] */
+fun BodyChecker.zonkRecords(from: Int, cs: ConstraintSystem) {
+    fun z(t: Type): Type = cs.resolveFixed(t)
+    fun zn(t: Type?): Type? = if (t == null) null else cs.resolveFixed(t)
+    fun zv(v: VarSym) {
+        val t = v.type
+        if (t != null) v.type = z(t)
+    }
+    fun zr(u: RecvUse?): RecvUse? = if (u == null || u.type == null) u else RecvUse(u.expr, u.safe, u.ref, z(u.type))
+    val order = rec.order
+    var i = from
+    while (i < order.size) {
+        val r = rec.get(order[i])
+        if (r == null) {
+            i++
+            continue
+        }
+        r.type = z(r.type)
+        r.smart = zn(r.smart)
+        r.target = zn(r.target)
+        r.baseType = zn(r.baseType)
+        val c = r.callee
+        if (c is VarSym) zv(c)
+        val ex = r.extra
+        if (ex is LambdaInfo) for (p in ex.params) zv(p)
+        val ci = r.call
+        if (ci != null) {
+            ci.typeArgs = ci.typeArgs.map { z(it) }
+            ci.ret = zn(ci.ret)
+            ci.paramTypes = ci.paramTypes.map { zn(it) }
+            ci.dispatch = zr(ci.dispatch)
+            ci.ext = zr(ci.ext)
+            ci.invokeValue = zr(ci.invokeValue)
+            for (a in ci.args) if (a.type != null) a.type = zn(a.type)
+        }
+        val ac = r.access
+        if (ac != null) {
+            ac.dispatch = zr(ac.dispatch)
+            ac.ext = zr(ac.ext)
+        }
+        i++
+    }
 }

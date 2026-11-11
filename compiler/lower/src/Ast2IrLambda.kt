@@ -160,6 +160,7 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         if (isClassQualifier(rv)) return IrClassReference(irType(arg), t)
         return IrGetClass(convert(rv), t)
     }
+    if (r.kind == "fnvalue") return convert(e.receiver ?: fail(e, "invoke reference without receiver"))
     val sym = r.callee
     val adapted = r.extra as? AdaptedRef
     if (sym is FunSym && adapted != null) return adaptedRef(e, r, adapted, sym)
@@ -189,6 +190,9 @@ fun Ast2Ir.callableRef(e: CallableRefExpr): IrExpression {
         val ft = FunType(null, listOf(argT), retT, false, false)
         val fe = IrFunctionExpression(fn, ft, "LAMBDA")
         fe.startOffset = e.start
+        // `::KSupplier` written twice is equal: one closure class per fun interface
+        fe.refTarget = samCtorTargets.getOrPut(sym) { IrSimpleFunction(sym.name) }
+        fe.refShape = "samctor"
         return fe
     }
     if (sym is FunSym && sym.kind == FunKind.CONSTRUCTOR && sym.owner != null && sym.owner!!.fqName().let { it == "kotlin.Array" || (it.startsWith("kotlin.") && !it.startsWith("kotlin.U") && it.endsWith("Array") && it.indexOf('.', 7) < 0) }) {
@@ -370,7 +374,10 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
                 val vet = p.varargElementType
                 if (vet != null) {
                     if (count == 0) call.arguments.add(null)
-                    else {
+                    else if (ad.map.spreadVararg) {
+                        val lp = lparams[start]
+                        call.arguments.add(IrVararg(vet, arrayListOf<IrVarargElement>(IrSpreadElement(IrGetValue(lp, lp.type, null))), p.type))
+                    } else {
                         val els = ArrayList<IrVarargElement>()
                         for (k in 0 until count) els.add(IrGetValue(lparams[start + k], lparams[start + k].type, null))
                         call.arguments.add(IrVararg(vet, els, p.type))
@@ -388,7 +395,7 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     val fe = IrFunctionExpression(fn, ft, "LAMBDA")
     fe.startOffset = e.start
     fe.refTarget = target
-    fe.refShape = ad.map.starts.joinToString(",") + "/" + ad.map.counts.joinToString(",") + "/" + ad.suspendConv + "/" + (retT.classFqName ?: "?") + "/" + (bound != null) + "/" + n + "/" + ptypes.size
+    fe.refShape = (if (ad.map.spreadVararg) "spread:" else "") + ad.map.starts.joinToString(",") + "/" + ad.map.counts.joinToString(",") + "/" + ad.suspendConv + "/" + (retT.classFqName ?: "?") + "/" + (bound != null) + "/" + n + "/" + ptypes.size
     if (outer.isEmpty()) return fe
     outer.add(fe)
     return IrBlock(outer, ft, null)

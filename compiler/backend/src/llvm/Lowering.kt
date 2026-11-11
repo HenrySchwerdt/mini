@@ -1742,6 +1742,7 @@ private class Lowering<V : Any, B : Any>(
         is MirExpr.RuntimeCall -> arrayAccessKind(e.cName) == null && ThrowAnalysis.runtimeCallThrows(e.cName)
         is MirExpr.VCall, is MirExpr.ICall -> throwing.dynamicMayThrow
         is MirExpr.New -> throwing.callMayThrow(e.ctorCName)
+        is MirExpr.ObjectGet -> throwing.objectGetMayThrow(e.classCName)
         // inlined with a cold exit of their own (unboxInline, NotNull, castInline): no test of the pending exception on the fast path
         is MirExpr.Unbox -> e.to is TInline
         is MirExpr.NotNull -> false
@@ -1846,8 +1847,8 @@ private class Lowering<V : Any, B : Any>(
                 val o = expr(e.operand)
                 val use = typeCheckPlan.uses[e]
                 val tgt = e.target
-                if (tgt === TString || tgt === TNString || tgt is TBoxed) {
-                    exactTypeCheck(o, typeInfoOf(tgt)) // final types: the type word is compared (CEmitter's mkh_is_exact)
+                if (tgt === TString || tgt === TNString || tgt is TBoxed || (e.exact && !(tgt is TObject && tgt.elem != null))) {
+                    exactTypeCheck(o, typeInfoOf(tgt)) // final types, and classes that nothing extends (MirExpr.IsInstance.exact): the type word is compared (CEmitter's mkh_is_exact)
                 } else if (tgt is TObject && tgt.elem != null) {
                     rt("mk_array_is", TBoolean, listOf(TString, TString, TInt), listOf(o, typeInfoOf(arrayElemTypeInfoType(tgt.elem!!)), c32(arrayCastFlags(tgt))))
                 } else if (use == null) {

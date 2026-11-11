@@ -331,6 +331,8 @@ MkString *mk_string_from_boolean(MkBoolean value);
 MkString *mk_string_from_char(MkChar value);
 bool mk_string_equals(const MkString *left, const MkString *right); /* NULL-safe */
 MkInt mk_string_hash(const MkString *string);                         /* Kotlin/Java hash */
+MkInt mk_string_hash_range(const MkString *string, MkInt from, MkInt to);                  /* hash of substring(from, to), none is made */
+bool mk_string_equals_range(const MkString *key, const MkString *string, MkInt from, MkInt to); /* key == substring(from, to) */
 
 /* ---- Console (kotlin.io) ------------------------------------------------------- */
 
@@ -455,6 +457,7 @@ void mk_main(void);
 /* Arguments are borrowed; reference results are owned (+1). Out-of-range indices abort via mk_panic. */
 
 MkString *mk_type_name(MkObject *object);  /* MkTypeInfo.name, e.g. "kotlin.Int" */
+MkBoolean mk_type_is_named(MkObject *object, const MkString *name); /* is the type [name] the type of [object] or a supertype of it (NULL: false) */
 MkInt mk_identity_hash(MkObject *object);
 
 MkChar mk_string_char_at(const MkString *s, MkInt index);
@@ -609,7 +612,8 @@ typedef struct MkThrowable {
     X(MkUnsupportedOperationException)                                                   \
     X(MkNoSuchElementException) X(MkNumberFormatException)                              \
     X(MkUninitializedPropertyAccessException) X(MkNotImplementedError)                   \
-    X(MkNegativeArraySizeException) X(MkAssertionError) X(MkKotlinNothingValueException)
+    X(MkNegativeArraySizeException) X(MkAssertionError) X(MkKotlinNothingValueException)  \
+    X(MkExceptionInInitializerError) X(MkNoClassDefFoundError)
 #define MK_DECLARE_EXCEPTION(Name)                                                       \
     extern const MkTypeInfo Name##_ti;                                                   \
     /* allocates an instance (refcount 1); retains message and cause */                  \

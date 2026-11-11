@@ -45,6 +45,10 @@ public fun <T> (suspend () -> T).startCoroutineUninterceptedOrReturn(completion:
 public fun <R, T> (suspend R.() -> T).startCoroutineUninterceptedOrReturn(receiver: R, completion: Continuation<T>): Any? =
     (this as (R, Continuation<T>) -> Any?)(receiver, completion)
 
+@Suppress("UNCHECKED_CAST")
+internal fun <R, P, T> (suspend R.(P) -> T).startCoroutineUninterceptedOrReturn(receiver: R, param: P, completion: Continuation<T>): Any? =
+    (this as (R, P, Continuation<T>) -> Any?)(receiver, param, completion)
+
 /** The compiler lowers a call of this function to `block(<current continuation>)`, which may return COROUTINE_SUSPENDED. */
 public suspend fun <T> suspendCoroutineUninterceptedOrReturn(block: (Continuation<T>) -> Any?): T {
     throw IllegalStateException("suspendCoroutineUninterceptedOrReturn is lowered by the compiler")

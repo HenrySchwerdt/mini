@@ -14,6 +14,27 @@ MkString *mk_type_name(MkObject *object) {
     return mk_string_from_utf8(name, strlen(name));
 }
 
+/* Is the type named [name] (a fully qualified Kotlin name) the dynamic type of [object], one of its superclasses or one of its
+ * (transitively) implemented interfaces? What KClass.isInstance asks. */
+static bool type_named(const MkTypeInfo *t, const char *name) {
+    for (; t != NULL; t = t->super) {
+        if (strcmp(t->name, name) == 0) return true;
+        for (size_t i = 0; i < t->interface_count; i++) {
+            if (t->interfaces[i] != NULL && type_named(t->interfaces[i], name)) return true;
+        }
+    }
+    return false;
+}
+
+MkBoolean mk_type_is_named(MkObject *object, const MkString *name) {
+    if (object == NULL || name == NULL) return 0;
+    size_t length = 0;
+    char *utf8 = mk_string_to_utf8(name, &length);
+    bool r = type_named(object->type, utf8);
+    free(utf8);
+    return r;
+}
+
 MkInt mk_identity_hash(MkObject *object) {
     uintptr_t p = (uintptr_t)object;
     uint64_t x = (uint64_t)p;

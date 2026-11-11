@@ -64,6 +64,24 @@ class ConstraintSystem(private val sema: Sema) {
         }
     }
 
+    /** unfixed variables that are type arguments (not the type itself) in [t] */
+    fun nestedVars(t: Type, top: Boolean, out: ArrayList<TypeVariable>) {
+        when (t) {
+            is VarType -> if (!top && t.v.fixed == null && !out.contains(t.v)) out.add(t.v)
+            is ClassType -> for (a in t.args) {
+                val x = a.type
+                if (x != null) nestedVars(x, false, out)
+            }
+            is FunType -> {
+                val r = t.receiver
+                if (r != null) nestedVars(r, false, out)
+                for (p in t.params) nestedVars(p, false, out)
+                nestedVars(t.ret, false, out)
+            }
+            else -> {}
+        }
+    }
+
     fun unfixedVars(t: Type, out: ArrayList<TypeVariable>) {
         when (t) {
             is VarType -> {
@@ -92,13 +110,14 @@ class ConstraintSystem(private val sema: Sema) {
                 return if (t.nullable) f.withNullable(true) else f
             }
             is ClassType -> {
-                if (t.args.isEmpty()) return t
+                val to = t.outer
+                if (t.args.isEmpty() && to == null) return t
                 val args = ArrayList<TArg>()
                 for (a in t.args) {
                     val x = a.type
                     args.add(if (x == null) a else TArg(resolveFixed(x), a.variance))
                 }
-                return ClassType(t.cls, args, t.nullable)
+                return ClassType(t.cls, args, t.nullable, if (to == null) null else resolveFixed(to) as ClassType)
             }
             is FunType -> {
                 val r = t.receiver
@@ -158,7 +177,14 @@ class ConstraintSystem(private val sema: Sema) {
         when (b) {
             is ClassType -> {
                 if (a is ClassType) {
-                    val s = ops.asSuper(a, b.cls) ?: return false
+                    val s = ops.asSuper(a, b.cls)
+                    if (s == null) {
+                        // a function value where a fun interface is expected (SAM conversion): `nullsFirst(comparatorValue)`
+                        val af = if (b.cls.isFunInterface) ops.asFunType(a) else null
+                        val sf = if (af != null) ops.samFunType(b) else null
+                        if (af != null && sf != null && (sf.suspend == af.suspend || (sf.suspend && !af.suspend))) return addSub(af, sf, depth + 1)
+                        return false
+                    }
                     return decomposeArgs(s, b, depth)
                 }
                 if (a is TypeParamType) {
@@ -167,7 +193,12 @@ class ConstraintSystem(private val sema: Sema) {
                     return false
                 }
                 if (a is FunType) {
-                    return b.cls === sema.anyType.cls || b.cls.name == "Function"
+                    if (b.cls === sema.anyType.cls || b.cls.name == "Function") return true
+                    if (b.cls.isFunInterface) {
+                        val sf = ops.samFunType(b)
+                        if (sf != null && (sf.suspend == a.suspend || (sf.suspend && !a.suspend))) return addSub(a, sf, depth + 1)
+                    }
+                    return false
                 }
                 return false
             }
@@ -217,7 +248,11 @@ class ConstraintSystem(private val sema: Sema) {
                 } else {
                     when (v) {
                         Variance.OUT -> if (!addSub(st, bt, depth + 1)) return false
-                        Variance.IN -> if (!addSub(bt, st, depth + 1)) return false
+                        Variance.IN -> {
+                            if (!addSub(bt, st, depth + 1)) return false
+                            // an `out T'` argument against `in T`: the captured type approximates to Nothing in this position (`T` = Nothing)
+                            if (sa.variance == Variance.OUT && bt is VarType && !bt.nullable) addSub(sema.nothingType, bt, depth + 1)
+                        }
                         Variance.INV -> {
                             if (sa.variance == Variance.OUT) {
                                 if (!addSub(st, bt, depth + 1)) return false
@@ -241,7 +276,7 @@ class ConstraintSystem(private val sema: Sema) {
      * upper bounds (`out += v` with `out: MutableList<Set<String>>`: the `Iterable<T>` overload would need `String <: Set<String>`).
      */
     fun consistent(): Boolean {
-        for (v in vars) {
+        for (v in vars + sema.openVars) {
             for (l in ArrayList(v.lower)) {
                 val lr = resolveFixed(l)
                 if (lr is IntLiteralType || lr is ErrType || hasVars(lr)) continue
@@ -261,9 +296,10 @@ class ConstraintSystem(private val sema: Sema) {
         fixInOrder(vars)
     }
 
-    fun fixVarsOf(t: Type) {
+    fun fixVarsOf(t: Type, except: List<TypeVariable> = emptyList()) {
         val l = ArrayList<TypeVariable>()
         unfixedVars(resolveFixed(t), l)
+        l.removeAll(except)
         fixInOrder(l)
     }
 
@@ -299,6 +335,7 @@ class ConstraintSystem(private val sema: Sema) {
         unfixedVars(resolveFixed(t), dep)
         for (d in dep) {
             if (d.solving) return null
+            if (sema.openVars.contains(d)) continue // a postponed variable of a builder lambda stays in the type
             fix(d)
         }
         return resolveFixed(t)
