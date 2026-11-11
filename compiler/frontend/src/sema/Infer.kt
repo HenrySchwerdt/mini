@@ -110,13 +110,14 @@ class ConstraintSystem(private val sema: Sema) {
                 return if (t.nullable) f.withNullable(true) else f
             }
             is ClassType -> {
-                if (t.args.isEmpty()) return t
+                val to = t.outer
+                if (t.args.isEmpty() && to == null) return t
                 val args = ArrayList<TArg>()
                 for (a in t.args) {
                     val x = a.type
                     args.add(if (x == null) a else TArg(resolveFixed(x), a.variance))
                 }
-                return ClassType(t.cls, args, t.nullable)
+                return ClassType(t.cls, args, t.nullable, if (to == null) null else resolveFixed(to) as ClassType)
             }
             is FunType -> {
                 val r = t.receiver
@@ -176,7 +177,14 @@ class ConstraintSystem(private val sema: Sema) {
         when (b) {
             is ClassType -> {
                 if (a is ClassType) {
-                    val s = ops.asSuper(a, b.cls) ?: return false
+                    val s = ops.asSuper(a, b.cls)
+                    if (s == null) {
+                        // a function value where a fun interface is expected (SAM conversion): `nullsFirst(comparatorValue)`
+                        val af = if (b.cls.isFunInterface) ops.asFunType(a) else null
+                        val sf = if (af != null) ops.samFunType(b) else null
+                        if (af != null && sf != null && (sf.suspend == af.suspend || (sf.suspend && !af.suspend))) return addSub(af, sf, depth + 1)
+                        return false
+                    }
                     return decomposeArgs(s, b, depth)
                 }
                 if (a is TypeParamType) {
@@ -185,7 +193,12 @@ class ConstraintSystem(private val sema: Sema) {
                     return false
                 }
                 if (a is FunType) {
-                    return b.cls === sema.anyType.cls || b.cls.name == "Function"
+                    if (b.cls === sema.anyType.cls || b.cls.name == "Function") return true
+                    if (b.cls.isFunInterface) {
+                        val sf = ops.samFunType(b)
+                        if (sf != null && (sf.suspend == a.suspend || (sf.suspend && !a.suspend))) return addSub(a, sf, depth + 1)
+                    }
+                    return false
                 }
                 return false
             }

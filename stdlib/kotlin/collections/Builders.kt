@@ -307,6 +307,12 @@ public operator fun <K, V> MutableMap<K, V>.set(@kotlin.internal.TakesOwnership 
 @Suppress("UNCHECKED_CAST")
 public operator fun <K, V> Map<out K, V>.contains(key: K): Boolean = (this as Map<K, V>).containsKey(key)
 
+@Suppress("UNCHECKED_CAST")
+public fun <K, V> Map<out K, V>.containsKey(key: K): Boolean = (this as Map<K, V>).containsKey(key)
+
+@Suppress("UNCHECKED_CAST")
+public fun <K, V> Map<K, V>.containsValue(value: V): Boolean = (this as Map<K, V>).containsValue(value)
+
 public fun <K, V> Map<K, V>.isNotEmpty(): Boolean = !isEmpty()
 
 public fun <K, V> Map<K, V>?.isNullOrEmpty(): Boolean = this == null || this.isEmpty()
