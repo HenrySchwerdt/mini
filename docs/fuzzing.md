@@ -64,4 +64,49 @@ builds and runs them through the C backend; `fuzz-llvm` does the same through LL
 
 See the list below; each fixed bug has a regression test in `compiler/testdata`.
 
-RESULTS
+About 1,500 distinct programs (sizes 14 and 24) were compared with kotlinc 2.1.20, in about 2,300 runs over the variants (C, LLVM, C with
+sanitizers). Two compiler bugs came out, both fixed with a regression test; the rest were differences that are not bugs.
+
+### Fixed
+
+* **An operand evaluated twice** (`compiler/testdata/operand_evaluated_once.kt`). The lowering of `Int.compareTo`, `Long.compareTo`,
+  `Char.compareTo` and `Long.hashCode` (`Ir2MirCalls.kt`) wrote the operands twice into the expression `(a > b) - (a < b)`, so an operand
+  with a side effect ran twice (`7.compareTo(next())` printed what `next()` prints twice). Minimal program:
+
+  ```kotlin
+  fun f(): Int { println("in f"); return 3 }
+  fun main() { println(7.compareTo(f())) }   // JVM: "in f", 1; mini printed "in f" twice
+  ```
+
+  Operands with effects are now bound to a temporary first (in order).
+* **A leak per skipped iteration** (`compiler/testdata/loop_continue_releases.kt`, found by the `c-asan` variant). RcOpt releases a local right
+  after its last use. When a `continue` before that statement jumps to the end of the loop body, the release there was already dropped
+  because the early release was assumed to happen on every path: the object leaked once per skipped iteration, for every loop kind except
+  `do while`. It was in every release up to 0.10.0. Minimal program (LeakSanitizer: three leaked objects):
+
+  ```kotlin
+  var n = 0
+  fun cond(): Boolean { n++; return n < 100 }
+  fun main() {
+      for (i in 0 until 3) {
+          val s = StringBuilder().append(i)
+          if (cond()) continue
+          println(s)
+      }
+  }
+  ```
+
+  RcOpt now does not release early when an earlier statement of the loop body contains a `continue` of that loop.
+
+### Not bugs (the generator avoids them)
+
+* `Throwable.initCause` and other JVM-only members do not exist in mini (nor in Kotlin/Native); the generator builds exceptions with the
+  `cause` constructor argument.
+* A selector with side effects in `sortedBy { }` is called a different number of times: the JVM compares through `compareBy`, which calls the
+  selector for every comparison, mini once per element. Both are allowed (the output order of the side effects is not specified).
+* `HashMap` iteration order is not generated (the JVM order is the hash order).
+
+### Open
+
+None known. The reducer needs a kotlinc run per round (about 20 seconds idle, more on a busy machine); a failing program of 200 lines takes
+about 10 rounds. `run` and `reduce` need kotlinc; only `check` (the stored smoke programs) works without a JVM.
