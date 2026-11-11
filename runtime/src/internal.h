@@ -40,6 +40,7 @@ extern volatile int mk_threads_active;
 extern volatile int mk_threads_running;
 /* cycles.c */
 extern size_t mk_cycles_alloc_bytes; /* bytes of candidate-capable objects allocated since the last collection (allocation volume trigger) */
+extern volatile int mk_cycles_ready; /* the collector is installed (object.c, set by mk_cycles_install) */
 enum { MK_CYCLES_DYING = 5 };
 /* The collector is reached through this table (defined in object.c, filled in by mk_cycles_install in cycles.c): the code of
  * cycles.c is only reachable from the allocation of a candidate-capable object (alloc.c), so a program that never makes one

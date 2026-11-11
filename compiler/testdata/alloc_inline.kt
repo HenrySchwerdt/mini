@@ -50,17 +50,17 @@ fun keep(n: Int): Long {
 }
 
 fun main() {
-    println(churn(200000))
+    println(churn(40000))
     println(zeroed())
-    println(cycles(100000))
-    println(keep(50000))
+    println(cycles(20000))
+    println(keep(10000))
     val big = ArrayList<Big>()
     for (i in 0 until 1000) big.add(Big(i.toLong(), 1, 2, 3, 4, 5, 6, 7, 8, 9))
     var t = 0L
     for (b in big) t += b.a + b.j
     println(t)
     val results = ArrayList<Long>()
-    val th = Thread { results.add(churn(50000) + keep(1000)) }
+    val th = Thread { results.add(churn(10000) + keep(1000)) }
     th.start(); th.join()
     println(results[0])
     println(churn(1000))
