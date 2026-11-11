@@ -395,7 +395,7 @@ private fun Ast2Ir.adaptedRef(e: CallableRefExpr, r: ExprRec, ad: AdaptedRef, sy
     val fe = IrFunctionExpression(fn, ft, "LAMBDA")
     fe.startOffset = e.start
     fe.refTarget = target
-    fe.refShape = (if (ad.map.spreadVararg) "spread:" else "") + ad.map.starts.joinToString(",") + "/" + ad.map.counts.joinToString(",") + "/" + ad.suspendConv + "/" + (retT.classFqName ?: "?") + "/" + (bound != null) + "/" + n + "/" + ptypes.size
+    fe.refShape = (if (ad.map.spreadVararg) "spread:" else "") + ad.map.starts.joinToString(",") + "/" + ad.map.counts.joinToString(",") + "/" + ad.suspendConv + "/" + (retT.classFqName ?: "?") + "/" + (bound != null) + "/" + n + "/" + ptypes.size + "/" + ptypes.joinToString(",") { it.classFqName ?: "?" }
     if (outer.isEmpty()) return fe
     outer.add(fe)
     return IrBlock(outer, ft, null)

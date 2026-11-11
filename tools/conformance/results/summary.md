@@ -5,8 +5,8 @@
 | total test files | 10070 |
 | skipped (not applicable) | 4117 |
 | **applicable** | **5953** |
-| **pass** | **5939 (99.76%)** |
-| compile-error | 11 |
+| **pass** | **5945 (99.87%)** |
+| compile-error | 5 |
 | ice (compiler crash) | 0 |
 | runtime-fail | 3 |
 | crash (signal) | 0 |
@@ -18,7 +18,7 @@
 |---|---:|
 | applicable (above) | 5953 |
 | **native-parity applicable** | **5953** |
-| **native-parity pass** | **5939 (99.76%)** |
+| **native-parity pass** | **5945 (99.87%)** |
 
 Wall time: 5186s.
 
