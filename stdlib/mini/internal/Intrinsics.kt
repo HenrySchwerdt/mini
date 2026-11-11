@@ -23,6 +23,14 @@ public external fun identityHashCode(o: Any?): Int
 @CSymbol("mk_string_substring")
 public external fun stringSubstring(s: String, start: Int, end: Int): String
 
+/** `s.substring(from, to).hashCode()` without the substring (the range must be valid). */
+@CSymbol("mk_string_hash_range")
+public external fun stringHashRange(s: String, from: Int, to: Int): Int
+
+/** `key == s.substring(from, to)` without the substring (the range must be valid). */
+@CSymbol("mk_string_equals_range")
+public external fun stringEqualsRange(key: String, s: String, from: Int, to: Int): Boolean
+
 /** `strtod`-like parse of the whole string (Kotlin `toDouble` syntax); only meaningful if [stringIsDouble]. */
 @CSymbol("mk_string_parse_double")
 public external fun stringParseDouble(s: String): Double

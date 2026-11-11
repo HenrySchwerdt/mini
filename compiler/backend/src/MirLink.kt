@@ -54,15 +54,39 @@ object MirLink {
             for (c in m.classes) clsByName[c.cName] = c
             for (c in m.classes) if (c.external) cls(c.cName)   // provided by the runtime: always declared
             for (r in roots) fn(r)
-            while (workF.isNotEmpty() || workC.isNotEmpty()) {
-                while (workF.isNotEmpty()) visitFunction(workF.removeAt(workF.size - 1))
-                while (workC.isNotEmpty()) visitClass(workC.removeAt(workC.size - 1))
+            var again = true
+            while (again) {
+                while (workF.isNotEmpty() || workC.isNotEmpty()) {
+                    while (workF.isNotEmpty()) visitFunction(workF.removeAt(workF.size - 1))
+                    while (workC.isNotEmpty()) visitClass(workC.removeAt(workC.size - 1))
+                }
+                again = companions()
             }
             val fs = ArrayList<MirFunction>()
             for (f in m.functions) if (liveF.contains(f.cName)) fs.add(f)
             val cs = ArrayList<MirClass>()
             for (c in m.classes) if (liveC.contains(c.cName)) cs.add(c)
             return MirModule(m.sourceName, fs, cs, m.externs, m.includes, m.links, m.wasmExports)
+        }
+
+        /**
+         * Functions that a MIR pass (opt/SubstrKey.kt) calls in place of others, kept when the others are: the range lookups of `HashMap`
+         * and the range test of `substring` live when `findNode` or `put` and `substring` do. True when something new became live.
+         */
+        private var companionIndex: CompanionIndex? = null
+
+        /** True when something new became live (see [Companions]). */
+        fun companions(): Boolean {
+            var idx = companionIndex
+            if (idx == null) {
+                idx = CompanionIndex(m.functions)
+                companionIndex = idx
+            }
+            var any = false
+            for (f in companionsMissing(idx, liveF)) {
+                if (liveF.add(f.cName)) { workF.add(f); any = true }
+            }
+            return any
         }
 
         fun fn(name: String?) {
@@ -154,4 +178,42 @@ object MirLink {
             for (c in mirChildren(e)) expr(c)
         }
     }
+}
+
+/**
+ * Functions that a MIR pass calls in place of others, and that the pruning must therefore keep next to them (the passes run after the
+ * pruning of [MirLink] and of Devirt): opt/SubstrKey.kt replaces `findNode` / `put` of a `HashMap` that take a `substring` result by the
+ * range lookups `findNodeRange` / `putRange`, and keeps the range test of `substring` (`checkSubstringRange`). They are kept when
+ * `substring` and `findNode` (or `put`) are.
+ */
+internal class CompanionIndex(fs: List<MirFunction>) {
+    private val byQ = HashMap<String, MirFunction>()
+    init {
+        for (f in fs) if (COMPANION_QUALIFIED.contains(f.qualifiedName)) byQ[f.qualifiedName + "/" + f.params.size] = f
+    }
+    fun get(q: String, n: Int): MirFunction? = byQ[q + "/" + n]
+}
+
+private val COMPANION_QUALIFIED = setOf(
+    "kotlin.text.substring", "kotlin.text.checkSubstringRange",
+    "kotlin.collections.HashMap.findNode", "kotlin.collections.HashMap.findNodeRange",
+    "kotlin.collections.HashMap.put", "kotlin.collections.HashMap.putRange", "kotlin.collections.HashMap.putRangeAt",
+)
+
+/** The companions that are not live yet although their trigger is; [live] holds the C names of the live functions. */
+internal fun companionsMissing(idx: CompanionIndex, live: Set<String>): List<MirFunction> {
+    val out = ArrayList<MirFunction>()
+    val sub = idx.get("kotlin.text.substring", 3) ?: return out
+    if (!live.contains(sub.cName)) return out
+    val check = idx.get("kotlin.text.checkSubstringRange", 3) ?: return out
+    val find = idx.get("kotlin.collections.HashMap.findNode", 2)
+    val put = idx.get("kotlin.collections.HashMap.put", 3)
+    val findR = idx.get("kotlin.collections.HashMap.findNodeRange", 4)
+    val putR = idx.get("kotlin.collections.HashMap.putRange", 5)
+    val putA = idx.get("kotlin.collections.HashMap.putRangeAt", 6)
+    if (find != null && findR != null && live.contains(find.cName)) { out.add(findR); out.add(check) }
+    if (put != null && putR != null && putA != null && live.contains(put.cName)) { out.add(putR); out.add(putA); out.add(check) }
+    val res = ArrayList<MirFunction>()
+    for (f in out) if (!live.contains(f.cName)) { var dup = false; for (g in res) if (g.cName == f.cName) dup = true; if (!dup) res.add(f) }
+    return res
 }

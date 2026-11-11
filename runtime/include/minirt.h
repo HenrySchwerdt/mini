@@ -331,6 +331,8 @@ MkString *mk_string_from_boolean(MkBoolean value);
 MkString *mk_string_from_char(MkChar value);
 bool mk_string_equals(const MkString *left, const MkString *right); /* NULL-safe */
 MkInt mk_string_hash(const MkString *string);                         /* Kotlin/Java hash */
+MkInt mk_string_hash_range(const MkString *string, MkInt from, MkInt to);                  /* hash of substring(from, to), none is made */
+bool mk_string_equals_range(const MkString *key, const MkString *string, MkInt from, MkInt to); /* key == substring(from, to) */
 
 /* ---- Console (kotlin.io) ------------------------------------------------------- */
 
