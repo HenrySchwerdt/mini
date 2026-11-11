@@ -58,11 +58,13 @@ private val anyNullableStatic = TObject("kotlin.Any", ANY_CNAME, true)
 
 // ---- ref cells ----------------------------------------------------------------------------------------
 
-internal fun Ir2Mir.refClassFor(t: MirType): RefClass = refClasses.getOrPut(t) {
-    val cName = Mangling.className("mk", listOf("Ref" + Mangling.typeLetter(t)))
+internal fun Ir2Mir.refClassFor(t: MirType, borrowed: Boolean = false): RefClass = refClasses.getOrPut(if (borrowed) Pair(t, true) else t) {
+    val cName = Mangling.className("mk", listOf((if (borrowed) "RefB" else "Ref") + Mangling.typeLetter(t)))
     val type = TObject("mk.Ref", cName, false)
     val ctorName = Mangling.constructor(cName, listOf(t))
-    extraClasses += MirClass("mk.Ref", cName, false, null, listOf(MirField("value", t)), emptyList(), listOf(null, null, null), emptyList())
+    // a borrowed cell holds a tracked value of Strict code without a count: its owner is the one the checker proved (it frees or moves
+    // it), so neither the store of the constructor nor the dispose of the cell may touch the count
+    extraClasses += MirClass("mk.Ref", cName, false, null, listOf(MirField("value", t, borrowed)), emptyList(), listOf(null, null, null), emptyList())
     val self = MirLocal(0, "this", type)
     val v = MirLocal(1, "value", t)
     extraFunctions += MirFunction(
@@ -70,6 +72,47 @@ internal fun Ir2Mir.refClassFor(t: MirType): RefClass = refClasses.getOrPut(t) {
         listOf(MirStmt.SetField(MirExpr.Local(self), cName, "value", t, MirExpr.Local(v))), cName,
     )
     RefClass(cName, ctorName, type, t)
+}
+
+/**
+ * The heap cell of the captured `var` [d]. In Strict code a cell of a tracked value does not count the value ([refClassFor] `borrowed`):
+ * a count held by the cell would be released a second time when the cell dies after `free()` or a move of the owner (a local of a
+ * `suspend` function or `runBlocking` lambda lives in a cell of its state machine: `reference count underflow`). The exception is
+ * a variable that only ever holds stack-like (`auto`) objects: nobody frees them, so the cell keeps the count of one and releases it.
+ */
+internal fun Ir2Mir.cellFor(d: IrValueDeclaration): RefClass {
+    val t = declType(d)
+    return refClassFor(t, cellBorrowed(d, t))
+}
+
+private fun Ir2Mir.cellBorrowed(d: IrValueDeclaration, t: MirType): Boolean {
+    if (!currentStrict) return false
+    val c = d.type.classOrNull ?: return false
+    if (!isStrictClass(c)) return false
+    return !cellCountsAuto(d)
+}
+
+private fun stripCasts(e: IrExpression): IrExpression = if (e is IrTypeOperatorCall) stripCasts(e.argument) else e
+
+private fun Ir2Mir.cellCountsAuto(d: IrValueDeclaration): Boolean = autoCells.getOrPut(d) {
+    val fn = (d as? IrVariable)?.parent as? IrFunction ?: return@getOrPut false
+    if (allocLevels.isNotEmpty()) return@getOrPut false
+    val values = ArrayList<IrExpression>()
+    var unknown = false
+    fun walk(e: IrElement) {
+        if (e is IrVariable && e === d) e.initializer?.let { values += it }
+        if (e is IrSetValue && e.owner === d) values += e.value
+        if (e is IrCall && (e.callee.name == "context" || e.callee.parameters.any { it.kind == IrParameterKind.Context && allocatorClassOf(it.type) != null })) unknown = true
+        val ch = ArrayList<IrElement>()
+        irChildren(e, ch)
+        for (x in ch) walk(x)
+    }
+    walk(fn)
+    if (unknown || values.isEmpty()) return@getOrPut false
+    values.all { v0 ->
+        val k = (stripCasts(v0) as? IrConstructorCall)?.callee?.parent as? IrClass
+        k != null && isStrictClass(k) && findAnnotation(k.annotations, "mini.memory.AllocatedBy")?.argFq.let { it != "mini.memory.Heap" && it != "mini.memory.Rc" }
+    }
 }
 
 /** The `Unit` object (what a `Unit` value is when it is stored as `Any?` / `Unit?`): the singleton of a generated object class. */
@@ -109,7 +152,7 @@ internal fun Ir2Mir.declType(d: IrValueDeclaration): MirType = mirType(d.type, d
 
 /** The type a captured value has inside a closure (the cell for boxed vars). */
 internal fun Ir2Mir.capturedType(d: IrValueDeclaration): MirType =
-    if (d in closure.boxed) refClassFor(declType(d)).type else declType(d)
+    if (d in closure.boxed) cellFor(d).type else declType(d)
 
 // ---- per function state --------------------------------------------------------------------------------
 

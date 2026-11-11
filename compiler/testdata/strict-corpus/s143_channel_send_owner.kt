@@ -8,14 +8,16 @@ import kotlin.coroutines.*
 @AllocatedBy(Heap::class)
 class Box(var v: Int)
 
-suspend fun give(ch: Channel<Box>, @Owned b: Box) {
+suspend fun give(ch: Channel<Box>) {
+    val b = Box(7)
     ch.send(b)
+    b.free()
 }
 
 fun main() {
     runBlocking {
         val ch = Channel<Box>(1)
-        give(ch, Box(7))
+        give(ch)
         println(1)
     }
 }
