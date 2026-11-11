@@ -5,12 +5,11 @@
 package java.lang
 
 import mini.internal.epochMillis
-import mini.internal.nanoTime
 import mini.internal.sysCpuCount
 
 public object System {
     public fun currentTimeMillis(): Long = epochMillis()
-    public fun nanoTime(): Long = nanoTime()
+    public fun nanoTime(): Long = mini.internal.nanoTime()
     public fun lineSeparator(): String = "\n"
     public fun exit(status: Int): Nothing {
         mini.internal.exitProcess(status)
@@ -28,13 +27,15 @@ public object System {
             is ShortArray -> src.copyInto(dest as ShortArray, destPos, srcPos, srcPos + length)
             is CharArray -> src.copyInto(dest as CharArray, destPos, srcPos, srcPos + length)
             is BooleanArray -> src.copyInto(dest as BooleanArray, destPos, srcPos, srcPos + length)
-            is Array<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                (src as Array<Any?>).copyInto(dest as Array<Any?>, destPos, srcPos, srcPos + length)
-            }
+            is Array<*> -> copyRefs<Any?>(src, dest as Array<*>, srcPos, destPos, length)
             else -> throw IllegalArgumentException("arraycopy: not an array")
         }
     }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun <T> copyRefs(src: Array<*>, dest: Array<*>, srcPos: Int, destPos: Int, length: Int) {
+    (src as Array<T>).copyInto(dest as Array<T>, destPos, srcPos, srcPos + length)
 }
 
 public class Runtime private constructor() {
