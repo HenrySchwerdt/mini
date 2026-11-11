@@ -951,6 +951,25 @@ fun BodyChecker.chooseMostSpecific(ok: List<Attempt>, args: List<Arg>): Attempt 
         if (ng.isNotEmpty() && ng.size < pool.size) pool = ng
     }
     if (pool.size > 1) {
+        // a lambda argument: the overload with a function type parameter wins over the one with a fun interface (`submit { 5 }` over `submit(Callable)`)
+        val fnTyped = ArrayList<Attempt>()
+        for (a in pool) {
+            var all = true
+            var seen = false
+            var li = 0
+            while (li < args.size) {
+                val ex = args[li].expr
+                if (args[li].postponed && ex != null && unwrapPostponed(ex) is LambdaExpr) {
+                    seen = true
+                    if (a.cmp[li] !is FunType) all = false
+                }
+                li++
+            }
+            if (seen && all) fnTyped.add(a)
+        }
+        if (fnTyped.isNotEmpty() && fnTyped.size < pool.size) pool = fnTyped
+    }
+    if (pool.size > 1) {
         val nv = ArrayList<Attempt>()
         for (a in pool) if (!a.binding.usesVararg) nv.add(a)
         if (nv.isNotEmpty() && nv.size < pool.size) pool = nv

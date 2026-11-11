@@ -21,6 +21,12 @@ class EmitError(message: String) : Exception(message)
  *  - returns are owned (+1).
  */
 object CEmitter {
+    /** `-Xno-plain-loops` clears it: `for (i in a until b)` then takes the general counting loop (exact for every bound and step). */
+    var plainLoops = true
+
+    /** `-Xno-inline-alloc` clears it: objects are always allocated through the runtime (mk_alloc_armed / mk_alloc_plain). */
+    var inlineAlloc = true
+
     private const val LINE_RESET = "#mk-line-reset"
 
     /**
@@ -317,6 +323,13 @@ object CEmitter {
             else -> "mk_alloc_plain"
         }
 
+        /** The allocation of a class: a small class of the default allocator takes its block inline (`mkh_alloc_inline`, constant size), else the runtime entry. */
+        fun allocCall(cName: String): String {
+            val fn = allocFn(cName)
+            if (!inlineAlloc || fn == "mk_alloc") return "$fn(&${cName}_ti)"
+            return "mkh_alloc_inline(&${cName}_ti, sizeof(struct $cName), ${if (fn == "mk_alloc_armed") "1" else "0"})"
+        }
+
         fun emitClasses(out: StringBuilder) {
             for (c in module.classes) {
                 if (c.external) continue
@@ -410,7 +423,7 @@ object CEmitter {
                 val decl = if (ps.isEmpty()) "void" else ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }
                 val call = (listOf("o") + ps.indices.map { "a$it" }).joinToString(", ")
                 val check = if (f.cName in throwing.mayThrow) "    if (mk_pending_exception != NULL) {\n        mk_release(o);\n        return NULL;\n    }\n" else ""
-                out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = ${allocFn(cls)}(&${cls}_ti);\n    ${f.cName}($call);\n$check    return o;\n}\n")
+                out.append("MKH_FN MkObject *${f.cName}_new($decl) {\n    MkObject *o = ${allocCall(cls)};\n    ${f.cName}($call);\n$check    return o;\n}\n")
                 if (f.cName in newaUsed) {
                     // allocation through a chosen allocator (Strict code): the same, from `al` (0 = the default allocator)
                     val decla = if (ps.isEmpty()) "MkLong al" else "MkLong al, " + ps.withIndex().joinToString(", ") { (i, p) -> "${cType(p.type)} a$i" }
@@ -811,6 +824,19 @@ object CEmitter {
             out.append("$i{\n")
             out.append("${ind(d + 1)}$t $cur = ${expr(s.start)};\n")
             out.append("${ind(d + 1)}$t $last = ${expr(s.end)};\n")
+            if (plainLoops && s.step == null && s.ascending && !s.inclusive && (s.variable.type === TInt || s.variable.type === TLong)) {
+                // `for (i in a until b)`: cur < last <= MAX, so cur + 1 cannot overflow: the plain counting loop (the C compiler sees a signed
+                // induction variable that does not wrap, and drops the sign extensions and the distance arithmetic of the general form)
+                out.append("${ind(d + 1)}for (; $cur < $last; $cur++) {\n")
+                out.append("${ind(d + 2)}const $t $v = $cur;\n")
+                scope(s.body, d + 2, out, loop = s.label, mid = { sb ->
+                    if (cont(s.label) in usedLabels) sb.append("${ind(d + 2)}${cont(s.label)}:;\n")
+                })
+                out.append("${ind(d + 1)}}\n")
+                if (brk(s.label) in usedLabels) out.append("${ind(d + 1)}${brk(s.label)}:;\n")
+                out.append("$i}\n")
+                return
+            }
             if (s.step != null) {
                 out.append("${ind(d + 1)}int64_t $st = (int64_t)(${expr(s.step)});\n")
                 out.append("${ind(d + 1)}if ($st <= 0) {\n${ind(d + 2)}mk_raise_illegal_argument(\"Step must be positive.\");\n${exitStmt(d + 2)}${ind(d + 1)}}\n")
@@ -1474,6 +1500,39 @@ MKH_FN MkInt mkh_ra_length(MkObject *a) {
 #define mk_ref_array_set_o(a, i, v) mkh_ra_set_o((a), (i), (v))
 #define mk_ref_array_set(a, i, v) mkh_ra_set((a), (i), (v))
 #define mk_ref_array_length(a) mkh_ra_length((a))
+
+/* Allocation of a class instance of a constant size <= 64 bytes: the block comes from the thread's small-object cache inline (free list, else
+ * the bump chunk), zeroed with plain stores; whatever the cache cannot serve (an empty class, a full chunk, the collector not installed yet for
+ * an armed class) takes the runtime entry, which does the same and more. Same result as mk_alloc_armed / mk_alloc_plain. */
+#ifdef MK_INLINE_ALLOC
+static inline __attribute__((always_inline, unused)) MkObject *mkh_alloc_inline(const MkTypeInfo *ti, size_t size, int armed) {
+    if (size > 64 || (armed && !mk_cycles_ready)) return armed ? mk_alloc_armed(ti) : mk_alloc_plain(ti);
+    const size_t cls = (size + 15) / 16;
+    MkSmallCache *t = &mk_small_cache;
+    uint64_t *b = (uint64_t *)t->free[cls];
+    if (b != NULL) {
+        t->free[cls] = *(void **)b;
+        t->count[cls]--;
+    } else {
+        const size_t sz = cls * 16;
+        size_t align = sz & (~sz + 1u);
+        if (align > 64) align = 64;
+        unsigned char *p = t->bump;
+        if (((uintptr_t)p & (align - 1)) != 0 || (size_t)(t->end - p) < sz) return armed ? mk_alloc_armed(ti) : mk_alloc_plain(ti);
+        t->bump = p + sz;
+        b = (uint64_t *)(void *)p;
+    }
+    for (size_t i = 0; i < cls * 2; i++) b[i] = 0;
+    MkObject *o = (MkObject *)(void *)b;
+    o->type = ti;
+    o->refcount = 1;
+    o->flags = ((uint32_t)cls << 8) | (armed ? MK_FLAG_ARMED : 0u);
+    if (armed) mk_cycles_alloc_bytes += cls * 16;
+    return o;
+}
+#else
+#define mkh_alloc_inline(ti, size, armed) ((armed) ? mk_alloc_armed(ti) : mk_alloc_plain(ti))
+#endif
 
 /* Strings (minirt.h MkString): the length and the indexing of the common case are inline; NULL and a bad index take the runtime. */
 MKH_FN MkInt mkh_str_length(const MkString *s) {

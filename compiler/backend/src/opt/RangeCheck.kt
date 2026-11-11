@@ -15,12 +15,12 @@ internal object RangeCheck {
     private const val MAX_NODES = 220
     private val PRIM = setOf("int", "long", "double", "float", "byte", "short", "boolean", "char")
 
-    fun run(module: MirModule, stats: IntArray): MirModule {
+    fun run(module: MirModule, stats: IntArray, skipConst: Boolean = true): MirModule {
         var out: ArrayList<MirFunction>? = null
         val fs = module.functions
         for (i in fs.indices) {
             val f = fs[i]
-            val g = if (f.strict) f else runFunction(f, stats)
+            val g = if (f.strict) f else runFunction(f, stats, skipConst)
             if (g !== f && out == null) {
                 out = ArrayList(fs.size)
                 for (k in 0 until i) out.add(fs[k])
@@ -31,16 +31,31 @@ internal object RangeCheck {
         return MirModule(module.sourceName, out, module.classes, module.externs, module.includes, module.links, module.wasmExports)
     }
 
-    private fun runFunction(f: MirFunction, stats: IntArray): MirFunction {
+    private fun runFunction(f: MirFunction, stats: IntArray, skipConst: Boolean): MirFunction {
         val probe = Probe()
         probe.walk(f.body)
         if (!probe.any) return f
         val ids = IdScan(f)
-        val v = Versioner(ids.maxLocal + 1, ids.maxLabel + 1)
+        // arrays of a constant length: their bounds tests compare with an immediate, versioning the loop would cost more than it saves
+        val consts = HashSet<Int>()
+        if (skipConst) {
+            val cl = ConstLens(consts)
+            cl.walk(f.body)
+        }
+        val v = Versioner(ids.maxLocal + 1, ids.maxLabel + 1, consts)
         val body = v.stmts(f.body)
         if (v.count == 0) return f
         stats[0] += v.count
         return f.withBody(body)
+    }
+
+    /** The cached-length locals that hold a constant (ArrayLen: the array was made with a constant size). */
+    private class ConstLens(val out: HashSet<Int>) : MirVisitor() {
+        override fun visit(e: MirExpr) {}
+        override fun stmt(s: MirStmt): MirStmt {
+            if (s is MirStmt.Declare && s.init is MirExpr.IntConst && s.local.name.endsWith("_len")) out.add(s.local.id)
+            return super.stmt(s)
+        }
     }
 
     /** Does the function have a ForRange loop with a checked access at all (cheap exit for most functions)? */
@@ -142,7 +157,7 @@ internal object RangeCheck {
         else -> "?"
     }
 
-    private class Versioner(var nextLocal: Int, var nextLabel: Int) : MirTransform() {
+    private class Versioner(var nextLocal: Int, var nextLabel: Int, val consts: Set<Int>) : MirTransform() {
         var count = 0
 
         override fun stmt(s: MirStmt): MirStmt {
@@ -169,7 +184,7 @@ internal object RangeCheck {
             val v = loop.variable
             val invariant = OrigInv(v, declaredIds, inner.assigned)
             // the accesses that can lose their test
-            val find = Finder(v, invariant, declaredIds)
+            val find = Finder(v, invariant, declaredIds, consts)
             find.walk(loop.body)
             if (find.forms.isEmpty()) return null
             // the guard
@@ -197,7 +212,7 @@ internal object RangeCheck {
             val copy = copier.stmt(loop) as MirStmt.ForRange
             nextLocal = copier.nextLocal
             nextLabel = copier.nextLabel
-            val rw = Unchecked(copier.mapped(loop.variable), copier, inner.assigned)
+            val rw = Unchecked(copier.mapped(loop.variable), copier, inner.assigned, consts)
             val fast = rw.stmt(copy)
             count++
             return MirStmt.If(guard, listOf(fast), listOf(loop))
@@ -207,14 +222,14 @@ internal object RangeCheck {
     private class Entry(val form: Form, val len: MirLocal)
 
     /** Collects the distinct (length local, index form) pairs of the accesses that can be unchecked. */
-    private class Finder(val v: MirLocal, val invariant: Inv, val declaredIds: Set<Int>) : MirVisitor() {
+    private class Finder(val v: MirLocal, val invariant: Inv, val declaredIds: Set<Int>, val consts: Set<Int>) : MirVisitor() {
         val forms = LinkedHashMap<String, Entry>()
         override fun visit(e: MirExpr) {
             if (e !is MirExpr.RuntimeCall) return
             val k = ArrayLen.lenAccessKind(e) ?: return
             if (k !in PRIM) return
             val len = e.args[e.args.size - 1]
-            if (len !is MirExpr.Local || len.local.id in declaredIds) return
+            if (len !is MirExpr.Local || len.local.id in declaredIds || len.local.id in consts) return
             val a = e.args[0]
             if (a !is MirExpr.Local || a.local.id in declaredIds) return
             val fm = formOf(e.args[1], v, invariant) ?: return
@@ -300,7 +315,7 @@ internal object RangeCheck {
     }
 
     /** Turns the accesses of the copy whose index form is covered by the guard into unchecked ones. */
-    private class Unchecked(val v: MirLocal, val copier: LoopCopier, val assigned: Set<Int>) : MirTransform() {
+    private class Unchecked(val v: MirLocal, val copier: LoopCopier, val assigned: Set<Int>, val consts: Set<Int>) : MirTransform() {
         val invariant = CopyInv(copier, assigned)
 
         override fun expr(e: MirExpr): MirExpr {
@@ -310,7 +325,7 @@ internal object RangeCheck {
             if (k !in PRIM) return r
             val a0 = r.args[0]
             val len = r.args[r.args.size - 1]
-            if (a0 !is MirExpr.Local || copier.isInner(a0.local) || len !is MirExpr.Local || copier.isInner(len.local)) return r
+            if (a0 !is MirExpr.Local || copier.isInner(a0.local) || len !is MirExpr.Local || copier.isInner(len.local) || len.local.id in consts) return r
             if (formOf(r.args[1], v, invariant) == null) return r
             val args = ArrayList<MirExpr>(r.args.size - 1)
             for (i in 0 until r.args.size - 1) args.add(r.args[i])

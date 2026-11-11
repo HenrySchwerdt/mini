@@ -54,12 +54,12 @@ internal object ArrayLen {
         return if (k in KINDS) e.args.subList(0, e.args.size - 1) else e.args
     }
 
-    fun run(module: MirModule, stats: IntArray): MirModule {
+    fun run(module: MirModule, stats: IntArray, constLen: Boolean = true): MirModule {
         var out: ArrayList<MirFunction>? = null
         val fs = module.functions
         for (i in fs.indices) {
             val f = fs[i]
-            val g = runFunction(f, stats)
+            val g = runFunction(f, stats, constLen)
             if (g !== f) {
                 if (out == null) {
                     out = ArrayList(fs.size)
@@ -72,7 +72,7 @@ internal object ArrayLen {
         return MirModule(module.sourceName, out, module.classes, module.externs, module.includes, module.links, module.wasmExports)
     }
 
-    private fun runFunction(f: MirFunction, stats: IntArray): MirFunction {
+    private fun runFunction(f: MirFunction, stats: IntArray, constLen: Boolean): MirFunction {
         if (f.strict) return f
         val scan = Scan(f)
         scan.walkBody(f.body)
@@ -87,7 +87,7 @@ internal object ArrayLen {
         }
         if (chosen.isEmpty()) return f
         stats[0] += chosen.size
-        val rw = Rewrite(chosen)
+        val rw = Rewrite(chosen, constLen)
         val body = rw.stmts(f.body)
         val pre = ArrayList<MirStmt>()
         for (p in f.params) {
@@ -144,7 +144,14 @@ internal object ArrayLen {
         }
     }
 
-    private class Rewrite(val chosen: Map<Int, MirLocal>) : MirTransform() {
+    /** The length of an array made by `mk_array_new_<kind>(<constant>)`: a constant, which the C compiler / LLVM then folds into every bounds test. */
+    private fun constantLength(init: MirExpr?): MirExpr? {
+        if (init !is MirExpr.RuntimeCall || !init.cName.startsWith("mk_array_new_") || init.args.size != 1) return null
+        val n = init.args[0]
+        return if (n is MirExpr.IntConst && n.value >= 0) MirExpr.IntConst(n.value) else null
+    }
+
+    private class Rewrite(val chosen: Map<Int, MirLocal>, val constLen: Boolean) : MirTransform() {
         override fun expr(e: MirExpr): MirExpr {
             val r = rebuildExpr(e)
             if (r !is MirExpr.RuntimeCall || r.args.isEmpty()) return r
@@ -172,7 +179,10 @@ internal object ArrayLen {
                     out.add(r)
                     if (s is MirStmt.Declare) {
                         val len = chosen[s.local.id]
-                        if (len != null) out.add(keep(s, MirStmt.Declare(len, MirExpr.RuntimeCall("mk_array_length", listOf(MirExpr.Local(s.local)), TInt))))
+                        if (len != null) {
+                            val known = if (constLen) constantLength(s.init) else null
+                            out.add(keep(s, MirStmt.Declare(len, known ?: MirExpr.RuntimeCall("mk_array_length", listOf(MirExpr.Local(s.local)), TInt))))
+                        }
                     }
                 }
             }

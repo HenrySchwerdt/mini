@@ -215,6 +215,7 @@ void mk_release_armed(MkObject *object, uint32_t flags) {
 }
 
 MkCyclesHooks mk_cycles_hooks;
+volatile int mk_cycles_ready; /* set by mk_cycles_install: the inline allocation of generated code may arm objects */
 
 /* (generated code calls this when a release leaves an ARMED object alive) */
 void mk_cycles_candidate(MkObject *object) { mk_cycles_hooks.candidate(object); }
