@@ -59,9 +59,15 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     // no reference that an element read (a borrowed alias of an element, of the list) depends on is ever dropped.
     @kotlin.internal.NoHeapEffects
     override fun add(@TakesOwnership element: E): Boolean {
-        ensureCapacity(length + 1)
-        refArraySetOwned(array, length, element)
-        length++
+        // one read of the storage and of the length on the common path (room left); growing is the rare case
+        val len = length
+        var arr = array
+        if (len >= refArrayLength(arr)) {
+            ensureCapacity(len + 1)
+            arr = array
+        }
+        refArraySetOwned(arr, len, element)
+        length = len + 1
         modCount++
         return true
     }

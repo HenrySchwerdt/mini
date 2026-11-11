@@ -410,4 +410,5 @@ void mk_cycles_install(void) {
     mk_cycles_hooks.release_armed = mk_release_armed;
     mk_cycles_hooks.drain = mk_release_drain_armed;
     mk_cycles_hooks.candidate = cycles_candidate; /* (last: it is the test of mk_cycles_armed_alloc) */
+    mk_cycles_ready = 1;
 }

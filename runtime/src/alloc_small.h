@@ -33,6 +33,7 @@
 #define MK_SMALL_GRAN ((size_t)16)
 #define MK_SMALL_MAX ((size_t)256)
 #define MK_SMALL_CLASSES (MK_SMALL_MAX / MK_SMALL_GRAN + 1) /* index 0 unused */
+typedef char mk_small_classes_match[MK_SMALL_CLASSES == MK_SMALL_CLASSES_PUBLIC ? 1 : -1];
 #ifndef MK_SMALL_BATCH
 #define MK_SMALL_BATCH 256u /* blocks per batch: the unit moved between a thread and the central pool */
 #endif
@@ -42,16 +43,7 @@ typedef char mk_small_gran_is_max_align[MK_MAX_ALIGN == MK_SMALL_GRAN ? 1 : -1];
 /* Per size class a thread keeps a LIFO `free` list (fewer than MK_SMALL_BATCH blocks) and at most one full `spare`
  * batch behind it, so at most 2 * MK_SMALL_BATCH blocks per class. Both are chains with a known tail, which makes
  * handing a batch to the central pool (or taking one) O(1): no pointer chasing through cold memory. */
-typedef struct MkSmallCache {
-    void *free[MK_SMALL_CLASSES];
-    void *tail[MK_SMALL_CLASSES]; /* the oldest block of `free` (valid while count > 0) */
-    void *spare[MK_SMALL_CLASSES]; /* a full batch (MK_SMALL_BATCH blocks) or NULL */
-    void *spare_tail[MK_SMALL_CLASSES];
-    uint32_t count[MK_SMALL_CLASSES];
-    unsigned char *bump, *end;
-    size_t next_chunk;
-    int registered;
-} MkSmallCache;
+/* (the typedef MkSmallCache is in minirt.h: generated code allocates from it inline) */
 extern MK_TLS MkSmallCache mk_small_cache;
 
 void *mk_small_refill(size_t cls); /* slow path of mk_small_carve: batches of freed blocks, then new memory */
