@@ -1011,8 +1011,10 @@ object CEmitter {
             if (to is TObject && classes[to.cName]?.isInterface == true) {
                 // an interface is never the exact type of an object: the type that last passed this cast is remembered (a monomorphic site then costs one compare)
                 val k = "mkk${tmpCounter++}"
-                val cond = { c: String -> if (nullable) "$c != NULL && $c->type != $k" else "$c == NULL || $c->type != $k" }
-                return inlineGuard(e, e.operand, cond, slow, value, { c -> "$k = $c->type;" }, "static const MkTypeInfo *$k;")
+                // (the remembered type is read and written with relaxed atomics: threads may share the site, and a stale value only costs the slow path)
+                val seen = "__atomic_load_n(&$k, __ATOMIC_RELAXED)"
+                val cond = { c: String -> if (nullable) "$c != NULL && $c->type != $seen" else "$c == NULL || $c->type != $seen" }
+                return inlineGuard(e, e.operand, cond, slow, value, { c -> "__atomic_store_n(&$k, $c->type, __ATOMIC_RELAXED);" }, "static const MkTypeInfo *$k;")
             }
             // a class: the object's own type, or its direct superclass (the common hierarchy of one abstract base)
             val leaf = to !is TObject || (classes[to.cName]?.let { !it.external && it.cName !in extended() } == true)
@@ -1527,7 +1529,7 @@ static inline __attribute__((always_inline, unused)) MkObject *mkh_alloc_inline(
     o->type = ti;
     o->refcount = 1;
     o->flags = ((uint32_t)cls << 8) | (armed ? MK_FLAG_ARMED : 0u);
-    if (armed) mk_cycles_alloc_bytes += cls * 16;
+    if (armed) MK_CYCLES_ADD(cls * 16);
     return o;
 }
 #else

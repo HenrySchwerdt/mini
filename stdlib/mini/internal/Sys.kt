@@ -56,6 +56,12 @@ public external fun sysThreadDetach(handle: Long)
 @CSymbol("mk_sys_thread_id")
 public external fun sysThreadId(): Long
 
+@CSymbol("mk_sys_thread_data")
+public external fun sysThreadData(): Any?
+
+@CSymbol("mk_sys_thread_set_data")
+public external fun sysThreadSetData(o: Any?)
+
 @CSymbol("mk_sys_thread_yield")
 public external fun sysThreadYield()
 

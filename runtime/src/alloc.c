@@ -111,7 +111,7 @@ MK_ALWAYS_INLINE MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size, b
     object->type = type;
     object->refcount = 1;
     object->flags = ((uint32_t)cls << SMALL_CLASS_SHIFT) | (arm ? MK_FLAG_ARMED : 0u);
-    if (arm) mk_cycles_alloc_bytes += cls * MK_SMALL_GRAN; /* (not atomic: only a heuristic) */
+    if (arm) MK_CYCLES_ADD(cls * MK_SMALL_GRAN);
     return object;
 }
 #endif
@@ -148,7 +148,7 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
         object->flags = ((uint32_t)cls << SMALL_CLASS_SHIFT) | (allocator == &heap_allocator ? MK_FLAG_HEAP : 0u);
         if (allocator == &default_allocator && MK_ARMABLE(type)) { /* a candidate for the cycle collector (cycles.c) */
             object->flags |= MK_FLAG_ARMED;
-            mk_cycles_alloc_bytes += cls * MK_SMALL_GRAN; /* (not atomic: only a heuristic) */
+            MK_CYCLES_ADD(cls * MK_SMALL_GRAN);
         }
         return object;
     }
@@ -194,7 +194,7 @@ MkObject *mk_alloc_sized_site(MkAllocator *allocator, const MkTypeInfo *type, si
     object->flags = MK_FLAG_PREFIXED;
     if (allocator == &default_allocator && MK_ARMABLE(type)) { /* a large candidate for the cycle collector */
         object->flags |= MK_FLAG_ARMED;
-        mk_cycles_alloc_bytes += total;
+        MK_CYCLES_ADD(total);
     }
     return object;
 }
