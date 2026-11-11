@@ -58,7 +58,17 @@ jobs:
       # script falls back to clang.wasm when the host has no wasm32 target or no wasm-ld.
       - name: Install clang and lld
         if: steps.cache.outputs.cache-hit != 'true'
-        run: sudo apt-get update && sudo apt-get install -y clang lld
+        run: |
+          # the runner image usually has both; apt (and its DNS) is only needed when something is missing. The build script
+          # looks for plain `clang` and `wasm-ld` on PATH, so also pick up versioned installs from /usr/lib/llvm-*/bin.
+          for d in $(ls -d /usr/lib/llvm-*/bin 2>/dev/null | sort -rV); do
+            if [ -x "$d/wasm-ld" ] || [ -x "$d/clang" ]; then echo "$d" >> "$GITHUB_PATH"; PATH="$d:$PATH"; break; fi
+          done
+          if command -v clang >/dev/null && command -v wasm-ld >/dev/null; then
+            echo "clang/wasm-ld present"
+          else
+            sudo apt-get update && sudo apt-get install -y clang lld
+          fi
 
       - name: Install the pinned clang/wasm-ld (npm)
         if: steps.cache.outputs.cache-hit != 'true'
