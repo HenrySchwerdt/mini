@@ -13,3 +13,6 @@ internal class EnumEntriesImpl<E : Enum<E>>(private val items: Array<E>) : Abstr
         return items[index]
     }
 }
+
+/** `enumEntries<E>()` of kotlin-stdlib (package kotlin.enums); lowered by the compiler like enumValues (see EnumIntrinsics.kt). */
+public inline fun <reified T : Enum<T>> enumEntries(): EnumEntries<T> = throw UnsupportedOperationException("enumEntries is lowered by the compiler")

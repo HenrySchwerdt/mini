@@ -13,6 +13,10 @@ package mini.internal
 @CSymbol("mk_type_name")
 public external fun typeName(o: Any): String
 
+/** Is the class (or interface) with the fully qualified Kotlin name [name] the runtime type of [o] or one of its supertypes? `null` is no instance. */
+@CSymbol("mk_type_is_named")
+public external fun typeIsNamed(o: Any?, name: String): Boolean
+
 /** Address based hash, the default `Any.hashCode`. */
 @CSymbol("mk_identity_hash")
 public external fun identityHashCode(o: Any?): Int

@@ -1,0 +1,97 @@
+kotlin.Int
+kotlin.Int?
+kotlin.String
+kotlin.Any
+kotlin.Any?
+kotlin.collections.List<kotlin.Int>
+kotlin.collections.List<kotlin.Int?>
+kotlin.collections.MutableList<kotlin.String>
+kotlin.collections.Map<kotlin.String, kotlin.collections.List<kotlin.Int>>
+kotlin.collections.Map<kotlin.String, *>
+kotlin.collections.List<out kotlin.Number>
+kotlin.Comparable<in kotlin.Int>
+kotlin.Array<kotlin.String>
+kotlin.Array<kotlin.Int>
+kotlin.IntArray
+Foo<kotlin.Int>
+Foo<*>
+Outer.Inner
+Marker
+Color
+Obj
+Base?
+kotlin.Unit
+kotlin.Pair<kotlin.Int, kotlin.String>
+(kotlin.Int) -> kotlin.String
+kotlin.Long
+kotlin.Double
+kotlin.Boolean
+kotlin.Char
+kotlin.Byte
+kotlin.Float
+kotlin.Short
+kotlin.collections.Set<kotlin.Char>
+kotlin.collections.Collection<kotlin.Int>
+kotlin.collections.Iterable<kotlin.Int>
+kotlin.collections.Map.Entry<kotlin.String, kotlin.Int>
+kotlin.UInt
+kotlin.Number
+kotlin.CharSequence
+kotlin.Throwable
+kotlin.Int
+kotlin.collections.List<kotlin.String>?
+class kotlin.collections.Map
+true
+[kotlin.String, kotlin.collections.List<kotlin.Int>]
+kotlin.collections.List<kotlin.Int>
+INVARIANT
+false
+true
+true
+true
+false
+true
+false
+true
+*
+null
+null
+*
+kotlin.Int
+out kotlin.Int
+in kotlin.Int
+in kotlin.String
+true
+[INVARIANT, IN, OUT]
+in kotlin.Int
+INVARIANT
+kotlin.Int
+kotlin.collections.List<T>
+true
+T
+INVARIANT
+false
+[kotlin.Any?]
+kotlin.Pair<kotlin.String, kotlin.Int?>
+kotlin.Pair<kotlin.collections.List<kotlin.Int>, kotlin.collections.Map<kotlin.String, kotlin.Int>?>
+[kotlin.Int]
+kotlin.collections.List<(kotlin.Int) -> kotlin.String>
+((kotlin.Int, kotlin.String) -> kotlin.Unit)?
+[kotlin.Int, kotlin.String]
+class kotlin.Int
+true
+true
+true
+false
+true
+false
+false
+true
+true
+false
+true
+true
+true
+null
+Value cannot be cast to Cat
+s

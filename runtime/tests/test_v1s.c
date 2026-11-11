@@ -216,6 +216,12 @@ int main(void) {
     CHECK_STR(tn, "kotlin.Int");
     CHECK(mk_identity_hash(bx) >= 0);
     CHECK_EQ_INT(mk_identity_hash(bx), mk_identity_hash(bx));
+    MkString *kn = mk_string_from_utf8("kotlin.Int", 10), *kx = mk_string_from_utf8("kotlin.String", 13);
+    CHECK(mk_type_is_named(bx, kn));
+    CHECK(!mk_type_is_named(bx, kx));
+    CHECK(!mk_type_is_named(NULL, kn));
+    mk_release((MkObject *)kn);
+    mk_release((MkObject *)kx);
     mk_release(bx);
 
     TEST_DONE();

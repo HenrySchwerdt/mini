@@ -457,6 +457,7 @@ void mk_main(void);
 /* Arguments are borrowed; reference results are owned (+1). Out-of-range indices abort via mk_panic. */
 
 MkString *mk_type_name(MkObject *object);  /* MkTypeInfo.name, e.g. "kotlin.Int" */
+MkBoolean mk_type_is_named(MkObject *object, const MkString *name); /* is the type [name] the type of [object] or a supertype of it (NULL: false) */
 MkInt mk_identity_hash(MkObject *object);
 
 MkChar mk_string_char_at(const MkString *s, MkInt index);
