@@ -1,0 +1,27 @@
+<html>
+  <head>
+    <title>Demo page</title>
+    <meta name="author" content="mini"/>
+  </head>
+  <body>
+    <h1>Hello DSL</h1>
+    <p>
+      A paragraph with 
+      two text nodes.
+    </p>
+    <div class="list">
+      <ul>
+        <li>1. alpha</li>
+        <li>2. beta</li>
+        <li>3. &lt;gamma></li>
+        <li class="last">custom</li>
+      </ul>
+      <a href="https://example.org">example</a>
+    </div>
+    <div>
+      <p>nested</p>
+    </div>
+  </body>
+</html>
+SELECT id, name FROM users WHERE age > 18 AND name LIKE 'A%' AND status IN ('new', 'active') AND city = 'O''Hare' ORDER BY name DESC LIMIT 10
+SELECT * FROM t

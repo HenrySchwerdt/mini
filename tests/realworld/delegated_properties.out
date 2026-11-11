@@ -1,0 +1,29 @@
+  provideDelegate for email
+-- logged
+ada
+[set name: anon -> ada, get name = ada, get name = ada, set name: ada -> ada lovelace]
+-- range
+10 1
+-- validated
+a@b.c
+rejected: email: must contain @
+-- vetoable
+30
+-- observable / notNull
+nick: Property nick should be initialized before get.
+ace
+[title changed none -> dr, title changed dr -> prof]
+-- lazy / counter
+[1, 4, 9, 16, 25]
+55
+[computing expensive]
+tickets: 1 2 3
+-- map
+example.org:8081 debug=true map={debug=true, host=example.org, port=8081}
+-- interface delegation
+HELLO, BOB! en
+Hello, amy! polite-en
+-- local delegates
+computed computed calls=1
+fib(60)=1548008755920 hits=58
+3
