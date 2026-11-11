@@ -10,12 +10,15 @@ package kotlin.reflect
  */
 public interface KAnnotatedElement
 
-public interface KClass<T : Any> : KAnnotatedElement {
+public interface KClass<T : Any> : KClassifier, KAnnotatedElement {
     /** The simple name of the class (without package and enclosing classes), `null` for anonymous classes. */
     public val simpleName: String?
 
     /** The fully qualified name of the class, `null` for anonymous and local classes. */
     public val qualifiedName: String?
+
+    /** Is [value] an instance of this class (the class itself, a subclass, or a class implementing this interface)? `null` is not. */
+    public fun isInstance(value: Any?): Boolean
 }
 
 /**
@@ -28,6 +31,8 @@ internal class KClassImpl<T : Any>(private val name: String) : KClass<T> {
 
     override val qualifiedName: String?
         get() = if (name.indexOf('$') >= 0) null else name
+
+    override fun isInstance(value: Any?): Boolean = mini.internal.typeIsNamed(value, name)
 
     override fun equals(other: Any?): Boolean = other is KClassImpl<*> && other.name == name
 
@@ -100,8 +105,11 @@ internal class KMutableProperty1Impl<T, V>(override val name: String, private va
     override fun toString(): String = "property $name"
 }
 
-public interface KProperty2<D, E, out V> : KProperty<V>, (D, E) -> V
+public interface KProperty2<D, E, out V> : KProperty<V>, (D, E) -> V {
+    public fun get(receiver1: D, receiver2: E): V
+}
 
-public interface KMutableProperty2<D, E, V> : KProperty2<D, E, V>, KMutableProperty<V>
+public interface KMutableProperty2<D, E, V> : KProperty2<D, E, V>, KMutableProperty<V> {
+    public fun set(receiver1: D, receiver2: E, value: V)
+}
 
-public interface KType

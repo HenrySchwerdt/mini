@@ -135,7 +135,7 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
     // C interop: external functions of C, the kotlinx.cinterop intrinsics, @CStruct fields
     interopCall(c, owner, out)?.let { return it }
     // enumValues<E>() / enumValueOf<E>(name) / enumEntries<E>(): the generated values / valueOf / entries of E
-    if (parent is IrFile && parent.packageFqName == "kotlin" && owner.isInline && c.typeArguments.size == 1 &&
+    if (parent is IrFile && (parent.packageFqName == "kotlin" || (parent.packageFqName == "kotlin.enums" && name == "enumEntries")) && owner.isInline && c.typeArguments.size == 1 &&
         (name == "enumValues" || name == "enumValueOf" || name == "enumEntries")
     ) {
         val ec = substituted(c.typeArguments[0] ?: unsupported(c, "$name without a type argument")).classOrNull
@@ -144,6 +144,8 @@ internal fun Ir2Mir.callInner(c: IrCall, out: MutableList<MirStmt>): MirExpr {
         }
         unsupported(c, "$name of a type that is not an enum class")
     }
+    // typeOf<T>(): a KTypeImpl made from the static type
+    if (parent is IrFile && parent.packageFqName == REFLECT_PKG && name == "typeOf" && owner.isInline && c.typeArguments.size == 1) return typeOfCall(c, out)
     memoryApiCall(c, owner, out)?.let { return it }
     // `arrayOf` / `emptyArray` are made here, not called: the array records the element type of the call (docs/memory-model.md, "Reified object arrays")
     if (parent is IrFile && parent.packageFqName == "kotlin" && (name == "arrayOf" || name == "emptyArray")) arrayFunction(c, name, "kotlin", out)?.let { return it }

@@ -42,6 +42,13 @@ public fun String.substring(startIndex: Int, endIndex: Int): String {
     return stringSubstring(this, startIndex, endIndex)
 }
 
+// The range test of substring(startIndex, endIndex), kept where a substring is not made (compiler/backend/src/opt/SubstrKey.kt): the same exception.
+internal fun String.checkSubstringRange(startIndex: Int, endIndex: Int) {
+    if (startIndex < 0 || endIndex > length || startIndex > endIndex) {
+        mini.internal.throwIndexOutOfBounds("begin $startIndex, end $endIndex, length $length")
+    }
+}
+
 public fun String.substringBefore(delimiter: String, missingDelimiterValue: String = this): String {
     val index = indexOf(delimiter)
     return if (index == -1) missingDelimiterValue else substring(0, index)

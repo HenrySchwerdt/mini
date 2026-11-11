@@ -60,10 +60,8 @@ object Reachability {
         val marker = Marker()
         for (f in module.files) {
             for (d in f.declarations) {
-                if (d is IrClass && d.kotlinFqName == REFLECT_PKG + ".KClassImpl") {
-                    marker.kclassImpl = d
-                    break
-                }
+                if (d is IrClass && d.kotlinFqName == REFLECT_PKG + ".KClassImpl") marker.kclassImpl = d
+                if (d is IrClass && d.kotlinFqName == REFLECT_PKG + ".KTypeImpl") marker.ktypeImpl = d
             }
         }
         for (f in module.files) {
@@ -107,6 +105,8 @@ object Reachability {
         val kept = HashSet<IrDeclaration>()
         /** `Foo::class` / `x::class` create a KClassImpl (Ir2MirExpressions.classReference). */
         var kclassImpl: IrClass? = null
+        /** `typeOf<T>()` creates a KTypeImpl (Ir2MirReflect.typeOfCall). */
+        var ktypeImpl: IrClass? = null
         /** `Color.entries` creates an EnumEntriesImpl (Ir2MirCalls.enumSpecialCall). */
         var entriesImpl: IrClass? = null
         /** `::prop` creates a KPropertyNImpl (Ir2MirClosures.propertyReference). */
@@ -148,6 +148,7 @@ object Reachability {
                     val dispatch = dispatchReceiverTypeOf(e, callee)
                     if (!(dispatch != null && isBuiltinClassType(dispatch))) markSymbolOwner(callee)
                     if (callee?.name == "<get-entries>" || callee?.name == "enumEntries") entriesImpl?.let { markClass(it) }
+                    if (callee != null && callee.name == "typeOf" && (callee.parent as? IrFile)?.packageFqName == REFLECT_PKG) ktypeImpl?.let { markClass(it) }
                     if (e is IrFunctionReference) markSymbolOwner(e.target)
                 }
                 is IrGetObjectValue -> markClass(e.classOwner)

@@ -261,7 +261,13 @@ public fun <T> Sequence<T>.plus(element: T): Sequence<T> = sequenceOf(this, sequ
 public fun <T> Sequence<T>.plus(elements: Sequence<T>): Sequence<T> = sequenceOf(this, elements).flatten()
 @kotlin.jvm.JvmName("plusIterable")
 public fun <T> Sequence<T>.plus(elements: Iterable<T>): Sequence<T> = sequenceOf(this, elements.asSequence()).flatten()
-public fun <T> Sequence<T>.minus(element: T): Sequence<T> = filter { it != element }
+public fun <T> Sequence<T>.minus(element: T): Sequence<T> {
+    val source = this
+    return Sequence<T> {
+        var removed = false
+        source.filter { if (!removed && it == element) { removed = true; false } else true }.iterator()
+    }
+}
 
 private class LazyListSequence<T>(private val make: () -> List<T>) : Sequence<T> {
     override fun iterator(): Iterator<T> = make().iterator()

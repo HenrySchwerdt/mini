@@ -505,8 +505,8 @@ public fun @N@Array.sortedArrayDescending(): @N@Array {
 }
 public fun @N@Array.sorted(): List<@N@> = sortedArray().toList()
 public fun @N@Array.sortedDescending(): List<@N@> = sortedArrayDescending().toList()
-public inline fun <R : Comparable<R>> @N@Array.sortedBy(selector: (@N@) -> R): List<@N@> = toList().sortedBy(selector)
-public inline fun <R : Comparable<R>> @N@Array.sortedByDescending(selector: (@N@) -> R): List<@N@> = toList().sortedByDescending(selector)
+public inline fun <R : Comparable<R>> @N@Array.sortedBy(crossinline selector: (@N@) -> R): List<@N@> = toList().sortedBy(selector)
+public inline fun <R : Comparable<R>> @N@Array.sortedByDescending(crossinline selector: (@N@) -> R): List<@N@> = toList().sortedByDescending(selector)
 public fun @N@Array.sortedWith(comparator: Comparator<in @N@>): List<@N@> = toList().sortedWith(comparator)
 public fun @N@Array.binarySearch(element: @N@, fromIndex: Int = 0, toIndex: Int = size): Int {
     var low = fromIndex

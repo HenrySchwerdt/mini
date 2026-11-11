@@ -341,9 +341,9 @@ def owner_candidates(d, supers):
         if base != o[4:]: yield 'ext:' + base
         for s in supers(base, set()): yield 'ext:' + s
         yield base                       # a member of the class (StringBuilder.set is a member in mini)
-    elif '.' in o:
+    elif o:
         yield 'ext:' + o      # Duration.Companion.parse may be an extension on Duration.Companion
-        yield 'ext:' + o.split('.')[-1]
+        yield 'ext:' + o.split('.')[-1]     # a reference member that mini declares as an extension (Char.toByte)
 
 def fmt(d):
     if d.kind == 'class': return '%s %s%s' % (d.sig or 'class', d.owner + '.' if d.owner else '', d.name)
@@ -409,6 +409,10 @@ def main():
             ok = False
             if d.owner == 'ext:*':
                 ok = any(m.pkg in pkg_family(d.pkg) and m.owner.startswith('ext:') and arity_ok(d, [m]) for m in by_name.get((d.kind, d.name), []))
+            if not ok and d.kind == 'fun' and not d.owner and d.name[:1].isupper():
+                # a reference factory function that looks like a constructor (UByteArray(size, init)): a mini constructor serves it
+                for pp in pkg_family(d.pkg):
+                    if arity_ok(d, midx.get(('ctor', pp, d.name, '<init>'), [])): ok = True; break
             for own in ([] if ok else owner_candidates(d, supers)):
                 for pp in pkg_family(d.pkg):
                     c = midx.get((d.kind, pp, own, d.name), [])
@@ -450,7 +454,7 @@ def main():
         for d in sorted(missing, key=lambda d: -score(d))[:a.top]:
             print('%6d  %s  %s' % (score(d), d.pkg, fmt(d)))
     if a.json:
-        json.dump([{'pkg': d.pkg, 'decl': fmt(d), 'file': d.file, 'uses': score(d), 'experimental': d.opt} for d in missing],
+        json.dump([{'pkg': d.pkg, 'decl': fmt(d), 'file': d.file, 'line': d.line, 'uses': score(d), 'experimental': d.opt} for d in missing],
                   open(a.json, 'w'), indent=0)
 
 if __name__ == '__main__':

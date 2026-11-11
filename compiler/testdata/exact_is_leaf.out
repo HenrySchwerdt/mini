@@ -1,0 +1,17 @@
+JNull
+JNum 7
+JStr hello
+JArr 3
+JArr 1
+null
+2
+true false false true
+false true false true
+false false true true
+false false false true
+leaf mid base none
+true false true false
+false true true false
+false false false true
+false false false false
+false
