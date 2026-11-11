@@ -193,6 +193,17 @@ void *mk_small_carve(size_t cls) {
     return mk_small_refill(cls);
 }
 
+#else
+/* (no small-object allocator: generated code of the LLVM backend still names the thread's cache; it stays empty, so its inline allocation always takes the runtime) */
+MK_TLS MkSmallCache mk_small_cache;
 #endif /* MK_SMALL_ALLOC */
+
+#if MK_SMALL_ALLOC
+/* the offsets that the LLVM backend's inline allocation (compiler/backend/src/llvm/Lowering.kt, emitAllocHelpers) writes into */
+_Static_assert(__builtin_offsetof(MkSmallCache, count) == 544, "MkSmallCache.count");
+_Static_assert(__builtin_offsetof(MkSmallCache, bump) == 616, "MkSmallCache.bump");
+_Static_assert(__builtin_offsetof(MkSmallCache, end) == 624, "MkSmallCache.end");
+_Static_assert(__builtin_offsetof(MkSmallCache, cycles_bytes) == 648, "MkSmallCache.cycles_bytes");
+#endif
 
 typedef int mk_alloc_small_translation_unit_not_empty;
