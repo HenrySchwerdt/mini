@@ -29,6 +29,7 @@ internal class SubstrKey(module: MirModule) {
     private val put: String?
     private val putRange: String?
     private val putRangeAt: String?
+    private val setNodeValue: String?
     val available: Boolean
 
     init {
@@ -39,6 +40,7 @@ internal class SubstrKey(module: MirModule) {
         var pt: String? = null
         var ptR: String? = null
         var ptA: String? = null
+        var setN: String? = null
         for (f in module.functions) {
             when (f.qualifiedName) {
                 "kotlin.text.substring" -> if (f.params.size == 3 && f.params[0].type === TString && f.params[1].type === TInt && f.params[2].type === TInt) sub = f.cName
@@ -48,9 +50,10 @@ internal class SubstrKey(module: MirModule) {
                 "kotlin.collections.HashMap.put" -> if (f.params.size == 3) pt = f.cName
                 "kotlin.collections.HashMap.putRange" -> if (f.params.size == 5) ptR = f.cName
                 "kotlin.collections.HashMap.putRangeAt" -> if (f.params.size == 6) ptA = f.cName
+                "kotlin.collections.HashMap.setNodeValue" -> if (f.params.size == 3) setN = f.cName
             }
         }
-        substr = sub; check = chk; find = fnd; findRange = fndR; put = pt; putRange = ptR; putRangeAt = ptA
+        substr = sub; check = chk; find = fnd; findRange = fndR; put = pt; putRange = ptR; putRangeAt = ptA; setNodeValue = setN
         available = sub != null && chk != null && fnd != null && fndR != null && pt != null && ptR != null && ptA != null
     }
 
@@ -246,7 +249,7 @@ internal class SubstrKey(module: MirModule) {
             fun stmtWithEnv(s: MirStmt): MirStmt {
                 val pure = noEffects(s)
                 val saved = avail
-                val r: MirStmt
+                var r: MirStmt
                 when (s) {
                     // children see the entries that are valid when they start; what they add (or clear) is theirs only
                     is MirStmt.If -> {
@@ -268,6 +271,21 @@ internal class SubstrKey(module: MirModule) {
                         r = rebuildStmt(s)
                     }
                     else -> r = rebuildStmt(s)
+                }
+                // `put` with the node of the lookup, as a statement: `if (node != null) node.value = v else put(...)`. The call that updates the node
+                // changes nothing but its value, so the node (and a value read from it) stay borrowed up to it; the general put is only on the other path.
+                if (setNodeValue != null && r is MirStmt.Eval && r.expr is MirExpr.Call && (r.expr as MirExpr.Call).cName == putRangeAt) {
+                    val call = r.expr as MirExpr.Call
+                    val node = call.args[4]
+                    val v = call.args[5]
+                    val rc = call.args[0]
+                    if (node is MirExpr.Local && v is MirExpr.Local && rc is MirExpr.Local && v.type.isRef) {
+                        val upd = MirStmt.Eval(MirExpr.Call(setNodeValue!!, listOf(MirExpr.Local(rc.local), MirExpr.Local(node.local), MirExpr.Local(v.local)), TUnit))
+                        val ins = MirStmt.Eval(MirExpr.Call(putRange!!, listOf(MirExpr.Local(rc.local), copy(call.args[1]), copy(call.args[2]), copy(call.args[3]), MirExpr.Local(v.local)), call.type))
+                        upd.srcLine = r.srcLine; upd.srcFile = r.srcFile; ins.srcLine = r.srcLine; ins.srcFile = r.srcFile
+                        val cond = MirExpr.Binary(BinaryOp.IdNe, MirExpr.Local(node.local), MirExpr.NullConst())
+                        r = keep(s, MirStmt.If(cond, listOf(upd), listOf(ins)))
+                    }
                 }
                 avail = saved
                 if (!pure) {

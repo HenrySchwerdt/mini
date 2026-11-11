@@ -216,6 +216,7 @@ static void run_thread_body(MkThread *th) {
     }
     mk_release(th->fn);
     th->fn = NULL;
+    mk_sys_thread_set_data(NULL);
     mk_release_drain();
     __atomic_fetch_sub(&mk_threads_running, 1, __ATOMIC_SEQ_CST); /* the last reference count operation of this thread */
     __atomic_store_n(&th->done, 1, __ATOMIC_RELEASE);
@@ -243,6 +244,22 @@ static int64_t thread_id_counter = 0;
 int64_t mk_sys_thread_id(void) {
     if (tl_thread_id == 0) tl_thread_id = __atomic_add_fetch(&thread_id_counter, 1, __ATOMIC_SEQ_CST);
     return tl_thread_id;
+}
+
+/* One object per thread that the library keeps there (java.lang.Thread stores its Thread object): the slot holds a reference. */
+static _Thread_local MkObject *tl_thread_data = NULL;
+
+MkObject *mk_sys_thread_data(void) {
+    MkObject *d = tl_thread_data;
+    if (d != NULL) mk_retain(d);
+    return d;
+}
+
+void mk_sys_thread_set_data(MkObject *o) {
+    MkObject *old = tl_thread_data;
+    if (o != NULL) mk_retain(o);
+    tl_thread_data = o;
+    mk_release(old);
 }
 
 void mk_sys_thread_yield(void) {

@@ -103,6 +103,9 @@ class RcPlan internal constructor(
 }
 
 object RcOpt {
+    /** `-Xno-rc-branch-exclusion` clears it: an event in the other arm of an `if` then counts as lying between a definition and a use like any other. */
+    var branchExclusion = true
+
     fun analyze(
         module: MirModule,
         tr: Tracking = Tracking(module, false),
@@ -237,6 +240,23 @@ internal class RcBits(val size: Int) {
     }
 }
 
+/** One arm of an `if` (`arm` 0 = then, 1 = else) inside the arm [parent]: the position of a use or an event as a chain of arms. */
+private class Arm(val id: Int, val arm: Int, val parent: Arm?)
+
+/** Can the two positions not both lie on one path of execution (they are in different arms of the same `if`)? */
+private fun exclusiveArms(a: Arm?, b: Arm?): Boolean {
+    var x = a
+    while (x != null) {
+        var y = b
+        while (y != null) {
+            if (x.id == y.id && x.arm != y.arm) return true
+            y = y.parent
+        }
+        x = x.parent
+    }
+    return false
+}
+
 private class LoopRange(val start: Int) {
     var end = Int.MAX_VALUE
 }
@@ -261,6 +281,7 @@ private class LocalInfo(val local: MirLocal, val index: Int, val isParam: Boolea
     val chains = ArrayList<Chain>()
     val usePos = IntList()
     val useLoop = ArrayList<LoopRange?>()
+    val useArm = ArrayList<Arm?>()
     val assignPos = IntList()
     val assignLoop = ArrayList<LoopRange?>()
     var borrowed = false
@@ -303,6 +324,9 @@ private class RcAnalyzer(
     private val events = IntList()
     /** The effect of the event at the same index of [events]. */
     private val eventEffs = ArrayList<Eff>()
+    private val eventArms = ArrayList<Arm?>()
+    private var curArm: Arm? = null
+    private var armCounter = 0
     private val loops = ArrayList<LoopRange>()
     private val scopeParent = IntList()
     private var scope = 0
@@ -491,6 +515,7 @@ private class RcAnalyzer(
         val i = byId[l.id] ?: return
         i.usePos += p
         i.useLoop += loops.getOrNull(i.declDepth)
+        i.useArm += curArm
     }
 
     /** `Cast`/`NotNull` wrappers around a local (value-preserving for the pointer): the local, or null. */
@@ -569,6 +594,7 @@ private class RcAnalyzer(
     private fun event(p: Int, e: Eff) {
         events += p
         eventEffs += e
+        eventArms += curArm
     }
 
     private fun callEvent(operands: List<MirExpr>, effect: Eff?) {
@@ -655,8 +681,13 @@ private class RcAnalyzer(
             is MirStmt.Eval -> expr(s.expr)
             is MirStmt.If -> {
                 expr(s.cond)
+                val outer = curArm
+                val id = armCounter++
+                curArm = Arm(id, 0, outer)
                 stmts(s.thenBody)
+                curArm = Arm(id, 1, outer)
                 stmts(s.elseBody)
+                curArm = outer
             }
             is MirStmt.Block -> stmts(s.body)
             is MirStmt.While -> {
@@ -778,11 +809,42 @@ private class RcAnalyzer(
         return false
     }
 
+    /** Like [eventHits] for a use at [hi] in the arm [arm]: events in a different arm of an `if` than the use cannot lie between a definition and it. */
+    private fun eventHitsOnPath(lo: Int, hi: Int, sens: Eff, arm: Arm?): Boolean {
+        var a = 0
+        var b = events.size
+        while (a < b) {
+            val m = (a + b) / 2
+            if (events[m] > lo) b = m else a = m + 1
+        }
+        while (a < events.size && events[a] <= hi) {
+            if (eventEffs[a].hits(sens) && !exclusiveArms(eventArms[a], arm)) return true
+            a++
+        }
+        return false
+    }
+
     private fun valid(x: LocalInfo): Boolean {
         if (!closure(x)) return false
         val lo = x.firstDef
         val hi = windowEnd(x)
-        if (x.viaField && eventHits(lo, hi, x.sens)) return false
+        if (x.viaField) {
+            if (!RcOpt.branchExclusion) {
+                if (eventHits(lo, hi, x.sens)) return false
+            } else {
+                // the definitions (assignments) and the uses that a loop extends: every event of the window counts; any other use: the events before it
+                // that can lie on a path to it (not those in the other arm of an `if`)
+                var assignEnd = lo
+                for (k in x.assignPos.indices) assignEnd = maxOf(assignEnd, effective(x.assignPos[k], x.assignLoop[k]))
+                if (assignEnd > lo && eventHits(lo, assignEnd, x.sens)) return false
+                for (k in x.usePos.indices) {
+                    val l = x.useLoop[k]
+                    if (l != null) {
+                        if (eventHits(lo, l.end, x.sens)) return false
+                    } else if (eventHitsOnPath(lo, x.usePos[k], x.sens, x.useArm[k])) return false
+                }
+            }
+        }
         for (r in x.roots) {
             if (r.isParam && !r.ownedParam) {
                 if (r.duplicate) return false
