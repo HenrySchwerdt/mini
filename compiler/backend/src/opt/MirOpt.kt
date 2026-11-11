@@ -64,11 +64,11 @@ object MirOpt {
         }
         if (options.on("array-len")) {
             val st = IntArray(1)
-            m = ArrayLen.run(m, st)
+            m = ArrayLen.run(m, st, options.on("array-const-len"))
             if (options.stats) report("array-len: " + st[0] + " array locals with a cached length")
             if (options.on("range-check")) {
                 val rs = IntArray(1)
-                m = RangeCheck.run(m, rs)
+                m = RangeCheck.run(m, rs, options.on("range-check-const"))
                 if (options.stats) report("range-check: " + rs[0] + " loops versioned with unchecked array accesses")
             }
         }

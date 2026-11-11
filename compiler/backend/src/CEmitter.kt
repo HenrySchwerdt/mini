@@ -21,6 +21,9 @@ class EmitError(message: String) : Exception(message)
  *  - returns are owned (+1).
  */
 object CEmitter {
+    /** `-Xno-plain-loops` clears it: `for (i in a until b)` then takes the general counting loop (exact for every bound and step). */
+    var plainLoops = true
+
     private const val LINE_RESET = "#mk-line-reset"
 
     /**
@@ -797,6 +800,19 @@ object CEmitter {
             out.append("$i{\n")
             out.append("${ind(d + 1)}$t $cur = ${expr(s.start)};\n")
             out.append("${ind(d + 1)}$t $last = ${expr(s.end)};\n")
+            if (plainLoops && s.step == null && s.ascending && !s.inclusive && (s.variable.type === TInt || s.variable.type === TLong)) {
+                // `for (i in a until b)`: cur < last <= MAX, so cur + 1 cannot overflow: the plain counting loop (the C compiler sees a signed
+                // induction variable that does not wrap, and drops the sign extensions and the distance arithmetic of the general form)
+                out.append("${ind(d + 1)}for (; $cur < $last; $cur++) {\n")
+                out.append("${ind(d + 2)}const $t $v = $cur;\n")
+                scope(s.body, d + 2, out, loop = s.label, mid = { sb ->
+                    if (cont(s.label) in usedLabels) sb.append("${ind(d + 2)}${cont(s.label)}:;\n")
+                })
+                out.append("${ind(d + 1)}}\n")
+                if (brk(s.label) in usedLabels) out.append("${ind(d + 1)}${brk(s.label)}:;\n")
+                out.append("$i}\n")
+                return
+            }
             if (s.step != null) {
                 out.append("${ind(d + 1)}int64_t $st = (int64_t)(${expr(s.step)});\n")
                 out.append("${ind(d + 1)}if ($st <= 0) {\n${ind(d + 2)}mk_raise_illegal_argument(\"Step must be positive.\");\n${exitStmt(d + 2)}${ind(d + 1)}}\n")
