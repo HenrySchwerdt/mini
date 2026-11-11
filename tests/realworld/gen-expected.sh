@@ -22,5 +22,5 @@ fi
 for n in "${names[@]}"; do
     echo "== $n" >&2
     "$KOTLINC" -nowarn "$HERE/$n.kt" -include-runtime -d "$W/$n.jar" 2> "$W/$n.err" || { cat "$W/$n.err" >&2; exit 1; }
-    java -jar "$W/$n.jar" > "$HERE/$n.out"
+    java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -jar "$W/$n.jar" > "$HERE/$n.out"
 done
