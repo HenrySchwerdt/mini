@@ -179,6 +179,12 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return null
     }
 
+    // The update of a node that a lookup returned (the statement form of `putRangeAt` with a node: it changes the node's value and nothing else, which lets
+    // the compiler keep the node and the value it read from it borrowed up to the call, compiler/backend/src/opt/SubstrKey.kt).
+    internal fun setNodeValue(node: HashNode<K, V>, @TakesOwnership value: V) {
+        node.value = value
+    }
+
     // `put(src.substring(from, to), value)` after a `findNodeRange(src, from, to)` that returned [node] with nothing in between that could change the map
     // (the compiler checks, opt/SubstrKey.kt): the entry is updated, a missing one is made.
     internal fun putRangeAt(src: String, from: Int, to: Int, node: HashNode<K, V>?, @TakesOwnership value: V): V? {

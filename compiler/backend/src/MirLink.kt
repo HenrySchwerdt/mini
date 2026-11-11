@@ -198,6 +198,7 @@ private val COMPANION_QUALIFIED = setOf(
     "kotlin.text.substring", "kotlin.text.checkSubstringRange",
     "kotlin.collections.HashMap.findNode", "kotlin.collections.HashMap.findNodeRange",
     "kotlin.collections.HashMap.put", "kotlin.collections.HashMap.putRange", "kotlin.collections.HashMap.putRangeAt",
+    "kotlin.collections.HashMap.setNodeValue",
 )
 
 /** The companions that are not live yet although their trigger is; [live] holds the C names of the live functions. */
@@ -211,8 +212,9 @@ internal fun companionsMissing(idx: CompanionIndex, live: Set<String>): List<Mir
     val findR = idx.get("kotlin.collections.HashMap.findNodeRange", 4)
     val putR = idx.get("kotlin.collections.HashMap.putRange", 5)
     val putA = idx.get("kotlin.collections.HashMap.putRangeAt", 6)
+    val setN = idx.get("kotlin.collections.HashMap.setNodeValue", 3)
     if (find != null && findR != null && live.contains(find.cName)) { out.add(findR); out.add(check) }
-    if (put != null && putR != null && putA != null && live.contains(put.cName)) { out.add(putR); out.add(putA); out.add(check) }
+    if (put != null && putR != null && putA != null && live.contains(put.cName)) { out.add(putR); out.add(putA); out.add(check); if (setN != null) out.add(setN) }
     val res = ArrayList<MirFunction>()
     for (f in out) if (!live.contains(f.cName)) { var dup = false; for (g in res) if (g.cName == f.cName) dup = true; if (!dup) res.add(f) }
     return res

@@ -4,6 +4,7 @@ import mini.backend.CEmitter
 import mini.backend.Devirt
 import mini.backend.LayoutStats
 import mini.backend.Mangling
+import mini.backend.RcOpt
 import mini.backend.WasmGlue
 import mini.backend.MirLink
 import mini.backend.MirModule
@@ -438,6 +439,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     val guarded = NullGuard.run(unoptimized)
     val module = if (separateMlibs || wasmLib) guarded else MirOpt.run(guarded, optOptions) { line -> errln(line) }
     CEmitter.plainLoops = optOptions.on("plain-loops")
+    RcOpt.branchExclusion = optOptions.on("rc-branch-exclusion")
     CEmitter.inlineAlloc = optOptions.on("inline-alloc")
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (optOptions.layoutStats) LayoutStats.report(module, if (wasm32) 4 else 8) { line -> errln(line) }
