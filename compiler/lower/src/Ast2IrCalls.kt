@@ -693,6 +693,31 @@ fun Ast2Ir.equality(e: BinaryExpr): IrExpression {
         r = convertNumber(r, "kotlin.Int")
     }
     val neg = e.op == "!=" || e.op == "!=="
+    if (!ident && l is IrBlock && l.origin == "SAFE_CALL" && l.statements.size == 2 && !r.type.nullable && isPrimitiveName(r.type.classFqName)) {
+        // `a?.x == f()` with a primitive right operand: K2 puts the comparison inside the safe call, `f()` is not evaluated when `a` is null
+        val w = l.statements[1] as? IrWhen
+        val inner = w?.branches?.getOrNull(1)?.result
+        if (w != null && inner != null && w.branches.size == 2 && ops.makeNotNull(inner.type).classFqName == r.type.classFqName) {
+            val cmp = IrCall(builtinFun(if (isFloating(inner.type) && isFloating(r.type)) "ieee754equals" else "EQEQ"), sema.booleanType)
+            cmp.origin = if (neg) "EXCLEQ" else "EQEQ"
+            cmp.arguments.add(inner)
+            cmp.arguments.add(r)
+            var res: IrExpression = cmp
+            if (neg) {
+                val nn = IrCall(memberFunNamed(sema.booleanType, "not", 0), sema.booleanType)
+                nn.origin = "EXCLEQ"
+                nn.arguments.add(cmp)
+                res = nn
+            }
+            val bs = ArrayList<IrBranch>()
+            bs.add(IrBranch(w.branches[0].condition, constBool(neg)))
+            bs.add(IrBranch(constBool(true), res))
+            val stmts = ArrayList<IrStatement>()
+            stmts.add(l.statements[0])
+            stmts.add(IrWhen(bs, sema.booleanType, null))
+            return IrBlock(stmts, sema.booleanType, "SAFE_CALL")
+        }
+    }
     val name = if (ident) "EQEQEQ" else if (isFloating(l.type) && isFloating(r.type)) "ieee754equals" else "EQEQ"
     val eq = IrCall(builtinFun(name), sema.booleanType)
     eq.origin = if (neg) (if (ident) "EXCLEQEQ" else "EXCLEQ") else (if (ident) "EQEQEQ" else "EQEQ")

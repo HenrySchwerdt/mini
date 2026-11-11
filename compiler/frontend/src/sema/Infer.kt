@@ -110,13 +110,14 @@ class ConstraintSystem(private val sema: Sema) {
                 return if (t.nullable) f.withNullable(true) else f
             }
             is ClassType -> {
-                if (t.args.isEmpty()) return t
+                val to = t.outer
+                if (t.args.isEmpty() && to == null) return t
                 val args = ArrayList<TArg>()
                 for (a in t.args) {
                     val x = a.type
                     args.add(if (x == null) a else TArg(resolveFixed(x), a.variance))
                 }
-                return ClassType(t.cls, args, t.nullable)
+                return ClassType(t.cls, args, t.nullable, if (to == null) null else resolveFixed(to) as ClassType)
             }
             is FunType -> {
                 val r = t.receiver
