@@ -1,0 +1,9 @@
+factorial: 9 instructions, finished=true steps=9 out=[1]
+  registers: a=1, b=2, c=-9, n=10
+fibonacci: 10 instructions, finished=true steps=108 out=[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377]
+  registers: a=610, b=987, n=0, t=987
+forever finished=false steps=501
+Set(reg=a, value=Const(v=-5))
+error: bad line: bogus 1 2
+boot: terminated=false acc=5
+fixed instruction 7 (jmp -> nop): acc=8
