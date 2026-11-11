@@ -8,6 +8,13 @@ import mini.internal.epochMillis
 import mini.internal.sysCpuCount
 
 public object System {
+    @JvmField
+    public val out: java.io.PrintStream = java.io.StdoutPrintStream()
+    @JvmField
+    public val err: java.io.PrintStream = java.io.StderrPrintStream()
+    @JvmField
+    public val `in`: java.io.InputStream = java.io.StdinStream()
+
     public fun currentTimeMillis(): Long = epochMillis()
     public fun nanoTime(): Long = mini.internal.nanoTime()
     public fun lineSeparator(): String = "\n"
