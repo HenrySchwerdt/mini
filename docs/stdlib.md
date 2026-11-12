@@ -295,7 +295,7 @@ Coverage per package (current state):
 | package | reference | present | missing | coverage |
 |---|---:|---:|---:|---:|
 | `kotlin.collections` | 2940 | 2939 | 1 | 100.0% |
-| `kotlin` | 732 | 727 | 5 | 99.3% |
+| `kotlin` | 732 | 728 | 4 | 99.5% |
 | `kotlin.text` | 587 | 587 | 0 | 100.0% |
 | `kotlin.ranges` | 208 | 208 | 0 | 100.0% |
 | `kotlin.sequences` | 186 | 186 | 0 | 100.0% |
@@ -318,7 +318,7 @@ Coverage per package (current state):
 | `kotlin.coroutines.intrinsics` | 3 | 3 | 0 | 100.0% |
 | `kotlin.enums` | 2 | 2 | 0 | 100.0% |
 | `kotlin.concurrent` | 1 | 1 | 0 | 100.0% |
-| **total** | **5241** | **5235** | **6** | **99.9%** |
+| **total** | **5241** | **5236** | **5** | **99.9%** |
 
 Before this pass: **total**  **5241**  **4433**  **808**  **84.6%** (total row: reference / present / missing / coverage). Added in the first pass: Base64,
 HexFormat and the hex conversions, Uuid, `kotlin.concurrent.atomics`, Appendable, Typography, TimeMark / ComparableTimeMark /
