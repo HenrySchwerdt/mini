@@ -1454,7 +1454,7 @@ had no source position and was dropped. Now every return of a closure object (an
 parameter, from a function whose declared result is a Strict type (an interface or `Any` included), is M0109 (`s172`, `s173`, `s174`). Returning
 such an object as a *function value* is unchanged (the `carries` summary, `s165`/`s166`).
 
-Why the accepting direction stays out of reach (analysis, no code): an object that owns nothing but borrows its receiver needs an *owned value that
+(Round strict-5d, below, makes the accepting direction work after all.) Why it had stayed out of reach (analysis, no code): an object that owns nothing but borrows its receiver needs an *owned value that
 borrows* at the call site. The result's static type is a Strict class or interface, so the caller of a Strict function keeps no reference counts for it
 and would never release the counted closure object (a leak), and `r.free()` on it would deallocate memory that reference counting owns. Either the call
 site needs a loan result for tracked types with the object kept by counts (a new value category in checker and in both backends) or the object is
@@ -1586,6 +1586,31 @@ is the container: `wrap(Item(6))` gives the new `Cell` the only count of the `It
 Corpus `s400`-`s404`, `s420`-`s425` (ACCEPT, run under AddressSanitizer + LeakSanitizer, C and LLVM backend: lists, `listOf`/`arrayOf` varargs, maps, sets, deques, pairs, removal and replacement, an owner freed after it was added, a list that
 outlives its owners, a stress loop), `s410`-`s415` (REJECT: the loan after `clear`/`add`/`set`, an `Heap` object in a list, a borrowed parameter in a list, a removed element that is freed and used).
 The five M0110 corpus programs with an `@AllocatedBy(Heap::class)` class (`s44`, `s45`, `s79`, `s147`, `s143`) keep their verdict: an explicit allocator's object cannot be counted by a collection. `s420`-`s422` are their default-allocated twins.
+
+## Round strict-5d: objects that borrow
+
+Round strict-4c made the rejecting direction sound: a method that returns `object : Reader { ... n ... }` (an anonymous object, or an instance of a local class) that reads its receiver or a
+parameter was M0109 (`s172`-`s174`), because the model had no *owned value that borrows*: the caller would own the object while it holds a loan of the receiver. The default allocator (5a) and the loans of 5b
+supply both halves, so round 5d accepts the use inside the lifetime and keeps rejecting every use after it.
+
+**The rule.** The object is an ordinary counted object of the default allocator (it owns nothing it borrows: its captured values are not counted and not released by it). A function that returns such an
+object *as it is made* (`return object : I { .. }`, `return R()`) and that borrows only the receiver and parameters of that function (borrowed ones, `B` state, not owners made inside the function) now has them in its summary's
+`carries` (before: `escapes`, "is captured by an object that is returned"). At the call site the result is a **fresh owner of the default allocator that borrows** what the carried arguments borrow: the slot of the
+variable it is bound to has the bits `O` and `K` and lists the roots it borrows. Consequences, all checked with the existing machinery:
+
+* the object is released when its variable ends (a drop owner, 2.2a); an alias of it that outlives that scope is M0101;
+* every use of it checks that what it borrows is alive: `val r = c.reader(); c.free(); r.get()` is M0101 (the lifetime of the loan ends with the borrowed owner);
+* the caller cannot free it: `r.free()` is **M0107** ("`r` borrows `c` and cannot be freed"; the object is released with `r`);
+* it cannot be moved on or stored as an owner (`Holder(c.reader())`, `return r` from a function that did not make it): M0112 / M0109 as for every closure over an owner;
+* an object that borrows an owner *local to the function* (`val c = Counter(1); return object : Reader { c.n }`) is still M0112 (the owner ends first), and `val r = object ...; return r` (through a variable) is still M0109 (an alias cannot be handed out as owned).
+
+An anonymous object returned as `Any` is a loan of its receiver for the caller like a returned lambda (`FnSummary.carries`, unchanged): the caller's `Any` variable is a reference counted holder of the object.
+
+**Code generation.** Nothing new: the object is allocated with a count of one that is handed to the caller (a tracked result is uncounted, the plain allocation carries its count to the caller's drop owner; an `Any` result is a counted
+reference of the caller). A borrowing object never frees what it borrows, so the corpus runs leak free under AddressSanitizer + LeakSanitizer on the C and the LLVM backend.
+
+Corpus: `s500`-`s503` (ACCEPT, run: over the receiver, over a parameter, an instance of a local class, as `Any`, a chain of borrowing objects, with an explicit allocator and with the default one), `s172` (now M0101 + M0107),
+`s173` (M0107), `s174` (M0101), `s510`-`s513` (REJECT: the object over a parameter after its owner was freed, over a local owner, stored into an owning field, an alias that outlives the object).
 
 ## Cycles: the cycle collector of Managed mode
 

@@ -93,7 +93,20 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
 
     private fun rootsOf(id: Int): Set<Int> {
         val s = slot(id) ?: return setOf(id)
+        // an owner that borrows (the object a call returned over its receiver, strict-5d): alive only while what it borrows is, and itself
+        if (s.bits and K != 0 && s.bits and B == 0 && s.bits and O != 0 && s.refs.isNotEmpty()) return s.refs + id
         return if (s.bits and B != 0 && s.refs.isNotEmpty()) s.refs else setOf(id)
+    }
+
+    /** [v] is an instance of a local / anonymous class that borrows only parameters (the receiver included) of the function being analysed. */
+    private fun borrowsOnlyParams(v: AVal): Boolean {
+        if (!v.caps || v.refs.isEmpty() || v.src >= 0 || !v.tracked) return false
+        for (r in v.refs) {
+            if (r in u.declared) return false
+            val s = slot(r) ?: return false
+            if (s.bits and B == 0) return false
+        }
+        return true
     }
 
     /** Use of slot [id] (read, call, borrow): M0101 / M0104 when the owner is gone. */
@@ -216,7 +229,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     /** Hands [v] to a new owner (owned parameter, return, owning field, thread). False when it is a borrow (M0109 reported). */
     private fun takeOwnership(v: AVal, whatFor: String): Boolean {
         if (!v.tracked || v.isNull) return true
-        if (v.caps && v.refs.isNotEmpty()) { escapeClosure(v, "is $whatFor"); return false }
+        if (v.caps && v.refs.isNotEmpty()) {
+            // the object of a local / anonymous class that borrows the receiver or a parameter and is returned as it is made: the caller owns the object
+            // (reference counted) and holds a loan of what it borrows (the summary's `carries`), strict-5d
+            if (whatFor == "returned as owned" && borrowsOnlyParams(v)) { escape(v); return true }
+            escapeClosure(v, "is $whatFor")
+            return false
+        }
         if (v.fresh) { escape(v); return true }
         if (v.src >= 0) {
             val s = slot(v.src) ?: return true
@@ -314,7 +333,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val (refs, arena) = captureOf(e.captures, e.pos)
         if (refs.isEmpty()) return r
         // an instance of a local / anonymous class that borrows what it captures: a closure like a lambda
-        return AVal(r.type, false, -1, refs, arena, false, false, e.pos, caps = true)
+        return AVal(r.type, false, -1, refs, arena + r.sites, false, false, e.pos, caps = true)
     }
 
     private fun evalNew0(e: MExpr.New, env: Env): AVal {
@@ -485,6 +504,19 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val roots = collRoots(rv)
             if (roots != null) return AVal(rt, false, -1, roots, emptySet(), false, false, e.pos)
         }
+        if (rt.tracked && fn.ret.annot.borrowed == null && !u.suspend) {
+            // a function that returns an object of a local / anonymous class over its receiver or parameters (FnSummary.carries): the caller owns the
+            // object (it is released when the owner ends) and the object is a loan of what the arguments borrow (strict-5d)
+            val carries: Set<Int> = Summaries.of(fn)?.carries ?: emptySet()
+            if (carries.isNotEmpty()) {
+                val refs = LinkedHashSet<Int>()
+                for (i in carries) {
+                    val a = if (i == FnSummary.RECEIVER) rv else args.getOrNull(i)
+                    if (a != null && !a.fresh && !a.isNull) refs += a.refs
+                }
+                if (refs.isNotEmpty()) return AVal(rt, true, -1, refs, setOf(Site(e.pos, SK.Default, -1)), rt.nullable, false, e.pos, caps = true, call = e)
+            }
+        }
         if (rt.tracked && (fn.mode == MemMode.Managed || fn.external) && fn.ret.annot.owned != null && fn.ret.annot.borrowed == null && !u.suspend) {
             // `removeAt`, `set`, `remove`: the collection hands the element it held (with its count) to the caller: a new owner of the default allocator
             return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, SK.Default, -1)), true, false, e.pos, call = e)
@@ -653,6 +685,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         }
         val s = slot(id) ?: return unit
         val nm = t.local.name
+        if (s.bits and K != 0 && s.bits and B == 0 && s.bits and O != 0 && s.refs.isNotEmpty()) {
+            diag(
+                "M0107", e.pos, "`$nm` borrows `${name(s.refs.first())}` and cannot be freed", "`$nm` is released when its scope ends",
+                "remove the `free()`: the object is released with `$nm`, and it must not outlive `${name(s.refs.first())}`", slot = id,
+            )
+            return unit
+        }
         if (s.bits and B != 0) {
             // an alias (or borrowed parameter) can never release the value; the owner is unaffected
             diag(
@@ -922,6 +961,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val ns: Slot = when {
             v.isNull -> Slot(N, emptySet(), emptySet(), v.pos)
             forceAlias -> Slot(B or kb or (if (v.nullable) N else 0), v.refs.ifEmpty { if (v.src >= 0) setOf(v.src) else emptySet() }, emptySet(), v.pos)
+            v.fresh && v.caps && v.refs.isNotEmpty() -> Slot(O or K or (if (v.nullable) N else 0), v.refs, v.sites, v.pos)
             v.fresh -> Slot(O or (if (v.nullable) N else 0), emptySet(), v.sites, v.pos)
             v.tracked && (v.src >= 0 || v.refs.isNotEmpty()) ->
                 Slot(B or kb or (if (v.nullable) N else 0), v.refs.ifEmpty { setOf(v.src) }, if (v.caps) v.sites else emptySet(), vp)
@@ -1033,8 +1073,9 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (!v.tracked && v.caps && v.refs.isNotEmpty() && (u.retTracked && !u.isLambda || v.refs.any { r -> slot(r)?.let { it.bits and B == 0 } != false })) escapeClosure(v, "is returned" + if (u.retTracked && !u.isLambda) " as owned" else "")
             if (v.tracked) {
                 if (v.caps && v.refs.isNotEmpty() && !u.isLambda && !u.retOwned) {
-                    // an instance of an anonymous / local class that borrows its receiver or a parameter, returned as a value of a Strict type
-                    escapeClosure(v, "is returned as owned")
+                    // an instance of an anonymous / local class that borrows its receiver or a parameter, returned as a value of a type that owns nothing (`Any`)
+                    // (the object stays a counted temporary of the allocation: the reference counted `Any` result carries its count)
+                    if (!borrowsOnlyParams(v)) escapeClosure(v, "is returned as owned")
                 } else if (u.retOwned && !u.isLambda) {
                     takeOwnership(v, "returned as owned")
                 } else if (v.fresh && !u.isLambda) {
