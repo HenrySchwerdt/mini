@@ -1,0 +1,6 @@
+grid 13x7, start=Point(x=1, y=1) end=Point(x=11, y=5), manhattan=14
+no path
+weighted cost: -1
+blocked: null
+regions: [12, 4, 4, 2, 2]
+open cells: 24

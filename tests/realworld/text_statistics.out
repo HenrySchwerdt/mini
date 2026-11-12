@@ -1,0 +1,32 @@
+words: 85, distinct: 34
+the    ########### 11
+it     ########## 10
+of     ########## 10
+was    ########## 10
+we     #### 4
+age    ## 2
+all    ## 2
+before ## 2
+
+bigrams:
+it was    ########## 10
+was the   ########## 10
+age of    ## 2
+all going ## 2
+before us ## 2
+trigrams: [it was the]
+
+lines: 4, avg words per line: 21.25
+longest words: [foolishness, incredulity, everything]
+initials: a=2 b=3 d=3 e=2 f=1 g=1 h=3 i=2 l=1 n=1 o=2 s=2 t=3 u=1 w=7
+length distribution: 2:27, 3:28, 4:4, 5:9, 6:11, 7:2, 8:1, 10:1, 11:2
+syllables: 112, flesch reading ease: 73.8
+top letters: e47, t34, s28, i27, o26
+first repeated word: it
+immediate repeats: 0
+'season' at [39, 45]
+capitalised: [It, Light, Darkness, Heaven]
+26 long / 59 short
+palindromes: []
+[10, 10, 10, 10, 10, 10, 10, 10, 5]
+103.500

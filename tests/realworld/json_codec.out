@@ -1,0 +1,35 @@
+{"name":"mini","version":1.5,"tags":["native","kotlin","compiler"],"active":true,"owner":{"id":42,"email":null,"langs":["en","de"]},"escape":"line1\nline2 \"quoted\" A","empty":{},"none":[]}
+{
+  "name": "mini",
+  "version": 1.5,
+  "tags": [
+    "native",
+    "kotlin",
+    "compiler"
+  ],
+  "active": true,
+  "owner": {
+    "id": 42,
+    "email": null,
+    "langs": [
+      "en",
+      "de"
+    ]
+  },
+  "escape": "line1\nline2 \"quoted\" A",
+  "empty": {},
+  "none": []
+}
+depth = 3
+Str(value=de)
+Str(value=native)
+null
+3.0
+round trip equal: true
+{"list":[1,2.5,"three",null,true],"nested":{"k":"v"}}
+error: unexpected '}' at 6
+error: expected ']' at 5
+error: expected ':' at 5
+error: bad literal at 0
+error: trailing characters at 4
+error: unterminated string at 4

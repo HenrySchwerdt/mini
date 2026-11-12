@@ -1,0 +1,29 @@
+user ada <ada@example.org> registered
+user alan <alan@example.org> registered
+order placed by #1: 12 items, $44.90
+  [audit] 2 line items
+payment of $20.00 for order #3
+order placed by #2: 1 items, $45.99
+  [audit] 1 line items
+user #2 is now alan turing
+payment of $4.90 for order #3
+order #5 cancelled (changed mind)
+payment of $1.00 for order #99
+
+users: #1=ada, #2=alan turing
+order #3 by ada: $44.90 PLACED (paid $24.90)
+order #5 by alan turing: $45.99 CANCELLED (paid $0.00)
+revenue: $24.90
+payments seen by handler: $25.90, cancelled: [5]
+UserRegistered#1 -> 1 handler(s)
+UserRegistered#2 -> 1 handler(s)
+OrderPlaced#3 -> 2 handler(s)
+PaymentReceived#4 -> 2 handler(s)
+OrderPlaced#5 -> 2 handler(s)
+UserRenamed#6 -> 1 handler(s)
+PaymentReceived#7 -> 2 handler(s)
+OrderCancelled#8 -> 2 handler(s)
+PaymentReceived#9 -> 2 handler(s)
+replay identical: true
+{UserRegistered=2, OrderPlaced=2, PaymentReceived=3, UserRenamed=1, OrderCancelled=1}
+PaymentReceived(id=4, orderId=3, cents=2000)

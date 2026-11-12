@@ -1,0 +1,48 @@
+$ tool help
+usage: tool <command> [options]
+
+commands:
+  greet    print a greeting
+  count    count lines, words and characters
+  sum      sum the numbers given with -x
+$ tool greet
+hello, world!
+$ tool greet --name Kotlin -t 2
+hello, Kotlin!
+hello, Kotlin!
+$ tool greet -sv --name=mini --times=3
+HELLO, MINI!
+HELLO, MINI!
+HELLO, MINI!
+(greeted 3 time(s))
+$ tool greet --help
+usage: tool greet [options]
+  -h, --help  show help
+  -v, --verbose  more output
+  -n, --name <value>  who to greet (default: world)
+  -t, --times <value>  repetitions (default: 1)
+  -s, --shout  upper case
+$ tool count one two three
+1 lines, 3 words, 13 chars
+$ tool count
+error: expected <text>
+(exit code 2)
+$ tool sum -x 1 -x2 -x 39
+sum of 3 numbers = 42
+$ tool sum -x abc
+error: not a number: abc
+(exit code 2)
+$ tool greet --times many
+error: --times needs a number, got 'many'
+(exit code 2)
+$ tool greet --bogus
+error: unknown option --bogus
+(exit code 2)
+$ tool frobnicate
+error: unknown command 'frobnicate'
+(exit code 2)
+$ tool count -- --not-an-option -x
+1 lines, 2 words, 18 chars
+$ tool
+error: missing command
+(exit code 2)

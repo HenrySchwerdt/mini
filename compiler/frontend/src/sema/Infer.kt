@@ -149,7 +149,7 @@ class ConstraintSystem(private val sema: Sema) {
         if (b is VarType) {
             if (a is VarType && a.v === b.v) return true
             var lo = a
-            if (b.nullable && a !is VarType) lo = if (a is IntLiteralType) a else a.withNullable(false)
+            if (b.nullable && a !is VarType) lo = if (a is IntLiteralType) a else ops.makeNotNull(a)
             if (a is VarType) {
                 a.v.upper.add(b)
             }

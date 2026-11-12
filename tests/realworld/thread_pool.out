@@ -1,0 +1,8 @@
+jobs completed: 20, primes below 100000: 9592
+slices: 0:669, 1:560, 2:525, 3:508, 4:500 ...
+future results: [338001, 664002, 996003, 352001, 750002, 208000, 744001, 375999]
+terminated: true
+counter=10000 atomic=30000
+balances: a=5500 b=14500 total=20000
+word counts: [the=4, brown=1, dog=1, end=1]
+consumed: [1, 4, 9, 16, 25, 36, 49, 64, 81, 100]

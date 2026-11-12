@@ -56,12 +56,19 @@ public class StringBuilder : Appendable {
         return this
     }
 
-    // one overload for String and CharSequence: both mangle to the same C symbol, so a separate String overload cannot coexist
+    // one overload for String and CharSequence (both mangle to the same C symbol). A String argument takes the short path, which is small enough to be
+    // inlined into the caller; the rest is in appendOther
     public override fun append(value: CharSequence?): StringBuilder {
+        // if / else, so that every return is a tail return (the inliner expands only such bodies)
         if (value is String) {
             sbAppendString(buf, value)
             return this
+        } else {
+            return appendOther(value)
         }
+    }
+
+    private fun appendOther(value: CharSequence?): StringBuilder {
         sbAppendString(buf, if (value == null) "null" else value.toString())
         return this
     }

@@ -1,0 +1,24 @@
+ok: transfer 300 alice->bob
+insufficient funds: transfer 100 alice->bob (need $100.00 but only $50.00 available)
+insufficient funds: withdraw 1 from savings overdraft (need $5000.00 but only $1300.50 available)
+invalid: negative deposit (deposit must be positive: -$0.05)
+missing: unknown account (no account XX)
+frozen: transfer into frozen account (account CH-2 is frozen)
+alice after refund: -$50.00, bob: $1300.50
+  Checking(CH-1, alice, -$55.00)
+  Checking(CH-2, carol, -$5.00)
+  Savings(SV-1, bob, $1320.00)
+total: $1260.00
+alice journal:
+  #1 deposit $250.00 -> balance $250.00
+  #2 withdraw $300.00 -> balance -$50.00
+  #3 fee $5.00 (monthly fee)
+bob journal:
+  #1 deposit $1000.50 -> balance $1000.50
+  #2 deposit $300.00 -> balance $1300.50
+  #3 withdraw $10.00 -> balance $1290.50
+  #4 deposit $10.00 -> balance $1300.50
+  #5 interest $19.50
+transactions: Deposit:$250.00, Transfer:$300.00, Fee:$5.00
+true
+$1.00, $3.00, $5.00
