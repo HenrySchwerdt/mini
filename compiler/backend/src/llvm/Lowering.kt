@@ -2131,16 +2131,31 @@ private class Lowering<V : Any, B : Any>(
         val string = expr(e.args[0])
         val fallback = newLabel("strlen_null")
         val fast = newLabel("strlen_fast")
+        val noret = CEmitter.strFailNoReturn
+        val merge = newLabel("strlen_merge")
         condBr(icmp(IrCmp.IEQ, string, b.constNull()), fallback, fast, true)
 
         // (the runtime function panics on a null string: the path ends there, like the cold `mkh_fail_str_length` of the C prelude, so no call
         // clobbers the values the loop keeps in registers)
-        startBlock(fallback)
-        rt("mk_string_length", TInt, listOf(TString), listOf(string))
-        unreachable()
-
+        if (noret) {
+            startBlock(fallback)
+            rt("mk_string_length", TInt, listOf(TString), listOf(string))
+            unreachable()
+            startBlock(fast)
+            return load(TInt, gep(string, layouts.headerSize))
+        }
+        // `-Xno-str-fail-noreturn`: the failing path joins the fast path again
         startBlock(fast)
-        return load(TInt, gep(string, layouts.headerSize))
+        val length = load(TInt, gep(string, layouts.headerSize))
+        val fastEnd = curBlock
+        br(merge)
+        startBlock(fallback)
+        val slowLength = rt("mk_string_length", TInt, listOf(TString), listOf(string))
+        val slowEnd = curBlock
+        br(merge)
+        startBlock(merge)
+        openBlock()
+        return b.phi(IrType.I32, length, fastEnd, slowLength, slowEnd)
     }
 
     /**
@@ -2191,12 +2206,20 @@ private class Lowering<V : Any, B : Any>(
 
         // the runtime function panics (null string, index out of range): the path ends there (`mkh_fail_str_char_at` of the C prelude)
         startBlock(slow)
-        rt("mk_string_char_at", TChar, listOf(TString, TInt), listOf(string, index))
-        unreachable()
+        if (CEmitter.strFailNoReturn) {
+            rt("mk_string_char_at", TChar, listOf(TString, TInt), listOf(string, index))
+            unreachable()
+            startBlock(merge)
+            openBlock()
+            return value
+        }
+        val slowValue = rt("mk_string_char_at", TChar, listOf(TString, TInt), listOf(string, index))
+        val slowEnd = curBlock
+        br(merge)
 
         startBlock(merge)
         openBlock()
-        return value
+        return b.phi(IrType.I16, value, fastEnd, slowValue, slowEnd)
     }
 
     /**

@@ -444,6 +444,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     RcOpt.branchExclusion = optOptions.on("rc-branch-exclusion")
     RcOpt.readSets = optOptions.on("rc-read-sets")
     CEmitter.inlineAlloc = optOptions.on("inline-alloc")
+    CEmitter.strFailNoReturn = optOptions.on("str-fail-noreturn")
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (optOptions.layoutStats) LayoutStats.report(module, if (wasm32) 4 else 8) { line -> errln(line) }
     if (wasmLib) {

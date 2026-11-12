@@ -27,6 +27,9 @@ object CEmitter {
     /** `-Xno-inline-alloc` clears it: objects are always allocated through the runtime (mk_alloc_armed / mk_alloc_plain). */
     var inlineAlloc = true
 
+    /** `-Xno-str-fail-noreturn` clears it: the failing paths of the LLVM backend's inline `String.length` / `String[i]` merge with the fast path again (instead of ending in `unreachable`). */
+    var strFailNoReturn = true
+
     private const val LINE_RESET = "#mk-line-reset"
 
     /**
