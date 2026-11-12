@@ -96,7 +96,15 @@ builds and runs them through the C backend; `fuzz-llvm` does the same through LL
 See the list below; each fixed bug has a regression test in `compiler/testdata`.
 
 About 1,500 distinct programs (sizes 14 and 24) were compared with kotlinc 2.1.20, in about 2,300 runs over the variants (C, LLVM, C with
-sanitizers). Two compiler bugs came out, both fixed with a regression test; the rest were differences that are not bugs.
+sanitizers). Two compiler bugs came out (fuzz-1), both fixed with a regression test; the rest were differences that are not bugs.
+
+fuzz-2 (the extended generator and the Strict variants): seeds 10000:10120 of `gen.py` on `c`, `llvm`, `c-asan` and `llvm-asan` (480 runs, 120
+programs, all compared with kotlinc and the coroutines jar) and seeds 20000:20240 of `genstrict.py` on `strict`, `strict-asan` and
+`strict-llvm-asan` (720 runs, 240 programs): no difference, crash, sanitizer report or leak, and the checker accepted every Strict program
+(no soundness bug of the checker found). The bulk runs use `FUZZ_OPT=-O0` for the C compiler (3 times faster; the optimizations that matter
+are mini's own and run before the C compiler). The first 25 of the plain seeds were also run at `-O1`. Found on the way: the fuzzer's own
+bugs (`save --strict` stored empty expectations, and the failure details of `run --strict` and `reduce --strict` were the program output,
+because the result tuple of `run_variant` was unpacked in the wrong order).
 
 ### Fixed
 
