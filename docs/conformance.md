@@ -886,10 +886,10 @@ Not the box tests: 47 small programs of the kind found in everyday Kotlin, each 
 |---|---|
 | `PriorityQueue<String>(compareByDescending { it.length })`: with several constructors the lambda of the argument call had no expected type | `pruneByCallArgs` (sema/Calls.kt) drops the overloads whose parameter class no function of that name can return, the remaining one gives the expectation |
 | an `enum class E : () -> Unit` whose entries have bodies: "implements a function type without an invoke function" | the check is skipped for enums, the entries provide `invoke` (Ir2MirClasses.kt) |
-| missing `java.lang.Math` statics (`floorMod`, `floorDiv`, `hypot`, `cbrt`, `toIntExact`, `addExact` ...), `StringBuffer` | `stdlib/java/lang/Math.kt`, `StringBuffer.kt`, `kotlin/math/Math.kt` |
-| missing `java.util.Collections` (`sort`, `reverse`, `shuffle(Random)`, `swap`, `nCopies`, `unmodifiable*`, `max` / `min`, `frequency`, `emptyList` ...), `Arrays.asList`, `java.util.Random(seed)` (the JDK LCG, so sequences equal the JVM) | `java/util/Collections.kt`, `Lists.kt`, `Random.kt` |
-| `Comparator` combinators (`thenComparing`, `reversed`, `nullsFirst`, `naturalOrder` as `java.util` statics), `HashMap` helpers (`merge`, `compute*`, `getOrDefault` on views) | `kotlin/Comparator.kt`, `kotlin/collections/HashMap.kt` |
-| `String.codePointAt`, `codePointCount`, `StringBuilder.appendCodePoint` | `kotlin/text/StringCodePoints.kt`, `StringBuilder.kt` |
+| missing `java.lang.Math` statics (`floorMod`, `floorDiv`, `toIntExact`, `addExact` ...), `java.lang.StringBuffer` | `stdlib/java/lang/Math.kt`, `StringBuffer.kt` (a typealias of `StringBuilder`: no synchronisation), `kotlin/math/Math.kt` |
+| missing `java.util.Collections` (`sort`, `reverse`, `swap`, `shuffle`, `nCopies`, `unmodifiable*`, `max` / `min`, `frequency`, `rotate`, `binarySearch`, `emptyList` ...), `java.util.Arrays` (`asList`, `toString`, `deepToString`), `java.util.Random(seed)` (the JDK LCG, so sequences equal the JVM) | `java/util/Collections.kt`, `Lists.kt`, `Random.kt` |
+| the static `Comparator` functions (`naturalOrder`, `comparing`, `comparingInt`, `nullsFirst` ...); `LinkedHashMap(cap, load, accessOrder)` with `removeEldestEntry` (the LRU cache idiom) | `kotlin/Comparator.kt`, `kotlin/collections/HashMap.kt` |
+| `String.codePointAt`, `codePointCount` | `kotlin/text/StringCodePoints.kt` |
 
 Merged with stdlib-3 (`String.format`, regex, IO) without conflicts. No documented open gap from this round: all 47 programs print what the JVM prints (C backend).
 
