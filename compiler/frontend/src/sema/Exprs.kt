@@ -444,6 +444,7 @@ fun BodyChecker.binary(e: BinaryExpr, expected: Type?): Type {
             val l = fin(expr(e.left, null))
             val r = expr(e.right, null)
             val cres = resolveOperator("compareTo", l, listOf(r), e.start, null)
+            if (cres == null && l !is ErrType && r !is ErrType) err(e.start, "no operator compareTo for " + renderType(l))
             val crr = record(e, sema.booleanType, null)
             crr.call = cres?.info
             return sema.booleanType

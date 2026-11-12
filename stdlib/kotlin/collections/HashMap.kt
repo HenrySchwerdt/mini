@@ -397,6 +397,16 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
     }
 
     override fun putAll(from: Map<out K, V>) {
+        // java.util.HashMap#putMapEntries: an empty table is sized from the argument, a used one doubles ahead of the insertions
+        val s = from.size
+        if (s > 0) {
+            if (refArrayLength(table) == 0) {
+                val t = (s.toFloat() / 0.75f + 1.0f).toInt()
+                if (t > threshold) threshold = tableSizeFor(t)
+            } else {
+                while (s > threshold && refArrayLength(table) < (1 shl 30)) resize()
+            }
+        }
         val it = from.entries.iterator()
         while (it.hasNext()) {
             val e = it.next()
