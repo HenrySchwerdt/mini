@@ -198,8 +198,9 @@ void *mk_small_carve(size_t cls) {
 MK_TLS MkSmallCache mk_small_cache;
 #endif /* MK_SMALL_ALLOC */
 
-#if MK_SMALL_ALLOC
-/* the offsets that the LLVM backend's inline allocation (compiler/backend/src/llvm/Lowering.kt, emitAllocHelpers) writes into */
+#if MK_SMALL_ALLOC && __SIZEOF_POINTER__ == 8
+/* the offsets that the LLVM backend's inline allocation (compiler/backend/src/llvm/Lowering.kt, emitAllocHelpers) writes into; 64-bit targets only
+ * (the emitter does not inline the allocation for 32-bit pointers, e.g. wasm32: Lowering.inlineAllocOk requires ptrBytes == 8) */
 _Static_assert(__builtin_offsetof(MkSmallCache, count) == 544, "MkSmallCache.count");
 _Static_assert(__builtin_offsetof(MkSmallCache, bump) == 616, "MkSmallCache.bump");
 _Static_assert(__builtin_offsetof(MkSmallCache, end) == 624, "MkSmallCache.end");
