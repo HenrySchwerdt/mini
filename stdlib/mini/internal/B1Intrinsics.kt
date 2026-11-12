@@ -15,6 +15,18 @@ public external fun fileReadText(path: String): String?
 @CSymbol("mk_b1_write_file")
 public external fun fileWriteText(path: String, text: String): Boolean
 
+/** The whole file as bytes, or null when it cannot be read. */
+@CSymbol("mk_b1_read_bytes")
+public external fun fileReadBytes(path: String): ByteArray?
+
+/** Writes [bytes] (create/truncate, or append to the end); false when that fails. */
+@CSymbol("mk_b1_write_bytes")
+public external fun fileWriteBytes(path: String, bytes: ByteArray, append: Boolean): Boolean
+
+/** [what] 0: the size of [path] in bytes, 1: its last modification time in milliseconds since the epoch; -1 when it does not exist. */
+@CSymbol("mk_b1_file_stat")
+public external fun fileStat(path: String, what: Int): Long
+
 /** 0 = [path] does not exist, 1 = regular file, 2 = directory. */
 @CSymbol("mk_b1_file_kind")
 public external fun fileKind(path: String): Int

@@ -23,7 +23,9 @@ import java.io.Reader
 import java.io.StringReader
 import java.io.StringWriter
 import java.io.Writer
+import java.io.fileBytesOrThrow
 import java.io.fileTextOrThrow
+import java.io.fileWriteBytesOrThrow
 import kotlin.text.Charset
 import kotlin.text.Charsets
 
@@ -31,35 +33,41 @@ public const val DEFAULT_BUFFER_SIZE: Int = 8 * 1024
 
 // ---- File: reading and writing ----------------------------------------------------------------------------------------------------
 
-public fun File.readText(charset: Charset = Charsets.UTF_8): String = fileTextOrThrow(this)
+public fun File.readText(charset: Charset = Charsets.UTF_8): String =
+    if (charset == Charsets.UTF_8) fileTextOrThrow(this) else fileBytesOrThrow(this).toString(charset)
 
 public fun File.writeText(text: String, charset: Charset = Charsets.UTF_8) {
-    val w = FileWriter(this)
-    try {
-        w.write(text)
-    } finally {
-        w.close()
-    }
+    fileWriteBytesOrThrow(this, text.toByteArray(charset), false)
 }
 
 public fun File.appendText(text: String, charset: Charset = Charsets.UTF_8) {
-    val w = FileWriter(this, true)
-    try {
-        w.write(text)
-    } finally {
-        w.close()
-    }
+    fileWriteBytesOrThrow(this, text.toByteArray(charset), true)
 }
 
-public fun File.readBytes(): ByteArray = fileTextOrThrow(this).encodeToByteArray()
+public fun File.readBytes(): ByteArray = fileBytesOrThrow(this)
 
 public fun File.writeBytes(array: ByteArray) {
-    writeText(array.decodeToString())
+    fileWriteBytesOrThrow(this, array, false)
 }
 
 public fun File.appendBytes(array: ByteArray) {
-    appendText(array.decodeToString())
+    fileWriteBytesOrThrow(this, array, true)
 }
+
+/** Reads the file in blocks of [blockSize] bytes (at least 512); the array passed to [action] is reused, only its first `n` bytes are valid. */
+public fun File.forEachBlock(blockSize: Int, action: (buffer: ByteArray, bytesRead: Int) -> Unit) {
+    val bytes = fileBytesOrThrow(this)
+    val buf = ByteArray(if (blockSize < 512) 512 else blockSize)
+    var pos = 0
+    while (pos < bytes.size) {
+        val n = if (bytes.size - pos < buf.size) bytes.size - pos else buf.size
+        for (k in 0 until n) buf[k] = bytes[pos + k]
+        action(buf, n)
+        pos += n
+    }
+}
+
+public fun File.forEachBlock(action: (buffer: ByteArray, bytesRead: Int) -> Unit): Unit = forEachBlock(4096, action)
 
 public fun File.readLines(charset: Charset = Charsets.UTF_8): List<String> {
     val result = ArrayList<String>()
@@ -88,15 +96,15 @@ public fun <T> File.useLines(charset: Charset = Charsets.UTF_8, block: (Sequence
     }
 }
 
-public fun File.reader(charset: Charset = Charsets.UTF_8): InputStreamReader = FileReader(this)
+public fun File.reader(charset: Charset = Charsets.UTF_8): InputStreamReader = FileReader(this, charset)
 
-public fun File.bufferedReader(charset: Charset = Charsets.UTF_8, bufferSize: Int = DEFAULT_BUFFER_SIZE): BufferedReader = BufferedReader(FileReader(this), bufferSize)
+public fun File.bufferedReader(charset: Charset = Charsets.UTF_8, bufferSize: Int = DEFAULT_BUFFER_SIZE): BufferedReader = BufferedReader(FileReader(this, charset), bufferSize)
 
-public fun File.writer(charset: Charset = Charsets.UTF_8): OutputStreamWriter = OutputStreamWriter(FileOutputStream(this))
+public fun File.writer(charset: Charset = Charsets.UTF_8): OutputStreamWriter = OutputStreamWriter(FileOutputStream(this), charset)
 
-public fun File.bufferedWriter(charset: Charset = Charsets.UTF_8, bufferSize: Int = DEFAULT_BUFFER_SIZE): BufferedWriter = BufferedWriter(FileWriter(this), bufferSize)
+public fun File.bufferedWriter(charset: Charset = Charsets.UTF_8, bufferSize: Int = DEFAULT_BUFFER_SIZE): BufferedWriter = BufferedWriter(FileWriter(this, charset), bufferSize)
 
-public fun File.printWriter(charset: Charset = Charsets.UTF_8): PrintWriter = PrintWriter(FileWriter(this))
+public fun File.printWriter(charset: Charset = Charsets.UTF_8): PrintWriter = PrintWriter(FileWriter(this, charset))
 
 public fun File.inputStream(): InputStream = FileInputStream(this)
 
@@ -112,7 +120,7 @@ public fun File.copyTo(target: File, overwrite: Boolean = false, bufferSize: Int
         if (!target.mkdirs()) throw IOException(target.path + ": Failed to create target directory.")
     } else {
         target.parentFile?.mkdirs()
-        target.writeText(this.readText())
+        target.writeBytes(this.readBytes())
     }
     return target
 }
@@ -368,9 +376,9 @@ public fun Writer.buffered(): BufferedWriter = buffered(DEFAULT_BUFFER_SIZE)
 
 public fun Writer.printWriter(): PrintWriter = if (this is PrintWriter) this else PrintWriter(this)
 
-public fun InputStream.reader(charset: Charset = Charsets.UTF_8): InputStreamReader = InputStreamReader(this)
+public fun InputStream.reader(charset: Charset = Charsets.UTF_8): InputStreamReader = InputStreamReader(this, charset)
 
-public fun InputStream.bufferedReader(charset: Charset = Charsets.UTF_8): BufferedReader = BufferedReader(InputStreamReader(this))
+public fun InputStream.bufferedReader(charset: Charset = Charsets.UTF_8): BufferedReader = BufferedReader(InputStreamReader(this, charset))
 
 public fun InputStream.buffered(bufferSize: Int = DEFAULT_BUFFER_SIZE): InputStream = this
 
@@ -387,12 +395,14 @@ public fun InputStream.copyTo(out: OutputStream, bufferSize: Int = DEFAULT_BUFFE
     return bytes
 }
 
-public fun OutputStream.writer(charset: Charset = Charsets.UTF_8): OutputStreamWriter = OutputStreamWriter(this)
+public fun OutputStream.writer(charset: Charset = Charsets.UTF_8): OutputStreamWriter = OutputStreamWriter(this, charset)
 
-public fun OutputStream.bufferedWriter(charset: Charset = Charsets.UTF_8): BufferedWriter = BufferedWriter(OutputStreamWriter(this))
+public fun OutputStream.bufferedWriter(charset: Charset = Charsets.UTF_8): BufferedWriter = BufferedWriter(OutputStreamWriter(this, charset))
 
 public fun OutputStream.buffered(bufferSize: Int = DEFAULT_BUFFER_SIZE): OutputStream = this
 
 public fun ByteArray.inputStream(): ByteArrayInputStream = ByteArrayInputStream(this)
+
+public fun String.byteInputStream(charset: Charset = Charsets.UTF_8): ByteArrayInputStream = ByteArrayInputStream(toByteArray(charset))
 
 public fun ByteArray.inputStream(offset: Int, length: Int): ByteArrayInputStream = ByteArrayInputStream(this, offset, length)

@@ -299,10 +299,24 @@ public open class StringReader(private val source: String) : Reader() {
 }
 
 public open class InputStreamReader(private val input: InputStream) : Reader() {
-    public constructor(input: InputStream, charsetName: String) : this(input)
-    public constructor(input: InputStream, cs: kotlin.text.Charset) : this(input)
+    public constructor(input: InputStream, charsetName: String) : this(input, kotlin.text.Charset.forName(charsetName))
+    public constructor(input: InputStream, cs: kotlin.text.Charset) : this(input) {
+        if (cs != kotlin.text.Charsets.UTF_8) charset = cs
+    }
 
     private var pending = -1
+    private var charset: kotlin.text.Charset? = null
+    private var decoded: StringReader? = null
+
+    /** A charset other than UTF-8 decodes the rest of the input at the first read. */
+    private fun decodedReader(): StringReader {
+        var d = decoded
+        if (d == null) {
+            d = StringReader(input.readAllBytes().toString(charset!!))
+            decoded = d
+        }
+        return d
+    }
 
     private fun cont(): Int {
         val b = input.read()
@@ -310,6 +324,7 @@ public open class InputStreamReader(private val input: InputStream) : Reader() {
     }
 
     public override fun read(): Int {
+        if (charset != null) return decodedReader().read()
         if (pending >= 0) {
             val p = pending
             pending = -1
@@ -351,7 +366,7 @@ public open class InputStreamReader(private val input: InputStream) : Reader() {
         return if (n == 0) -1 else n
     }
 
-    public override fun ready(): Boolean = pending >= 0 || input.available() > 0
+    public override fun ready(): Boolean = if (charset != null) decodedReader().ready() else (pending >= 0 || input.available() > 0)
 
     public override fun close() {
         input.close()
@@ -528,15 +543,27 @@ public open class BufferedWriter(private val out: Writer, sz: Int) : Writer() {
 }
 
 public open class OutputStreamWriter(private val out: OutputStream) : Writer() {
-    public constructor(out: OutputStream, charsetName: String) : this(out)
-    public constructor(out: OutputStream, cs: kotlin.text.Charset) : this(out)
+    public constructor(out: OutputStream, charsetName: String) : this(out, kotlin.text.Charset.forName(charsetName))
+    public constructor(out: OutputStream, cs: kotlin.text.Charset) : this(out) {
+        charset = cs
+    }
+
+    private var charset: kotlin.text.Charset = kotlin.text.Charsets.UTF_8
+    private var started = false
+
+    private fun encode(s: String): ByteArray {
+        // UTF-16 writes its byte order mark once
+        val cs = if (started && charset == kotlin.text.Charsets.UTF_16) kotlin.text.Charsets.UTF_16BE else charset
+        started = true
+        return s.toByteArray(cs)
+    }
 
     public override fun write(cbuf: CharArray, off: Int, len: Int) {
-        out.write(cbuf.concatToString(off, off + len).encodeToByteArray())
+        out.write(encode(cbuf.concatToString(off, off + len)))
     }
 
     public override fun write(str: String) {
-        out.write(str.encodeToByteArray())
+        out.write(encode(str))
     }
 
     public override fun flush() {

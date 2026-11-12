@@ -175,7 +175,8 @@ static char *path_to_c(const MkString *path) {
 }
 #endif
 
-MkString *mk_b1_read_file(const MkString *path) {
+/* Reads the whole file into a malloc'ed buffer (the caller frees it); NULL when it cannot be opened or read. */
+static char *b1_slurp(const MkString *path, size_t *out_len) {
 #if defined(_WIN32)
     wchar_t *p = path_to_wide(path);
     FILE *f = _wfopen(p, L"rb");
@@ -205,9 +206,72 @@ MkString *mk_b1_read_file(const MkString *path) {
         free(buf);
         return NULL;
     }
+    *out_len = len;
+    return buf;
+}
+
+MkString *mk_b1_read_file(const MkString *path) {
+    size_t len = 0;
+    char *buf = b1_slurp(path, &len);
+    if (buf == NULL) return NULL;
     MkString *s = mk_string_from_utf8(buf, len);
     free(buf);
     return s;
+}
+
+MkObject *mk_b1_read_bytes(const MkString *path) {
+    size_t len = 0;
+    char *buf = b1_slurp(path, &len);
+    if (buf == NULL) return NULL;
+    if (len > (size_t)INT32_MAX) mk_panic("OutOfMemoryError");
+    MkObject *array = mk_array_new_byte((MkInt)len);
+    if (len > 0) memcpy(MK_ARRAY_ELEMS(MkByte, array), buf, len);
+    free(buf);
+    return array;
+}
+
+MkBoolean mk_b1_write_bytes(const MkString *path, const MkObject *bytes, MkBoolean append) {
+    if (bytes == NULL) mk_panic("NullPointerException");
+#if defined(_WIN32)
+    wchar_t *p = path_to_wide(path);
+    FILE *f = _wfopen(p, append ? L"ab" : L"wb");
+#else
+    char *p = path_to_c(path);
+    FILE *f = fopen(p, append ? "ab" : "wb");
+#endif
+    free(p);
+    if (f == NULL) return 0;
+    size_t len = (size_t)((const MkArray *)bytes)->length;
+    size_t written = len == 0 ? 0 : fwrite(MK_ARRAY_ELEMS(MkByte, bytes), 1, len, f);
+    int ok = written == len;
+    if (fclose(f) != 0) ok = 0;
+    return ok ? 1 : 0;
+}
+
+/* what 0: size in bytes, 1: last modification time in milliseconds since the epoch; -1 when the file does not exist. */
+MkLong mk_b1_file_stat(const MkString *path, MkInt what) {
+#if defined(_WIN32)
+    wchar_t *p = path_to_wide(path);
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    BOOL ok = GetFileAttributesExW(p, GetFileExInfoStandard, &data);
+    free(p);
+    if (!ok) return -1;
+    if (what == 0) return (MkLong)(((uint64_t)data.nFileSizeHigh << 32) | data.nFileSizeLow);
+    uint64_t t = ((uint64_t)data.ftLastWriteTime.dwHighDateTime << 32) | data.ftLastWriteTime.dwLowDateTime;
+    return (MkLong)((t - 116444736000000000ULL) / 10000ULL);
+#else
+    char *p = path_to_c(path);
+    struct stat st;
+    int rc = stat(p, &st);
+    free(p);
+    if (rc != 0) return -1;
+    if (what == 0) return (MkLong)st.st_size;
+#if defined(__APPLE__)
+    return (MkLong)st.st_mtimespec.tv_sec * 1000 + (MkLong)(st.st_mtimespec.tv_nsec / 1000000);
+#else
+    return (MkLong)st.st_mtim.tv_sec * 1000 + (MkLong)(st.st_mtim.tv_nsec / 1000000);
+#endif
+#endif
 }
 
 MkBoolean mk_b1_write_file(const MkString *path, const MkString *text) {

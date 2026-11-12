@@ -1,7 +1,8 @@
 /*
  * Mini stdlib: java.io.File and the file readers / writers / streams on top of the runtime's whole-file text intrinsics
  * (mini.internal.file*). Paths are used as written (normalized: repeated and trailing separators are dropped); there is no working directory
- * query, so [File.absolutePath] of a relative path stays relative. Contents are UTF-8 text: binary data does not survive a round trip.
+ * query, so [File.absolutePath] of a relative path stays relative. Contents are read and written as bytes (mini.internal.fileReadBytes /
+ * fileWriteBytes); the readers and writers decode and encode with their charset (UTF-8 by default).
  */
 package java.io
 
@@ -9,8 +10,19 @@ import mini.internal.fileDelete
 import mini.internal.fileKind
 import mini.internal.fileListDir
 import mini.internal.fileMkdirs
+import mini.internal.fileReadBytes
 import mini.internal.fileReadText
+import mini.internal.fileStat
+import mini.internal.fileWriteBytes
 import mini.internal.fileWriteText
+
+public fun interface FileFilter {
+    public fun accept(pathname: File): Boolean
+}
+
+public fun interface FilenameFilter {
+    public fun accept(dir: File, name: String): Boolean
+}
 
 public class File : Comparable<File> {
     private val pathName: String
@@ -71,11 +83,17 @@ public class File : Comparable<File> {
 
     public fun canWrite(): Boolean = exists()
 
-    /** The size in bytes (of the UTF-8 text), 0 when the file does not exist. */
+    /** The size in bytes, 0 when the file does not exist. */
     public fun length(): Long {
         if (!isFile) return 0L
-        val text = fileReadText(pathName) ?: return 0L
-        return text.encodeToByteArray().size.toLong()
+        val n = fileStat(pathName, 0)
+        return if (n < 0L) 0L else n
+    }
+
+    /** The last modification time in milliseconds since the epoch, 0 when the file does not exist. */
+    public fun lastModified(): Long {
+        val t = fileStat(pathName, 1)
+        return if (t < 0L) 0L else t
     }
 
     public fun list(): Array<String>? {
@@ -90,9 +108,22 @@ public class File : Comparable<File> {
         return Array(names.size) { File(this, names[it]) }
     }
 
-    public fun listFiles(filter: (File) -> Boolean): Array<File>? {
+    public fun listFiles(filter: FileFilter?): Array<File>? {
         val all = listFiles() ?: return null
-        return all.filter(filter).toTypedArray()
+        if (filter == null) return all
+        return all.filter { filter.accept(it) }.toTypedArray()
+    }
+
+    public fun listFiles(filter: FilenameFilter?): Array<File>? {
+        val all = listFiles() ?: return null
+        if (filter == null) return all
+        return all.filter { filter.accept(this, it.name) }.toTypedArray()
+    }
+
+    public fun list(filter: FilenameFilter?): Array<String>? {
+        val all = list() ?: return null
+        if (filter == null) return all
+        return all.filter { filter.accept(this, it) }.toTypedArray()
     }
 
     public fun mkdirs(): Boolean {
@@ -123,8 +154,8 @@ public class File : Comparable<File> {
     public fun renameTo(dest: File): Boolean {
         if (!exists() || dest.exists()) return false
         if (isDirectory) return false
-        val text = fileReadText(pathName) ?: return false
-        if (!fileWriteText(dest.pathName, text)) return false
+        val bytes = fileReadBytes(pathName) ?: return false
+        if (!fileWriteBytes(dest.pathName, bytes, false)) return false
         return fileDelete(pathName)
     }
 
@@ -208,6 +239,19 @@ private fun readFileOrThrow(path: String): String {
     return fileReadText(path) ?: throw FileNotFoundException(path + " (No such file or directory)")
 }
 
+private fun readBytesOrThrow(path: String): ByteArray {
+    if (fileKind(path) == 2) throw FileNotFoundException(path + " (Is a directory)")
+    return fileReadBytes(path) ?: throw FileNotFoundException(path + " (No such file or directory)")
+}
+
+/** Creates the file empty (or keeps it when it is appended to); the stream and writer classes below then append what they are given. */
+private fun openForWriting(file: File, append: Boolean) {
+    val path = file.path
+    if (file.isDirectory) throw FileNotFoundException(path + " (Is a directory)")
+    if (append && file.exists()) return
+    if (!fileWriteBytes(path, ByteArray(0), false)) throw FileNotFoundException(path + " (No such file or directory)")
+}
+
 public class FileReader : InputStreamReader {
     private val text: StringReader
 
@@ -216,6 +260,12 @@ public class FileReader : InputStreamReader {
     public constructor(file: File) : super(ByteArrayInputStream(ByteArray(0))) {
         text = StringReader(readFileOrThrow(file.path))
     }
+
+    public constructor(file: File, charset: kotlin.text.Charset) : super(ByteArrayInputStream(ByteArray(0))) {
+        text = StringReader(readBytesOrThrow(file.path).toString(charset))
+    }
+
+    public constructor(fileName: String, charset: kotlin.text.Charset) : this(File(fileName), charset)
 
     public override fun read(): Int = text.read()
 
@@ -228,10 +278,11 @@ public class FileReader : InputStreamReader {
     }
 }
 
-/** The file is written when the writer is flushed or closed (the whole contents at once). */
+/** The text is written (appended to the file) when the writer is flushed or closed. */
 public class FileWriter : Writer {
     private val path: String
-    private val base: String
+    private val charset: kotlin.text.Charset
+    private var started = false
     private val pending = StringBuilder()
     private var closed = false
 
@@ -241,11 +292,16 @@ public class FileWriter : Writer {
 
     public constructor(file: File) : this(file, false)
 
-    public constructor(file: File, append: Boolean) : super() {
+    public constructor(file: File, append: Boolean) : this(file, kotlin.text.Charsets.UTF_8, append)
+
+    public constructor(file: File, charset: kotlin.text.Charset) : this(file, charset, false)
+
+    public constructor(fileName: String, charset: kotlin.text.Charset) : this(File(fileName), charset, false)
+
+    public constructor(file: File, charset: kotlin.text.Charset, append: Boolean) : super() {
         path = file.path
-        if (file.isDirectory) throw FileNotFoundException(path + " (Is a directory)")
-        base = if (append && file.exists()) (fileReadText(path) ?: "") else ""
-        if (!fileWriteText(path, base)) throw FileNotFoundException(path + " (No such file or directory)")
+        this.charset = charset
+        openForWriting(file, append)
     }
 
     public override fun write(cbuf: CharArray, off: Int, len: Int) {
@@ -265,7 +321,12 @@ public class FileWriter : Writer {
 
     public override fun flush() {
         if (closed) throw IOException("Stream closed")
-        if (!fileWriteText(path, base + pending.toString())) throw IOException("cannot write file: " + path)
+        if (pending.isEmpty()) return
+        // UTF-16 writes its byte order mark once
+        val cs = if (started && charset == kotlin.text.Charsets.UTF_16) kotlin.text.Charsets.UTF_16BE else charset
+        if (!fileWriteBytes(path, pending.toString().toByteArray(cs), true)) throw IOException("cannot write file: " + path)
+        started = true
+        pending.setLength(0)
     }
 
     public override fun close() {
@@ -278,12 +339,11 @@ public class FileWriter : Writer {
 public class FileInputStream : ByteArrayInputStream {
     public constructor(name: String) : this(File(name))
 
-    public constructor(file: File) : super(readFileOrThrow(file.path).encodeToByteArray())
+    public constructor(file: File) : super(readBytesOrThrow(file.path))
 }
 
 public class FileOutputStream : OutputStream {
     private val path: String
-    private val base: String
     private val data = ByteArrayOutputStream()
     private var closed = false
 
@@ -295,9 +355,7 @@ public class FileOutputStream : OutputStream {
 
     public constructor(file: File, append: Boolean) : super() {
         path = file.path
-        if (file.isDirectory) throw FileNotFoundException(path + " (Is a directory)")
-        base = if (append && file.exists()) (fileReadText(path) ?: "") else ""
-        if (!fileWriteText(path, base)) throw FileNotFoundException(path + " (No such file or directory)")
+        openForWriting(file, append)
     }
 
     public override fun write(b: Int) {
@@ -305,9 +363,16 @@ public class FileOutputStream : OutputStream {
         data.write(b)
     }
 
+    public override fun write(b: ByteArray, off: Int, len: Int) {
+        if (closed) throw IOException("Stream Closed")
+        super.write(b, off, len)
+    }
+
     public override fun flush() {
         if (closed) throw IOException("Stream Closed")
-        if (!fileWriteText(path, base + data.toString())) throw IOException("cannot write file: " + path)
+        if (data.size() == 0) return
+        if (!fileWriteBytes(path, data.toByteArray(), true)) throw IOException("cannot write file: " + path)
+        data.reset()
     }
 
     public override fun close() {
@@ -320,3 +385,10 @@ public class FileOutputStream : OutputStream {
 // ---- helpers for kotlin.io (internal to the stdlib) ----------------------------------------------------------------------------------
 
 public fun fileTextOrThrow(file: File): String = readFileOrThrow(file.path)
+
+public fun fileBytesOrThrow(file: File): ByteArray = readBytesOrThrow(file.path)
+
+public fun fileWriteBytesOrThrow(file: File, bytes: ByteArray, append: Boolean) {
+    if (file.isDirectory) throw FileNotFoundException(file.path + " (Is a directory)")
+    if (!fileWriteBytes(file.path, bytes, append)) throw FileNotFoundException(file.path + " (No such file or directory)")
+}

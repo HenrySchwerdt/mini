@@ -169,9 +169,16 @@ public object Files {
         return writeString(path, sb, *options)
     }
 
-    public fun write(path: Path, bytes: ByteArray, vararg options: Any?): Path = writeString(path, bytes.decodeToString(), *options)
+    public fun write(path: Path, bytes: ByteArray, vararg options: Any?): Path {
+        val f = path.toFile()
+        if (!f.parentFile.let { it == null || it.isDirectory }) throw NoSuchFileException(path.toString())
+        val append = options.contains(StandardOpenOption.APPEND)
+        if (!append && options.contains(StandardOpenOption.CREATE_NEW) && f.exists()) throw FileAlreadyExistsException(path.toString())
+        java.io.fileWriteBytesOrThrow(f, bytes, append)
+        return path
+    }
 
-    public fun readAllBytes(path: Path): ByteArray = readString(path).encodeToByteArray()
+    public fun readAllBytes(path: Path): ByteArray = java.io.fileBytesOrThrow(path.toFile())
 
     public fun createDirectory(path: Path): Path {
         val f = path.toFile()
@@ -220,7 +227,7 @@ public object Files {
     public fun copy(source: Path, target: Path, vararg options: Any?): Path {
         if (!source.toFile().exists()) throw NoSuchFileException(source.toString())
         if (target.toFile().exists() && !options.contains(StandardCopyOption.REPLACE_EXISTING)) throw FileAlreadyExistsException(target.toString())
-        mini.internal.fileWriteText(target.toFile().path, java.io.fileTextOrThrow(source.toFile()))
+        java.io.fileWriteBytesOrThrow(target.toFile(), java.io.fileBytesOrThrow(source.toFile()), false)
         return target
     }
 
