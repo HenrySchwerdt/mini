@@ -28,8 +28,8 @@ private class ReversedList<T>(private val delegate: MutableList<T>) : AbstractMu
     override fun get(index: Int): T = delegate[reverseElementIndex(index)]
 
     override fun clear() = delegate.clear()
-    override fun removeAt(index: Int): T = delegate.removeAt(reverseElementIndex(index))
-    override fun set(index: Int, element: T): T = delegate.set(reverseElementIndex(index), element)
+    override fun removeAt(index: Int): @mini.memory.Owned T = delegate.removeAt(reverseElementIndex(index))
+    override fun set(index: Int, element: T): @mini.memory.Owned T = delegate.set(reverseElementIndex(index), element)
     override fun add(index: Int, element: T) {
         delegate.add(reversePositionIndex(index), element)
     }
@@ -199,9 +199,9 @@ public fun <T, R> Iterable<Pair<T, R>>.unzip(): Pair<List<T>, List<R>> {
     return listT to listR
 }
 
-@mini.memory.Mutates public fun <T> MutableList<T>.removeLastOrNull(): T? = if (isEmpty()) null else removeAt(lastIndex)
+@mini.memory.Mutates public fun <T> MutableList<T>.removeLastOrNull(): @mini.memory.Owned T? = if (isEmpty()) null else removeAt(lastIndex)
 
-@mini.memory.Mutates public fun <T> MutableList<T>.removeFirstOrNull(): T? = if (isEmpty()) null else removeAt(0)
+@mini.memory.Mutates public fun <T> MutableList<T>.removeFirstOrNull(): @mini.memory.Owned T? = if (isEmpty()) null else removeAt(0)
 
 @mini.memory.Mutates public fun <T> MutableCollection<in T>.addAll(elements: Array<out T>): Boolean {
     var changed = false

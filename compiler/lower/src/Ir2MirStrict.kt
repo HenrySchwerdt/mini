@@ -192,9 +192,17 @@ internal fun Ir2Mir.returnsBorrowedAnnotation(f: IrFunction): Boolean {
 internal fun Ir2Mir.ownedParamIndexes(f: IrFunction, params: List<MirLocal>): List<Int> {
     val offset = params.size - f.parameters.size
     val out = ArrayList<Int>()
-    for ((i, p) in f.parameters.withIndex()) if (hasAnnotation(p.annotations, TAKES_OWNERSHIP)) out += offset + i
+    for ((i, p) in f.parameters.withIndex()) {
+        // `@Owned x: T` on a parameter of a type parameter's type: the callee owns the reference it is given (strict-5c)
+        if (hasAnnotation(p.annotations, TAKES_OWNERSHIP) || ownedGenericParam(p)) out += offset + i
+    }
     return out
 }
+
+private const val OWNED_ANNOTATION = "mini.memory.Owned"
+
+private fun ownedGenericParam(p: IrValueParameter): Boolean =
+    p.type is TypeParamType && (hasAnnotation(p.annotations, OWNED_ANNOTATION) || hasAnnotation(p.typeAnnotations, OWNED_ANNOTATION))
 
 /** `@kotlin.internal.NoHeapEffects` (stdlib functions that only change objects they create): calls do not end the lifetime of borrowed aliases. */
 internal fun Ir2Mir.noHeapEffectsAnnotation(f: IrFunction): Boolean {

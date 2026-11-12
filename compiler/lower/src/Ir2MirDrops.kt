@@ -240,3 +240,17 @@ internal fun Ir2Mir.ownedFree(target: IrExpression, v: MirExpr, out: MutableList
     out += MirStmt.Eval(MirExpr.RuntimeCall("mk_free_owned", listOf(v), TUnit))
     return true
 }
+
+/**
+ * A drop owner bound to a value that a compiler temporary of an erased (reference counted) type holds, as the result of a call of generic
+ * type (`val x = ys.removeAt(0)`: the list handed its count to the temporary, which the scope releases): the owner counts the object for
+ * itself, so that the temporary's release and the owner's release each drop their own count.
+ */
+internal fun Ir2Mir.retainIfCounted(l: MirLocal, init: MirExpr, out: MutableList<MirStmt>) {
+    var x: MirExpr = init
+    while (x is MirExpr.Cast) x = x.operand
+    if (x !is MirExpr.Local || x.local !in ownedTemps) return
+    val tt = x.local.type
+    if (tt !is TObject || tt.cName != ANY_CNAME) return
+    out += MirStmt.Eval(MirExpr.RuntimeCall("mk_retain", listOf<MirExpr>(MirExpr.Local(l)), TUnit))
+}

@@ -437,8 +437,8 @@ private class MutableMapWithDefaultImpl<K, V>(override val map: MutableMap<K, V>
     override val keys: MutableSet<K> get() = map.keys
     override val values: MutableCollection<V> get() = map.values
     override val entries: MutableSet<MutableMap.MutableEntry<K, V>> get() = map.entries
-    override fun put(key: K, value: V): V? = map.put(key, value)
-    override fun remove(key: K): V? = map.remove(key)
+    override fun put(key: K, value: V): @mini.memory.Owned V? = map.put(key, value)
+    override fun remove(key: K): @mini.memory.Owned V? = map.remove(key)
     override fun putAll(from: Map<out K, V>) { map.putAll(from) }
     override fun clear() { map.clear() }
 
@@ -633,4 +633,4 @@ public inline operator fun <@kotlin.internal.OnlyInputTypes K, V> Map<out K, V>.
 public fun <@kotlin.internal.OnlyInputTypes K> Map<out K, *>.containsKey(key: K): Boolean = (this as Map<K, *>).containsKey(key)
 
 @Suppress("UNCHECKED_CAST")
-@mini.memory.Mutates public fun <@kotlin.internal.OnlyInputTypes K, V> MutableMap<out K, V>.remove(key: K): V? = (this as MutableMap<K, V>).remove(key)
+@mini.memory.Mutates public fun <@kotlin.internal.OnlyInputTypes K, V> MutableMap<out K, V>.remove(key: K): @mini.memory.Owned V? = (this as MutableMap<K, V>).remove(key)

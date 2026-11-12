@@ -411,7 +411,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val nullable = t.isMarkedNullable()
         val fq = t.classFqName
         val cls = t.classOrNull
-        if (fq == null || cls == null) return MType(TK.Other, nullable, null, null, null, "Any")
+        if (fq == null || cls == null) {
+            val any = MType(TK.Other, nullable, null, null, null, "Any")
+            if (t is TypeParamType) any.typeParam = true
+            return any
+        }
         val prim = PRIMS[fq]
         if (prim != null) return MType(TK.Prim, nullable, null, null, null, prim)
         if (fq == "kotlin.String") return MType(TK.Str, nullable, null, null, null, "String")

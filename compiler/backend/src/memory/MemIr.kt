@@ -67,6 +67,8 @@ class MType(
     val className: String? = null,
     val display: String = "",
 ) {
+    /** The type is a type parameter (`T`): `@Owned` is allowed on declarations of it (strict-5c). */
+    var typeParam: Boolean = false
     /** A Managed collection, iterator or view whose type arguments are tracked values: its elements are loans (strict-5b). */
     var holds: Boolean = false
 

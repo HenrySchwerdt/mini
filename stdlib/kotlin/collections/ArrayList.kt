@@ -48,7 +48,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     @Suppress("UNCHECKED_CAST")
-    @mini.memory.Mutates override fun set(index: Int, @TakesOwnership element: E): E {
+    @mini.memory.Mutates override fun set(index: Int, @TakesOwnership element: E): @mini.memory.Owned E {
         checkElementIndex(index)
         val old = refArrayGet(array, index) as E
         refArraySetOwned(array, index, element)
@@ -102,7 +102,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     @Suppress("UNCHECKED_CAST")
-    @mini.memory.Mutates override fun removeAt(index: Int): E {
+    @mini.memory.Mutates override fun removeAt(index: Int): @mini.memory.Owned E {
         checkElementIndex(index)
         val old = refArrayGet(array, index) as E
         var i = index

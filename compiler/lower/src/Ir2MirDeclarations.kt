@@ -235,6 +235,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 if (s.dropOwner && currentStrict && t.isRef) l.dropOwner = true
                 locals[s] = l
                 out += MirStmt.Declare(l, init)
+                if (l.dropOwner && init != null) retainIfCounted(l, init, out)
             }
         }
         is IrComposite -> for (x in s.statements) stmt(x, out)
@@ -255,7 +256,11 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
             if (owner in closure.boxed) {
                 val rc = cellFor(owner)
                 out += MirStmt.SetField(MirExpr.Local(l), rc.cName, "value", rc.valueType, bindValue(s.value, rc.valueType, out))
-            } else out += MirStmt.Assign(l, bindValue(s.value, l.type, out))
+            } else {
+                val nv = bindValue(s.value, l.type, out)
+                out += MirStmt.Assign(l, nv)
+                if (l.dropOwner) retainIfCounted(l, nv, out)
+            }
         }
         is IrSimpleFunction -> liftLocalFunction(s)
         is IrLocalDelegatedProperty -> {

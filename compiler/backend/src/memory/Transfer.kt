@@ -420,7 +420,10 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (!v.tracked) { arenaEscapeArg(v); continue }
             if (foreign) {
                 val why = if (p.annot.borrowed == null && !fn.borrowsAll) Summaries.escapeReason(fn, i) else null
-                if (why != null) {
+                if (why != null && countsReferences(fn) && ownedByDefault(v)) {
+                    // an owner of the default allocator handed to a collection, a vararg array or a pair: the keeper retains its own count of the
+                    // reference counted object (the owner keeps its count and releases it when it ends), so nothing is moved and nothing dangles
+                } else if (why != null) {
                     val fnName = fn.qname.substringAfterLast('.')
                     diag(
                         "M0110", v.pos, "Strict value handed to Managed code that keeps it",
@@ -482,6 +485,10 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val roots = collRoots(rv)
             if (roots != null) return AVal(rt, false, -1, roots, emptySet(), false, false, e.pos)
         }
+        if (rt.tracked && (fn.mode == MemMode.Managed || fn.external) && fn.ret.annot.owned != null && fn.ret.annot.borrowed == null && !u.suspend) {
+            // `removeAt`, `set`, `remove`: the collection hands the element it held (with its count) to the caller: a new owner of the default allocator
+            return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, SK.Default, -1)), true, false, e.pos, call = e)
+        }
         if (rv != null && rt.tracked && (fn.mode == MemMode.Managed || fn.external || fn.ret.annot.borrowed != null)) {
             // an element of a collection (or what a Strict container lends out): a loan that the next `@Mutates` call on the container ends
             val roots = collRoots(rv)
@@ -535,6 +542,20 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         // no allocator visible at the call (the callee allocates, or hands on a value of its own): the default allocator, whose objects the owner releases
         val sk = if (fn.cFree != null) SK.Extern else if (kind == null) (if (u.suspend) SK.Unknown else SK.Default) else siteKind(kind) ?: SK.Unknown
         return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, sk, id)), rt.nullable, false, e.pos, call = e)
+    }
+
+    /** Library containers that count the references they keep: collections, the array of a vararg, pairs and triples (strict-5c). */
+    private fun countsReferences(fn: MFun): Boolean {
+        val n = fn.qname
+        return n.startsWith("kotlin.collections.") || n == "kotlin.vararg" || n.startsWith("mini.internal.refArraySet") || n.startsWith("kotlin.Pair") || n.startsWith("kotlin.Triple")
+    }
+
+    /** [v] is a value of the default allocator that has an owner (fresh, or an owner variable): its object is reference counted. */
+    private fun ownedByDefault(v: AVal): Boolean {
+        if (v.isNull || v.sites.isEmpty()) return false
+        for (s in v.sites) if (s.kind != SK.Default) return false
+        if (v.src >= 0) { val sl = slot(v.src); if (sl == null || sl.bits and B != 0) return false }
+        return v.refs.isEmpty() || v.src >= 0
     }
 
     // ---- strict-5b: loans of the elements of a collection ----------------------------------------------------
@@ -1146,7 +1167,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun checkAnnotLocal(s: MStmt.Decl) = annotCheck(s.annot, s.local.type)
 
     fun annotCheck(a: MAnnot, t: MType) {
-        if (a.owned != null && !t.tracked) {
+        if (a.owned != null && !t.tracked && !t.typeParam) {
             diag(
                 "M0111", a.owned, "`@Owned` on `${t}`, which has no ownership", "no ownership here",
                 "remove the annotation",

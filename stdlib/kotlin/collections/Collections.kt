@@ -376,7 +376,7 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Lists.set
      */
 
-    @mini.memory.Mutates public operator fun set(index: Int, element: E): E
+    @mini.memory.Mutates public operator fun set(index: Int, element: E): @mini.memory.Owned E
 
     /**
      * Inserts an element into the list at the specified [index].
@@ -403,7 +403,7 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Lists.removeAt
      */
 
-    @mini.memory.Mutates public fun removeAt(index: Int): E
+    @mini.memory.Mutates public fun removeAt(index: Int): @mini.memory.Owned E
 
     // List Iterators
     override fun listIterator(): MutableListIterator<E>
@@ -681,7 +681,7 @@ public interface MutableMap<K, V> : Map<K, V> {
      * @sample samples.collections.Maps.CoreApi.put
      */
 
-    @mini.memory.Mutates public fun put(key: K, value: V): V?
+    @mini.memory.Mutates public fun put(key: K, value: V): @mini.memory.Owned V?
 
     /**
      * Removes the specified key and its corresponding value from this map.
@@ -691,7 +691,7 @@ public interface MutableMap<K, V> : Map<K, V> {
      * @sample samples.collections.Maps.CoreApi.remove
      */
 
-    @mini.memory.Mutates public fun remove(key: K): V?
+    @mini.memory.Mutates public fun remove(key: K): @mini.memory.Owned V?
 
     // Bulk Modification Operations
     /**

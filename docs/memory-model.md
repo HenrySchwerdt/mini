@@ -430,7 +430,7 @@ println(peek?.v)               // M0101
 ### 4.4 Validity of the annotations
 
 `@Owned`/`@Borrowed` only make sense on types of tracked classes (4.1, also nullable).
-`@Owned` on primitives, `String` or Managed classes is an error: **M0111**.
+`@Owned` on primitives, `String` or Managed classes is an error: **M0111**. A type parameter (`@Owned x: T`, `class Cell<@Owned T>`) is allowed (ownership polymorphism, strict-5c): the argument is moved when `T` is a tracked type.
 `@Borrowed` is additionally allowed on fields and parameters of arbitrary reference types (also `String`,
 Managed) and there means "non-owning" (needed for fields of arena objects, 2.4). Both
 at the same place: likewise M0111. `@Borrowed` on an `@Owned` return
@@ -557,7 +557,11 @@ fun swapOut(s: Slot): @Owned Box? {
 
 ### 5.4 Collections of owned values
 
-**Not supported yet.** Tracked values must not be put into Kotlin collections
+**Since round strict-5c, for objects of the default allocator (2.2a): supported.** A fresh object or an owner variable of the default allocator may be put into a Kotlin collection, a vararg
+(`listOf(a, b)`, `arrayOf(..)`), a map, a set or a pair: the collection holds its own reference count and the owner keeps its ownership (section "Round strict-5c"); elements read back are
+loans that end at the next mutating call (strict-5b). The rest of this section holds for every other tracked value (objects of `Heap`, `Pool`, `Arena`, borrowed values).
+
+**Not supported yet (everything but the default allocator).** Tracked values must not be put into Kotlin collections
 (`List`, `MutableList`, `Map`, ...): M0110 (Strict → Managed). Type arguments
 like `List<@Owned T>` and arrays of owned elements are part of P3 (section 9). For now
 you build your own container classes from owning fields (see `ok_linked_list`).
@@ -1241,8 +1245,8 @@ source libraries; a version-1 library is rejected with the usual "rebuild the li
 
 ### What remains
 
-* Strict values in Kotlin collections (`List<Box>`): still M0110 by 5.4; the design note there says what is needed (statement-scoped
-  release of temporaries, then a temporary collection of loans; or an owning `OwnedList<T>`).
+* Strict values in Kotlin collections (`List<Box>`): M0110 by 5.4 for objects of an explicit allocator; for objects of the default allocator accepted
+  since rounds strict-5b (loans) and strict-5c (counted references).
 * Local functions (`fun helper()` inside a function) that capture owners are lifted and called directly: a call reads the captures
   (a call after the owner's `free()` is M0101), and a local function used as a value (`::helper`) is a closure over the same captures
   (it was not tracked before: `val f = ::peek; a.free(); f()` was a use after free that the checker accepted; corpus `s100`, `s101`).
@@ -1548,6 +1552,40 @@ Not followed (a loan of such an element is not tracked, as before): sequences, a
 Corpus `s300`-`s312` (REJECT M0101: `clear`, `removeAt`, `removeAll`, `sortBy`, `Iterator.remove`, a lambda that clears the list it iterates, a `for` loop, a reassigned variable,
 a loop variable that outlives the list's block, a callee that clears the list, `MutableMap.remove`, a change on one path, a sublist) and `s320`-`s323` (ACCEPT, run: reads between the read and the use,
 re-reading after the change, copying what is needed out first, loops that only read). `s147` now reports M0101 besides M0110 (corpus header `// REJECT M0101+M0110`).
+
+## Round strict-5c: default-allocated values in collections and varargs
+
+Putting Strict values into Kotlin collections was refused (M0110, 5.4) because nothing owned them: the collection keeps a reference, the owner frees the object at once and the
+collection dangles (the two blockers measured in "Strict values in collections" above: the code generation leaked the owner's count, and a read element was an untracked loan).
+With the default allocator (5a) and the element loans (5b) both are solved for objects of the default allocator, and the rule is one line.
+
+**The decision, and why it is the safer path.** Two designs were on the table:
+
+1. *An owning collection* (`OwnedList<T>` in `mini.memory`, or an owner-count hand-over in the backends for every Kotlin collection). `OwnedList<T>` gives up the Kotlin collection API
+   (the hundreds of `kotlin.collections` extensions work on `List`/`MutableList`, not on a new type), and the count hand-over only works for objects that are counted at all:
+   an object of `Heap`, `Pool` or `Arena` is not counted, `free()` deallocates it at once whatever a collection holds, so a collection that holds one dangles after the owner's `free()`;
+   making them counted would put the reference counting back into Strict code, which is what Strict mode exists to avoid.
+2. *Reference counting where the object already is counted.* An object of the default allocator is a counted object (5a: its count of one belongs to its owner). A Managed collection that
+   retains the reference it is given, as it does for every value, holds a count of its own; the owner keeps its ownership and releases its count when it ends (or by `free()`, which releases that
+   count only). The object is freed when the last of them lets go. Nothing is moved and nothing can dangle, **by construction**: a missed release is a leak, never a use after free.
+
+Round 5c takes (2): the collection owns what it holds *by its own count*. The checker, `Interp.processArgs`: a value handed to a parameter that the callee keeps (the `escapeReason` of the
+summary) is no longer M0110 when the callee is a library container that counts references (`kotlin.collections.*`, the array of a vararg, `Pair`, `Triple`) **and** the value is an owner of the
+default allocator (fresh, or a variable whose sites are all `Default`). Everything else stays M0110: objects of an explicit allocator (not counted), borrowed parameters and aliases (the allocator is
+unknown), `Thread`, `Channel` and user Managed functions (other threads, other lifetimes). The elements that are read back are loans of 5b: `val first = ys[0]; ys.clear(); first.id` is M0101.
+`s147` (a `Heap` class) is M0101 and M0110; its default-allocated twin `s410` is M0101 only, because the `add` is accepted.
+
+**Elements that come back are owners.** `removeAt`, `set`, `put`, `remove`, `removeFirst`, `removeLast` (and the `OrNull` forms) hand the element they held, with its count, to the caller: they are annotated
+`@Owned` on their result in the library, and a call is a new owner of the default allocator (`val gone = ys.removeAt(0)` releases the element when `gone` ends; `gone.free()` and a later use is M0101). Code
+generation: the result of a call of generic type sits in a compiler temporary of the erased type, which the scope releases; the owner variable retains it once for itself (`Ir2Mir.retainIfCounted`), so both releases drop their own count.
+
+**`@Owned` on type parameters** (ownership polymorphism): `class Cell<@Owned T>(val item: T)` and `fun <T> wrap(@Owned x: T)` are accepted (M0111 is not raised for a type parameter's type). An `@Owned` parameter of a type
+parameter's type is an *owned reference parameter* in the code generation, like `@TakesOwnership` in the library: the caller hands over its count and the callee releases or stores it. The owner of the container
+is the container: `wrap(Item(6))` gives the new `Cell` the only count of the `Item`.
+
+Corpus `s400`-`s404`, `s420`-`s425` (ACCEPT, run under AddressSanitizer + LeakSanitizer, C and LLVM backend: lists, `listOf`/`arrayOf` varargs, maps, sets, deques, pairs, removal and replacement, an owner freed after it was added, a list that
+outlives its owners, a stress loop), `s410`-`s415` (REJECT: the loan after `clear`/`add`/`set`, an `Heap` object in a list, a borrowed parameter in a list, a removed element that is freed and used).
+The five M0110 corpus programs with an `@AllocatedBy(Heap::class)` class (`s44`, `s45`, `s79`, `s147`, `s143`) keep their verdict: an explicit allocator's object cannot be counted by a collection. `s420`-`s422` are their default-allocated twins.
 
 ## Cycles: the cycle collector of Managed mode
 

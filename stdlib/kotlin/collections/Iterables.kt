@@ -878,12 +878,12 @@ private fun <T> mergeSort(a: ArrayList<T>, tmp: ArrayList<T>, from: Int, to: Int
     return result
 }
 
-@mini.memory.Mutates public fun <T> MutableList<T>.removeFirst(): T {
+@mini.memory.Mutates public fun <T> MutableList<T>.removeFirst(): @mini.memory.Owned T {
     if (isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
     return removeAt(0)
 }
 
-@mini.memory.Mutates public fun <T> MutableList<T>.removeLast(): T {
+@mini.memory.Mutates public fun <T> MutableList<T>.removeLast(): @mini.memory.Owned T {
     if (isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
     return removeAt(lastIndex)
 }

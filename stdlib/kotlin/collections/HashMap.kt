@@ -251,7 +251,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return false
     }
 
-    @mini.memory.Mutates override fun put(@TakesOwnership key: K, @TakesOwnership value: V): V? {
+    @mini.memory.Mutates override fun put(@TakesOwnership key: K, @TakesOwnership value: V): @mini.memory.Owned V? {
         if (key != null && key === lastKey) {
             val c = lastNode!!
             val old = c.value
@@ -344,7 +344,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         table = newTab
     }
 
-    @mini.memory.Mutates override fun remove(key: K): V? {
+    @mini.memory.Mutates override fun remove(key: K): @mini.memory.Owned V? {
         val node = removeNode(key) ?: return null
         return node.value
     }

@@ -243,9 +243,9 @@ internal class ListIteratorImpl<out E>(private val list: List<E>, start: Int) : 
 public abstract class AbstractMutableList<E> protected constructor() : AbstractMutableCollection<E>(), MutableList<E> {
     abstract override val size: Int
     abstract override fun get(index: Int): E
-    abstract override fun set(index: Int, element: E): E
+    abstract override fun set(index: Int, element: E): @mini.memory.Owned E
     abstract override fun add(index: Int, element: E)
-    abstract override fun removeAt(index: Int): E
+    abstract override fun removeAt(index: Int): @mini.memory.Owned E
 
     override fun add(element: E): Boolean {
         add(size, element)
@@ -357,7 +357,7 @@ internal class MutableSubList<E>(private val list: MutableList<E>, private val f
         return list[fromIndex + index]
     }
 
-    override fun set(index: Int, element: E): E {
+    override fun set(index: Int, element: E): @mini.memory.Owned E {
         if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
         return list.set(fromIndex + index, element)
     }
@@ -368,7 +368,7 @@ internal class MutableSubList<E>(private val list: MutableList<E>, private val f
         _size++
     }
 
-    override fun removeAt(index: Int): E {
+    override fun removeAt(index: Int): @mini.memory.Owned E {
         if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
         val r = list.removeAt(fromIndex + index)
         _size--
@@ -555,7 +555,7 @@ public abstract class AbstractMap<K, out V> protected constructor() : Map<K, V> 
 
 public abstract class AbstractMutableMap<K, V> protected constructor() : MutableMap<K, V> {
     abstract override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
-    abstract override fun put(key: K, value: V): V?
+    abstract override fun put(key: K, value: V): @mini.memory.Owned V?
 
     override fun containsKey(key: K): Boolean {
         val it = entries.iterator()
@@ -582,7 +582,7 @@ public abstract class AbstractMutableMap<K, V> protected constructor() : Mutable
         return null
     }
 
-    override fun remove(key: K): V? {
+    override fun remove(key: K): @mini.memory.Owned V? {
         val it = entries.iterator()
         while (it.hasNext()) {
             val e = it.next()
