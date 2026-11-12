@@ -67,6 +67,9 @@ class MType(
     val className: String? = null,
     val display: String = "",
 ) {
+    /** A Managed collection, iterator or view whose type arguments are tracked values: its elements are loans (strict-5b). */
+    var holds: Boolean = false
+
     /** Tracked by the ownership analysis (obligations / state). */
     val tracked: Boolean get() = tk == TK.Strict || (tk == TK.Alloc && (alloc == AllocKind.Arena || alloc == AllocKind.Pool))
     val isResource: Boolean get() = tk == TK.Alloc && (alloc == AllocKind.Arena || alloc == AllocKind.Pool)
@@ -165,6 +168,10 @@ class MFun(
     var summary: FnSummary? = null
     internal var summaryBusy: Boolean = false
     internal var summaryAssumed: FnSummary? = null
+    /** Declared in a file of the program being checked (not in a library): its body can change a collection it receives. */
+    var userCode: Boolean = false
+    /** `@Mutates`: a call may change the receiver so that every loan of one of its elements ends (strict-5b). */
+    var mutates: Boolean = false
     /** The body is a coroutine (suspend function or lambda): the default allocator is not supported there (M0204 for an escaping default object). */
     var suspendBody: Boolean = false
     /** Parameters that are visible allocators (context parameters whose type is an allocator). */

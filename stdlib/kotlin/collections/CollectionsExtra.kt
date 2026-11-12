@@ -346,7 +346,7 @@ public inline fun <T, R : Comparable<R>> List<T>.binarySearchBy(key: R?, fromInd
 
 // ---- MutableCollection ------------------------------------------------------------------------------
 
-public fun <T> MutableCollection<T>.removeIf(filter: (T) -> Boolean): Boolean = removeAll(filter)
+@mini.memory.Mutates public fun <T> MutableCollection<T>.removeIf(filter: (T) -> Boolean): Boolean = removeAll(filter)
 
 // ---- Grouping -----------------------------------------------------------------------------------------
 
@@ -476,7 +476,7 @@ public inline fun <K, V, R> Map<out K, V>.flatMapTo(destination: MutableCollecti
     return destination
 }
 
-public inline fun <K, V> MutableMap<K, V>.computeIfAbsent(key: K, mappingFunction: (K) -> V): V {
+@mini.memory.Mutates public inline fun <K, V> MutableMap<K, V>.computeIfAbsent(key: K, mappingFunction: (K) -> V): V {
     val v = get(key)
     if (v != null) return v
     val n = mappingFunction(key)
@@ -484,7 +484,7 @@ public inline fun <K, V> MutableMap<K, V>.computeIfAbsent(key: K, mappingFunctio
     return n
 }
 
-public inline fun <K, V> MutableMap<K, V>.computeIfPresent(key: K, remappingFunction: (K, V) -> V?): V? {
+@mini.memory.Mutates public inline fun <K, V> MutableMap<K, V>.computeIfPresent(key: K, remappingFunction: (K, V) -> V?): V? {
     val old = get(key)
     if (old == null) return null
     val n = remappingFunction(key, old)
@@ -492,7 +492,7 @@ public inline fun <K, V> MutableMap<K, V>.computeIfPresent(key: K, remappingFunc
     return n
 }
 
-public inline fun <K, V> MutableMap<K, V>.compute(key: K, remappingFunction: (K, V?) -> V?): V? {
+@mini.memory.Mutates public inline fun <K, V> MutableMap<K, V>.compute(key: K, remappingFunction: (K, V?) -> V?): V? {
     val old = get(key)
     val n = remappingFunction(key, old)
     if (n == null) {
@@ -503,14 +503,14 @@ public inline fun <K, V> MutableMap<K, V>.compute(key: K, remappingFunction: (K,
     return n
 }
 
-public inline fun <K, V> MutableMap<K, V>.merge(key: K, value: V, remappingFunction: (V, V) -> V?): V? {
+@mini.memory.Mutates public inline fun <K, V> MutableMap<K, V>.merge(key: K, value: V, remappingFunction: (V, V) -> V?): V? {
     val old = get(key)
     val n = if (old == null) value else remappingFunction(old, value)
     if (n == null) remove(key) else put(key, n)
     return n
 }
 
-public fun <K, V> MutableMap<K, V>.replace(key: K, value: V): V? = if (containsKey(key)) put(key, value) else null
+@mini.memory.Mutates public fun <K, V> MutableMap<K, V>.replace(key: K, value: V): V? = if (containsKey(key)) put(key, value) else null
 
 // ---- Pair / Triple --------------------------------------------------------------------------------------
 

@@ -102,6 +102,18 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val s = slot(r) ?: continue
             if (s.bits and (F or M) == 0) continue
             val maybe = s.bits and (F or M).inv() and (O or N or B or X) != 0
+            if (r < 0) {
+                // a loan of an element of a collection: the collection was changed (or ended) since the element was read
+                val cn = name(pseudoColl[r] ?: id)
+                diag(
+                    "M0101", pos, "use of `${name(id)}` after the collection it was read from changed",
+                    if (maybe) "an element read from `$cn` may be gone: `$cn` may have been changed before" else "an element read from `$cn` is gone: `$cn` was changed before",
+                    "read the element again after the change, or copy what you need out of it first",
+                    slot = r,
+                )
+                put(r, Slot((s.bits and (F or M).inv()) or X, s.refs, s.sites, s.vpos))
+                continue
+            }
             val nm = name(r)
             if (s.bits and F != 0) {
                 diag(
@@ -262,6 +274,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val t = e.type
         val s = slot(id)
         if (s == null) return AVal.untracked(t, e.pos)
+        if (t.holds && s.bits and C != 0) {
+            // a collection of tracked values: reading it is a use (its owner may be gone); what it lends out is checked at the element reads
+            checkUse(id, e.pos)
+            return AVal(t, false, id, rootsOf(id), emptySet(), false, false, e.pos, node = e)
+        }
         if (s.bits and K != 0) {
             // a closure: every use needs the owners it borrows from to be alive (a call of a function value has no position of its own)
             checkUse(id, if (e.pos.line > 0) e.pos else s.vpos)
@@ -456,7 +473,20 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         // exception: methods of local owners may be called while a field is moved out
         if (!(e.receiver is MExpr.Local)) checkMovedFields(e.pos)
         val args = processArgs(fn, rv, e.args, env, e)
+        // strict-5b: a call that changes a collection ends every loan of one of its elements; code we cannot see into may do it, too
+        if (rv != null && (fn.mutates || fn.userCode && rv.type.holds)) killLoansOf(rv)
+        if (fn.userCode) for (a in args) if (a.type.holds) killLoansOf(a)
         val rt = e.type
+        if (rv != null && rt.holds && !rt.tracked && isView(fn, rt)) {
+            // an iterator or sublist of a collection: what is read or changed through it is read or changed in the collection
+            val roots = collRoots(rv)
+            if (roots != null) return AVal(rt, false, -1, roots, emptySet(), false, false, e.pos)
+        }
+        if (rv != null && rt.tracked && (fn.mode == MemMode.Managed || fn.external || fn.ret.annot.borrowed != null)) {
+            // an element of a collection (or what a Strict container lends out): a loan that the next `@Mutates` call on the container ends
+            val roots = collRoots(rv)
+            if (roots != null && fn.ret.annot.owned == null) return elementLoan(roots, rt, e.pos)
+        }
         if (!rt.tracked) {
             // a function that returns a closure over some of its parameters (FnSummary.carries): the result borrows what those arguments borrow
             val carries: Set<Int> = Summaries.of(fn)?.carries ?: emptySet()
@@ -477,6 +507,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             for ((i, a) in args.withIndex()) {
                 val p = fn.params.getOrNull(i)
                 if (p != null && !p.isContext && a.tracked && !a.fresh) { refs += a.refs; sites += a.sites }
+            }
+            // what a Strict container lends out is a loan that its next `@Mutates` call ends
+            if (rv != null) {
+                val roots = loanRoots(rv)
+                if (roots != null) refs += elementLoan(roots, rt, e.pos).refs.first()
             }
             return AVal(rt, false, -1, refs, sites, true, false, e.pos)
         }
@@ -500,6 +535,64 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         // no allocator visible at the call (the callee allocates, or hands on a value of its own): the default allocator, whose objects the owner releases
         val sk = if (fn.cFree != null) SK.Extern else if (kind == null) (if (u.suspend) SK.Unknown else SK.Default) else siteKind(kind) ?: SK.Unknown
         return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, sk, id)), rt.nullable, false, e.pos, call = e)
+    }
+
+    // ---- strict-5b: loans of the elements of a collection ----------------------------------------------------
+
+    /** Pseudo slot of an element loan (negative id) -> the collection it was read from. */
+    private val pseudoColl = HashMap<Int, Int>()
+
+    /** The collections (slots with [C], not views) [v] stands for, or null when it is no collection of tracked values. */
+    private fun collRoots(v: AVal): Set<Int>? {
+        if (!v.type.holds) return null
+        val out = LinkedHashSet<Int>()
+        for (r in v.refs) {
+            val s = slot(r) ?: continue
+            if (s.bits and C != 0) out += r
+        }
+        if (v.src >= 0 && out.isEmpty()) { val s = slot(v.src); if (s != null && s.bits and C != 0) out += v.src }
+        return if (out.isEmpty()) null else out
+    }
+
+    private fun isView(fn: MFun, rt: MType): Boolean {
+        val n = fn.qname.substringAfterLast('.')
+        if (n == "iterator" || n == "listIterator" || n == "subList" || n == "asReversed") return true
+        val cn = rt.className ?: return false
+        return cn.endsWith("Iterator")
+    }
+
+    /** Reading an element of a collection: a loan with a pseudo slot of its own, which every mutating call on the collection ends. */
+    private fun elementLoan(roots: Set<Int>, rt: MType, pos: Pos): AVal {
+        val pid = -(pos.line * 4096 + pos.col) - 1
+        pseudoColl[pid] = roots.first()
+        put(pid, Slot(O, roots, emptySet(), pos))
+        val refs = LinkedHashSet<Int>()
+        refs += pid
+        refs += roots
+        return AVal(rt, false, -1, refs, emptySet(), true, false, pos)
+    }
+
+    /** The owners an element loan read through [v] depends on: the collections [v] stands for, or the owner of a Strict container. */
+    private fun loanRoots(v: AVal): Set<Int>? {
+        val c = collRoots(v)
+        if (c != null) return c
+        if (v.type.tracked && !v.fresh && v.refs.isNotEmpty()) return v.refs
+        return null
+    }
+
+    private fun killLoansOf(v: AVal) {
+        val roots = loanRoots(v) ?: return
+        killLoans(roots)
+    }
+
+    /** Ends every element loan of the collections [roots]: the elements may have been removed, replaced or released. */
+    private fun killLoans(roots: Set<Int>) {
+        for ((id, sl) in st.slots.entries.toList()) {
+            if (id >= 0 || sl.bits and O == 0) continue
+            var hit = false
+            for (r in sl.refs) if (r in roots) hit = true
+            if (hit) put(id, Slot(F, sl.refs, sl.sites, sl.vpos))
+        }
     }
 
     private fun checkMovedFields(pos: Pos) {
@@ -782,6 +875,12 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         }
         if (!l.type.tracked) {
             discard(v)
+            if (l.type.holds) {
+                // a collection of tracked values: assigning it ends the loans of the elements of the old value
+                if (assign) killLoans(setOf(l.id))
+                put(l.id, Slot(C or (if (v.refs.isNotEmpty()) B else 0), v.refs, emptySet(), v.pos))
+                return
+            }
             if (v.caps && v.refs.isNotEmpty()) put(l.id, Slot(B or K, v.refs, v.sites, if (v.pos.line > 0) v.pos else l.pos))
             else if (slot(l.id) != null) put(l.id, Slot(0, emptySet(), emptySet(), v.pos))
             return
@@ -940,6 +1039,15 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
 
     private fun doExit(op: Op.Exit) {
         for (l in op.locals.asReversed()) {
+            if (l.type.holds) {
+                // the collection ends with its scope: the loans of its elements end with it
+                val cs = slot(l.id)
+                if (cs != null && cs.bits and C != 0 && cs.bits and B == 0) {
+                    killLoans(setOf(l.id))
+                    put(l.id, Slot(F, cs.refs, cs.sites, cs.vpos))
+                }
+                continue
+            }
             if (!l.type.tracked) continue
             val s = slot(l.id) ?: continue
             if (s.bits and O == 0) continue
@@ -1054,7 +1162,10 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     fun initParam(p: MParam) {
         val l = p.local
         val t = l.type
-        if (!t.tracked) return
+        if (!t.tracked) {
+            if (t.holds && !p.isContext) put(l.id, Slot(C or B, emptySet(), emptySet(), l.pos))
+            return
+        }
         if (p.isContext) {
             if (t.isResource) put(l.id, Slot(B, emptySet(), emptySet(), l.pos))
             return

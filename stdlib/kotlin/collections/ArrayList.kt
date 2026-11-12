@@ -48,7 +48,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     @Suppress("UNCHECKED_CAST")
-    override fun set(index: Int, @TakesOwnership element: E): E {
+    @mini.memory.Mutates override fun set(index: Int, @TakesOwnership element: E): E {
         checkElementIndex(index)
         val old = refArrayGet(array, index) as E
         refArraySetOwned(array, index, element)
@@ -58,7 +58,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     // NoHeapEffects: appending only fills the first free (NULL) slot, and growing moves every element into the new storage, so
     // no reference that an element read (a borrowed alias of an element, of the list) depends on is ever dropped.
     @kotlin.internal.NoHeapEffects
-    override fun add(@TakesOwnership element: E): Boolean {
+    @mini.memory.Mutates override fun add(@TakesOwnership element: E): Boolean {
         // one read of the storage and of the length on the common path (room left); growing is the rare case
         val len = length
         var arr = array
@@ -72,7 +72,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         return true
     }
 
-    override fun add(index: Int, @TakesOwnership element: E) {
+    @mini.memory.Mutates override fun add(index: Int, @TakesOwnership element: E) {
         if (index < 0 || index > length) mini.internal.throwIndexOutOfBounds("index: $index, size: $length")
         ensureCapacity(length + 1)
         var i = length
@@ -85,7 +85,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         modCount++
     }
 
-    override fun addAll(elements: Collection<E>): Boolean {
+    @mini.memory.Mutates override fun addAll(elements: Collection<E>): Boolean {
         if (elements.isEmpty()) return false
         // The count is fixed up front: `list.addAll(list)` must append the elements that were there, not chase its own tail.
         var remaining = elements.size
@@ -102,7 +102,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     }
 
     @Suppress("UNCHECKED_CAST")
-    override fun removeAt(index: Int): E {
+    @mini.memory.Mutates override fun removeAt(index: Int): E {
         checkElementIndex(index)
         val old = refArrayGet(array, index) as E
         var i = index
@@ -116,14 +116,14 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
         return old
     }
 
-    override fun remove(element: E): Boolean {
+    @mini.memory.Mutates override fun remove(element: E): Boolean {
         val i = indexOf(element)
         if (i < 0) return false
         removeAt(i)
         return true
     }
 
-    override fun clear() {
+    @mini.memory.Mutates override fun clear() {
         var i = 0
         while (i < length) {
             refArraySet(array, i, null)
@@ -192,7 +192,7 @@ internal class ArrayListIterator<E>(private val list: ArrayList<E>) : MutableIte
         return refArrayGetBorrowed(list.array, last) as E
     }
 
-    override fun remove() {
+    @mini.memory.Mutates override fun remove() {
         if (last < 0) mini.internal.throwIllegalState(null)
         if (list.modCount != expectedModCount) throw ConcurrentModificationException()
         list.removeAt(last)

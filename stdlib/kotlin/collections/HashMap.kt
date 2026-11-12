@@ -251,7 +251,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return false
     }
 
-    override fun put(@TakesOwnership key: K, @TakesOwnership value: V): V? {
+    @mini.memory.Mutates override fun put(@TakesOwnership key: K, @TakesOwnership value: V): V? {
         if (key != null && key === lastKey) {
             val c = lastNode!!
             val old = c.value
@@ -344,7 +344,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         table = newTab
     }
 
-    override fun remove(key: K): V? {
+    @mini.memory.Mutates override fun remove(key: K): V? {
         val node = removeNode(key) ?: return null
         return node.value
     }
@@ -382,7 +382,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         e.after = null
     }
 
-    override fun clear() {
+    @mini.memory.Mutates override fun clear() {
         val n = refArrayLength(table)
         var i = 0
         while (i < n) {
@@ -396,7 +396,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         lastNode = null
     }
 
-    override fun putAll(from: Map<out K, V>) {
+    @mini.memory.Mutates override fun putAll(from: Map<out K, V>) {
         // java.util.HashMap#putMapEntries: an empty table is sized from the argument, a used one doubles ahead of the insertions
         val s = from.size
         if (s > 0) {
@@ -449,7 +449,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             return current!! // read again: a result borrowed from this iterator, not from the local
         }
 
-        override fun remove() {
+        @mini.memory.Mutates override fun remove() {
             val c = current ?: mini.internal.throwIllegalState(null)
             current = null
             map.removeNode(c.key)
@@ -500,12 +500,12 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
                 override fun hasNext(): Boolean = it.hasNext()
                 @ReturnsBorrowed
                 override fun next(): MutableMap.MutableEntry<K, V> = it.next()
-                override fun remove() = it.remove()
+                @mini.memory.Mutates override fun remove() = it.remove()
             }
 
-        override fun add(element: MutableMap.MutableEntry<K, V>): Boolean = mini.internal.throwUnsupportedOperation(null)
+        @mini.memory.Mutates override fun add(element: MutableMap.MutableEntry<K, V>): Boolean = mini.internal.throwUnsupportedOperation(null)
 
-        override fun clear() = map.clear()
+        @mini.memory.Mutates override fun clear() = map.clear()
 
         override fun contains(element: MutableMap.MutableEntry<K, V>): Boolean {
             val n = map.findNode(element.key) ?: return false
@@ -522,16 +522,16 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             override fun hasNext(): Boolean = it.hasNext()
             @ReturnsBorrowed
             override fun next(): K = it.next().key
-            override fun remove() = it.remove()
+            @mini.memory.Mutates override fun remove() = it.remove()
         }
 
-        override fun add(element: K): Boolean = mini.internal.throwUnsupportedOperation(null)
+        @mini.memory.Mutates override fun add(element: K): Boolean = mini.internal.throwUnsupportedOperation(null)
 
-        override fun clear() = map.clear()
+        @mini.memory.Mutates override fun clear() = map.clear()
 
         override fun contains(element: K): Boolean = map.containsKey(element)
 
-        override fun remove(element: K): Boolean = map.removeNode(element) != null
+        @mini.memory.Mutates override fun remove(element: K): Boolean = map.removeNode(element) != null
     }
 
     private class ValueCollection<K, V>(private val map: HashMap<K, V>) : AbstractMutableCollection<V>() {
@@ -543,12 +543,12 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             override fun hasNext(): Boolean = it.hasNext()
             @ReturnsBorrowed
             override fun next(): V = it.next().value
-            override fun remove() = it.remove()
+            @mini.memory.Mutates override fun remove() = it.remove()
         }
 
-        override fun add(element: V): Boolean = mini.internal.throwUnsupportedOperation(null)
+        @mini.memory.Mutates override fun add(element: V): Boolean = mini.internal.throwUnsupportedOperation(null)
 
-        override fun clear() = map.clear()
+        @mini.memory.Mutates override fun clear() = map.clear()
     }
 }
 

@@ -364,7 +364,7 @@ public fun <T> Iterable<T>.reversed(): List<T> {
     return list
 }
 
-public fun <T> MutableList<T>.reverse() {
+@mini.memory.Mutates public fun <T> MutableList<T>.reverse() {
     var i = 0
     var j = size - 1
     while (i < j) {
@@ -783,16 +783,16 @@ public fun <T> Iterable<T>.sortedWith(comparator: Comparator<in T>): List<T> {
     return list
 }
 
-public fun <T : Comparable<T>> MutableList<T>.sort() {
+@mini.memory.Mutates public fun <T : Comparable<T>> MutableList<T>.sort() {
     sortWith(Comparator<T> { a, b -> a.compareTo(b) })
 }
 
-public inline fun <T, R : Comparable<R>> MutableList<T>.sortBy(crossinline selector: (T) -> R?) {
+@mini.memory.Mutates public inline fun <T, R : Comparable<R>> MutableList<T>.sortBy(crossinline selector: (T) -> R?) {
     sortWith(Comparator<T> { a, b -> compareValues(selector(a), selector(b)) })
 }
 
 /** Stable merge sort (java.util.List.sort is stable too, so results agree with the JVM). */
-public fun <T> MutableList<T>.sortWith(comparator: Comparator<in T>) {
+@mini.memory.Mutates public fun <T> MutableList<T>.sortWith(comparator: Comparator<in T>) {
     if (size < 2) return
     val src = ArrayList<T>(this)
     val tmp = ArrayList<T>(this)
@@ -830,31 +830,31 @@ private fun <T> mergeSort(a: ArrayList<T>, tmp: ArrayList<T>, from: Int, to: Int
 
 // ---- mutable collection helpers ---------------------------------------------------------------
 
-public operator fun <T> MutableCollection<in T>.plusAssign(element: T) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.plusAssign(element: T) {
     this.add(element)
 }
 
-public operator fun <T> MutableCollection<in T>.plusAssign(elements: Iterable<T>) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.plusAssign(elements: Iterable<T>) {
     this.addAll(elements)
 }
 
-public operator fun <T> MutableCollection<in T>.minusAssign(element: T) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.minusAssign(element: T) {
     this.remove(element)
 }
 
-public fun <T> MutableCollection<in T>.addAll(elements: Iterable<T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.addAll(elements: Iterable<T>): Boolean {
     var result = false
     for (item in elements) if (add(item)) result = true
     return result
 }
 
-public fun <T> MutableCollection<in T>.removeAll(elements: Iterable<T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.removeAll(elements: Iterable<T>): Boolean {
     var result = false
     for (item in elements) if (remove(item)) result = true
     return result
 }
 
-public inline fun <T> MutableIterable<T>.removeAll(predicate: (T) -> Boolean): Boolean {
+@mini.memory.Mutates public inline fun <T> MutableIterable<T>.removeAll(predicate: (T) -> Boolean): Boolean {
     var result = false
     val iterator = this.iterator()
     while (iterator.hasNext()) {
@@ -866,7 +866,7 @@ public inline fun <T> MutableIterable<T>.removeAll(predicate: (T) -> Boolean): B
     return result
 }
 
-public inline fun <T> MutableIterable<T>.retainAll(predicate: (T) -> Boolean): Boolean {
+@mini.memory.Mutates public inline fun <T> MutableIterable<T>.retainAll(predicate: (T) -> Boolean): Boolean {
     var result = false
     val iterator = this.iterator()
     while (iterator.hasNext()) {
@@ -878,12 +878,12 @@ public inline fun <T> MutableIterable<T>.retainAll(predicate: (T) -> Boolean): B
     return result
 }
 
-public fun <T> MutableList<T>.removeFirst(): T {
+@mini.memory.Mutates public fun <T> MutableList<T>.removeFirst(): T {
     if (isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
     return removeAt(0)
 }
 
-public fun <T> MutableList<T>.removeLast(): T {
+@mini.memory.Mutates public fun <T> MutableList<T>.removeLast(): T {
     if (isEmpty()) mini.internal.throwNoSuchElement("List is empty.")
     return removeAt(lastIndex)
 }

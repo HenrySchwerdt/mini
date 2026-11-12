@@ -255,60 +255,60 @@ public fun <T> List<T>.binarySearch(fromIndex: Int = 0, toIndex: Int = size, com
 
 // ---- MutableList / MutableCollection -------------------------------------------------------------------
 
-public fun <T> MutableList<T>.fill(value: T) {
+@mini.memory.Mutates public fun <T> MutableList<T>.fill(value: T) {
     var i = 0
     while (i < size) { this[i] = value; i++ }
 }
 
-public fun <T : Comparable<T>> MutableList<T>.sortDescending() {
+@mini.memory.Mutates public fun <T : Comparable<T>> MutableList<T>.sortDescending() {
     sortWith(Comparator<T> { a, b -> b.compareTo(a) })
 }
 
-public inline fun <T, R : Comparable<R>> MutableList<T>.sortByDescending(crossinline selector: (T) -> R?) {
+@mini.memory.Mutates public inline fun <T, R : Comparable<R>> MutableList<T>.sortByDescending(crossinline selector: (T) -> R?) {
     sortWith(Comparator<T> { a, b -> compareValues(selector(b), selector(a)) })
 }
 
-public fun <T> MutableList<T>.addFirst(element: T) {
+@mini.memory.Mutates public fun <T> MutableList<T>.addFirst(element: T) {
     add(0, element)
 }
 
-public fun <T> MutableList<T>.addLast(element: T) {
+@mini.memory.Mutates public fun <T> MutableList<T>.addLast(element: T) {
     add(element)
 }
 
-public fun <T> MutableCollection<in T>.addAll(elements: Sequence<T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.addAll(elements: Sequence<T>): Boolean {
     var changed = false
     for (e in elements) if (add(e)) changed = true
     return changed
 }
 
-public fun <T> MutableCollection<in T>.removeAll(elements: Array<out T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.removeAll(elements: Array<out T>): Boolean {
     if (elements.isEmpty()) return false
     var changed = false
     for (e in elements) if (remove(e)) changed = true
     return changed
 }
 
-public fun <T> MutableCollection<in T>.removeAll(elements: Sequence<T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.removeAll(elements: Sequence<T>): Boolean {
     var changed = false
     for (e in elements) if (remove(e)) changed = true
     return changed
 }
 
-public fun <T> MutableCollection<in T>.retainAll(elements: Array<out T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.retainAll(elements: Array<out T>): Boolean {
     if (elements.isEmpty()) return removeAll { true }
     val set = HashSet<T>()
     for (e in elements) set.add(e)
     return removeAll { !set.contains(it) }
 }
 
-public fun <T> MutableCollection<in T>.retainAll(elements: Iterable<T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.retainAll(elements: Iterable<T>): Boolean {
     val set = HashSet<T>()
     for (e in elements) set.add(e)
     return removeAll { !set.contains(it) }
 }
 
-public fun <T> MutableCollection<in T>.retainAll(elements: Sequence<T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.retainAll(elements: Sequence<T>): Boolean {
     val set = HashSet<T>()
     for (e in elements) set.add(e)
     return removeAll { !set.contains(it) }
@@ -389,11 +389,11 @@ public fun <K, V, M : MutableMap<in K, in V>> Iterable<Pair<K, V>>.toMap(destina
     return destination
 }
 
-public fun <K, V> MutableMap<in K, in V>.putAll(pairs: Array<out Pair<K, V>>) {
+@mini.memory.Mutates public fun <K, V> MutableMap<in K, in V>.putAll(pairs: Array<out Pair<K, V>>) {
     for ((key, value) in pairs) put(key, value)
 }
 
-public fun <K, V> MutableMap<in K, in V>.putAll(pairs: Sequence<Pair<K, V>>) {
+@mini.memory.Mutates public fun <K, V> MutableMap<in K, in V>.putAll(pairs: Sequence<Pair<K, V>>) {
     for ((key, value) in pairs) put(key, value)
 }
 
@@ -633,4 +633,4 @@ public inline operator fun <@kotlin.internal.OnlyInputTypes K, V> Map<out K, V>.
 public fun <@kotlin.internal.OnlyInputTypes K> Map<out K, *>.containsKey(key: K): Boolean = (this as Map<K, *>).containsKey(key)
 
 @Suppress("UNCHECKED_CAST")
-public fun <@kotlin.internal.OnlyInputTypes K, V> MutableMap<out K, V>.remove(key: K): V? = (this as MutableMap<K, V>).remove(key)
+@mini.memory.Mutates public fun <@kotlin.internal.OnlyInputTypes K, V> MutableMap<out K, V>.remove(key: K): V? = (this as MutableMap<K, V>).remove(key)

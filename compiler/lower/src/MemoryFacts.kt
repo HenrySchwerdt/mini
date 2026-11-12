@@ -429,8 +429,17 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val singleton = cls.kind == IrClassKind.ENUM_CLASS || cls.kind == IrClassKind.ENUM_ENTRY || cls.kind == IrClassKind.OBJECT
         // a value class around a plain value (`value class Id(val n: Int)`) is a value: copies have no identity to own, free or move
         val plainValue = cls.isValue && mc.fields.all { !it.type.tracked }
-        return if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton && !plainValue) MType(TK.Strict, nullable, mc, null, fq, display)
-        else MType(TK.Managed, nullable, mc, null, fq, display)
+        if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton && !plainValue) return MType(TK.Strict, nullable, mc, null, fq, display)
+        val managed = MType(TK.Managed, nullable, mc, null, fq, display)
+        // a collection (iterator, sublist...) of tracked values: reading an element of it is a loan (strict-5b)
+        if (t is ClassType && fq.startsWith("kotlin.collections.")) {
+            for (a in t.args) {
+                val at = a.type ?: continue
+                val m = mapType(at)
+                if (m.tracked || m.holds) managed.holds = true
+            }
+        }
+        return managed
     }
 
     // ---- functions -------------------------------------------------------------------------------
@@ -504,6 +513,8 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             cFree = if (f.isExternal && file != null) ownedFree(f) else null,
         )
         m.suspendBody = f.isSuspend
+        m.mutates = mutatesOf(f)
+        m.userCode = file != null && isUserFile(file)
         funs[f] = m
         if (f.body != null) m.bodyProvider = { bodyOf(f) } else if (libSummaries.isNotEmpty()) m.storedSummary = libSummaries[summaryKey(m)]
         // the standard library marks the parameters its functions store with `@TakesOwnership`; the array-store intrinsics store their value
@@ -530,6 +541,13 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             m.virtualTargets = { overridersOf(f).map { funOf(it) } }
         }
         return m
+    }
+
+    /** `@Mutates` on [f] or on a function it overrides (the call through an interface or a base class). */
+    private fun mutatesOf(f: IrFunction): Boolean {
+        if (hasAnnotation(f.annotations, MUTATES)) return true
+        if (f is IrSimpleFunction) for (o in f.overridden) if (mutatesOf(o)) return true
+        return false
     }
 
     /** Does every `return` of [f] (and its expression body) yield the dispatch receiver itself, and is there at least one? */
@@ -1483,15 +1501,31 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 out.add(MStmt.Decl(recvTmp, recvVal, MAnnot.NONE, p))
             }
             for (li in lamIdx) {
-                val binds: List<MExpr?> = if (name == "with") listOf(vals.firstOrNull())
+                var binds: List<MExpr?> = if (name == "with") listOf(vals.firstOrNull())
                 else if (recvTmp != null) listOf<MExpr?>(MExpr.Local(recvTmp, p))
                 else if (recvVal != null && name in RECEIVER_INLINE) listOf(recvVal)
                 else emptyList()
+                // `xs.forEach { b -> }`: the tracked parameters of a lambda over a collection are loans of its elements (strict-5b)
+                if (binds.isEmpty() && recvVal is MExpr.Local && recvVal.type.holds) binds = elementBinds(args[li] as IrFunctionExpression, recvVal, p)
                 res = scope(if (once) ScopeKind.Once else ScopeKind.Repeat, args[li] as IrFunctionExpression, out, null, emptyList(), binds, p)
             }
             if (recvTmp != null) return MExpr.Move(MExpr.Local(recvTmp, p), true, p)
             if (name == "also" || name == "apply" || name == "onEach") return recvVal ?: opaque(c.type, c)
             return resultOf(if (once) res else null, c, p)
+        }
+
+        /** The values the parameters of an inline lambda over the collection [coll] are bound to: an element read for every tracked parameter. */
+        private fun elementBinds(lam: IrFunctionExpression, coll: MExpr.Local, p: Pos): List<MExpr?> {
+            val out = ArrayList<MExpr?>()
+            for (q in lam.function.parameters) {
+                if (q.kind == IrParameterKind.Context) continue
+                val qt = mapType(q.type)
+                if (qt.tracked) {
+                    val f = MFun("<element>", MemMode.Managed, emptyList(), MReturn(qt), external = true)
+                    out.add(MExpr.Call(f, coll, emptyList(), qt, p))
+                } else out.add(null)
+            }
+            return out
         }
 
         private fun resultOf(res: MLocal?, c: IrCall, p: Pos): MExpr {
@@ -1523,6 +1557,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         private const val JAVA_PKG = "jav" + "a."
         private const val REFLECT_PREFIX = "kotlin." + "reflect"
         const val OWNED = "mini.memory.Owned"
+        const val MUTATES = "mini.memory.Mutates"
         const val BORROWED = "mini.memory.Borrowed"
         const val MEMORY_MODE = "mini.memory.MemoryMode"
         const val ALLOCATED_BY = "mini.memory.AllocatedBy"

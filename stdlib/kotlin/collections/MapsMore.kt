@@ -9,17 +9,17 @@ package kotlin.collections
  * `java.util.Map.putIfAbsent`: associates [value] with [key] unless the key is already mapped to a non-null value;
  * returns the previous value (null if there was none).
  */
-public fun <K, V> MutableMap<K, V>.putIfAbsent(key: K, value: V): V? {
+@mini.memory.Mutates public fun <K, V> MutableMap<K, V>.putIfAbsent(key: K, value: V): V? {
     val old = get(key)
     if (old == null) put(key, value)
     return old
 }
 
-public fun <K, V> MutableMap<in K, in V>.putAll(pairs: Iterable<Pair<K, V>>) {
+@mini.memory.Mutates public fun <K, V> MutableMap<in K, in V>.putAll(pairs: Iterable<Pair<K, V>>) {
     for ((key, value) in pairs) put(key, value)
 }
 
-public operator fun <K, V> MutableMap<out K, V>.minusAssign(key: K) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<out K, V>.minusAssign(key: K) {
     @Suppress("UNCHECKED_CAST")
     (this as MutableMap<K, V>).remove(key)
 }

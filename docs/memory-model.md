@@ -574,6 +574,7 @@ temporaries in Strict functions first. The sound alternatives, in the order they
 (the closure rules of 5.5 already track such a value: a use after the owner's `free()` is M0101, an escape is M0112/M0110);
 (2) an owning `OwnedList<T>` in `mini.memory` whose `free()` frees its elements, the collection analogue of an owning field.
 Until then: container classes with owning fields, or Managed classes in collections.
+Round strict-5b (see "Round strict-5b" below) tracks the *loans* of elements read from a collection: they end at the next mutating call (`@Mutates`).
 
 ### 5.5 Lambdas and captures
 
@@ -1518,6 +1519,35 @@ result.
 Corpus `s200`-`s209` (ACCEPT, built, run and leak-checked under AddressSanitizer + LeakSanitizer on the C and the LLVM backend) and `s210`-`s223`
 (REJECT: use after free, double free, use after move, use of an alias after the owner's scope or free, free of a borrower, thread, lambda result, overwritten
 field, the leak of an `@Owned` parameter and of a `Heap` object that stays reported).
+
+## Round strict-5b: loans of collection elements end at a mutating call
+
+An element read from a collection (`xs[i]`, `xs.first()`, the value an iterator returns, the variable of a `for` loop, the parameter of a `forEach` lambda)
+is a reference that no owner in Strict code keeps alive: the collection owns the element, and a call that changes the collection may release it. The checker
+did not know it: `fun f(xs: MutableList<Box>) { val first = xs[0]; xs.clear(); println(first.v) }`, with the list built by Managed code (`mutableListOf(Box(7))`
+in a Managed file), read freed memory (AddressSanitizer: `heap-use-after-free`; corpus `s147` shows the same with a moved owner). Round 5b adds the missing state.
+
+**`@Mutates`** (`mini.memory.Mutates`, a function annotation): the call may change the container it is called on so that elements that were read earlier are gone or
+replaced. The standard library's mutators carry it: the members of `MutableCollection`/`MutableList`/`MutableSet`/`MutableMap`/`MutableIterator`/`MutableListIterator`
+(`add`, `remove`, `addAll`, `removeAll`, `retainAll`, `clear`, `set`, `removeAt`, `put`, `putAll`, `remove()` of an iterator ...), their overriders in `ArrayList`,
+`ArrayDeque`, `HashMap`, `HashSet`, and the extensions on mutable receivers (`sort`, `sortBy`, `reverse`, `shuffle`, `fill`, `removeFirst`, `plusAssign` ...). A call through
+an interface is a mutator when the declaration it resolves to or one it overrides is annotated. `add` counts although it only appends (elements are objects of their own, but the
+rule is "every mutating call"); a Strict class with a container of its own marks its mutators.
+
+**State.** A local variable or parameter of a type `kotlin.collections.X<..Strict..>` has a slot with the new bit `C` (a collection; with `B` a view or an alias of one).
+`iterator()`, `listIterator()`, `subList()` and `asReversed()` give views of the collection they are called on. Reading an element (a call of a Managed function whose result type is a
+tracked class, or whose result is generic) gives a loan that has a pseudo slot of its own (negative id, one per read site) next to the collection: the loan lists both as owners it depends on.
+A call of a `@Mutates` function on the collection or a view of it, the assignment of the variable, and the end of its scope set the pseudo slots of that collection to freed.
+A call of a function declared in the program (not in a library) that receives the collection as argument or receiver ends the loans, too: its body may change the collection.
+Any use of the loan afterwards is **M0101** ("use of `first` after the collection it was read from changed"; "may" when the change is on one path only). Loans are
+ordinary loans otherwise: they cannot be moved, stored in an owning field or returned as owned (M0109), and a loan outlives its collection only until the collection's scope ends.
+A Strict class's `@Borrowed` result (4.3) is read the same way: the `@Mutates` methods of the class end the loans that its other methods lent out.
+
+Not followed (a loan of such an element is not tracked, as before): sequences, arrays, `Pair`s and other Managed containers, elements read through a function value or a non-inline lambda.
+
+Corpus `s300`-`s312` (REJECT M0101: `clear`, `removeAt`, `removeAll`, `sortBy`, `Iterator.remove`, a lambda that clears the list it iterates, a `for` loop, a reassigned variable,
+a loop variable that outlives the list's block, a callee that clears the list, `MutableMap.remove`, a change on one path, a sublist) and `s320`-`s323` (ACCEPT, run: reads between the read and the use,
+re-reading after the change, copying what is needed out first, loops that only read). `s147` now reports M0101 besides M0110 (corpus header `// REJECT M0101+M0110`).
 
 ## Cycles: the cycle collector of Managed mode
 

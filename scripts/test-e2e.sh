@@ -299,7 +299,7 @@ t_strict() { # <src>: the verdict is the first line of the program
     local got; got="$("$MINIC" --check --brief "$src" $(cat "$W/stdlib.txt") 2>&1 | grep -o 'M0[0-9]*' | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
     case "$h" in
         "// REJECT"*)
-            local want; want="$(echo "$h" | grep -o 'M0[0-9]*' | head -1)"
+            local want; want="$(echo "$h" | sed -E 's|^// REJECT ([M0-9+]+).*|\1|' | tr '+' '\n' | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
             [ "$got" = "$want" ] || { echo "expected only $want, got: ${got:-no diagnostic}"; return 1; }
             return 0 ;;
         *) [ -z "$got" ] || { echo "a correct program was rejected: $got"; "$MINIC" --check "$src" $(cat "$W/stdlib.txt") 2>&1 | head -12; return 1; } ;;

@@ -34,7 +34,7 @@ public interface MutableIterator<out T> : Iterator<T> {
      * @throws IllegalStateException if [next] has not been called yet,
      * or the most recent [next] call has already been followed by a [remove] call.
      */
-    public fun remove(): Unit
+    @mini.memory.Mutates public fun remove(): Unit
 }
 
 /**
@@ -90,7 +90,7 @@ public interface MutableListIterator<T> : ListIterator<T>, MutableIterator<T> {
      * @throws IllegalStateException if neither [next] nor [previous] has not been called yet,
      * or the most recent [next] or [previous] call has already been followed by a [remove] or [add] call.
      */
-    override fun remove(): Unit
+    @mini.memory.Mutates override fun remove(): Unit
 
     /**
      * Replaces the last element returned by [next] or [previous] with the specified element [element].
@@ -98,7 +98,7 @@ public interface MutableListIterator<T> : ListIterator<T>, MutableIterator<T> {
      * @throws IllegalStateException if neither [next] nor [previous] has not been called yet,
      * or the most recent [next] or [previous] call has already been followed by a [remove] or [add] call.
      */
-    public fun set(element: T): Unit
+    @mini.memory.Mutates public fun set(element: T): Unit
 
     /**
      * Adds the specified element [element] into the underlying collection immediately before the element that would be
@@ -108,7 +108,7 @@ public interface MutableListIterator<T> : ListIterator<T>, MutableIterator<T> {
      * and a subsequent call to [previous] would return the new element. (This call increases by one the value \
      * that would be returned by a call to [nextIndex] or [previousIndex].)
      */
-    public fun add(element: T): Unit
+    @mini.memory.Mutates public fun add(element: T): Unit
 }
 
 public operator fun <T> Iterator<T>.iterator(): Iterator<T> = this

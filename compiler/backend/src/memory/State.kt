@@ -17,6 +17,12 @@ internal const val F = 4
 internal const val M = 8
 internal const val B = 16
 internal const val X = 32
+/**
+ * The slot holds a Managed collection (or a view of one: an iterator, a sublist) whose elements are tracked values (docs/memory-model.md, strict-5b).
+ * Alone: the collection itself; with B: a view of the collection in [Slot.refs]. Reading an element of it is a loan that ends at the next
+ * mutating call (the loan has a pseudo slot of its own, see Interp.elementLoan).
+ */
+internal const val C = 128
 /** With B: the slot holds a closure (lambda, anonymous object, local class instance) that borrows its captured owners ([Slot.refs]). */
 internal const val K = 64
 

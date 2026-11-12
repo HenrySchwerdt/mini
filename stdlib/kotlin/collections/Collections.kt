@@ -129,7 +129,7 @@ public interface MutableCollection<E> : Collection<E>, MutableIterable<E> {
      * @sample samples.collections.Collections.Sets.add
      */
 
-    public fun add(element: E): Boolean
+    @mini.memory.Mutates public fun add(element: E): Boolean
 
     /**
      * Removes a single instance of the specified element from this
@@ -141,7 +141,7 @@ public interface MutableCollection<E> : Collection<E>, MutableIterable<E> {
      * @sample samples.collections.Collections.Sets.remove
      */
 
-    public fun remove(element: E): Boolean
+    @mini.memory.Mutates public fun remove(element: E): Boolean
 
     // Bulk Modification Operations
     /**
@@ -153,7 +153,7 @@ public interface MutableCollection<E> : Collection<E>, MutableIterable<E> {
      * @sample samples.collections.Collections.Sets.addAll
      */
 
-    public fun addAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates public fun addAll(elements: Collection<E>): Boolean
 
     /**
      * Removes all of this collection's elements that are also contained in the specified collection.
@@ -164,7 +164,7 @@ public interface MutableCollection<E> : Collection<E>, MutableIterable<E> {
      * @sample samples.collections.Collections.Sets.removeAll
      */
 
-    public fun removeAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates public fun removeAll(elements: Collection<E>): Boolean
 
     /**
      * Retains only the elements in this collection that are contained in the specified collection.
@@ -174,14 +174,14 @@ public interface MutableCollection<E> : Collection<E>, MutableIterable<E> {
      * @sample samples.collections.Collections.Collections.retainAll
      */
 
-    public fun retainAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates public fun retainAll(elements: Collection<E>): Boolean
 
     /**
      * Removes all elements from this collection.
      *
      * @sample samples.collections.Collections.Collections.clear
      */
-    public fun clear(): Unit
+    @mini.memory.Mutates public fun clear(): Unit
 }
 
 /**
@@ -322,10 +322,10 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Lists.add
      */
 
-    override fun add(element: E): Boolean
+    @mini.memory.Mutates override fun add(element: E): Boolean
 
 
-    override fun remove(element: E): Boolean
+    @mini.memory.Mutates override fun remove(element: E): Boolean
 
     // Bulk Modification Operations
     /**
@@ -338,7 +338,7 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Lists.addAll
      */
 
-    override fun addAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates override fun addAll(elements: Collection<E>): Boolean
 
     /**
      * Inserts all of the elements of the specified collection [elements] into this list at the specified [index].
@@ -356,14 +356,14 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Lists.addAllAt
      */
 
-    public fun addAll(index: Int, elements: Collection<E>): Boolean
+    @mini.memory.Mutates public fun addAll(index: Int, elements: Collection<E>): Boolean
 
 
-    override fun removeAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates override fun removeAll(elements: Collection<E>): Boolean
 
 
-    override fun retainAll(elements: Collection<E>): Boolean
-    override fun clear(): Unit
+    @mini.memory.Mutates override fun retainAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates override fun clear(): Unit
 
     // Positional Access Operations
     /**
@@ -376,7 +376,7 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Lists.set
      */
 
-    public operator fun set(index: Int, element: E): E
+    @mini.memory.Mutates public operator fun set(index: Int, element: E): E
 
     /**
      * Inserts an element into the list at the specified [index].
@@ -389,7 +389,7 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      *
      * @sample samples.collections.Collections.Lists.addAt
      */
-    public fun add(index: Int, element: E): Unit
+    @mini.memory.Mutates public fun add(index: Int, element: E): Unit
 
     /**
      * Removes an element at the specified [index] from the list.
@@ -403,7 +403,7 @@ public interface MutableList<E> : List<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Lists.removeAt
      */
 
-    public fun removeAt(index: Int): E
+    @mini.memory.Mutates public fun removeAt(index: Int): E
 
     // List Iterators
     override fun listIterator(): MutableListIterator<E>
@@ -500,19 +500,19 @@ public interface MutableSet<E> : Set<E>, MutableCollection<E> {
      * @sample samples.collections.Collections.Sets.add
      */
 
-    override fun add(element: E): Boolean
+    @mini.memory.Mutates override fun add(element: E): Boolean
 
 
-    override fun remove(element: E): Boolean
+    @mini.memory.Mutates override fun remove(element: E): Boolean
 
     // Bulk Modification Operations
 
-    override fun addAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates override fun addAll(elements: Collection<E>): Boolean
 
-    override fun removeAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates override fun removeAll(elements: Collection<E>): Boolean
 
-    override fun retainAll(elements: Collection<E>): Boolean
-    override fun clear(): Unit
+    @mini.memory.Mutates override fun retainAll(elements: Collection<E>): Boolean
+    @mini.memory.Mutates override fun clear(): Unit
 }
 
 /**
@@ -681,7 +681,7 @@ public interface MutableMap<K, V> : Map<K, V> {
      * @sample samples.collections.Maps.CoreApi.put
      */
 
-    public fun put(key: K, value: V): V?
+    @mini.memory.Mutates public fun put(key: K, value: V): V?
 
     /**
      * Removes the specified key and its corresponding value from this map.
@@ -691,7 +691,7 @@ public interface MutableMap<K, V> : Map<K, V> {
      * @sample samples.collections.Maps.CoreApi.remove
      */
 
-    public fun remove(key: K): V?
+    @mini.memory.Mutates public fun remove(key: K): V?
 
     // Bulk Modification Operations
     /**
@@ -699,14 +699,14 @@ public interface MutableMap<K, V> : Map<K, V> {
      *
      * @sample samples.collections.Maps.CoreApi.putAll
      */
-    public fun putAll(from: Map<out K, V>): Unit
+    @mini.memory.Mutates public fun putAll(from: Map<out K, V>): Unit
 
     /**
      * Removes all elements from this map.
      *
      * @sample samples.collections.Maps.CoreApi.clear
      */
-    public fun clear(): Unit
+    @mini.memory.Mutates public fun clear(): Unit
 
     // Views
     /**

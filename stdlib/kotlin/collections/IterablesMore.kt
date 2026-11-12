@@ -199,11 +199,11 @@ public fun <T, R> Iterable<Pair<T, R>>.unzip(): Pair<List<T>, List<R>> {
     return listT to listR
 }
 
-public fun <T> MutableList<T>.removeLastOrNull(): T? = if (isEmpty()) null else removeAt(lastIndex)
+@mini.memory.Mutates public fun <T> MutableList<T>.removeLastOrNull(): T? = if (isEmpty()) null else removeAt(lastIndex)
 
-public fun <T> MutableList<T>.removeFirstOrNull(): T? = if (isEmpty()) null else removeAt(0)
+@mini.memory.Mutates public fun <T> MutableList<T>.removeFirstOrNull(): T? = if (isEmpty()) null else removeAt(0)
 
-public fun <T> MutableCollection<in T>.addAll(elements: Array<out T>): Boolean {
+@mini.memory.Mutates public fun <T> MutableCollection<in T>.addAll(elements: Array<out T>): Boolean {
     var changed = false
     for (e in elements) if (add(e)) changed = true
     return changed

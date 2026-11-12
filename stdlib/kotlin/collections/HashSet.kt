@@ -38,15 +38,15 @@ public open class HashSet<E> : AbstractMutableSet<E> {
 
     override fun contains(element: E): Boolean = map.containsKey(element)
 
-    override fun add(element: E): Boolean {
+    @mini.memory.Mutates override fun add(element: E): Boolean {
         if (map.containsKey(element)) return false
         map.put(element, true)
         return true
     }
 
-    override fun remove(element: E): Boolean = map.removeNode(element) != null
+    @mini.memory.Mutates override fun remove(element: E): Boolean = map.removeNode(element) != null
 
-    override fun clear() {
+    @mini.memory.Mutates override fun clear() {
         map.clear()
     }
 
