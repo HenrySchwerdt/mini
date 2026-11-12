@@ -1,0 +1,8 @@
+[package]
+name = "checker"
+version = "0.1.0"
+kind = "app"
+
+[dependencies]
+core = { path = "../core" }
+rules = { path = "../rules" }

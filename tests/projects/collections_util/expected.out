@@ -1,0 +1,14 @@
+ann:5, bob:5, cy:10
+5 orders, ann has [pen, ink]
+entries: 5
+{1=[one, uno], 2=[two]}
+{1=[one, uno]}
+[3, 5, 7]
+[[a, b], [c], [], [d]]
+[3, 1]
+two null
+[cy, ann, cy, bob]
+<50>
+[9, 9, 16, 9, 16] calls=2
+tag-7
+[(the, 3), (and, 2), (bat, 1)] total=8 the=3 dog=0
