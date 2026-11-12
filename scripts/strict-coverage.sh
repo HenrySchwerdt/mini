@@ -2,7 +2,7 @@
 # Strict-mode coverage: how much ordinary Kotlin does the Strict memory checker accept?
 #
 #   scripts/strict-coverage.sh                      e2e testdata + samples + 300 conformance box tests; prints the tables
-#   scripts/strict-coverage.sh --set testdata       one set: testdata | samples | conformance | all
+#   scripts/strict-coverage.sh --set testdata       one set: testdata | samples | realworld | conformance | all (realworld: tests/realworld, not part of all)
 #   scripts/strict-coverage.sh --sample 500         size of the conformance sample (the first N passing tests by name hash)
 #   scripts/strict-coverage.sh --list               also one line per program (name, verdict, class, cause)
 #   scripts/strict-coverage.sh --json out.json      machine-readable results

@@ -1,0 +1,15 @@
+handlers: 4
+delivered 12, cart {pen=5}
+handlers after cancel: 2, active=false
+2 cart={}
+published 8, dead letters 1
+  audit ItemAdded
+  added pen x2
+  audit ItemAdded
+  added ink x1
+  audit ItemAdded
+  added pen x3
+  first heartbeat 1
+  audit ItemRemoved
+  audit ItemAdded
+  audit CheckedOut

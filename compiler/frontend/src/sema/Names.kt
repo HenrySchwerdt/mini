@@ -219,6 +219,8 @@ fun BodyChecker.nameExpr(e: NameExpr, expected: Type?): Type {
         err(e.start, "unresolved reference '" + e.name + "'")
         return ErrType("unresolved " + e.name)
     }
+    val libCls = r.classifier
+    if (libCls != null) checkLibVisibility(e, libCls)
     return nameResult(e, r)
 }
 

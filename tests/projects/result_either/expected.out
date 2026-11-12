@@ -1,0 +1,16 @@
+0: ok ann (31) <ann@example.org>
+1: invalid: name must not be empty
+2: invalid: name is longer than 10
+3: invalid: age is not a number: 'abc'
+4: invalid: age must be in 0..150
+5: invalid: email must not be empty
+1 valid, 5 invalid: [Empty, TooLong, NotNumber, Range, Empty]
+first error: name must not be empty
+Right(value=[ann])
+n is not a number: 'x'
+Right(value=60)
+-1
+[Left(value=odd 1), Left(value=odd 1), Left(value=odd 3), Right(value=1)]
+reached 5
+Right(value=5)
+null 3 true true

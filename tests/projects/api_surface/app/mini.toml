@@ -1,0 +1,7 @@
+[package]
+name = "surfaceapp"
+version = "0.1.0"
+kind = "app"
+
+[dependencies]
+surface = { path = "../lib" }

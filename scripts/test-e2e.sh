@@ -29,6 +29,8 @@
 #   realworld, realworld-llvm, realworld-leak, realworld-llvm-leak   tests/realworld: everyday Kotlin programs (100-600 lines, standard
 #                library only) with the expected output of the reference compiler: C backend, LLVM backend and the sanitizer builds of both
 #                (docs/realworld.md; the outputs are made by tests/realworld/gen-expected.sh)
+#   projects   tests/projects: multi-module projects (a library and an app, a dependency chain, internal visibility errors) built, run and
+#                tested with `mini` and the .mlib artifacts of their libraries (tests/projects/run.sh, docs/realworld.md)
 #   strict     compiler/testdata/strict-corpus: everyday Strict programs; `// ACCEPT` ones must pass the checker (and, with a .out,
 #                build and run to it), `// REJECT Mxxxx` ones must be rejected with exactly that code (scripts/strict-corpus.sh)
 #   multifile  several input files, reachability pruning, all user files are memory-checked
@@ -64,7 +66,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak realworld realworld-leak)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak realworld realworld-leak projects)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -341,6 +343,12 @@ t_memrun() { # <src>
     # shellcheck disable=SC2086
     "$CC" -std=c17 -O1 -w -I "$INCLUDE" "$W/$name.c" "$RTLIB" -o "$W/$name.exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "C compiler failed:"; head "$W/$name.cc"; return 1; }
     run_and_compare "$name" "$src" "$W/$name.exe" "memrun" skip-threads
+}
+
+t_project() { # <name>: a multi-module project of tests/projects built, run and tested with `mini` (tests/projects/run.sh)
+    [ -x "$NATIVE/bin/mini" ] || return 77
+    mkdir -p "$W/projects"
+    MINI_ROOT="$NATIVE" CC="$CC" "$ROOT/tests/projects/run.sh" "$1" "$W/projects"
 }
 
 t_multifile() {
@@ -641,7 +649,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC TSANCC TSAN_FLAGS ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
+export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -690,6 +698,7 @@ want_suite fuzz-leak && for f in $(fuzz_progs); do add fuzz-leak "$(basename "$f
 want_suite fuzz-llvm-leak && for f in $(fuzz_progs); do add fuzz-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
 want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib stubCache t_mlib_stubcache; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
+want_suite projects && for d in $(find "$ROOT/tests/projects" -maxdepth 2 -name mini.toml | LC_ALL=C sort); do add projects "$(basename "$(dirname "$d")")" "t_project $(basename "$(dirname "$d")")"; done
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; add multifile classChainAcrossFiles t_multifile_layout; }
 
 if [ -n "$FILTER" ]; then grep -F -- "$FILTER" "$LISTFILE" > "$LISTFILE.f" || true; mv "$LISTFILE.f" "$LISTFILE"; fi
