@@ -751,6 +751,7 @@ fun BodyChecker.assign(e: BinaryExpr): Type {
         return sema.unitType
     }
     val lt = fin(expr(l, null))
+    checkLibSetter(e, l)
     if (l is DotExpr && l.safe) rec.get(l)?.type = sema.unitType
     var declared = rec.get(l)?.type ?: lt
     // the declared type of a variable, without smart casts
@@ -774,6 +775,7 @@ fun BodyChecker.assign(e: BinaryExpr): Type {
 fun BodyChecker.compoundAssign(e: BinaryExpr): Type {
     val l = AstWalk.unparen(e.left)
     val lt = fin(expr(l, null))
+    checkLibSetter(e, l)
     val rt = expr(e.right, null)
     val base = operatorName(e.op.substring(0, 1)) ?: "plus"
     val assignName = base + "Assign"
