@@ -4,6 +4,10 @@
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
 #endif
+#if defined(__APPLE__)
+/* Keep st_mtimespec visible in struct stat despite _POSIX_C_SOURCE. */
+#define _DARWIN_C_SOURCE 1
+#endif
 #include "internal.h"
 
 #include <stdio.h>
