@@ -100,6 +100,12 @@ tests/projects/run.sh collections_util        # one project (a scratch copy is b
 | `template_engine` | `tmpl`: `{{var|filter}}`, `{{#each}}`, `{{#if}}` templates | private sealed classes behind a public API, typealiases, `inline` DSL entry point with a receiver lambda |
 | `dependency_chain` | `core` <- `rules` <- app | three packages: `inline` functions that create anonymous objects (`object : Rule<T>`) used through two library hops, generics with `in` variance |
 | `visibility_error` | `vault` | the app names `internal` and `private` members of the library: the build must fail |
+| `task_scheduler` | `sched`: abstract `Task` with `protected` members and `internal set`, `Scheduler`, `Retrying` | subclasses of library classes in the app (`protected` access also from a lambda), `object :` of a library class in a library function, sealed `Outcome` matched exhaustively in the app, `const val` / top-level `val`, default and named arguments, `vararg`, `inline reified` extension on `List<Task>` |
+| `validation_kit` | `validk`: validation DSL with `@DslMarker`, `Rule<in T>` as a `fun interface`, `value class FieldName` | receiver lambdas over two nesting levels, `@PublishedApi internal constructor` behind a public `inline` entry point, `Iterable` implemented by the library, `inline reified` with a `noinline` block, generic bounds (`N : Comparable<N>`) |
+| `plugin_registry` | `plugreg`: `Registry<I, O>`, `BasePlugin`, `Version`, `Global` | variance (`in I, out O`) with plugins implemented in the app, `inner class`, `object` with `by lazy` and a top-level property initialized on first use, a `ReadWriteProperty` delegate defined in the library and used by the app, `companion` with `const val` and a private constructor, `where` clauses, a local class returned through a `fun interface`, `tailrec` |
+| `stream_toolkit` | `streamk`: `sequence { }` pipelines, `Window<T>`, an RPN evaluator, `AutoCloseable` helpers | `suspend` extension on `SequenceScope`, exception hierarchies thrown in the library and caught (and extended) in the app, `try` / `finally` with `use`, enum `entries` / `valueOf` across the boundary, `Regex` in the library |
+| `api_surface` | `surface`: a collection of small API shapes | `inline val` on a generic `value class`, interface `companion` with `const val` and a private implementation class, default arguments that use other parameters and are overridden in the app, `out` variance with `Nothing`, `@JvmField` / `@JvmStatic`, non-local `return` through an `inline` function, annotations, extension `operator get` with a value class index |
+| `visibility_error_members` | `ledger` | the app uses a `private` top-level function / property, an `internal` constructor, extension, `object` and typealias, a `private set` and a `protected` member of the library, and a `private` nested class: the build must fail |
 | `strict_geometry` | `geom` (`memory = "strict"`) | Strict library and Strict app, `@AllocatedBy(Heap::class)`, owned results freed by the caller, `mini build --strict` |
 
 What the projects found:
@@ -108,6 +114,8 @@ What the projects found:
 |---|---|
 | a local class or anonymous object inside an `inline` function of a library was not supported in a consumer (`construction of '<anonymous>'`) | the consumer compiles its own copy of such classes (named `inl$...`, apart from the library's) |
 | `internal` and `private` declarations of a library could be used by the app | the checker reports `cannot access 'x': it is internal in a library` for declarations of API stubs (not for the standard library, and not in files that suppress `INVISIBLE_*`) |
+| the setter of a library property declared `private set` / `internal set` could be called by the app, and `protected` members of a library class could be used from anywhere | the checker reports `cannot assign 'x': its setter is private in a library` and `cannot access 'x': it is protected in a library` (a `protected` member is visible in the classes that have its owner as a supertype, also from lambdas and objects inside them); test `visibility_error_members` |
+| an `internal` or `private` class or typealias of a library named in a type position (`val c: Cents`, `Account.Secret`) was accepted | the type resolution reports `cannot access 'x': it is internal in a library`; test `visibility_error_members` |
 | a lambda whose result type does not fit the parameter type of a call with no type variables is accepted (`call { "x" }` for `f: () -> Int`) | not fixed: only wrong programs are affected, the conformance risk of rejecting more is larger than the gain |
 
 ## Strict mode over the real-world programs
@@ -129,4 +137,4 @@ What the projects found:
 
 Accepted: `csv_report`, `game_of_life`, `sequences_generators`, `sudoku_solver`, `text_statistics`, `tictactoe_minimax`. Every
 rejection traces back to one of the open specification questions (the default allocator, `@Owned T`, Strict collections); none of
-them is a bug of the checker that could be fixed without a decision, so none was changed.
+them is a bug of the checker that could be fixed without a decision, so none was changed. The numbers were measured again after the visibility fixes (unchanged: 35 programs, 6 accepted, 19 + 10 + 0).
