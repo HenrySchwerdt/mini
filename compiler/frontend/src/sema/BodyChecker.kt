@@ -47,8 +47,41 @@ class BodyChecker(val sema: Sema, val file: FileInfo) {
 
     // ---- small helpers ---------------------------------------------------------------------------------------------
 
+    /**
+     * Code of the program that names an `internal` or `private` declaration of a library (an API stub, docs/mlib.md) is an error:
+     * the library is another module. The standard library is left out (programs that suppress INVISIBLE_MEMBER reach into it).
+     * A `protected` member is visible in the subclasses only.
+     */
+    fun checkLibVisibility(node: Ast, s: Sym) {
+        val why = sema.libAccessProblem(s, file) ?: return
+        if (why == "protected" && enclosingIsSubclassOf(s)) return
+        val nm = if (s is FunSym && s.kind == FunKind.CONSTRUCTOR) (s.owner?.name ?: s.name) else s.name
+        err(node.start, "cannot access '" + nm + "': it is " + why + " in a library")
+    }
+
+    /** `p.x = v` on a property of a library whose setter is `private`, `internal` or (outside the subclasses) `protected` */
+    fun checkLibSetter(node: Ast, target: Expr) {
+        val c = rec.get(target)?.callee
+        if (c !is PropSym) return
+        val why = sema.libSetterProblem(c, file) ?: return
+        if (why == "protected" && enclosingIsSubclassOf(c)) return
+        err(node.start, "cannot assign '" + c.name + "': its setter is " + why + " in a library")
+    }
+
+    /** the code being checked is inside a class that has the owner of [s] among its supertypes */
+    private fun enclosingIsSubclassOf(s: Sym): Boolean {
+        val owner = (if (s is FunSym) s.owner else if (s is PropSym) s.owner else null) ?: return true
+        var sc: Scope? = scope
+        while (sc != null) {
+            if (sc is ClassScope) for (site in ops.closure(sc.cls.thisType())) if (site.cls === owner) return true
+            sc = sc.parent
+        }
+        return false
+    }
+
     fun record(node: Ast, type: Type, callee: Sym?): ExprRec {
         if (callee is FunSym && sema.isLazyStubFun(callee)) sema.checkFun(callee)
+        if (callee != null) checkLibVisibility(node, callee)
         val isNew = rec.get(node) == null
         val r = rec.put(node, if (type is IntLiteralType) ops.literalDefault(type) else type, callee)
         if (isNew && callee is FunSym && node is CallExpr && (callee.invokeSuspend || callee.mods()?.has("suspend") == true)) checkSuspendContext(node.start, callee)

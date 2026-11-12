@@ -1,0 +1,4 @@
+[package]
+name = "sched"
+version = "0.3.0"
+kind = "lib"

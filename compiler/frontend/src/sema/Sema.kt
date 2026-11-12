@@ -415,6 +415,51 @@ class Sema {
         return null
     }
 
+    private fun libPackageExempt(pk: String): Boolean =
+        pk == "kotlin" || pk.startsWith("kotlin.") || pk.startsWith("java.") || pk.startsWith("kotlinx.") || pk == "mini" || pk.startsWith("mini.")
+
+    /**
+     * "internal", "private" or "protected" when code of [from] must not name [s]: a declaration of a precompiled library (an API stub)
+     * is not visible when it is `internal` or `private` (or a member of such a class); a `protected` member is visible in subclasses
+     * only (the caller decides). The standard library is left out, and so are files that suppress `INVISIBLE_*`.
+     */
+    fun libAccessProblem(s: Sym, from: FileInfo): String? {
+        if (from.declOnly) return null
+        var lf: FileInfo? = null
+        var internal = false
+        var priv = false
+        var prot = false
+        var owner: ClassSym? = null
+        when (s) {
+            is FunSym -> { lf = s.file; internal = s.has("internal"); priv = s.has("private"); prot = s.has("protected") && s.kind != FunKind.CONSTRUCTOR; owner = s.owner }
+            is PropSym -> { lf = s.file; internal = s.has("internal"); priv = s.has("private"); prot = s.has("protected"); owner = s.owner }
+            is ClassSym -> { lf = s.file; internal = s.has("internal"); priv = s.has("private"); owner = s.outer }
+            is TypeAliasSym -> { lf = s.file; internal = s.decl.mods?.has("internal") == true; priv = s.decl.mods?.has("private") == true; owner = s.outer }
+            else -> return null
+        }
+        if (lf == null || !lf.declOnly || s.name.isEmpty()) return null
+        // a constructor of an internal class / a member of one is as invisible as the class
+        var o: ClassSym? = owner
+        while (o != null && !internal && !priv) {
+            if (o.has("internal")) internal = true
+            if (o.has("private")) priv = true
+            o = o.outer
+        }
+        if (!internal && !priv && !prot) return null
+        if (libPackageExempt(lf.pkg)) return null
+        if (from.text.contains("INVISIBLE_")) return null
+        return if (internal) "internal" else if (priv) "private" else "protected"
+    }
+
+    /** like [libAccessProblem] for the setter of a property (`var x ... private set`) */
+    fun libSetterProblem(p: PropSym, from: FileInfo): String? {
+        val m = p.decl?.setter?.mods ?: return null
+        val why = if (m.has("private")) "private" else if (m.has("internal")) "internal" else if (m.has("protected")) "protected" else return null
+        val lf = p.file
+        if (from.declOnly || lf == null || !lf.declOnly || libPackageExempt(lf.pkg) || from.text.contains("INVISIBLE_")) return null
+        return why
+    }
+
     fun resolveType(ref: TypeRef, scope: Scope): Type {
         val file = fileOf(scope)
         return resolveType0(ref, scope, file)
@@ -511,6 +556,11 @@ class Sema {
                 return ErrType("qualified")
             }
             i++
+        }
+        val named = cur
+        if (file != null && named != null && (named is ClassSym || named is TypeAliasSym)) {
+            val why = libAccessProblem(named, file)
+            if (why != null && why != "protected") error(file, ref.start, "cannot access '" + named.name + "': it is " + why + " in a library")
         }
         val last = segs[i - 1]
         val args = ArrayList<TArg>()
