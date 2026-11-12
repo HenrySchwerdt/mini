@@ -31,6 +31,7 @@
 #                (docs/realworld.md; the outputs are made by tests/realworld/gen-expected.sh)
 #   projects   tests/projects: multi-module projects (a library and an app, a dependency chain, internal visibility errors) built, run and
 #                tested with `mini` and the .mlib artifacts of their libraries (tests/projects/run.sh, docs/realworld.md)
+#   projects-leak   the same projects (without the diagnostics ones) with the C compiler of `mini` replaced by one that adds AddressSanitizer + LeakSanitizer + UBSan
 #   strict     compiler/testdata/strict-corpus: everyday Strict programs; `// ACCEPT` ones must pass the checker (and, with a .out,
 #                build and run to it), `// REJECT Mxxxx` ones must be rejected with exactly that code (scripts/strict-corpus.sh)
 #   multifile  several input files, reachability pruning, all user files are memory-checked
@@ -66,7 +67,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak realworld realworld-leak projects)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak realworld realworld-leak projects projects-leak)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -349,6 +350,16 @@ t_project() { # <name>: a multi-module project of tests/projects built, run and 
     [ -x "$NATIVE/bin/mini" ] || return 77
     mkdir -p "$W/projects"
     MINI_ROOT="$NATIVE" CC="$CC" "$ROOT/tests/projects/run.sh" "$1" "$W/projects"
+}
+
+# the project under AddressSanitizer + LeakSanitizer + UBSan: `mini` compiles the generated C through a wrapper compiler that adds the sanitizer
+# flags (the prebuilt runtime library is linked as is, so this covers the generated code and the allocations the runtime makes for it)
+t_project_leak() { # <name>
+    [ -x "$NATIVE/bin/mini" ] || return 77
+    mkdir -p "$W/projects-leak"
+    local cc="$W/projects-leak/sancc"
+    if [ ! -x "$cc" ]; then printf '#!/bin/sh\nexec %s %s "$@"\n' "$SANCC" "$SAN_FLAGS" > "$cc.tmp"; chmod +x "$cc.tmp"; mv "$cc.tmp" "$cc"; fi
+    ASAN_OPTIONS="detect_leaks=1" UBSAN_OPTIONS="print_stacktrace=1" MINI_CC="$cc" MINI_ROOT="$NATIVE" "$ROOT/tests/projects/run.sh" "$1" "$W/projects-leak"
 }
 
 t_multifile() {
@@ -649,7 +660,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC TSANCC TSAN_FLAGS ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
+export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_project_leak t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -698,6 +709,7 @@ want_suite fuzz-leak && for f in $(fuzz_progs); do add fuzz-leak "$(basename "$f
 want_suite fuzz-llvm-leak && for f in $(fuzz_progs); do add fuzz-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
 want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib stubCache t_mlib_stubcache; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
+want_suite projects-leak && for d in $(find "$ROOT/tests/projects" -maxdepth 2 -name mini.toml | LC_ALL=C sort); do [ -f "$(dirname "$d")/expected.err" ] || add projects-leak "$(basename "$(dirname "$d")")" "t_project_leak $(basename "$(dirname "$d")")"; done
 want_suite projects && for d in $(find "$ROOT/tests/projects" -maxdepth 2 -name mini.toml | LC_ALL=C sort); do add projects "$(basename "$(dirname "$d")")" "t_project $(basename "$(dirname "$d")")"; done
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; add multifile classChainAcrossFiles t_multifile_layout; }
 
@@ -706,7 +718,7 @@ total="$(wc -l < "$LISTFILE" | tr -d ' ')"
 if [ "$LIST" = 1 ]; then awk -F'|' '{ print $1 "::" $2 }' "$LISTFILE"; echo "$total tests" >&2; exit 0; fi
 
 # runtime objects for the sanitizer / stats flavours, once
-if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak)\|' "$LISTFILE"; then
+if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak|projects-leak)\|' "$LISTFILE"; then
     if [ -n "$SANCC" ]; then build_rt "$W/rt-asan" "$SANCC" $SAN_FLAGS; else echo "test-e2e: no C compiler can link the sanitizer runtimes: the leak suites are skipped" >&2; fi
 fi
 if grep -q '^tsan|' "$LISTFILE" && [ -n "$TSANCC" ]; then build_rt "$W/rt-tsan" "$TSANCC" $TSAN_FLAGS; fi
@@ -715,7 +727,7 @@ if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK
 run_one() { # "<suite>|<id>|<cmd>"
     local suite id cmd out rc
     suite="${1%%|*}"; local rest="${1#*|}"; id="${rest%%|*}"; cmd="${rest#*|}"
-    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
+    case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak|projects-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
     case "$suite" in tsan) [ -n "$TSANCC" ] || { echo "$suite|$id|SKIP|no ThreadSanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
     # shellcheck disable=SC2086
     out="$(eval "$cmd" 2>&1)"; rc=$?
