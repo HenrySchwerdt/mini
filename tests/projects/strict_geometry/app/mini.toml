@@ -1,0 +1,8 @@
+[package]
+name = "plot"
+version = "0.1.0"
+kind = "app"
+memory = "strict"
+
+[dependencies]
+geom = { path = "../lib" }

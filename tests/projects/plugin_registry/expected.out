@@ -1,0 +1,28 @@
+start 1 1
+{upper=HELLO!, length=6, reverse=!olleh}
+3
+true
+length#1
+null
+duplicate plugin upper
+[upper, length, reverse]
+[<1>, <two>, <3.0>]
+<s>
+[A, B]
+watched 1 -> 5
+watched 5 -> 7
+7
+2.10 2 10 0.0 3.0
+[1.2, 2.9, 2.10]
+4.1
+9
+.
+true
+global-banner-2
+global-banner-2
+[startup, banner]
+20
+null
+>> x
+12
+abab

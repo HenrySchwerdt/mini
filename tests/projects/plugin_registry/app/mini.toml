@@ -1,0 +1,7 @@
+[package]
+name = "plugapp"
+version = "0.1.0"
+kind = "app"
+
+[dependencies]
+plugreg = { path = "../lib" }
