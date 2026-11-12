@@ -156,12 +156,26 @@ object AstWalk {
     /** names assigned inside lambdas / local functions / object literals below [n] */
     fun capturedAssigned(n: Ast, out: HashSet<String>) {
         if (n is LambdaExpr || n is AnonFunExpr || n is ObjectLiteral || (n is FunDecl)) {
-            assignedNames(n, out)
-            return
+            // a variable declared inside the lambda and assigned there only is no captured variable (`run { var y = ...; while (y != null) { ...; y = ... } }`);
+            // one assigned in a lambda nested in it is found by the recursion below
+            val assigned = HashSet<String>()
+            assignedNames(n, assigned)
+            val declared = HashSet<String>()
+            declaredLocals(n, declared)
+            for (a in assigned) if (!declared.contains(a)) out.add(a)
         }
         val ch = ArrayList<Ast>()
         children(n, ch)
         for (c in ch) capturedAssigned(c, out)
+    }
+
+    /** names of the local variables declared anywhere below [n] */
+    fun declaredLocals(n: Ast, out: HashSet<String>) {
+        if (n is PropertyDecl) out.add(n.name)
+        if (n is DestructEntry) out.add(n.name)
+        val ch = ArrayList<Ast>()
+        children(n, ch)
+        for (c in ch) declaredLocals(c, out)
     }
 
     fun isAssignOp(op: String): Boolean = op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=" || op == "@="

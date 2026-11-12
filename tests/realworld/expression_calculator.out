@@ -1,0 +1,29 @@
+1 + 2 * 3                = 7
+(1 + 2) * 3              = 9
+2 ^ 3 ^ 2                = 512
+-2 ^ 2                   = -4
+10 / 4 - 1               = 1.5
+7 % 4 + 2 * -3           = -3
+sqrt(16) + abs(-3)       = 7
+max(3, min(8, 5)) * 2    = 10
+hypot(3, 4) / 5          = 1
+clamp(0, 15, 10)         = 10
+pow(2, 10) - 24          = 1000
+2 * (3 + (4 - 1)) ^ 2    = 72
+1.5 * 4                  = 6
+sin(0) + cos(0)          = 1
+x * x + y                = 9.5
+((2))                    = 2
+1 +                      = error: missing operand
+2 / 0                    = error: division by zero
+sqrt(-1)                 = error: sqrt of a negative number
+3 $ 4                    = error: unexpected '$' at 2
+(1 + 2                   = error: unbalanced '('
+1 + 2)                   = error: unbalanced ')'
+foo + 1                  = error: unknown variable 'foo'
+1..2 + 3                 = error: bad number '1..2'
+rpn: 3 4 2 * 1 5 - 2 3 ^ ^ / +
+rpn: 1 2 max x ~ +
+ln(e) = 1, pi ~ 2.976046
+f(0)=1, f(1)=0, f(2)=1, f(3)=4, f(4)=9
+sqrt(2) by bisection: 1.414214

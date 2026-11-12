@@ -1,0 +1,21 @@
+heap sorted: 1 2 3 5 7 8 9
+order: hotfix -> compile -> test -> package -> deploy -> lint -> docs
+t=  5 hotfix   CRITICAL
+t= 35 compile  NORMAL
+t= 85 test     HIGH
+t=105 package  NORMAL (met deadline 120)
+t=130 deploy   HIGH (MISSED deadline 100)
+t=140 lint     LOW
+t=155 docs     LOW
+error: cycle among [1, 2]
+access a -> [a=97]
+access b -> [a=97, b=98]
+access c -> [a=97, b=98, c=99]
+access a -> [b=98, c=99, a=97]
+access d -> [c=99, a=97, d=100]
+access b -> [a=97, d=100, b=98]
+access e -> [d=100, b=98, e=101]
+access a -> [b=98, e=101, a=97]
+access c -> [e=101, a=97, c=99]
+hits=1 misses=8
+{CRITICAL=[hotfix], HIGH=[test, deploy], NORMAL=[compile, package], LOW=[lint, docs]}

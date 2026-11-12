@@ -1,0 +1,24 @@
+new: [true, true, true, true, true, true]
+duplicate: false
+size 6, ids [1, 3, 4, 5, 7, 9]
+update: true, missing: false
+removed: bread, again: null
+[added hammer, added apple, added robot, added novel, added saw, added bread, updated hammer, updated robot, removed bread]
+by category:
+  TOOLS: saw, hammer = $43.49
+  FOOD: apple = $0.59
+  TOYS: robot = $39.99
+  BOOKS: novel = $12.50
+by tag count: {0=[novel], 1=[apple, robot], 2=[saw, hammer]}
+top 2 by value: [novel, hammer]
+most expensive: robot=3999
+out of stock: [saw]
+tags: [battery, fresh, heavy, sharp, steel]
+inventory value: $759.36
+sorted by name: [saw, hammer, apple, robot, novel]
+[c1:ned, c2:bea*]
+c1 in store: true, c9: null
+(1, x, [2.5])
+true false
+[[1, 2], [4, 5, 6], [9]]
+[[novel, apple], [saw], [hammer], [robot]]
