@@ -8,6 +8,7 @@
 #                <name>.out (stdout), <name>.err (substrings of stderr; the program must then exit non-zero),
 #                <name>.cerr (the build must fail with exit 1 and the output must contain each line)
 #   strict-leak, strict-llvm-leak   the runnable programs of the strict corpus under AddressSanitizer + LeakSanitizer (C and LLVM backend)
+#   tsan       the programs that start threads (spawn, Thread, java.util.concurrent) under ThreadSanitizer, runtime included
 #   leak       the same programs (and the Strict programs of testdata/memory with a .out) built with AddressSanitizer +
 #                LeakSanitizer + UBSan: same output, exit 0, no report. Skipped without a C compiler that links the sanitizers.
 #                There is no opt-out: a program that leaks is a bug (reference cycles are collected, see docs/memory-model.md).
@@ -101,6 +102,13 @@ ASAN_LEAKS=1
 # the generated C has unused locals, labels and temporaries by design (the same flags the old JVM driver used)
 WNO="-Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable"
 SAN_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -g -fno-omit-frame-pointer"
+TSAN_FLAGS="-fsanitize=thread -g -fno-omit-frame-pointer"
+# a C compiler driver that can link ThreadSanitizer, or empty (the tsan suite is skipped)
+TSANCC=""
+for cand in "$CC" clang gcc; do
+    command -v "$cand" >/dev/null 2>&1 || continue
+    if "$cand" -fsanitize=thread "$W/probe.c" -o "$W/probe.tsan" >/dev/null 2>&1 && "$W/probe.tsan" >/dev/null 2>&1; then TSANCC="$cand"; break; fi
+done
 
 # runtime objects built once per flavour
 build_rt() { # <dir> <cc> <flags...>
@@ -195,8 +203,8 @@ compile_to_c() { # <src> <out.c> <log>: native compiler, C backend
     "$MINIC" -o "$2" "$1" $(cat "$W/stdlib.txt") > "$3" 2>&1
 }
 
-t_c() { # <src> [asan]
-    local src="$1" mode="${2:-plain}" name; name="$(basename "$src" .kt)"; [ "$mode" = asan ] && name="$name.asan"
+t_c() { # <src> [asan|tsan]
+    local src="$1" mode="${2:-plain}" name; name="$(basename "$src" .kt)"; [ "$mode" = asan ] && name="$name.asan"; [ "$mode" = tsan ] && name="$name.tsan"
     local c="$W/$name.c" log="$W/$name.log" exe="$W/$name.exe" extra; extra="$(c_extra "$src")"
     compile_to_c "$src" "$c" "$log"; local rc=$?
     if [ "$mode" = plain ] && [ -f "$(sib "$src" cerr)" ]; then
@@ -206,6 +214,16 @@ t_c() { # <src> [asan]
     fi
     [ $rc -eq 0 ] || { echo "build failed:"; head -20 "$log"; return 1; }
     local links; links="$(links_of "$c")"
+    if [ "$mode" = tsan ]; then
+        # ThreadSanitizer over the program and the runtime: a data race (also in the reference counting) fails the test
+        # shellcheck disable=SC2086
+        "$TSANCC" -std=c17 -O1 -w $TSAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$c" $extra "$W/rt-tsan"/*.o -o "$exe" -lm $links -lpthread > "$W/$name.cc" 2>&1 || { echo "tsan build failed:"; head -20 "$W/$name.cc"; return 1; }
+        local out="$W/$name.stdout" err="$W/$name.stderr" code
+        ( cd "$W" && TSAN_OPTIONS="exitcode=66 halt_on_error=1" run_with_timeout 300 "$exe" > "$out" 2> "$err" ); code=$?
+        [ $code -eq 0 ] || { echo "failed under ThreadSanitizer (exit $code):"; head -40 "$err"; return 1; }
+        cmp -s "$(sib "$src" out)" "$out" || { echo "stdout differs under ThreadSanitizer"; diff "$(sib "$src" out)" "$out" | head; return 1; }
+        return 0
+    fi
     if [ "$mode" = asan ]; then
         # shellcheck disable=SC2086
         "$SANCC" -std=c17 -O1 -w $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$c" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "sanitizer build failed:"; head -20 "$W/$name.cc"; return 1; }
@@ -622,7 +640,7 @@ t_mlib_errors() {
 # ---- driver -----------------------------------------------------------------------------------------------------------------------
 
 export STDMODE STD
-export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
+export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC TSANCC TSAN_FLAGS ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
 export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
@@ -641,6 +659,9 @@ leakable() { # sources with .out and no .err/.cerr
     done
 }
 want_suite c && for f in $(progs); do add c "$(basename "$f" .kt)" "t_c $f"; done
+# the programs that start threads under ThreadSanitizer (docs/memory-model.md, "Sanitizer runs")
+tsan_progs() { { leakable; echo "$ROOT"/tests/realworld/thread_pool.kt; } | xargs grep -lE 'spawn *\{|Thread|java\.util\.concurrent|mini\.concurrent' 2>/dev/null; }
+want_suite tsan && for f in $(tsan_progs); do add tsan "$(basename "$f" .kt)" "t_c $f tsan"; done
 want_suite leak && for f in $(leakable); do add leak "${f#"$TESTDATA"/}" "t_c $f asan"; done
 want_suite llvm && for f in $(progs); do add llvm "$(basename "$f" .kt)" "t_llvm $f"; done
 want_suite llvm-leak && for f in $(leakable); do add llvm-leak "${f#"$TESTDATA"/}" "t_llvm $f asan"; done
@@ -679,12 +700,14 @@ if [ "$LIST" = 1 ]; then awk -F'|' '{ print $1 "::" $2 }' "$LISTFILE"; echo "$to
 if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak)\|' "$LISTFILE"; then
     if [ -n "$SANCC" ]; then build_rt "$W/rt-asan" "$SANCC" $SAN_FLAGS; else echo "test-e2e: no C compiler can link the sanitizer runtimes: the leak suites are skipped" >&2; fi
 fi
+if grep -q '^tsan|' "$LISTFILE" && [ -n "$TSANCC" ]; then build_rt "$W/rt-tsan" "$TSANCC" $TSAN_FLAGS; fi
 if grep -q '^llvm-variants|' "$LISTFILE"; then build_rt "$W/rt-stats" "$CC" -DMK_STATS; fi
 
 run_one() { # "<suite>|<id>|<cmd>"
     local suite id cmd out rc
     suite="${1%%|*}"; local rest="${1#*|}"; id="${rest%%|*}"; cmd="${rest#*|}"
     case "$suite" in leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak) [ -n "$SANCC" ] || { echo "$suite|$id|SKIP|no sanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
+    case "$suite" in tsan) [ -n "$TSANCC" ] || { echo "$suite|$id|SKIP|no ThreadSanitizer runtime" > "$W/res/$(echo "$suite-$id" | tr '/ ' '__')"; return; } ;; esac
     # shellcheck disable=SC2086
     out="$(eval "$cmd" 2>&1)"; rc=$?
     local f="$W/res/$(echo "$suite-$id" | tr '/ ' '__')"

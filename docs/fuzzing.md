@@ -48,6 +48,12 @@ Failures are classified and saved under `OUT/fail/SEED.VARIANT.KIND.{kt,expected
 | `sanitizer`, `leak` | an ASan/UBSan report, a LeakSanitizer report |
 | `gen-invalid` | kotlinc rejects the generated program (a generator bug, listed at the end of a run) |
 
+## Sanitizers
+
+The fixed smoke programs (`tools/fuzz/smoke`) are part of the sanitizer suites `fuzz-leak` and `fuzz-llvm-leak` (ASan + LSan + UBSan, see
+"Sanitizer runs" in `docs/memory-model.md`); a finding in a generated program is a bug in the runtime or the code generator and gets a reduced
+program in the smoke directory.
+
 ## Reducing
 
 `reduce` minimises a failing program by delta debugging on balanced line spans: it tries to delete every statement or block (largest

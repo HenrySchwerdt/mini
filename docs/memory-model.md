@@ -1673,6 +1673,30 @@ Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-
 catchable. Unsynchronized writes to a *shared mutable* collection from several threads are a data race of the program (as on the JVM)
 and are not made safe; the cycle collector still only runs while no Kotlin thread runs (section "Threads").
 
+## Sanitizer runs (memsafe-2)
+
+Every program of the e2e corpus is also run with the C compiler's sanitizers. The suites of `scripts/test-e2e.sh`:
+
+| suite | what | sanitizers | detects |
+|---|---|---|---|
+| `leak`, `llvm-leak` | `compiler/testdata` (and `testdata/memory` with a `.out`), C and LLVM backend | `-fsanitize=address,undefined` + LeakSanitizer, runtime built with the same flags | OOB, use-after-free, double free, leaks, UB (shift, signed overflow, alignment, null) |
+| `realworld-leak`, `realworld-llvm-leak` | `tests/realworld` | same | same |
+| `strict-leak`, `strict-llvm-leak` | the runnable Strict corpus | same | same |
+| `fuzz-leak`, `fuzz-llvm-leak`, `stress-leak` | `tools/fuzz/smoke`, `testdata/stress` | same | same |
+| `tsan` | the programs that start threads (`spawn`, `Thread`, `java.util.concurrent`, coroutines on threads, `tests/realworld/thread_pool`), runtime built with `-fsanitize=thread` | ThreadSanitizer | data races, also in the reference counting and the allocators |
+| (runtime) `runtime/run_tests.sh` | every `runtime/tests/test_*.c`, `-Wall -Wextra -Werror` | ASan+UBSan, UBSan alone (size-class allocator), TSan for the threading tests | the same classes inside libminirt |
+
+`UBSan` runs with `-fno-sanitize-recover=undefined`, so any finding fails the test; ASan runs with `detect_leaks=1`, TSan with `halt_on_error=1`.
+`tsan` is skipped when the C compiler cannot link ThreadSanitizer. CI: the `e2e` shard runs the default suites (which include `leak`) and a
+separate "Thread programs under ThreadSanitizer" step (`scripts/test-e2e.sh --suite tsan`, 12 programs, about 2 minutes); `runtime/run_tests.sh`
+is the `runtime` job.
+
+Result of the first full pass (memsafe-2, clang 18, Linux x86-64): no finding in any class, so no runtime, codegen or stdlib change was needed. The
+pass covered: runtime tests under ASan/UBSan, UBSan and TSan; `leak` 323, `llvm-leak`, `memcheck` 123, `memrun` 33, `strict-leak`, `fuzz-leak`,
+`realworld-leak`, `stress-leak` and `tsan` 12 programs. Only the `tsan` suite and its CI step are new; the other suites existed and are
+the reason the corpus is clean. Not covered: Windows and macOS (LeakSanitizer does not exist on macOS, the run there still checks memory
+errors and UB), and `MemorySanitizer` (uninitialized reads; clang only, needs an instrumented libc).
+
 ## Experience from D2 (Strict code generation)
 
 - Annotations: the new test programs `strict_{heap_list,arena_tree,pool,boundary,auto,close}.kt` need one allocator
