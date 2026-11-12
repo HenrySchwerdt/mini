@@ -49,13 +49,13 @@ jobs:
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-host.log" -Force
           try { ./scripts/windows/test-host.ps1 } finally { Stop-Transcript }
-      - name: Download and verify portable 0.7.0 C seed
+      - name: Download and verify portable 0.10.0 C seed
         shell: pwsh
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/mini-windows-seed.log" -Force
           try {
           $ErrorActionPreference = 'Stop'
-          $version = '0.7.0'
+          $version = '0.10.0'
           $name = "mini-$version-bootstrap-c.tar.gz"
           $url = "https://github.com/HenrySchwerdt/mini/releases/download/v$version/$name"
           $sumUrl = "https://github.com/HenrySchwerdt/mini/releases/download/v$version/SHA256SUMS"
