@@ -30,6 +30,9 @@ GEN_MARK = "// --- generated ---"
 
 
 # ---------------------------------------------------------------------------------------------------------------------- tool locations
+OPT = os.environ.get("FUZZ_OPT", "-O1")  # the C compiler level of the built programs; -O0 is 3x faster for bulk runs
+
+
 class Tools:
     def __init__(self, a):
         self.root = os.path.abspath(a.root)
@@ -177,15 +180,15 @@ def run_variant(tools, text, variant, work, timeout=30):
     if asan:
         if llvm:
             o = os.path.join(work, "p.o")
-            c = subprocess.run(["clang", "-O1", "-w"] + tools.SAN + ["-Wno-override-module", "-c", ir, "-o", o], capture_output=True, text=True)
+            c = subprocess.run(["clang", OPT, "-w"] + tools.SAN + ["-Wno-override-module", "-c", ir, "-o", o], capture_output=True, text=True)
             if c.returncode == 0:
                 c = subprocess.run([tools.sancc] + tools.SAN + inc + [o] + sorted(glob.glob(tools.rt_asan + "/*.o")) + ["-o", exe, "-lm", "-lpthread"], capture_output=True, text=True)
         else:
-            c = subprocess.run([tools.sancc, "-std=c17", "-O1", "-w"] + tools.SAN + inc + [ir] + sorted(glob.glob(tools.rt_asan + "/*.o")) + ["-o", exe, "-lm", "-lpthread"], capture_output=True, text=True)
+            c = subprocess.run([tools.sancc, "-std=c17", OPT, "-w"] + tools.SAN + inc + [ir] + sorted(glob.glob(tools.rt_asan + "/*.o")) + ["-o", exe, "-lm", "-lpthread"], capture_output=True, text=True)
     elif llvm:
-        c = subprocess.run(["clang", "-O1", "-w", "-Wno-override-module"] + inc + [ir, tools.rtlib, "-o", exe, "-lm", "-lpthread"], capture_output=True, text=True)
+        c = subprocess.run(["clang", OPT, "-w", "-Wno-override-module"] + inc + [ir, tools.rtlib, "-o", exe, "-lm", "-lpthread"], capture_output=True, text=True)
     else:
-        c = subprocess.run([tools.cc, "-std=c17", "-O1", "-w"] + inc + [ir, tools.rtlib, "-o", exe, "-lm", "-lpthread"], capture_output=True, text=True)
+        c = subprocess.run([tools.cc, "-std=c17", OPT, "-w"] + inc + [ir, tools.rtlib, "-o", exe, "-lm", "-lpthread"], capture_output=True, text=True)
     if c.returncode != 0:
         return "cc-error", "", (c.stdout + c.stderr)[:800]
     env = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:exitcode=99", UBSAN_OPTIONS="print_stacktrace=1")
@@ -318,7 +321,7 @@ def run_strict(a, tools, variants, seeds, work):
         s, v = sv
         w = os.path.join(work, "s%d.%s" % (s, v))
         try:
-            kind, detail, out = run_variant(tools, progs[s], v, w)
+            kind, out, detail = run_variant(tools, progs[s], v, w)
         finally:
             shutil.rmtree(w, ignore_errors=True)
         if kind == "ok":
@@ -390,7 +393,7 @@ def cmd_reduce(a):
     if a.strict:
         text = open(a.file).read() if a.file else genstrict.generate(a.seed, a.size)
         exp = None
-        kind0, detail0, _ = run_variant(tools, text, a.variant, os.path.join(work, "red0"))
+        kind0, _, detail0 = run_variant(tools, text, a.variant, os.path.join(work, "red0"))
         kind0 = "pass" if kind0 == "ok" else kind0
     else:
         text = open(a.file).read() if a.file else make_program(a.seed, a.size)
@@ -421,7 +424,7 @@ def cmd_reduce(a):
         def strict_fails(text, tag):
             w = os.path.join(work, "red.s" + str(tag))
             try:
-                kind, detail, _ = run_variant(tools, text, a.variant, w)
+                kind, _, detail = run_variant(tools, text, a.variant, w)
             finally:
                 shutil.rmtree(w, ignore_errors=True)
             return kind == kind0 and (not sig or re.sub(r"\d+", "N", detail.strip().split("\n")[0][:60]) == sig)
@@ -541,7 +544,7 @@ def cmd_save(a):
         for s in range(lo, hi):
             text = genstrict.generate(s, a.size)
             w = os.path.join(work, "sv%d" % s)
-            kind, detail, out = run_variant(tools, text, "strict-asan", w)
+            kind, out, detail = run_variant(tools, text, "strict-asan", w)
             shutil.rmtree(w, ignore_errors=True)
             if kind != "ok":
                 print("seed %d skipped: %s" % (s, kind))
