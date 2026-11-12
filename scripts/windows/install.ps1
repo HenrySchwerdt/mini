@@ -2,7 +2,7 @@
 # Experimental Windows source install. Run from a cloned Mini checkout.
 param(
     [string]$Prefix = '',
-    [string]$SeedVersion = '0.7.0',
+    [string]$SeedVersion = '0.10.0',
     [ValidateSet('c', 'llvm-api')][string]$Backend = 'c',
     [string]$LLVMPrefix = ''
 )

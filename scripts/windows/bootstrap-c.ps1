@@ -29,7 +29,7 @@ $compilerSources = @()
 foreach ($dir in $compilerDirs) {
     $compilerSources += Get-ChildItem -LiteralPath (Join-Path $root $dir) -Filter '*.kt' -File -Recurse | ForEach-Object FullName
 }
-# The 0.7 seed extracts source basenames using forward slashes; pass portable
+# The seed extracts source basenames using forward slashes; pass portable
 # source argument paths to every stage instead of altering emitted C afterward.
 $compilerSources = [string[]]@($compilerSources | ForEach-Object { $_.Replace('\', '/') })
 [Array]::Sort($compilerSources, [StringComparer]::Ordinal)
@@ -63,7 +63,7 @@ $stage3C = Join-Path $work 'stage3.c'
 $stage3Mir = Join-Path $work 'stage3.mir'
 $stage3 = Join-Path $work 'stage3.exe'
 
-# The seed's historical POSIX runtime is intentionally not linked. Use its
+# The seed's own (POSIX) runtime is intentionally not linked. Use its
 # generated compiler C with this checkout's Windows-capable runtime sources.
 $seedC = Join-Path $seed 'minic.c'
 $currentRuntimeIncludes = Join-Path $root 'runtime/include'
