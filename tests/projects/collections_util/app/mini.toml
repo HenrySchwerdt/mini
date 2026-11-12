@@ -1,0 +1,7 @@
+[package]
+name = "collapp"
+version = "0.1.0"
+kind = "app"
+
+[dependencies]
+collx = { path = "../lib" }
