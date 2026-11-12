@@ -1,0 +1,11 @@
+blocks: Heading, Paragraph, Heading, ListBlock, ListBlock, Quote, Rule, CodeBlock, Heading
+<h1>Mini <em>Markdown</em></h1>
+<p>A paragraph with <strong>bold</strong>, <em>italic</em> and <code>code &lt;b&gt;</code> text, continued on a second line, plus a <a href="https://example.org/a?b=1&amp;c=2">link</a>.</p>
+<h2>Lists</h2>
+<ul><li>first</li><li>second with <code>code</code><ul><li>nested one</li><li>nested two</li></ul></li><li>third</li></ul>
+<ol><li>one</li><li>two</li></ol>
+<blockquote>quoted text over two lines</blockquote>
+<hr/>
+<pre><code class="language-kotlin">fun main() { println("&lt;hi&gt;") }</code></pre>
+<h6>deep heading</h6>
+headings: [(1, Mini *Markdown*), (2, Lists), (6, deep heading)]

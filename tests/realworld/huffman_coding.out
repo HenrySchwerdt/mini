@@ -1,0 +1,25 @@
+== 'abracadabra'
+'a'=0 'c'=100 'd'=101 'b'=110 'r'=111
+88 bits -> 23 bits in 3 bytes: 6e8adc
+round trip ok: true  ratio 0.26
+== 'mississippi river'
+'s'=00 'p'=010 'r'=011 ' '=1000 'e'=1001 'm'=1010 'v'=1011 'i'=11
+136 bits -> 46 bits in 6 bytes: ac30d2e1f72c
+round trip ok: true  ratio 0.34
+== 'aaaaaaaaaabbbbbcc'
+'c'=00 'b'=01 'a'=1
+136 bits -> 24 bits in 3 bytes: ffd550
+round trip ok: true  ratio 0.18
+== 'x'
+'x'=0
+8 bits -> 1 bits in 1 bytes: 00
+round trip ok: true  ratio 0.13
+== ''
+0 bits -> 0 bits in 0 bytes: 
+round trip ok: true
+long text: 220 chars, 95 bytes (43.2%), ok=true
+-- run length
+WWWWWWWWWWWWBWWWWWWW... -> 12W1B12W3B24W1B14W (true)
+abc -> 1a1b1c (true)
+aabbbcccc -> 2a3b4c (true)
+ ->  (true)

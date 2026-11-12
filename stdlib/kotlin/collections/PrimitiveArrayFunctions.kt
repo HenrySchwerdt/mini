@@ -121,7 +121,7 @@ public fun ByteArray.toMutableList(): MutableList<Byte> {
 }
 public fun ByteArray.toSet(): Set<Byte> = toMutableList().toSet()
 public fun ByteArray.toMutableSet(): MutableSet<Byte> = toMutableList().toMutableSet()
-public fun ByteArray.toHashSet(): HashSet<Byte> = HashSet<Byte>(toList())
+public fun ByteArray.toHashSet(): HashSet<Byte> = toCollection(HashSet<Byte>(mapCapacity(size)))
 
 public fun ByteArray.toTypedArray(): Array<Byte> = Array<Byte>(size) { this[it] }
 
@@ -603,7 +603,7 @@ public fun ShortArray.toMutableList(): MutableList<Short> {
 }
 public fun ShortArray.toSet(): Set<Short> = toMutableList().toSet()
 public fun ShortArray.toMutableSet(): MutableSet<Short> = toMutableList().toMutableSet()
-public fun ShortArray.toHashSet(): HashSet<Short> = HashSet<Short>(toList())
+public fun ShortArray.toHashSet(): HashSet<Short> = toCollection(HashSet<Short>(mapCapacity(size)))
 
 public fun ShortArray.toTypedArray(): Array<Short> = Array<Short>(size) { this[it] }
 
@@ -1085,7 +1085,7 @@ public fun IntArray.toMutableList(): MutableList<Int> {
 }
 public fun IntArray.toSet(): Set<Int> = toMutableList().toSet()
 public fun IntArray.toMutableSet(): MutableSet<Int> = toMutableList().toMutableSet()
-public fun IntArray.toHashSet(): HashSet<Int> = HashSet<Int>(toList())
+public fun IntArray.toHashSet(): HashSet<Int> = toCollection(HashSet<Int>(mapCapacity(size)))
 
 public fun IntArray.toTypedArray(): Array<Int> = Array<Int>(size) { this[it] }
 
@@ -1567,7 +1567,7 @@ public fun LongArray.toMutableList(): MutableList<Long> {
 }
 public fun LongArray.toSet(): Set<Long> = toMutableList().toSet()
 public fun LongArray.toMutableSet(): MutableSet<Long> = toMutableList().toMutableSet()
-public fun LongArray.toHashSet(): HashSet<Long> = HashSet<Long>(toList())
+public fun LongArray.toHashSet(): HashSet<Long> = toCollection(HashSet<Long>(mapCapacity(size)))
 
 public fun LongArray.toTypedArray(): Array<Long> = Array<Long>(size) { this[it] }
 
@@ -2049,7 +2049,7 @@ public fun DoubleArray.toMutableList(): MutableList<Double> {
 }
 public fun DoubleArray.toSet(): Set<Double> = toMutableList().toSet()
 public fun DoubleArray.toMutableSet(): MutableSet<Double> = toMutableList().toMutableSet()
-public fun DoubleArray.toHashSet(): HashSet<Double> = HashSet<Double>(toList())
+public fun DoubleArray.toHashSet(): HashSet<Double> = toCollection(HashSet<Double>(mapCapacity(size)))
 
 public fun DoubleArray.toTypedArray(): Array<Double> = Array<Double>(size) { this[it] }
 
@@ -2531,7 +2531,7 @@ public fun FloatArray.toMutableList(): MutableList<Float> {
 }
 public fun FloatArray.toSet(): Set<Float> = toMutableList().toSet()
 public fun FloatArray.toMutableSet(): MutableSet<Float> = toMutableList().toMutableSet()
-public fun FloatArray.toHashSet(): HashSet<Float> = HashSet<Float>(toList())
+public fun FloatArray.toHashSet(): HashSet<Float> = toCollection(HashSet<Float>(mapCapacity(size)))
 
 public fun FloatArray.toTypedArray(): Array<Float> = Array<Float>(size) { this[it] }
 
@@ -3013,7 +3013,7 @@ public fun CharArray.toMutableList(): MutableList<Char> {
 }
 public fun CharArray.toSet(): Set<Char> = toMutableList().toSet()
 public fun CharArray.toMutableSet(): MutableSet<Char> = toMutableList().toMutableSet()
-public fun CharArray.toHashSet(): HashSet<Char> = HashSet<Char>(toList())
+public fun CharArray.toHashSet(): HashSet<Char> = toCollection(HashSet<Char>(mapCapacity(size)))
 
 public fun CharArray.toTypedArray(): Array<Char> = Array<Char>(size) { this[it] }
 
@@ -3465,7 +3465,7 @@ public fun BooleanArray.toMutableList(): MutableList<Boolean> {
 }
 public fun BooleanArray.toSet(): Set<Boolean> = toMutableList().toSet()
 public fun BooleanArray.toMutableSet(): MutableSet<Boolean> = toMutableList().toMutableSet()
-public fun BooleanArray.toHashSet(): HashSet<Boolean> = HashSet<Boolean>(toList())
+public fun BooleanArray.toHashSet(): HashSet<Boolean> = toCollection(HashSet<Boolean>(mapCapacity(size)))
 
 public fun BooleanArray.toTypedArray(): Array<Boolean> = Array<Boolean>(size) { this[it] }
 

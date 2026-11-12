@@ -1,0 +1,17 @@
+[0] A step 1
+[0] B waits for A
+[5] C tick
+[10] A step 2
+[20] A step 3
+[25] C tock
+[25] C failed: boom
+[25] C finished
+[30] A finished
+[30] B resumes after A
+[30] B done
+[30] B finished
+virtual time: 30, b done: true
+
+[odd(1), even(4), odd(9), even(16), odd(25), even(36), odd(49), even(64)]
+sent 1; sent 2; sent 3; sent 4; sent 5; sent 6; sent 7; sent 8; [3] producer finished; [6] square finished; [8] label finished; consumer drained at t=8; [8] consumer finished
+virtual time: 8

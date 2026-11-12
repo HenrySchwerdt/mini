@@ -1,0 +1,14 @@
+value of the empty board (perfect play): 0 after 22818 nodes
+without pruning but memoized: 0 with 5478 distinct positions
+self play moves: [0, 4, 1, 2, 6, 3, 5, 7, 8]
+XXO
+OOX
+XOX
+result: 0
+X to move from XO.X.O... -> best 4
+X can win at 2, O blocks at 2
+connect three value: 1 (6315 nodes)
+connect three self play: [1, 0, 0, 0, 1, 1, 2, 2, 3]
+OO..
+XXO.
+OXXX

@@ -1,0 +1,19 @@
+lcs: GTAB
+lcs:  quick brown o
+edit(kitten, sitting) = 3
+edit(flaw, lawn) = 2
+edit(, abc) = 3
+edit(same, same) = 0
+knapsack: value=510 items=map, compass, sandwich, glucose, tin, banana weight=182
+coin ways 100: 292
+min coins 63: 3
+min coins 7 with 2,4: -1
+lis: [2, 3, 7, 18, 20, 21]
+partitions: [42, 627, 5604, 37338, 204226, 966467, 4087968, 15796476, 56634173, 190569292]
+                  1
+                 1 1
+                1 2 1
+               1 3 3 1
+              1 4 6 4 1
+           1 5 10 10 5 1
+         1 6 15 20 15 6 1
