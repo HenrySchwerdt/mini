@@ -1,0 +1,15 @@
+keyboard     $49.99 x2 = $99.98
+cable         $3.50 x5 = $17.50
+monitor     $189.00 x1 = $189.00
+subtotal $306.48, tax $58.23, total $364.71
+split in 3: [$121.57, $121.57, $121.57] sums to $364.71
+half: $0.02 $0.08 -$0.02 $0.33
+€1234.50 ¥500 KD1.234 -$2.50
+[$2.00, $5.00, $9.00,  max=, $9.00,  , true,  , false]
+rejected: not an amount: 'abc'
+rejected: too many decimals for USD: '1.234'
+rejected: not an amount: '1..2'
+rejected: not an amount: ''
+error: cannot combine USD and EUR
+error: cannot combine USD and EUR
+[USD/2, EUR/2, JPY/0, KWD/3]

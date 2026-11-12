@@ -1,0 +1,27 @@
+Dear Ada LOVELACE,
+As a valued customer you get free shipping.
+Your order:
+  0. pen
+  1. ink
+  2. paper (last)
+Total items: 3. Reference AB-12 (5 chars).
+----
+Dear Bob,
+Shipping costs 5.00.
+Your order:
+Total items: 0. Reference X (1 chars).
+----
+[1][4][9][16]
+1-TWO
+1,2,;3,;
+HEY! YEH!
+error: unclosed tag at 0
+error: missing {{/each}}
+error: unexpected {{/each}}
+error: missing {{/if}}
+error: unknown variable 'unknown'
+error: unknown filter 'nofilter'
+error: 'n' is not a list
+Item(name=lamp, price=19.5)
+Item(name=desk, price=120.0)
+
