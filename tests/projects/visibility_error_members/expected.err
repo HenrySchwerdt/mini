@@ -1,0 +1,11 @@
+cannot access 'LIMIT'
+cannot access 'record'
+cannot access 'audit'
+cannot access 'Account': it is internal
+cannot assign 'balance': its setter is private
+cannot access 'shout'
+cannot access 'rate'
+cannot access 'size'
+cannot access 'Cents'
+cannot access 'Secret'
+cannot access 'fee': it is protected

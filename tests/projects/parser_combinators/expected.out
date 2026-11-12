@@ -1,0 +1,15 @@
+'1 + 2 * 3' -> (1 + (2 * 3)) = 7
+' (1 + 2) * 3 ' -> ((1 + 2) * 3) = 9
+'x * y - 2' -> ((x * y) - 2) = 40
+'max(1, x, y) + min(4, 2)' -> (max(1, x, y) + min(4, 2)) = 9
+'sum() + -5' -> (sum() + -5) = -5
+'10 / 3 / 2' -> ((10 / 3) / 2) = 1
+'2 * (3 + ' -> parse error at 2: unexpected '*'
+'1 + * 2' -> parse error at 2: unexpected '+'
+'foo(1)' -> foo(1) = error: unknown function foo
+'12 34' -> parse error at 3: unexpected '3'
+'z + 1' -> (z + 1) = error: unbound z
+[1, 2, 3, 4]
+hello
+ac null
+abc123 -42

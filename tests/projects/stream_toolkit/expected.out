@@ -1,0 +1,19 @@
+[2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
+53
+[[2, 3, 5, 7], [11, 13, 17, 19, 23, 29], [31, 37]]
+[a2, b3, c5]
+[14, 29, 50]
+[x, x, y, y]
+14
+stream stack underflow at + at 2
+parse unexpected '/' at 4 [+, -, *]
+other List has more than one element.
+data of a+data of b
+caught boom true
+[open a, open b, close b, close a, open c, close c]
+data of d
+[open d, close d]
+{the=3, cat=1, and=2, hat=1, end=1, so=1, on=1}
+{3=8, 2=2}
+[+, -, *]
+*

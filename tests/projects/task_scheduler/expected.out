@@ -1,0 +1,24 @@
+sched-3 5
+4
+fetch -> Ok(value=3)
+compile -> Ok(value=1)
+count -> Ok(value=10)
+lint -> Err(reason=style)
+a -> Ok(value=1)
+b -> Err(reason=bad b)
+docs -> Skipped
+fetch=ok(3), compile=ok(1), count=ok(10), lint=err(style), a=ok(1), b=err(bad b), docs=skip
+7
+Ok(value=1)
+null
+[<z>@9/PENDING, <y>@7/PENDING, <x>@1/PENDING]
+<x>|<y>|<z>
+1
+1
+<greeter>
+[DONE, FAILED]
+FAILED
+Ok(value=1)
+DONE
+value 1
+true

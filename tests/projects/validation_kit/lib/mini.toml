@@ -1,0 +1,4 @@
+[package]
+name = "validk"
+version = "1.0.0"
+kind = "lib"
