@@ -51,8 +51,8 @@ The first rule that applies wins:
 
 1. **A context allocator.** The innermost visible `context(...)` of an allocator type is used. If two allocator parameters are visible at the same level (`context(a: Arena, h: Heap)`), the choice is ambiguous: [M0114](/reference/diagnostics/M0114). Nest blocks instead.
 2. **`@AllocatedBy(X::class)` on the class.** This restricts rule 1 to context allocators of type `X`. Without a matching context, only `Heap` and `Rc` have a global default instance; `Arena` and `Pool` always need a context.
-3. **The module default.** In a Managed file that is `Rc`. In a Strict file there is none.
-4. **Nothing found.** If the value does not escape, the specification says it lives on the stack with no obligations (stack placement itself is not implemented yet, so today it is simply not an error). If it escapes, the compiler reports [M0204](/reference/diagnostics/M0204).
+3. **The module default.** In a Managed file that is `Rc`. In a Strict file it is the **default allocator**: the object is reference counted with a count of one that belongs to its owner. It may be returned, stored in an owning field or handed to an `@Owned` parameter like any other owned value; the owner releases it when it ends (the end of its block, a `return`, an exception) or earlier with `free()`. There is no leak to report for it, and a use after `free()`, a double `free()` or a use after a move is an error as for every allocator.
+4. **Nothing found.** The default allocator of rule 3 is used. [M0204](/reference/diagnostics/M0204) is left for the three places it cannot work: moving such an object into a thread, owning it across the suspension points of a coroutine, and returning an owner from a lambda.
 
 "Escapes" means the value flows into a return, an `@Owned` parameter, a field, a global, an escaping lambda or another thread. Passing to a borrowed parameter and calling methods do not make a value escape.
 

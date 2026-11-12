@@ -95,13 +95,13 @@ internal fun Ir2Mir.valueRaw(e: IrExpression, out: MutableList<MirStmt>): MirExp
         if (owner in closure.boxed) {
             val rc = cellFor(owner)
             MirExpr.FieldGet(MirExpr.Local(l), rc.cName, "value", rc.valueType)
-        } else MirExpr.Local(l)
+        } else movedOut(e, MirExpr.Local(l), out)
         }
     }
     is IrCall -> if (isNoWhenBranch(e)) {
         out += MirStmt.Panic("NoWhenBranchMatchedException")
         MirExpr.Unreachable(TNothing)
-    } else call(e, out)
+    } else if (e.ownedTemp) ownedCallValue(e, out) else call(e, out)
     is IrConstructorCall -> constructorCall(e, out)
     is IrGetEnumValue -> {
         val entry = e.entry

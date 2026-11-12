@@ -58,6 +58,7 @@ fun checkMemory(module: IrModule): MemoryReport {
     val facts = MemoryFacts { f -> !f.isStdlib }
     val m = facts.lower(module)
     val diags = MemoryChecker.check(m)
+    facts.publishFlags()
     return MemoryReport.of(m, diags, facts.failures, facts.strictFailures)
 }
 

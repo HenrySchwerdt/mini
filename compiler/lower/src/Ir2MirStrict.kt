@@ -150,7 +150,7 @@ internal fun Ir2Mir.memoryApiCall(c: IrCall, owner: IrSimpleFunction, out: Mutab
         // returns the memory (a no-op for reference counted objects: they free themselves)
         val cs = closeStmtFor(target.type, v)
         if (cs != null) out += cs
-        out += MirStmt.Eval(MirExpr.RuntimeCall("mk_free_dealloc", listOf(v), TUnit))
+        if (!ownedFree(target, v, out)) out += MirStmt.Eval(MirExpr.RuntimeCall("mk_free_dealloc", listOf(v), TUnit))
         return MirExpr.UnitValue
     }
     if (n == "move") {

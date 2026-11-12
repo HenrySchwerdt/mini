@@ -15,6 +15,8 @@ internal class UnitInfo(
     val paramIndex: Map<Int, Int> = emptyMap(),
     /** Ids of the locals this lambda unit captures from the function around it. */
     val capturedIds: Set<Int> = emptySet(),
+    /** The unit is (lowered into) a coroutine state machine: no default-allocated object may escape there (M0204). */
+    val suspend: Boolean = false,
 )
 
 private const val HEAP_CLASS = "mini.memory.Heap"
@@ -118,8 +120,43 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         }
     }
 
+    /** Whether a value of the default allocator is among [sites]. */
+    private fun hasDefault(sites: Set<Site>): Boolean {
+        for (s in sites) if (s.kind == SK.Default) return true
+        return false
+    }
+
+    /** The default-allocated objects of [sites] get an owner: their allocation is not a temporary of the statement (the object is released by whoever owns it). */
+    private fun markOwned(sites: Set<Site>) {
+        if (!reporting) return
+        for (s in sites) if (s.kind == SK.Default && s.id >= 0) newNodes[s.id].escapes = true
+    }
+
+    private val newNodes = ArrayList<MExpr.New>()
+    private val newIds = HashMap<MExpr.New, Int>()
+    private fun siteIdOf(e: MExpr.New): Int {
+        val k = newIds[e]
+        if (k != null) return k
+        newNodes.add(e)
+        val id = newNodes.size - 1
+        newIds[e] = id
+        return id
+    }
+
+    /** A local that owns a default-allocated object: the code generation releases it at the end of its scope. */
+    private fun markDropOwner(l: MLocal) {
+        if (reporting) l.dropOwner = true
+    }
+
+    /** The read [v] moves the owner out of its local: the code generation sets the local to null. */
+    private fun markMove(v: AVal) {
+        if (reporting) v.node?.moves = true
+    }
+
     private fun discard(v: AVal) {
         if (!v.fresh) return
+        // an owned default-allocated result of a call that nobody binds is released after its statement
+        if (reporting && v.call != null && hasDefault(v.sites)) v.call.ownedTemp = true
         for (s in v.sites) if (s.kind.obligation && s.kind != SK.Unknown) {
             diag(
                 "M0102", s.pos, "allocation from `${s.kind.label}` is never released", "allocated here; path: result discarded",
@@ -129,13 +166,20 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     }
 
     private fun escape(v: AVal) {
+        if (hasDefault(v.sites)) {
+            if (u.suspend) {
+                for (s in v.sites) if (s.kind == SK.Default) {
+                    diag(
+                        "M0204", s.pos, "no allocator for an escaping Strict value", "a default-allocated object cannot leave a coroutine body",
+                        "add `context(h: Heap)` to the function or `@AllocatedBy(Heap::class)` to the class",
+                    )
+                }
+                return
+            }
+            markOwned(v.sites)
+        }
         for (s in v.sites) {
-            if (s.kind == SK.Stack) {
-                diag(
-                    "M0204", s.pos, "no allocator for an escaping Strict value", "this value escapes but no allocator is selectable",
-                    "add `context(h: Heap)` to the function or `@AllocatedBy(Heap::class)` to the class",
-                )
-            } else if (u.noAlloc && s.kind != SK.Param && s.kind != SK.Field && s.kind != SK.Unknown) {
+            if (u.noAlloc && s.kind != SK.Param && s.kind != SK.Field && s.kind != SK.Unknown) {
                 diag("M0205", s.pos, "allocation in `@NoAlloc` function `${u.fnName}`", "allocates here", "remove `@NoAlloc` or avoid the escaping allocation")
             }
         }
@@ -173,6 +217,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 return false
             }
             escape(v)
+            markMove(v)
             put(v.src, Slot(M, s.refs, s.sites, s.vpos))
             return true
         }
@@ -221,14 +266,14 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             // a closure: every use needs the owners it borrows from to be alive (a call of a function value has no position of its own)
             checkUse(id, if (e.pos.line > 0) e.pos else s.vpos)
             val c = slot(id) ?: s
-            return AVal(t, false, id, rootsOf(id), if (t.tracked) sitesOf(id) else c.sites, false, false, c.vpos, caps = true)
+            return AVal(t, false, id, rootsOf(id), if (t.tracked) sitesOf(id) else c.sites, false, false, c.vpos, caps = true, node = e)
         }
         if (!t.tracked) return AVal.untracked(t, e.pos)
         checkUse(id, e.pos)
         val s2 = slot(id)!!
         val refs = rootsOf(id)
         val sites = sitesOf(id)
-        return AVal(t, false, id, refs, sites, s2.bits and N != 0 || t.nullable && s2.bits and (O or B) == 0, false, e.pos)
+        return AVal(t, false, id, refs, sites, s2.bits and N != 0 || t.nullable && s2.bits and (O or B) == 0, false, e.pos, node = e)
     }
 
     private fun evalFieldGet(e: MExpr.FieldGet, env: Env): AVal {
@@ -276,7 +321,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 )
                 return AVal.untracked(t, e.pos)
             }
-            is AR.NoneFound -> site = Site(e.pos, SK.Stack, -1)
+            is AR.NoneFound -> site = Site(e.pos, SK.Default, siteIdOf(e))
             is AR.Found -> {
                 val k = siteKind(r.kind) ?: return AVal.untracked(t, e.pos)
                 site = Site(e.pos, k, r.id)
@@ -314,7 +359,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val bad = when (v.type.tk) {
                 TK.Str -> !v.strLit
                 TK.Managed -> true
-                TK.Strict, TK.Alloc -> v.sites.any { it.kind != SK.Arena && it.kind != SK.Stack && it.kind != SK.Param && it.kind != SK.Field }
+                TK.Strict, TK.Alloc -> v.sites.any { it.kind != SK.Arena && it.kind != SK.Param && it.kind != SK.Field }
                     || v.sites.any { it.kind == SK.Arena && it.id != arenaTarget.id }
                 else -> false
             }
@@ -452,8 +497,9 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (ab == HEAP_CLASS) { kind = AllocKind.Heap } else if (ab == RC_CLASS) kind = AllocKind.Rc
         }
         if (kind == AllocKind.Rc || kind == AllocKind.Other) return AVal.untracked(rt, e.pos)
-        val sk = if (fn.cFree != null) SK.Extern else kind?.let { siteKind(it) } ?: SK.Unknown
-        return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, sk, id)), rt.nullable, false, e.pos)
+        // no allocator visible at the call (the callee allocates, or hands on a value of its own): the default allocator, whose objects the owner releases
+        val sk = if (fn.cFree != null) SK.Extern else if (kind == null) (if (u.suspend) SK.Unknown else SK.Default) else siteKind(kind) ?: SK.Unknown
+        return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, sk, id)), rt.nullable, false, e.pos, call = e)
     }
 
     private fun checkMovedFields(pos: Pos) {
@@ -562,6 +608,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (s == null) return AVal.untracked(t.type, e.pos)
             checkUse(t.local.id, t.pos)
             val s2 = slot(t.local.id)!!
+            if (e.implicit && s2.bits and B != 0 && s2.bits and O != 0 && hasDefault(s2.sites) && !u.suspend) {
+                // `if (c) Box(1) else other`: an owned object on one path, a borrowed one on the other: nobody can tell at run time who releases it
+                diag(
+                    "M0109", e.pos, "the value is a new default-allocated object on some paths and a borrowed one on others", "owner and borrower are mixed here",
+                    "make every branch produce an owner (`other.move()` or a new object), or bind the borrowed value to a variable first",
+                )
+            }
             if (s2.bits and B != 0) {
                 if (!e.implicit) {
                     diag(
@@ -571,8 +624,9 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 }
                 return AVal(t.type, false, -1, rootsOf(t.local.id), sitesOf(t.local.id), s2.bits and N != 0, false, if (e.implicit) s2.vpos else e.pos, caps = s2.bits and K != 0)
             }
+            if (reporting) t.moves = true
             put(t.local.id, Slot(M, s2.refs, s2.sites, s2.vpos))
-            return AVal(t.type, true, -1, emptySet(), s2.sites, s2.bits and N != 0, s2.bits == N, if (e.implicit) s2.vpos else e.pos)
+            return AVal(t.type, true, -1, emptySet(), s2.sites, s2.bits and N != 0, s2.bits == N, if (e.implicit) s2.vpos else e.pos, call = slotCalls[t.local.id])
         }
         val v = eval(t, env)
         return v
@@ -703,6 +757,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (s.annot.owned != null && v.tracked && !v.fresh && v.src >= 0) {
             val src = slot(v.src)
             if (src != null && src.bits and B == 0) {
+                markMove(v)
                 put(v.src, Slot(M, src.refs, src.sites, src.vpos))
                 v = AVal(v.type, true, -1, emptySet(), src.sites, v.nullable, false, v.pos)
             }
@@ -716,7 +771,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         bind(l, v, forceAlias = false, assign = true, scopes = op.scopes)
     }
 
+    /** The call whose fresh result a local was bound to last (a conduit that is moved on keeps the call, so that a result nobody binds is found). */
+    private val slotCalls = HashMap<Int, MExpr.Call>()
+
     private fun bind(l: MLocal, v: AVal, forceAlias: Boolean, assign: Boolean, scopes: Set<Int>) {
+        if (v.fresh && v.call != null) slotCalls[l.id] = v.call
         // arena objects assigned to a local that outlives the arena scope
         if (assign && v.sites.isNotEmpty()) {
             arenaEscape(v) { id -> id !in scopes }
@@ -749,6 +808,17 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             else -> Slot(B or (if (v.nullable) N else 0), emptySet(), emptySet(), v.pos)
         }
         put(l.id, ns)
+        if (ns.bits and B != 0 && reporting) l.aliasSeen = true
+        // (a coroutine body keeps the old behaviour: a default-allocated object lives and dies with its local, it cannot be handed on)
+        if (ns.bits and O != 0 && hasDefault(ns.sites) && !u.suspend) {
+            if (l.dropCapable) {
+                markDropOwner(l)
+                markOwned(ns.sites)
+            } else if (l.origin != null && v.fresh && v.call != null && reporting) {
+                // a parameter of an inline lambda (`make().let { it.v }`) only borrows the value: the call result is released at the end of the enclosing scope
+                v.call.ownedTemp = true
+            }
+        }
         v.initFields?.let { m -> for ((f, b) in m) st = st.withField(FKey(l.id, f), FieldSt(b, emptySet())) }
     }
 
@@ -851,7 +921,17 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                     // borrowed return of a fresh value: nobody owns it
                     discard(v)
                 } else if (u.isLambda) {
-                    if (v.fresh) escape(v)
+                    // the result of a lambda is a reference counted (+1) reference for whoever calls it: the allocation itself may be returned (it is
+                    // not released here), an owner of the default allocator is released when the lambda ends and cannot be handed out
+                    if (hasDefault(v.sites) && !v.fresh && v.src >= 0 && slot(v.src)?.let { it.bits and B == 0 } == true) {
+                        for (s in v.sites) if (s.kind == SK.Default) {
+                            diag(
+                                "M0204", s.pos, "no allocator for an escaping Strict value", "the owner `${name(v.src)}` is released when the lambda ends but is returned from it",
+                                "return the allocation itself (`{ Box(1) }`), or build the value in a function that returns it",
+                                slot = v.src,
+                            )
+                        }
+                    } else if (v.fresh && !hasDefault(v.sites)) discard(v)
                 }
             }
         }
@@ -863,6 +943,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (!l.type.tracked) continue
             val s = slot(l.id) ?: continue
             if (s.bits and O == 0) continue
+            // the end of the scope releases an object of the default allocator: an alias that outlives the owner is a use after free (7.1)
+            if (l.dropCapable && !u.suspend && hasDefault(s.sites) && s.bits and B == 0 && s.sites.none { it.kind.obligation }) {
+                put(l.id, Slot((s.bits and O.inv()) or F, s.refs, s.sites, s.vpos))
+                continue
+            }
             for (site in s.sites) {
                 if (!site.kind.obligation) continue
                 val where = site.pos
@@ -915,6 +1000,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             }
             val sites = sitesOf(c.id)
             when {
+                hasDefault(sites) && s.bits and B == 0 ->
+                    diag(
+                        "M0204", op.pos, "no allocator for an escaping Strict value", "the default allocator's object `${c.name}` cannot be moved into a thread",
+                        "allocate it with a `Heap` (`context(h: Heap)` or `@AllocatedBy(Heap::class)`)", slot = c.id,
+                    )
                 sites.any { it.kind == SK.Arena } ->
                     diag("M0105", op.pos, "arena object `${c.name}` cannot be moved into a thread", "captured here", "copy the data out of the arena first")
                 sites.any { it.kind == SK.Pool } ->

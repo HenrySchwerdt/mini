@@ -134,7 +134,7 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         if (ret == TUnit) inner += MirStmt.Break(label)
         out += MirStmt.Loop(label, inner)
     } else convertBody(f, ret, out)
-    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
+    return MirFunction(qualifiedName, cName, params, ret, withDrops(out), ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
 }
 
 private fun Ir2Mir.convertBody(f: IrFunction, ret: MirType, out: ArrayList<MirStmt>) {
@@ -231,6 +231,8 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 out += MirStmt.Declare(l, MirExpr.New(rc.ctor, listOf(cell ?: zeroOf(t)), rc.type))
             } else {
                 val l = MirLocal(localCounter++, s.name, t)
+                // the owner of an object of the default allocator (the checker's result): released when its scope ends
+                if (s.dropOwner && currentStrict && t.isRef) l.dropOwner = true
                 locals[s] = l
                 out += MirStmt.Declare(l, init)
             }
@@ -273,7 +275,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
         is IrGetObjectValue -> {
             if (s.classOwner.kotlinFqName != "kotlin.Unit") discard(value(s, out), out)
         }
-        is IrCall -> if (isNoWhenBranch(s)) out += MirStmt.Panic("NoWhenBranchMatchedException") else call(s, out).let { out += MirStmt.Eval(erasedChecks[it] ?: it) } // (a discarded result is not checked: the JVM casts where a value is used)
+        is IrCall -> if (isNoWhenBranch(s)) out += MirStmt.Panic("NoWhenBranchMatchedException") else if (s.ownedTemp) ownedCallStmt(s, out) else call(s, out).let { out += MirStmt.Eval(erasedChecks[it] ?: it) } // (a discarded result is not checked: the JVM casts where a value is used)
         is IrExpression -> discard(value(s, out), out)
         else -> unsupported(s, describe(s))
     }
@@ -423,8 +425,9 @@ internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirSt
     if (cls.modality == IrModality.ABSTRACT || cls.modality == IrModality.SEALED) unsupported(c, "construction of abstract class '${cls.name}'")
     val args = callArgs(c, k, out) + captureArgsFor(cls, c)
     if (cls.kotlinFqName == "mini.memory.Pool") return poolNew(c, cName, cls, args, out)
-    val (alloc, auto) = resolveAllocation(cls)
-    return MirExpr.New(cName, args, typeOf(cls), alloc, auto)
+    val (alloc, auto0) = resolveAllocation(cls)
+    // an object of the default allocator that has an owner (the checker's result) is no temporary of its own: the owner releases it
+    return MirExpr.New(cName, args, typeOf(cls), alloc, auto0 && !c.escapes)
 }
 
 /**

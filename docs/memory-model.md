@@ -78,10 +78,11 @@ Order; the first applicable rule wins:
    of `X`, if there is one. That is only the case for `Heap` and `Rc` (stateless);
    `Arena` and `Pool` always need a context.
 3. **Module default.** In **Managed** files the default is `Rc`. In **Strict** files
-   there is no default.
-4. No allocator found:
-   * The value does not escape: it lives on the stack, without obligations (2.1).
-   * The value escapes: error **M0204**.
+   the default is the **default allocator** (strict-5a, section "Default allocator"): an
+   object nobody chose an allocator for is allocated by it and released by the one who owns
+   it when that owner ends (or earlier by `free()`), see 2.2a.
+4. No allocator found: the default allocator of rule 3 (the old M0204 for an escaping
+   value is gone; M0204 remains for the few places the default allocator cannot be used, 7.15).
 
 Derived from this, which class has which behavior (determined by the file or
 class in which the **class is declared**, not by the caller):
@@ -89,7 +90,7 @@ class in which the **class is declared**, not by the caller):
 | Class declared in | nominal allocator without context |
 |---|---|
 | `Managed` file/class | `Rc` (no obligations) |
-| `Strict` file/class | none: stack or M0204 |
+| `Strict` file/class | the default allocator (2.2a): no obligation to release, the owner releases it |
 
 Constructing a Strict class in Managed code is allowed and uses rules 1 and 2,
 otherwise `Rc` (see 6.2 for the boundary).
@@ -106,8 +107,40 @@ fun buildList(n: Int): Node? {
 ```
 
 ```kotlin
-fun make(): @Owned Box = Box(1)     // Strict, escapes, no allocator: M0204
+fun make(): @Owned Box = Box(1)     // Strict, escapes, no allocator: the default allocator (2.2a); the caller owns the Box
 ```
+
+### 2.2a The default allocator (strict-5a)
+
+A constructor call in Strict code that rule 1 and rule 2 find no allocator for allocates from the **default allocator**.
+It is a *virtual* allocator, not an object you can name: its objects are reference counted with a count of exactly one, and that
+count belongs to the owner of the object. What the owner rules of section 5 say about any other allocator holds for it:
+
+* the object has one owner (a local variable, a parameter, an owning field, the result of a call that is returned),
+  it moves by the moves of 5.1 (`return`, `@Owned` argument, owning field, `move()`), borrowers are aliases;
+* `x.free()` releases the object at once; a later use is M0101, a second `free()` M0103, a use after a move M0104,
+  `free()` of a borrower M0107;
+* **the difference to `Heap`**: ending the owner without a `free()` is not a leak (no M0102): when the owner of a local variable
+  ends (end of its block, `return`, `break`, `continue`, an exception) the object is released, unless the local was moved or freed on the way.
+  The owner of a tree releases the tree: the owning fields of a released object are released with it (5.3).
+  A parameter marked `@Owned` keeps its explicit obligation (`free()` or pass it on): the contract of the callee is written in its signature;
+* an alias of the object that is used after its owner ended is a use after free (M0101, 5.1): `val b = run { val x = Box(1); x }` is rejected
+  (the result of an inline lambda that returns an owner declared inside it is a loan of a dead owner), `val b = Box(1).also { }` is
+  not (the receiver of `also`/`apply` moves to the result);
+* the value of a call whose result nobody binds (`println(make().v)`, `make()`) is released at the end of the enclosing block.
+
+*Not supported* (M0204, 7.15): a default-allocated object cannot be moved into a thread, owned across the suspension points of a coroutine body,
+or be the result of a lambda while it is owned by a local of that lambda (return the allocation itself, `{ Box(1) }`, which is a counted
+reference for the caller). Code that needs one of these chooses `Heap` (or any `ThreadSafe` allocator) with `context(h: Heap)` or `@AllocatedBy`.
+
+*Soundness.* The checker (5.2) proves who owns an object at every point. The generated code follows it exactly: the checker hands back
+which locals own such an object, which reads move an owner out of its local, which allocation sites have an owner and which call
+results nobody binds. A read that moves an owner out sets the local to null, `free()` sets it to null after the release, and every
+scope that declares an owning local releases it (`mk_discard`: nothing for null, arena objects and static objects) on all ways out, so
+no object is released twice and none is kept alive by a forgotten owner. Because the allocation is a counted one, a missed release is a
+leak at worst, never a use after free. A local that holds both owned and borrowed values (`var x = Box(1); x = other`) and an owner captured by
+a closure's `var` cell are not released (they leak, with the old behaviour of the code generation); a program written for the default
+allocator rarely has them.
 
 A nominal allocator with the trait `Deallocating` creates the obligation "free exactly
 once or pass on" (sections 3 and 5). A `Scoped` allocator creates the obligation
@@ -924,14 +957,19 @@ an arena (heap + `free`). Corpus: `arena_owns_string`, `arena_owns_heap`, `arena
 
 ### 7.15 M0204 Strict: allocation without a selectable allocator (error)
 
-**Rule:** 2.2, rule 4 (plan: "needs Managed fallback"). A Strict value escapes, and
-no context and no `@AllocatedBy` default instance is available.
+**Rule:** 2.2a. Since strict-5a an escaping allocation without a visible allocator is *accepted* (the default allocator), so M0204 is
+left for what the default allocator cannot do:
+
+* a default-allocated object (or the owner of one) is moved into a thread (`Thread { b.v }`, `thread { }`): a thread needs a `ThreadSafe` allocator;
+* an owner of a coroutine body (a `suspend` function or lambda) escapes: the state machine keeps its locals across suspension points;
+* an owner local of a lambda is returned from the lambda (the allocation itself may be returned).
 
 ```kotlin
-fun make(): @Owned Box = Box(1)      // error[M0204]: no allocator for an escaping Strict value
+val f: () -> Box = { val b = Box(1); b }   // error[M0204]: the owner `b` is released when the lambda ends but is returned from it
+val f: () -> Box = { Box(1) }              // ok: the result is a counted reference for the caller
 ```
-Fixed: `context(h: Heap)` on `make` or `@AllocatedBy(Heap::class)` on `Box`. Corpus:
-`no_allocator_escape`.
+Fixed: `context(h: Heap)` on the function or `@AllocatedBy(Heap::class)` on the class, or return the allocation itself. Corpus:
+`s215_default_into_thread`, `s216_default_returned_from_lambda`.
 
 ### 7.16 M0205 Allocation in `@NoAlloc`
 
@@ -991,7 +1029,7 @@ Lints never change whether a program is accepted. `-Werror` turns warnings into 
 | M0202 | warning | loop allocation in arena |
 | M0203 | warning | large stack object |
 | M0115 | error | arena object owns a reference of another allocator |
-| M0204 | error | Strict: no allocator selectable |
+| M0204 | error | Strict: the default allocator cannot be used here (thread, coroutine, lambda result) |
 | M0205 | error (`@NoAlloc`) / warning | allocation in `@NoAlloc` |
 | M0206 | error | object leaves the thread, allocator not ThreadSafe |
 
@@ -1439,6 +1477,47 @@ M0110). Two things block it, both measured under ASan:
 
 Neither piece was shipped: accepting the moves without (2) would trade a conservative rejection for a use after free. The collection
 tests (`s44`, `s45`, `s79`, `s147`) stay REJECT M0110.
+
+## Round strict-5a: the default allocator
+
+The largest group of programs the coverage measurement rejected (71 of 121 rejected programs, `a`: "escaping allocation without allocator") are
+programs that are right in every other respect: an ordinary class, built in a function and handed to the caller. Strict asked for an
+`@AllocatedBy` or a `context(h: Heap)` for every such class. Round 5a gives every Strict class that has neither one **an implicit default
+allocator** (2.2a): the object may leave the function, it belongs to whoever holds it, and it is released when that owner ends or by `free()`.
+
+**What the checker does.** `SK.Default` replaces the old stack site: an allocation without allocator has no release obligation (no M0102), and the
+moves of 5.1 apply as before (`return`, `@Owned` argument, owning field, `move()`); the escape that was M0204 is an ordinary move. The slots of owners of such
+objects have no leak obligation, so the end of their scope *frees* them for the analysis: an alias that outlives the owner is a use after free
+(M0101; `val b = run { val x = Box(1); x }` was accepted, and a use after free at run time, before this round, see "Pre-existing hole" below). Three places
+stay M0204: a thread (`Thread { b.v }`), a coroutine body, and the result of a lambda that is an owner of that lambda.
+A call whose owned result has no visible allocator (`make()`) yields a `Default` site, too (it was an owner with unknown allocator, which had to be freed).
+`if (c) Box(1) else other` (an owner on one path, a borrowed value on the other) cannot be released by anybody: M0109 (before, silently accepted and a use after free).
+
+**What the code generation does.** The object is allocated from the reference counting allocator with a count of one: the count of its owner.
+The checker hands its decisions back on the IR (`MemoryFacts.publishFlags`: `IrVariable.dropOwner`, `IrGetValue.movedOwner`, `IrConstructorCall.escapes`,
+`IrCall.ownedTemp`), and `Ir2MirDrops.kt` turns them into code:
+
+* a local that owns such an object is released with `mk_discard` when its scope ends, on every way out (end of the block, `return`, `break`, `continue`, an
+  exception): the rest of the block is wrapped in a `try` with a catch-all that releases and rethrows, `return`/`break`/`continue` release first;
+  assigning to the local releases the old value;
+* a read that moves the owner out of a local (the checker's moves) copies the pointer and **sets the local to null**, so a moved owner is never
+  released twice; `free()` of such a local (or of an `@Owned` parameter) is `mk_free_owned` (release the owner's count, or free) and then null;
+* an allocation with an owner is a plain counted allocation; an allocation without one (a temporary: `Box(1).v`) is released by the emitter after its
+  statement as before; the owned result of a call nobody binds is kept in a temporary that the enclosing scope releases.
+
+*Why this is sound.* The generated code releases exactly what the checker says is still owned when the scope ends. An object whose owner the
+checker lost track of (a local that is both an owner and an alias of another owner, a `var` captured by a closure) is not released: a leak, never a
+use after free. The release of an object runs the dispose of its class, which releases its owning fields with `mk_free_owned` (5.3), so a tree is
+released from its root.
+
+**Pre-existing hole found while doing this.** `val b = run { val x = Box(1); x }` and `val d = maybe() ?: Box(-1)` were accepted and read freed memory (the
+temporary that holds the object is released with its block, the alias is not an owner). Both are fixed: the result of `run`/`let` that is an owner of
+the lambda is a loan of a dead owner (M0101); the result of `also`/`apply` moves the receiver to the caller; the left side of an elvis hands its owner to the
+result.
+
+Corpus `s200`-`s209` (ACCEPT, built, run and leak-checked under AddressSanitizer + LeakSanitizer on the C and the LLVM backend) and `s210`-`s223`
+(REJECT: use after free, double free, use after move, use of an alias after the owner's scope or free, free of a borrower, thread, lambda result, overwritten
+field, the leak of an `@Owned` parameter and of a `Heap` object that stays reported).
 
 ## Cycles: the cycle collector of Managed mode
 
