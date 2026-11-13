@@ -1530,6 +1530,13 @@ the linear-memory stack a frame address would measure (and its size is unknown),
 nesting of armed releases instead and queues beyond 200 levels; there is only one thread there. `release_deep` runs on every backend
 including wasm32; `release_deep_threads` (the same in worker threads) is `.nowasm`.
 
+Under ThreadSanitizer the floor is a fixed 256 KB below the first frame instead of the middle of the stack. TSan keeps a shadow stack of every
+call and replays all of it into its event trace each time a trace part fills up, so a dispose chain nested over 4 MB of stack (tens of
+thousands of frames, larger than usual under the instrumentation) was quadratic (minutes) and, with three threads doing it, crashed
+inside clang's TSan runtime (SEGV in `TracePartAlloc`; `tsan::release_deep_threads` in CI, clang 18; it passed with gcc's TSan). It is the
+instrumentation that cannot follow that depth, not a defect in the release code (the same program is clean under ASan/UBSan and without
+sanitizers), and the test is unchanged: the chains are still 200000 deep, they are queued earlier. The e2e `tsan` suite passes 20 of 20
+runs of the test, also with four runs at once.
 ### Measured overhead
 
 Reference: the same benchmark compiled by `origin/main` (no collector), runtime built the same way (-O1, like `libminirt.a`). The
