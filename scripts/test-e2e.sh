@@ -122,7 +122,7 @@ build_rt() { # <dir> <cc> <flags...>
     find "$ROOT/runtime/src" -maxdepth 1 -name '*.c' -print0 |
         xargs -0 -P "$JOBS" /bin/sh -c '
             for f do
-                "$RT_BUILD_CC" -std=c17 -O1 -w -I "$INCLUDE" $RT_BUILD_FLAGS -c "$f" -o "$RT_BUILD_DIR/$(basename "$f" .c).o" || exit
+                "$RT_BUILD_CC" -std=c17 -O1 -Wall -Wextra -Werror -I "$INCLUDE" $RT_BUILD_FLAGS -c "$f" -o "$RT_BUILD_DIR/$(basename "$f" .c).o" || exit
             done
         ' sh
 }

@@ -5,7 +5,8 @@
 #
 # harness: utf8 numfmt (C: runtime functions) and parse numstr format regex text (mini targets of targets/*.kt, compiled to C with minic-native
 # against lib/stdlib.mlib and linked with the runtime). All of it is built with -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined,
-# the runtime included. Binaries: DIR/fuzz_NAME. Needs clang with libFuzzer (compiler-rt).
+# the runtime included. Binaries: DIR/fuzz_NAME. Needs clang with libFuzzer (compiler-rt). FUZZ_STDLIB=source compiles the targets against the
+# stdlib sources instead of lib/stdlib.mlib.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -57,7 +58,11 @@ for h in "${WANT[@]}"; do
         utf8|numfmt)
             "$CC" $FLAGS -fsanitize=fuzzer -Wall -Wextra -Werror -I "$INC" -I "$RTSRC" "$HERE/fuzz_$h.c" "$OUT"/rt/*.o -o "$OUT/fuzz_$h" -lm -lpthread ;;
         parse|numstr|format|regex|text)
-            "$MINIC" -o "$OUT/$h.c" "$HERE/targets/$h.kt" --lib "$NATIVE/lib/stdlib.mlib" --compiler-id "$(cat "$NATIVE/VERSION")"
+            if [ "${FUZZ_STDLIB:-mlib}" = source ]; then # the checkout's stdlib sources (after a stdlib change, without rebuilding stdlib.mlib)
+                "$MINIC" -o "$OUT/$h.c" "$HERE/targets/$h.kt" --stdlib $(find "$ROOT/stdlib" -name '*.kt' | LC_ALL=C sort)
+            else
+                "$MINIC" -o "$OUT/$h.c" "$HERE/targets/$h.kt" --lib "$NATIVE/lib/stdlib.mlib" --compiler-id "$(cat "$NATIVE/VERSION")"
+            fi
             fn="$(grep -o -m1 'kt_fuzz[A-Za-z]*_[A-Za-z0-9_]*' "$OUT/$h.c" | head -1)"
             "$CC" $FLAGS -fsanitize=fuzzer -w -I "$INC" -I "$RTSRC" -I "$OUT" -DFZ_GEN="\"$h.c\"" -DFZ_FN="$fn" "$HERE/fuzz_kt.c" "$OUT"/rt/*.o -o "$OUT/fuzz_$h" -lm -lpthread ;;
         *) echo "build.sh: unknown harness $h" >&2; exit 2 ;;
