@@ -233,6 +233,17 @@ jobs:
         env:
           CC: clang
         run: scripts/test-e2e.sh --suite projects-leak
+      # libFuzzer smoke run (docs/fuzzing.md, "libFuzzer harnesses"): the stored regression inputs, then every harness for 90 seconds (3 at a time)
+      # over the runtime and the stdlib with ASan + UBSan. A crash is left as a crash-* file in the log of the step.
+      - name: libFuzzer smoke run
+        if: matrix.shard == 'e2e' && runner.os == 'Linux'
+        timeout-minutes: 20
+        env:
+          CC: clang
+        run: |
+          tools/fuzz/libfuzzer/build.sh --out "$RUNNER_TEMP/libfuzzer"
+          tools/fuzz/libfuzzer/run.sh --out "$RUNNER_TEMP/libfuzzer" --regress
+          tools/fuzz/libfuzzer/run.sh --out "$RUNNER_TEMP/libfuzzer" --time 90 --jobs 3
       - name: GNU GCC strict FP regression (C backend)
         if: matrix.shard == 'e2e' && runner.os == 'Linux'
         env:

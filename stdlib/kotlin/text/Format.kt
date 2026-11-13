@@ -307,7 +307,7 @@ private fun formatArg(sb: StringBuilder, arg: Any?, sp: Spec) {
                 var prefix = ""
                 if (sp.alt) prefix = if (conv == 'o') "0" else if (conv == 'X') "0X" else "0x"
                 if (sp.zero && sp.width > 0) {
-                    while (prefix.length + digits.length < sp.width) digits = "0" + digits
+                    if (prefix.length + digits.length < sp.width) digits = zeros(sp.width - prefix.length - digits.length) + digits
                 }
                 pad(sb, prefix + digits, sp)
             }
@@ -383,7 +383,7 @@ private fun finishNumber(sb: StringBuilder, negative: Boolean, magnitude: String
     }
     var body = magnitude
     if (sp.zero && sp.width > 0) {
-        while (prefix.length + body.length + suffix.length < sp.width) body = "0" + body
+        if (prefix.length + body.length + suffix.length < sp.width) body = zeros(sp.width - prefix.length - body.length - suffix.length) + body
     }
     pad(sb, prefix + body + suffix, sp)
 }
