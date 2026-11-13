@@ -832,12 +832,20 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun doReturn(op: Op.Return) {
         val e = op.value
         if (e != null) {
-            val v = eval(e, op.env)
+            val v0 = eval(e, op.env)
+            // an anonymous object has no position of its own: report at the `return`
+            val at = if (op.pos.line > 0) op.pos else u.fn?.pos ?: op.pos
+            val v = if (v0.pos.line > 0) v0 else AVal(v0.type, v0.fresh, v0.src, v0.refs, v0.sites, v0.nullable, v0.isNull, at, v0.strLit, v0.initFields, v0.caps, v0.child)
             if (v.sites.isNotEmpty()) arenaEscape(v) { true }
             // a closure may be returned while it only borrows parameters (the caller learns that from the summary, see FnSummary.carries)
-            if (!v.tracked && v.caps && v.refs.any { r -> slot(r)?.let { it.bits and B == 0 } != false }) escapeClosure(v, "is returned")
+            // ... unless the declared result is a Strict type: the caller owns such a value (and frees it), a closure object that only borrows
+            // its receiver or a parameter cannot be handed over as that owner (`fun reader(): Reader = object : Reader { ... n ... }`)
+            if (!v.tracked && v.caps && v.refs.isNotEmpty() && (u.retTracked && !u.isLambda || v.refs.any { r -> slot(r)?.let { it.bits and B == 0 } != false })) escapeClosure(v, "is returned" + if (u.retTracked && !u.isLambda) " as owned" else "")
             if (v.tracked) {
-                if (u.retOwned && !u.isLambda) {
+                if (v.caps && v.refs.isNotEmpty() && !u.isLambda && !u.retOwned) {
+                    // an instance of an anonymous / local class that borrows its receiver or a parameter, returned as a value of a Strict type
+                    escapeClosure(v, "is returned as owned")
+                } else if (u.retOwned && !u.isLambda) {
                     takeOwnership(v, "returned as owned")
                 } else if (v.fresh && !u.isLambda) {
                     // borrowed return of a fresh value: nobody owns it

@@ -48,6 +48,17 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     val failures = ArrayList<String>()
     val strictFailures = ArrayList<String>()
 
+    /**
+     * The return type the checker works with: for a suspend function whose body is kept as written (no suspension point, or [IrFunction.memoryBody])
+     * the declared one, because the lowered type is `Any?` (the value or COROUTINE_SUSPENDED) and carries no ownership.
+     */
+    private fun declaredReturnType(f: IrFunction): Type {
+        val orig = f.origReturnType
+        if (!f.isSuspend || orig == null) return f.returnType
+        if (f.body != null && f.memoryReturnsDeclared) return orig
+        return f.returnType
+    }
+
     /** The body the checker reasons about: a suspend function as written (before the state machine), else its body. */
     private fun memoryBodyOf(f: IrFunction): IrBody? = f.memoryBody ?: f.body
 
@@ -443,14 +454,15 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             }
         }
         val name = f.name
+        val retType = declaredReturnType(f)
         var retAnnot = annotOf(f.annotations, f.returnTypeAnnotations)
-        if (interop && mapType(f.returnType).tracked) retAnnot = MAnnot(null, pos(f))
+        if (interop && mapType(retType).tracked) retAnnot = MAnnot(null, pos(f))
         // a result of generic type (`fun <T> first(xs: Box<T>): T`) is a reference some argument keeps alive, not a fresh allocation: a loan
-        if (retAnnot.owned == null && retAnnot.borrowed == null && f.returnType is TypeParamType) retAnnot = MAnnot(null, pos(f))
+        if (retAnnot.owned == null && retAnnot.borrowed == null && retType is TypeParamType) retAnnot = MAnnot(null, pos(f))
         // a Strict method that only ever returns its own receiver (`fun add(x: Int): Builder { ...; return this }`, `operator fun inc() = this`)
         // returns a loan of the receiver: the caller already owns the object, a second owner would be a double free
         if (retAnnot.owned == null && retAnnot.borrowed == null && mode == MemMode.Strict && cls != null && f is IrSimpleFunction &&
-            f.modality == IrModality.FINAL && f.overridden.isEmpty() && mapType(f.returnType).tracked && returnsOnlyReceiver(f)
+            f.modality == IrModality.FINAL && f.overridden.isEmpty() && mapType(retType).tracked && returnsOnlyReceiver(f)
         ) retAnnot = MAnnot(null, pos(f))
         val parent = f.parent
         val fq = if (parent is IrFile) parent.packageFqName + "." + name
@@ -459,7 +471,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             qname = fq,
             mode = mode,
             params = params,
-            ret = MReturn(if (ctor != null) ctorType(ctor) else mapType(f.returnType), retAnnot),
+            ret = MReturn(if (ctor != null) ctorType(ctor) else mapType(retType), retAnnot),
             receiver = receiver,
             noAlloc = hasAnnotation(f.annotations, NO_ALLOC),
             external = external,
