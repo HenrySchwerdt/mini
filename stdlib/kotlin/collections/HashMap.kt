@@ -372,6 +372,21 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return null
     }
 
+    /** LinkedHashMap in access order: the entry of [key] becomes the youngest */
+    @Suppress("UNCHECKED_CAST")
+    internal fun moveToEnd(key: Any?) {
+        val e = findNode(key) ?: return
+        val n = e as LinkedNode<K, V>
+        if (n === tail) return
+        unlink(n)
+        val t = tail
+        if (t == null) head = n else {
+            n.before = t
+            t.after = n
+        }
+        tail = n
+    }
+
     private fun unlink(n: HashNode<K, V>) {
         val e = n as LinkedNode<K, V>
         val b = e.before
@@ -563,5 +578,37 @@ public open class LinkedHashMap<K, V> : HashMap<K, V> {
 
     public constructor(original: Map<out K, V>) : super(true, 16) {
         putAll(original)
+    }
+
+    private var accessOrder: Boolean = false
+
+    /** `LinkedHashMap(16, 0.75f, true)`: iteration order is the order of access (the least recently used entry first) */
+    public constructor(initialCapacity: Int, loadFactor: Float, accessOrder: Boolean) : this(initialCapacity, loadFactor) {
+        this.accessOrder = accessOrder
+    }
+
+    /** Called after an insertion of a new key with the eldest entry: true removes it (the LRU cache idiom). */
+    protected open fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean = false
+
+    override fun get(key: K): V? {
+        val v = super.get(key)
+        if (accessOrder && (v != null || containsKey(key))) moveToEnd(key)
+        return v
+    }
+
+    override fun put(key: K, value: V): V? {
+        val before = size
+        val old = super.put(key, value)
+        if (size > before) {
+            val eldest = head
+            if (eldest != null && removeEldestEntry(eldest)) remove(eldest.key)
+        } else if (accessOrder) {
+            moveToEnd(key)
+        }
+        return old
+    }
+
+    override fun putAll(from: Map<out K, V>) {
+        for (e in from.entries) put(e.key, e.value)
     }
 }
