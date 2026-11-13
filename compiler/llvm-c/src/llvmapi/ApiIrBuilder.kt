@@ -390,6 +390,13 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
         if (inbounds) ApiVal(LLVMBuildInBoundsGEP2(builder, tI8, base.ref, idx, 1, nm)) else ApiVal(LLVMBuildGEP2(builder, tI8, base.ref, idx, 1, nm))
     }
 
+    override fun gepElem(base: ApiVal, elem: IrType, index: ApiVal, name: String): ApiVal = memScoped {
+        val idx = allocArray<COpaquePointerVar>(1)
+        idx[0] = index.ref
+        val nm = if (nameOrEmpty(name)) name.cstr.ptr else emptyName
+        ApiVal(LLVMBuildInBoundsGEP2(builder, ty(elem), base.ref, idx, 1, nm))
+    }
+
     private fun binRaw(op: IrOp, a: COpaquePointer, b: COpaquePointer, nm: CPointer<ByteVar>): COpaquePointer = when (op) {
         IrOp.ADD -> LLVMBuildAdd(builder, a, b, nm)
         IrOp.SUB -> LLVMBuildSub(builder, a, b, nm)
