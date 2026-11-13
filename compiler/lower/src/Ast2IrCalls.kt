@@ -65,6 +65,8 @@ fun Ast2Ir.dotExpr(e: DotExpr): IrExpression {
     val r = rec(e) ?: fail(e, "dot expression without record")
     if (sel is CallExpr) {
         val info = r.call ?: fail(e, "call without resolution")
+        val folded = foldTrim(e, sel, info)
+        if (folded != null) return folded
         return callWithInfo(sel, info, irType(r.type), e)
     }
     val cref = unparen(e.receiver)
@@ -933,4 +935,22 @@ fun Ast2Ir.classExtends(c: ClassSym, base: ClassSym, depth: Int): Boolean {
         if (classExtends(sc, base, depth + 1)) return true
     }
     return false
+}
+
+/**
+ * `"""...""".trimIndent()` / `.trimMargin()` of a literal without templates is a constant (K2 folds it at compile time, so two
+ * evaluations give the same string instance); null when [e] is anything else.
+ */
+fun Ast2Ir.foldTrim(e: DotExpr, sel: CallExpr, info: CallInfo): IrExpression? {
+    val callee = sel.callee
+    if (callee !is NameExpr || e.safe) return null
+    if (callee.name != "trimIndent" && callee.name != "trimMargin") return null
+    val args = sel.args
+    if ((args != null && args.isNotEmpty()) || sel.lambdas.isNotEmpty()) return null
+    val fn = info.fn
+    if (fn.owner != null || fn.file?.pkg != "kotlin.text" || fn.receiver?.classFqName != "kotlin.String") return null
+    val recv = unparen(e.receiver)
+    if (recv !is StringExpr || !recv.raw) return null
+    val v = evalConst(recv) as? String ?: return null
+    return IrConst(irType(sema.stringType), if (callee.name == "trimIndent") v.trimIndent() else v.trimMargin())
 }
