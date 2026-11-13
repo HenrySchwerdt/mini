@@ -40,6 +40,12 @@ static size_t roots_n, roots_cap;
 static size_t threshold = MIN_THRESHOLD;
 
 static size_t alloc_limit = MIN_ALLOC_LIMIT;
+/* the allocation volume since the last collection: the calling thread's share (plain adds of the allocation paths) and the global counter */
+#if MK_SMALL_ALLOC
+static inline size_t cycles_volume(void) { return mk_small_cache.cycles_bytes + __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED); }
+#else
+static inline size_t cycles_volume(void) { return __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED); }
+#endif
 static uint64_t work_bytes;
 static int trace_enabled = -1;
 static unsigned backoff = 1; /* grows while collections find (almost) nothing to free, back to 1 when they do */
@@ -318,6 +324,9 @@ size_t mk_cycles_collect(void) {
     uint64_t live_bytes = work_bytes > garbage_bytes ? work_bytes - garbage_bytes : 0;
     alloc_limit = (live_bytes * 3 > MIN_ALLOC_LIMIT ? (size_t)(live_bytes * 3) : MIN_ALLOC_LIMIT) * backoff;
     __atomic_store_n(&mk_cycles_alloc_bytes, 0, __ATOMIC_RELAXED);
+#if MK_SMALL_ALLOC
+    mk_small_cache.cycles_bytes = 0;
+#endif
     if (trace_enabled < 0) { const char *e = getenv("MINI_GC_TRACE"); trace_enabled = e != NULL && e[0] != '\0' && e[0] != '0'; }
     if (trace_enabled) fprintf(stderr, "[cycles] roots=%zu visited=%llu (%llu bytes survive) freed=%zu next: %zu roots or %zu bytes\n", n, (unsigned long long)work, (unsigned long long)live_bytes, freed_now, threshold, alloc_limit);
     in_collect = false;
@@ -354,7 +363,7 @@ static void cycles_candidate(MkObject *o) {
     if (threaded) roots_lock_release();
     /* (a collection needs that no Kotlin thread runs: test that first, so the buffer counters are read only when nobody can change them) */
     if (__atomic_load_n(&mk_threads_running, __ATOMIC_ACQUIRE) == 0 &&
-        ((roots_n >= threshold && backoff == 1) || __atomic_load_n(&mk_cycles_alloc_bytes, __ATOMIC_RELAXED) >= alloc_limit))
+        ((roots_n >= threshold && backoff == 1) || cycles_volume() >= alloc_limit))
         mk_cycles_collect();
 }
 
