@@ -209,6 +209,59 @@ class LlvmEmitterTest {
         }
     }
 
+    private fun intArrayReader(): MirFunction {
+        val arr = MirLocal(0, "a", TObject("kotlin.IntArray", "mk_IntArray", false))
+        val i = MirLocal(1, "i", TInt)
+        return MirFunction(
+            "get", "kt_get", listOf(arr, i), TInt,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_array_get_int", listOf(MirExpr.Local(arr), MirExpr.Local(i)), TInt))),
+        )
+    }
+
+    @Test
+    fun arrayElementsAreTypedInboundsGeps() {
+        val body = LlvmEmitter.emit(module(intArrayReader())).substringAfter("define i32 @kt_get(").substringBefore("\n}")
+        assertTrue("getelementptr inbounds i32, ptr" in body, body)
+        assertTrue("sext i32" in body, body)
+        assertFalse("mul i64" in body, "no byte-offset arithmetic\n$body")
+        CEmitter.typedArrayGep = false // -Xno-typed-array-gep
+        try {
+            val off = LlvmEmitter.emit(module(intArrayReader())).substringAfter("define i32 @kt_get(").substringBefore("\n}")
+            assertFalse("getelementptr inbounds i32," in off, off)
+            assertTrue("mul i64" in off, off)
+        } finally {
+            CEmitter.typedArrayGep = true
+        }
+    }
+
+    private fun countingLoop(): MirFunction {
+        val n = MirLocal(0, "n", TInt)
+        val i = MirLocal(1, "i", TInt)
+        val s = MirLocal(2, "s", TInt)
+        val sum = MirStmt.Assign(s, MirExpr.Binary(BinaryOp.Add, MirExpr.Local(s), MirExpr.Local(i)))
+        return MirFunction(
+            "sum", "kt_sum", listOf(n), TInt,
+            listOf(
+                MirStmt.Declare(s, MirExpr.IntConst(0)),
+                MirStmt.ForRange(MirLabel(1), i, MirExpr.IntConst(0), MirExpr.Local(n), null, true, false, listOf(sum)),
+                MirStmt.Return(MirExpr.Local(s)),
+            ),
+        )
+    }
+
+    @Test
+    fun plainForLoopTestsInTheHeaderAndSwitchRestoresTheGuard() {
+        val body = LlvmEmitter.emit(module(countingLoop())).substringAfter("define i32 @kt_sum(").substringBefore("\n}")
+        assertTrue("frhdr" in body, body)
+        CEmitter.forHeaderTest = false // -Xno-for-header-test
+        try {
+            val off = LlvmEmitter.emit(module(countingLoop())).substringAfter("define i32 @kt_sum(").substringBefore("\n}")
+            assertFalse("frhdr" in off, off)
+        } finally {
+            CEmitter.forHeaderTest = true
+        }
+    }
+
     @Test
     fun stringCharAtEvaluatesArgumentsOnceInSourceOrder() {
         val indexArg = MirFunction("indexArg", "kt_index_arg", emptyList(), TInt, listOf(MirStmt.Return(MirExpr.IntConst(0))))

@@ -30,6 +30,12 @@ object CEmitter {
     /** `-Xno-str-fail-noreturn` clears it: the failing paths of the LLVM backend's inline `String.length` / `String[i]` merge with the fast path again (instead of ending in `unreachable`). */
     var strFailNoReturn = true
 
+    /** `-Xno-for-header-test` clears it: the LLVM backend's plain `for (i in a until b)` is a guarded loop with the test at the bottom again (instead of the test in the loop header). */
+    var forHeaderTest = true
+
+    /** `-Xno-typed-array-gep` clears it: the LLVM backend addresses array elements with a byte offset (`gep i8, base, idx * size + header`) instead of a typed `gep inbounds <elem>, elems, idx`. */
+    var typedArrayGep = true
+
     private const val LINE_RESET = "#mk-line-reset"
 
     /**

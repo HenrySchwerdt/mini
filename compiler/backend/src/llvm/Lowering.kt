@@ -1770,6 +1770,11 @@ private class Lowering<V : Any, B : Any>(
         val last = expr(s.end)
         val bodyL = newLabel("frbody")
         val advL = newLabel("fradv")
+        // the test sits in the loop header, as in the C backend's `for (; cur < last; cur++)`: the body is dominated by `cur < last`, so the
+        // value-range passes that run before the loop rotation (CorrelatedValuePropagation, InstCombine) know `0 <= cur < last` in the body and prove
+        // e.g. `(i + j) * (i + j + 1) / 2` non-negative (a shift instead of the signed division sequence). `-Xno-for-header-test` keeps the guard + bottom test.
+        val hdrL = if (CEmitter.forHeaderTest) newLabel("frhdr") else null
+        if (hdrL != null) { br(hdrL); startBlock(hdrL) }
         condBr(icmp(IrCmp.SLT, load(t, curSlot), last), bodyL, namedBlock(brk(s.label)))
         startBlock(bodyL)
         store(load(t, curSlot), slot(s.variable))
@@ -1779,7 +1784,7 @@ private class Lowering<V : Any, B : Any>(
         val cur = load(t, curSlot)
         val nv = b.bin(IrOp.ADDNSW, cur, if (t === TLong) b.constInt(IrType.I64, 1L) else c32(1), "")
         store(nv, curSlot)
-        condBr(icmp(IrCmp.SLT, nv, last), bodyL, namedBlock(brk(s.label)))
+        if (hdrL != null) br(hdrL) else condBr(icmp(IrCmp.SLT, nv, last), bodyL, namedBlock(brk(s.label)))
         startBlock(namedBlock(brk(s.label)))
     }
 
@@ -2104,8 +2109,9 @@ private class Lowering<V : Any, B : Any>(
         startBlock(okL)
         openBlock()
         val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
-        val off = b.bin(IrOp.ADD, b.bin(IrOp.MUL, b.cast(IrCast.SEXT, idx, IrType.I64, ""), c64(pb), ""), c64(elemOff), "")
-        val p = b.gep(arr, off, true, "")
+        val wideIdx = b.cast(IrCast.SEXT, idx, IrType.I64, "")
+        val p = if (CEmitter.typedArrayGep) b.gepElem(b.gep(arr, c64(elemOff), true, ""), IrType.PTR, wideIdx, "")
+        else b.gep(arr, b.bin(IrOp.ADD, b.bin(IrOp.MUL, wideIdx, c64(pb), ""), c64(elemOff), ""), true, "")
         if (n == "mk_ref_array_get" || n == "mk_ref_array_get_b") {
             val v = b.loadTagged(IrType.PTR, p, "array obj", "")
             if (n == "mk_ref_array_get" && !borrowedRead) retain(v)
@@ -2250,8 +2256,18 @@ private class Lowering<V : Any, B : Any>(
             startBlock(okL)
             openBlock()
         }
-        val off = b.bin(IrOp.ADD, b.bin(IrOp.MUL, b.cast(IrCast.SEXT, idx, IrType.I64, ""), c64(elemSize), ""), c64(elemOff), "")
-        val p = b.gep(arr, off, true, "")
+        val wideIdx = b.cast(IrCast.SEXT, idx, IrType.I64, "")
+        val p = if (CEmitter.typedArrayGep) {
+            // `&elems[idx]` as a typed inbounds GEP from the element base (what C's `MK_ARRAY_ELEMS(T, a)[i]` is): the optimizer knows the byte offset does not
+            // wrap, so scalar evolution and the unroller / vectorizer see the access as an affine function of `idx` (fannkuch: the flip loop is unrolled)
+            val elemTy = when (kind) {
+                "int" -> IrType.I32; "long" -> IrType.I64; "double" -> IrType.DOUBLE; "float" -> IrType.FLOAT
+                "byte", "boolean" -> IrType.I8; "short", "char" -> IrType.I16; else -> IrType.PTR
+            }
+            b.gepElem(b.gep(arr, c64(elemOff), true, ""), elemTy, wideIdx, "")
+        } else {
+            b.gep(arr, b.bin(IrOp.ADD, b.bin(IrOp.MUL, wideIdx, c64(elemSize), ""), c64(elemOff), ""), true, "")
+        }
         var result: V = b.none
         val tag = "array " + kind
         if (isGet) {

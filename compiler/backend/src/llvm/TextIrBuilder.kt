@@ -331,6 +331,12 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         return TextVal(r, "ptr")
     }
 
+    override fun gepElem(base: TextVal, elem: IrType, index: TextVal, name: String): TextVal {
+        val r = result(name)
+        ins(r + " = getelementptr inbounds " + tyText(elem) + ", ptr " + base.text + ", i64 " + index.text)
+        return TextVal(r, "ptr")
+    }
+
     private fun opText(op: IrOp): String = when (op) {
         IrOp.ADD -> "add"
         IrOp.ADDNSW -> "add nsw"
