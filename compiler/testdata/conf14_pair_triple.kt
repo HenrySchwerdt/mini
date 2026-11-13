@@ -1,0 +1,30 @@
+fun main() {
+    val p = 1 to "a"
+    println(p)
+    println(p.first to p.second)
+    println(p.toList())
+    println(p.copy(first = 2))
+    val t = Triple(1, "b", 2.0)
+    println(t)
+    println(t.toList())
+    println(t.copy(second = "z").second)
+    val (a, b, c) = t
+    println("$a$b$c")
+    println(listOf(1 to 2, 3 to 4).map { it.first + it.second })
+    println(listOf("a" to 1, "b" to 2).toMap())
+    println(mapOf("a" to 1).toList())
+    println(Pair(1, 2) == (1 to 2))
+    println((1 to 2).hashCode() == Pair(1, 2).hashCode())
+    println(listOf(3 to "c", 1 to "a").sortedBy { it.first })
+    println(listOf(3 to "c", 1 to "a").minByOrNull { it.first })
+    println((1 to (2 to 3)).second.second)
+    println(Pair("k", listOf(1)).second.size)
+    println(mapOf(1 to "x", 2 to "y").entries.map { it.key to it.value })
+    println(mapOf(1 to "x").entries.first().toPair())
+    val swapped = p.let { it.second to it.first }
+    println(swapped)
+    println(listOf(1, 2, 3).zip(listOf(4, 5, 6)).map { (x, y) -> x * y })
+    println(listOf(1, 2, 3).withIndex().map { it.index to it.value })
+    println(Pair(null, 1))
+    println(Triple(1, 2, 3).toString().length)
+}

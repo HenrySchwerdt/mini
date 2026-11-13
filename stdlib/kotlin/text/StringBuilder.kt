@@ -21,7 +21,7 @@ import mini.internal.sbToString
  * know it; length / get / subSequence implement the interface. Values of that type are a String or an object of a class that
  * implements the interface (runtime mk_cs_*). Everything else follows kotlin.text.StringBuilder.
  */
-public class StringBuilder : Appendable {
+public class StringBuilder : Appendable, Comparable<StringBuilder> {
     private val buf: Any = sbNew()
 
     public constructor()
@@ -38,12 +38,12 @@ public class StringBuilder : Appendable {
     public override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = substring(startIndex, endIndex)
 
     public override operator fun get(index: Int): Char {
-        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfLength(index, length)
         return sbCharAt(buf, index)
     }
 
     public operator fun set(index: Int, value: Char) {
-        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfLength(index, length)
         sbSetCharAt(buf, index, value)
     }
 
@@ -109,7 +109,7 @@ public class StringBuilder : Appendable {
     public fun appendLine(value: Int): StringBuilder = append(value).append('\n')
 
     public fun insert(index: Int, value: String): StringBuilder {
-        if (index < 0 || index > length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index > length) mini.internal.throwIndexOutOfLength(index, length)
         val s = toString()
         clear()
         sbAppendString(buf, s.substring(0, index))
@@ -142,6 +142,19 @@ public class StringBuilder : Appendable {
             sbSetCharAt(buf, j, c)
             i++
             j--
+        }
+        // a surrogate pair stays a pair, in its original order (as java.lang.StringBuilder.reverse)
+        var k = 0
+        val n = length
+        while (k < n - 1) {
+            val lo = sbCharAt(buf, k).code
+            val hi = sbCharAt(buf, k + 1).code
+            if (lo in 0xDC00..0xDFFF && hi in 0xD800..0xDBFF) {
+                sbSetCharAt(buf, k, hi.toChar())
+                sbSetCharAt(buf, k + 1, lo.toChar())
+                k++
+            }
+            k++
         }
         return this
     }
@@ -209,7 +222,7 @@ public class StringBuilder : Appendable {
     public fun insert(index: Int, value: Boolean): StringBuilder = insert(index, value.toString())
 
     public fun deleteCharAt(index: Int): StringBuilder {
-        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfLength(index, length)
         return delete(index, index + 1)
     }
 
@@ -254,6 +267,8 @@ public class StringBuilder : Appendable {
     public fun toCharArray(): CharArray = toString().toCharArray()
 
     override fun toString(): String = sbToString(buf)
+
+    override fun compareTo(other: StringBuilder): Int = toString().compareTo(other.toString())
 }
 
 public fun StringBuilder.append(vararg value: String?): StringBuilder {

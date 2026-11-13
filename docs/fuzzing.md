@@ -17,6 +17,13 @@ companions, extension functions, operator overloading, inner classes, `lazy`, va
 `break`/`continue`, reference-cyclic object graphs (the cycle collector), `sequence { yield }`, `generateSequence`, and suspend functions
 driven by a small `startCoroutine` scheduler.
 
+Added by fuzz-2: generics with variance and bounds (`in`/`out`, star projection, `Array<out T>`, `MutableList<in T>`), sealed hierarchies
+with exhaustive `when` (also generic `Res<out T>`), `@JvmInline value class` and data classes in lists, maps and sets, DSLs with receiver
+(nested `Node.() -> Unit` lambdas, `operator fun String.unaryPlus`), exceptions in `finally`, in `use {}` and in lambdas (`runCatching`,
+`lazy`), `mini.coroutines` (`runBlocking`, `launch`, `async`, `yield`, `coroutineScope`; the JVM side runs the same source against
+kotlinx.coroutines), Unicode strings (emoji, combining marks, `ß`, `İ`, `Σ`), Long/Double/Float limits and overflow, and ranges with
+`step`, `downTo` and bounds at `Int.MAX_VALUE`/`Long.MAX_VALUE`.
+
 Left out on purpose, because the output would differ for reasons that are not bugs: hash order (`HashMap`, `HashSet`), floating point
 formatting of arbitrary values (only exactly representable values are printed), identity hash codes, stack traces and `Thread`.
 
@@ -48,6 +55,12 @@ Failures are classified and saved under `OUT/fail/SEED.VARIANT.KIND.{kt,expected
 | `sanitizer`, `leak` | an ASan/UBSan report, a LeakSanitizer report |
 | `gen-invalid` | kotlinc rejects the generated program (a generator bug, listed at the end of a run) |
 
+## Sanitizers
+
+The fixed smoke programs (`tools/fuzz/smoke`) are part of the sanitizer suites `fuzz-leak` and `fuzz-llvm-leak` (ASan + LSan + UBSan, see
+"Sanitizer runs" in `docs/memory-model.md`); a finding in a generated program is a bug in the runtime or the code generator and gets a reduced
+program in the smoke directory.
+
 ## Reducing
 
 `reduce` minimises a failing program by delta debugging on balanced line spans: it tries to delete every statement or block (largest
@@ -55,17 +68,110 @@ first; 40 candidates are checked per kotlinc run and in parallel on the mini sid
 program and mini still fails in the same way (same kind, and for compiler, sanitizer and C compiler failures the same first message line with
 the numbers masked). The prelude, `run()` and `main` stay. The result is written to `OUT/reduced.SEED.VARIANT.kt`.
 
+## libFuzzer harnesses
+
+The differential fuzzer above needs a JVM and works on whole programs. `tools/fuzz/libfuzzer/` holds coverage-guided harnesses (libFuzzer) for
+the functions that parse and format data, built with `-fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined` over the runtime
+(every file of `runtime/src` except `entry.c`, compiled with `-Wall -Wextra -Werror`) and, for the targets written in mini, over the generated
+code of the standard library as well. Any ASan, UBSan or LeakSanitizer report, any uncaught exception, any broken invariant (`abort`) and any
+input that needs more than 30 seconds or 2 GB is a finding.
+
+| harness | what | invariants |
+|---|---|---|
+| `utf8` (`fuzz_utf8.c`) | `mk_utf8_decode`, `mk_string_from_utf8`, `mk_string_to_utf8`, `mk_utf16_to_utf8` on arbitrary bytes and arbitrary UTF-16 (lone surrogates) | every step is 1-4 bytes inside the input and a scalar value or U+FFFD; bytes to String to bytes to String is stable and the output is well-formed; no more than 3 bytes per unit; both encoders agree |
+| `numfmt` (`fuzz_numfmt.c`) | Double/Float to String (`numfmt.c`), `mk_string_is_double` / `mk_string_parse_double` on arbitrary text | the text of any bit pattern fits the buffer, is accepted by the parser and gives back the same value (sign of zero, NaN) |
+| `parse` (`targets/parse.kt`) | `toIntOrNull(radix)`, `toLong`, `toShort`, `toByte`, `toUInt`, `toULong` with radix 2..36, `toDouble`, `toFloat`, `toBooleanStrictOrNull` | the `OrNull` and the throwing form agree (`NumberFormatException` is the only exception), what parses prints and parses back |
+| `numstr` (`targets/numstr.kt`) | number to String: `toString(radix)` of all integer types, hex, Double and Float `toString` | each text parses back to the same bits |
+| `format` (`targets/format.kt`) | `String.format` with a fuzzed format string and fixed or derived arguments (Int, Long, Double incl. NaN/Infinity/denormals, String, Char, Boolean, null), and every conversion behind a fuzzed flag/width/precision prefix | only the `java.util.*Format*Exception` family (`IllegalArgumentException`) may be thrown |
+| `regex` (`targets/regex.kt`) | the regular expression engine (`stdlib/kotlin/text/Regex.kt`, written in Kotlin): the input is pattern, NUL, text; options from the first byte; `matches`, `find`, `findAll`, `split`, `replace`, `matchAt`, `escape` | a bad pattern throws `IllegalArgumentException` when the `Regex` is built and never later; matches lie inside the text and do not overlap |
+| `text` (`targets/text.kt`) | the text functions of the stdlib: case mapping, trim, search, split, replace, pad, `lines`, indentation, `chunked`/`windowed`, `Char` classification, UTF-8 `encodeToByteArray` / `decodeToString` (also strict), `StringBuilder` | no exception; the UTF-8 round trip is stable |
+
+The targets in mini are ordinary programs with a function `fuzzX(s: String, a: Int, b: Int): Int` and a `main` that calls it (so the reachability
+pruning keeps it). `build.sh` translates one to C with `minic-native`, and `fuzz_kt.c` includes that C file (its functions are `static`) and
+feeds it: byte 0 is `a`, byte 1 is `b`, byte 2 selects how the rest becomes the `String` (UTF-8, raw UTF-16 units, or one byte per character,
+which reaches the three representations of the runtime's strings). An exception that escapes the target is reported with
+`mk_report_uncaught` and counts as a crash; the exceptions that are part of the documented behavior are caught in the target.
+
+```
+tools/fuzz/libfuzzer/build.sh --out /tmp/lf                 # all harnesses (CC=clang with libFuzzer; FUZZ_STDLIB=source: the stdlib sources instead of stdlib.mlib)
+tools/fuzz/libfuzzer/run.sh --out /tmp/lf --time 300 --jobs 4          # fuzz, 300 s each; the corpus grows in /tmp/lf/corpus/NAME
+tools/fuzz/libfuzzer/run.sh --out /tmp/lf --regress                    # replay only regress/NAME/*: fast, for CI
+/tmp/lf/fuzz_regex /tmp/lf/crash-regex-...                             # reproduce
+/tmp/lf/fuzz_regex -minimize_crash=1 -runs=100000 crash-regex-...      # minimise
+```
+
+`build.sh` looks for a clang that links libFuzzer, ASan and UBSan: `$CC`, `clang`, or the clang of the Kotlin/Native LLVM dependency in
+`~/.konan` (the system clang here has no sanitizer runtimes). `<sanitizer/asan_interface.h>`, which some clang installs lack, is taken from gcc.
+
+**Crashes** are reproduced with the binary, minimised, fixed at the cause, and the minimised input is stored in `tools/fuzz/libfuzzer/regress/NAME/`
+(replayed by `run.sh --regress`) together with a program in `compiler/testdata` where the behavior is visible from Kotlin. `seeds/NAME` has
+a few hand-made inputs per harness.
+
+**CI**: the step "libFuzzer smoke run" of the `e2e` shard (Linux) builds the harnesses, replays the regression inputs and fuzzes every harness
+for 90 seconds (three at a time); a crash fails the step.
+
+### Findings of the libFuzzer harnesses
+
+Seven harnesses, 5.5 to 6 minutes each, four at a time on a 4-core machine, on the final code (executions: `utf8` 0.8M, `parse` 1.1M,
+`numfmt` 1.2M, `numstr` 0.44M, `format` 64K, `text` 20K plus 172K in an earlier run, `regex` 14K plus 52K and 40K earlier; the last three run dozens
+of stdlib calls per input, and a run of the checked build is slow):
+
+* **Regex: an unknown character property was detected at the first match.** `Regex("\\P,")` (also `\p{Nope}`, inside classes too) compiled and the
+  `IllegalArgumentException` came out of `matches`/`find` instead of the constructor, as `java.util.regex` does it. The property name is
+  now checked by the parser (`NamedPred.isKnown`). Regression: `compiler/testdata/regex_unknown_property.kt`,
+  `regress/regex/unknown-property-at-match-time`.
+* **`String.format`: zero padding was quadratic.** `%080282d`, `%#0300000x`, `%+0300000.2f` built the padding by prepending one `"0"` at a time
+  (80282 copies of up to 80 KB for one conversion: 13 seconds and 2.3 GB of quarantined blocks under ASan for one input). Now one `zeros(n)`
+  and one concatenation. Regression: `compiler/testdata/format_zero_pad_linear.kt`, `regress/format/quadratic-zero-padding`.
+* A width or precision between 100000 and `Int.MAX_VALUE` is skipped by the `format` target (`%1111111110d` asks for a 2 GB string, on the
+  JVM too): that is resource use by the request, not a defect.
+
+No finding in the runtime's own C code (UTF-8 and UTF-16 conversion, Double/Float formatting and parsing) and none in the number parsing and
+printing, the text functions or the UTF-8 coding of the stdlib.
+
+## Strict variants
+
+`tools/fuzz/genstrict.py SEED` generates a program in `@file:MemoryMode(Mode.Strict)` that the memory checker should accept: objects of
+`@AllocatedBy(Heap::class)` classes that are freed exactly once on every path, borrowed and `@Owned` parameters, owning fields with
+`move()`, linked lists and trees freed with their root, `try`/`finally`, `use {}`, `@Borrowed` results, closures that read an owner
+before it is freed, and all of it nested in loops (with `continue`/`break`), branches and helper functions. There is no JVM side
+(`mini.memory` is not Kotlin); the programs print values.
+
+```
+python3 tools/fuzz/fuzz.py run --strict --seeds 0:500 --variants strict-asan,strict-llvm-asan --jobs 4 --out /tmp/fuzz
+python3 tools/fuzz/fuzz.py reduce --strict --file /tmp/fuzz/fail/strict12.strict-asan.leak.kt --variant strict-asan
+```
+
+| variant | checks |
+|---|---|
+| `strict` | the checker accepts the program (`minic-native --check`); built with C, it runs |
+| `strict-asan` | the same, built with AddressSanitizer, UBSan and LeakSanitizer |
+| `strict-llvm-asan` | the same through the LLVM backend |
+
+A rejection is `strict-rejected` (a false positive of the checker, or a program the generator should not have written). A sanitizer
+or leak report on an accepted program is a **soundness bug of the checker or the runtime**: the checker promised a safe program. This
+is the most important result of the fuzzer.
+
 ## Smoke test in CI
 
 `tools/fuzz/smoke/` holds 50 fixed programs with the JVM output stored. `scripts/test-e2e.sh --suite fuzz` (part of the default suites)
 builds and runs them through the C backend; `fuzz-llvm` does the same through LLVM, `fuzz-leak` under the sanitizers. No JVM is needed.
+`tools/fuzz/smoke-strict/` holds 30 Strict programs (suite `fuzz-strict`): accepted by the checker, clean under the sanitizers, stored output.
 
 ## Found so far
 
 See the list below; each fixed bug has a regression test in `compiler/testdata`.
 
 About 1,500 distinct programs (sizes 14 and 24) were compared with kotlinc 2.1.20, in about 2,300 runs over the variants (C, LLVM, C with
-sanitizers). Two compiler bugs came out, both fixed with a regression test; the rest were differences that are not bugs.
+sanitizers). Two compiler bugs came out (fuzz-1), both fixed with a regression test; the rest were differences that are not bugs.
+
+fuzz-2 (the extended generator and the Strict variants): seeds 10000:10120 of `gen.py` on `c`, `llvm`, `c-asan` and `llvm-asan` (480 runs, 120
+programs, all compared with kotlinc and the coroutines jar) and seeds 20000:20240 of `genstrict.py` on `strict`, `strict-asan` and
+`strict-llvm-asan` (720 runs, 240 programs): no difference, crash, sanitizer report or leak, and the checker accepted every Strict program
+(no soundness bug of the checker found). The bulk runs use `FUZZ_OPT=-O0` for the C compiler (3 times faster; the optimizations that matter
+are mini's own and run before the C compiler). The first 25 of the plain seeds were also run at `-O1`. Found on the way: the fuzzer's own
+bugs (`save --strict` stored empty expectations, and the failure details of `run --strict` and `reduce --strict` were the program output,
+because the result tuple of `run_variant` was unpacked in the wrong order).
 
 ### Fixed
 

@@ -67,6 +67,9 @@ interface IrBuilder<V : Any, B : Any> {
     /** `@sym = external global %MkTypeInfo` (idempotent). */
     fun externTypeInfo(sym: String): V
 
+    /** `@sym = external [thread_local(initialexec)] global <t>` (idempotent): a variable of the runtime; a thread-local one for generated code on hosts with TLS relocations. */
+    fun externGlobal(sym: String, t: IrType, threadLocal: Boolean): V
+
     /** Declares the global `name` of the named struct type, defined later by [defineGlobal] (forward references). */
     fun declareGlobalOfStruct(name: String, typeName: String, linkage: IrLinkage)
 

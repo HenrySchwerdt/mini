@@ -1,0 +1,29 @@
+Hello, World!
+Sum: 7
+Items: [3, 6]
+Nested: in3ner
+Obj: Item(n=p, q=2)
+Prop: P
+Esc: $name "q" \
+Cond: big
+Len: 5
+Arr: 2 2
+Dollar: $
+Unicode: ☃ é
+World3
+Worlds
+abc
+a12
+3a
+xnull
+t1c
+line one
+  line two World
+a"b
+$literal
+n=3
+a-b!
+5
+tab	here
+Bool: true
+Chars: [W, o]

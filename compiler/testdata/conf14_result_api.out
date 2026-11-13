@@ -1,0 +1,21 @@
+(true, true)
+(12, null)
+11
+7
+24
+true
+100
+true
+v12
+e:NumberFormatException
+succ 12
+true
+failed NumberFormatException
+boom
+true
+true
+true
+true
+thrown
+[1, 3]
+3
