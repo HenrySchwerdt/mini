@@ -275,11 +275,11 @@ public fun <K, V> Map<K, V>.getValue(key: K): V {
     return v as V
 }
 
+// (like kotlin-stdlib: a key mapped to null gives the default too)
 public inline fun <K, V> Map<K, V>.getOrElse(key: K, defaultValue: () -> V): V {
     val v = get(key)
-    if (v == null && !containsKey(key)) return defaultValue()
-    @Suppress("UNCHECKED_CAST")
-    return v as V
+    if (v == null) return defaultValue()
+    return v
 }
 
 public fun <K, V> Map<K, V>.getOrDefault(key: K, defaultValue: V): V {

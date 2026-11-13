@@ -898,6 +898,21 @@ fun BodyChecker.condFacts(e0: Expr): BodyChecker.Cond {
                 if (ct != null && cf != null) return BodyChecker.Cond(ArrayList(ct), ArrayList(cf))
             }
         }
+        is DotExpr -> {
+            // the contracts of the standard library: `x.isNullOrEmpty()` / `x.isNullOrBlank()` returning false implies `x != null`
+            val sel = e.selector
+            if (!e.safe && sel is CallExpr) {
+                val info = (rec.get(sel) ?: rec.get(e))?.call
+                val fn = info?.fn
+                val file = fn?.file
+                if (fn != null && fn.owner == null && file != null && file.pkg.startsWith("kotlin") &&
+                    (fn.name == "isNullOrEmpty" || fn.name == "isNullOrBlank")) {
+                    val c = noFacts()
+                    c.onFalse.addAll(nonNullFacts(info.ext?.expr ?: e.receiver))
+                    return c
+                }
+            }
+        }
         is IsExpr -> {
             val k = stableKey(e.expr) ?: return noFacts()
             val target = rec.get(e)?.target ?: return noFacts()

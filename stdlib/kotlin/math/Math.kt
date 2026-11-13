@@ -43,7 +43,13 @@ public val Double.sign: Double
     get() = if (this != this) this else if (this > 0.0) 1.0 else if (this < 0.0) -1.0 else this
 
 @CName("sqrt") public external fun sqrt(x: Double): Double
-@CName("cbrt") public external fun cbrt(x: Double): Double
+@CName("cbrt") private external fun cbrtLibm(x: Double): Double
+/** The C library's cbrt is off by one ulp for some perfect cubes (glibc: cbrt(27.0) = 3.0000000000000004), the JVM's is exact there. */
+public fun cbrt(x: Double): Double {
+    val c = cbrtLibm(x)
+    val r = floor(c + 0.5)
+    return if (r * r * r == x) r else c
+}
 @CName("exp") public external fun exp(x: Double): Double
 @CName("expm1") public external fun expm1(x: Double): Double
 @CName("log") public external fun ln(x: Double): Double

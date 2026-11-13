@@ -1323,6 +1323,8 @@ fun BodyChecker.completeCall(att: Attempt, args: List<Arg>, expected: Type?): Ca
                 }
             } else if (u is AnonFunExpr) {
                 inlineLambdaNext = isInlinableParam(fn, att.params[att.binding.paramOfArg[i]])
+                // the parameter types of `fun(x) = ...` come from the expected type: its variables the other arguments determine are fixed first (as for a lambda)
+                if (expectedFun != null) cs.fixVarsOf(FunType(expectedFun.receiver, expectedFun.params, sema.unitType, false, false), ArrayList<TypeVariable>())
                 val lt = anonFunWith(u, if (expectedFun != null) cs.resolveFixed(expectedFun) as FunType else null)
                 cs.addSub(lt, pt)
             } else if (u is CallableRefExpr) {
