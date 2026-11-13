@@ -25,7 +25,9 @@ public annotation class Throws(vararg val exceptionClasses: kotlin.reflect.KClas
 public annotation class OptIn(vararg val markerClass: kotlin.reflect.KClass<out Annotation>)
 
 @Target(ANNOTATION_CLASS)
-public annotation class RequiresOptIn(val message: String = "")
+public annotation class RequiresOptIn(val message: String = "", val level: Level = Level.ERROR) {
+    public enum class Level { WARNING, ERROR }
+}
 
 @Target(CLASS, PROPERTY, CONSTRUCTOR, FUNCTION, PROPERTY_GETTER, PROPERTY_SETTER, TYPEALIAS)
 public annotation class SinceKotlin(val version: String)

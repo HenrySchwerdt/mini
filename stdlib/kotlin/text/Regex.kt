@@ -148,15 +148,19 @@ public class Regex(public val pattern: String, public val options: Set<RegexOpti
     public companion object {
         public fun fromLiteral(literal: String): Regex = Regex(escape(literal))
 
+        /** Like `Pattern.quote`: the text wrapped in `\\Q...\\E`. */
         public fun escape(literal: String): String {
             val sb = StringBuilder()
-            var i = 0
-            while (i < literal.length) {
-                val c = literal[i]
-                if ("\\.[]{}()*+-?^$|".indexOf(c) >= 0) sb.append('\\')
-                sb.append(c)
-                i++
+            sb.append("\\Q")
+            var prev = 0
+            while (true) {
+                val cur = literal.indexOf("\\E", prev)
+                if (cur < 0) break
+                sb.append(literal, prev, cur).append("\\E\\\\E\\Q")
+                prev = cur + 2
             }
+            sb.append(literal, prev, literal.length)
+            sb.append("\\E")
             return sb.toString()
         }
 
@@ -786,6 +790,24 @@ internal class RegexParser(val pattern: String, options: Set<RegexOption>) {
                     continue
                 }
             }
+            if (c == '\\' && pos + 1 < pattern.length && pattern[pos + 1] == 'Q') {
+                // \Q...\E: a quantifier after the quote applies to its last character only (like java.util.regex)
+                val qEnd = pattern.indexOf("\\E", pos + 2)
+                val text = if (qEnd < 0) pattern.substring(pos + 2) else pattern.substring(pos + 2, qEnd)
+                if (text.length > 1) {
+                    val lead = StringNode(text.substring(0, text.length - 1), ignoreCase)
+                    tail.next = lead
+                    tail = lead
+                }
+                if (text.isNotEmpty()) {
+                    pos = if (qEnd < 0) pattern.length else qEnd + 2
+                    val last = literalFrag(text.substring(text.length - 1))
+                    val ql = parseQuantifier(last)
+                    tail.next = ql.head
+                    tail = ql.tail
+                    continue
+                }
+            }
             val atom = parseAtom() ?: continue
             val q = parseQuantifier(atom)
             tail.next = q.head
@@ -1047,6 +1069,17 @@ internal class RegexParser(val pattern: String, options: Set<RegexOption>) {
                 pos = if (end < 0) pattern.length else end + 2
                 if (text.isEmpty()) return single(JoinNode())
                 return literalFrag(text)
+            }
+            'R' -> {
+                // linebreak: \r\n or one of \n \u000B \u000C \r \u0085 \u2028 \u2029
+                val join = JoinNode()
+                val crlf = StringNode("\r\n", false)
+                crlf.next = join
+                val items = ArrayList<CharPred>()
+                for (ch in "\n\u000B\u000C\r\u0085\u2028\u2029") items.add(SingleCharPred(ch, false))
+                val one = CharNode(ClassPred(items, false))
+                one.next = join
+                return Frag(AltNode(listOf(crlf, one)), join)
             }
             'k' -> {
                 if (pos >= pattern.length || pattern[pos] != '<') fail("\\k is not followed by '<' for named capturing group")

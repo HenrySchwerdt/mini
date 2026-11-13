@@ -19,6 +19,25 @@ fun fileWriteText(path: String, text: String): Boolean = try {
     false
 }
 
+fun fileReadBytes(path: String): ByteArray? = try {
+    java.io.File(path).readBytes()
+} catch (e: java.io.IOException) {
+    null
+}
+
+fun fileWriteBytes(path: String, bytes: ByteArray, append: Boolean): Boolean = try {
+    if (append) java.io.File(path).appendBytes(bytes) else java.io.File(path).writeBytes(bytes)
+    true
+} catch (e: java.io.IOException) {
+    false
+}
+
+fun fileStat(path: String, what: Int): Long {
+    val f = java.io.File(path)
+    if (!f.exists()) return -1L
+    return if (what == 0) f.length() else f.lastModified()
+}
+
 fun fileKind(path: String): Int {
     val f = java.io.File(path)
     return if (f.isDirectory) 2 else if (f.isFile) 1 else 0

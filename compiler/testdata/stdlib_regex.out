@@ -21,7 +21,7 @@ aaaba
 ababab
 [0..-1, 1..1, 2..1, 3..2]
 [2021, 03-04]
-a\.b\*c a.b
+\Qa.b*c\E a.b
 [a.b@c.d, e@f.g]
 true
 tHE qUICK
