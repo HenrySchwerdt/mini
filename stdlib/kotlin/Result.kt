@@ -17,7 +17,7 @@ package kotlin
 
 public class Result<out T> @PublishedApi internal constructor(
     @PublishedApi
-    internal val value: Any?
+    internal var value: Any?
 ) {
     // discovery
 
@@ -56,8 +56,8 @@ public class Result<out T> @PublishedApi internal constructor(
      * This function is a shorthand for `fold(onSuccess = { null }, onFailure = { it })` (see [fold]).
      */
     public fun exceptionOrNull(): Throwable? =
-        when (value) {
-            is Failure -> value.exception
+        when (val v = value) {
+            is Failure -> v.exception
             else -> null
         }
 
@@ -129,7 +129,8 @@ internal fun createFailure(exception: Throwable): Any =
 @PublishedApi
 
 internal fun Result<*>.throwOnFailure() {
-    if (value is Result.Failure) throw value.exception
+    val v = value
+    if (v is Result.Failure) throw v.exception
 }
 
 /**

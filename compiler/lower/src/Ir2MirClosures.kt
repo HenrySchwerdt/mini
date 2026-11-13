@@ -87,7 +87,8 @@ internal fun Ir2Mir.cellFor(d: IrValueDeclaration): RefClass {
 
 private fun Ir2Mir.cellBorrowed(d: IrValueDeclaration, t: MirType): Boolean {
     if (!currentStrict) return false
-    val c = d.type.classOrNull ?: return false
+    // the hoisted result of a suspend call that returns a Strict class: the value is an owner the checker follows (type Any? in the lowered code)
+    val c = (d as? IrVariable)?.suspendResultType?.classOrNull ?: d.type.classOrNull ?: return false
     if (!isStrictClass(c)) return false
     return !cellCountsAuto(d)
 }

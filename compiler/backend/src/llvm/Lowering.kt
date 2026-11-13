@@ -256,6 +256,9 @@ private class Lowering<V : Any, B : Any>(
         b.declareDefined("mkh_nn", IrType.PTR, IrExt.NONE, p1, e1, IrAttrs.STD, IrLinkage.INTERNAL)
         b.declareDefined("mkh_box_int", IrType.PTR, IrExt.NONE, listOf(IrType.I32), e1, IrAttrs.INLINE, IrLinkage.INTERNAL)
         b.declareDefined("mkh_sb_append_char", IrType.VOID, IrExt.NONE, listOf(IrType.PTR, IrType.I16), listOf(IrExt.NONE, IrExt.ZERO), IrAttrs.INLINE, IrLinkage.INTERNAL)
+        if (inlineAllocOk) {
+            for (armed in listOf("a", "p")) for (cls in 1..4) b.declareDefined("mkh_alloc_c$cls$armed", IrType.PTR, IrExt.NONE, p1, e1, IrAttrs.INLINE, IrLinkage.INTERNAL)
+        }
         for (t in listOf(IrType.I32, IrType.I64)) {
             val n = if (t == IrType.I32) "int" else "long"
             val pt = listOf(t, t)
@@ -825,7 +828,85 @@ private class Lowering<V : Any, B : Any>(
      * Int, found without a call) and `mkh_sb_append_char` (StringBuilder.append(Char): the room is there and the character fits the
      * buffer, two stores). Anything unusual takes the runtime function, whose result is the same.
      */
+    /** Does generated code allocate small objects from the thread's cache inline (the `mkh_alloc_inline` of the C prelude)? */
+    val inlineAllocOk: Boolean = CEmitter.inlineAlloc && !stats && target.ptrBytes == 8 && !target.pendingAccessor && !target.wasmLib &&
+        (target.triple == null || (!target.triple.contains("windows") && !target.triple.contains("wasm")))
+
+    /**
+     * `mkh_alloc_c<cls><a|p>(ti)`: the allocation of an object of `cls` 16-byte granules (cls 1..4) from the thread's small cache of the runtime
+     * (struct MkSmallCache of minirt.h; the offsets are asserted in alloc_small.c): the free list, else the bump chunk, zeroed with plain stores; whatever the
+     * cache cannot serve takes mk_alloc_armed / mk_alloc_plain. Same result as the C prelude's mkh_alloc_inline.
+     */
+    private fun emitAllocHelpers() {
+        val ptr = IrType.PTR
+        val i32 = IrType.I32
+        val i64 = IrType.I64
+        val cache = b.externGlobal("mk_small_cache", IrType.I8, true)
+        val ready = b.externGlobal("mk_cycles_ready", i32, false)
+        for (armed in listOf(true, false)) {
+            val slowFn = declare(if (armed) "mk_alloc_armed" else "mk_alloc_plain", TString, listOf(TString))
+            for (cls in 1..4) {
+                val name = "mkh_alloc_c$cls" + (if (armed) "a" else "p")
+                beginHelper(name, ptr, listOf("ti"), listOf(ptr), IrAttrs.INLINE)
+                val ti = b.param(0)
+                val slow = b.newBlock("a_slow")
+                val start = b.newBlock("a_start")
+                val pop = b.newBlock("a_pop")
+                val bump = b.newBlock("a_bump")
+                val bumpOk = b.newBlock("a_bumpok")
+                val fill = b.newBlock("a_fill")
+                if (armed) {
+                    val r = b.load(i32, ready, 4, "rdy")
+                    val isReady = b.cmp(IrCmp.INE, r, c32(0), "isrdy")
+                    b.condBr(isReady, start, slow, false)
+                    b.appendBlock(start)
+                }
+                val fp = b.gep(cache, c64(cls * 8), true, "fp")
+                val head = b.load(ptr, fp, 8, "head")
+                val empty = b.cmp(IrCmp.IEQ, head, b.constNull(), "empty")
+                b.condBr(empty, bump, pop, false)
+                b.appendBlock(pop)
+                val next = b.load(ptr, head, 8, "next")
+                b.store(next, fp, 8)
+                val cp = b.gep(cache, c64(544 + cls * 4), true, "cp")
+                val cnt = b.load(i32, cp, 4, "cnt")
+                b.store(b.bin(IrOp.SUB, cnt, c32(1), "cnt1"), cp, 4)
+                b.br(fill)
+                b.appendBlock(bump)
+                val sz = cls * 16
+                val align = minOf(sz and -sz, 64)
+                val bumpP = b.gep(cache, c64(616), true, "bp")
+                val p = b.load(ptr, bumpP, 8, "p")
+                val endV = b.load(ptr, b.gep(cache, c64(624), true, "ep"), 8, "end")
+                val pi = b.cast(IrCast.PTRTOINT, p, i64, "pi")
+                val ei = b.cast(IrCast.PTRTOINT, endV, i64, "ei")
+                val aligned = b.cmp(IrCmp.IEQ, b.bin(IrOp.AND, pi, c64(align - 1), "lo"), c64(0), "aligned")
+                val room = b.cmp(IrCmp.UGE, b.bin(IrOp.SUB, ei, pi, "left"), c64(sz), "room")
+                val ok = b.bin(IrOp.AND, b.cast(IrCast.ZEXT, aligned, i32, "al32"), b.cast(IrCast.ZEXT, room, i32, "rm32"), "ok32")
+                b.condBr(b.cmp(IrCmp.INE, ok, c32(0), "ok"), bumpOk, slow, false)
+                b.appendBlock(bumpOk)
+                b.store(b.gep(p, c64(sz), true, "pn"), bumpP, 8)
+                b.br(fill)
+                b.appendBlock(fill)
+                val blk = b.phi(ptr, head, pop, p, bumpOk)
+                for (k in 0 until cls * 2) b.store(c64(0), b.gep(blk, c64(k * 8), true, ""), 8)
+                b.store(ti, blk, 8)
+                b.store(c32(1), b.gep(blk, c64(layouts.refcountOffset), true, "rcp"), 4)
+                b.store(c32((cls shl 8) or (if (armed) 64 else 0)), b.gep(blk, c64(layouts.refcountOffset + 4), true, "flp"), 4)
+                if (armed) {
+                    val cb = b.gep(cache, c64(648), true, "cbp")
+                    b.store(b.bin(IrOp.ADD, b.load(i64, cb, 8, "cb"), c64(sz), "cb1"), cb, 8)
+                }
+                b.ret(blk)
+                b.appendBlock(slow)
+                b.ret(b.call(slowFn, ptr, IrExt.NONE, listOf(ti), listOf(IrExt.NONE), -1, "r"))
+                endHelper()
+            }
+        }
+    }
+
     private fun emitFastPathHelpers() {
+        if (inlineAllocOk) emitAllocHelpers()
         val ptr = IrType.PTR
         val i32 = IrType.I32
         val hs = layouts.headerSize
@@ -1118,8 +1199,10 @@ private class Lowering<V : Any, B : Any>(
                 else -> "mk_alloc_plain"
             }
             val alloc = declare(allocName, TString, listOf(TString))
+            val clsSize = if (inlineAllocOk && allocName != "mk_alloc") layouts.of(cls).size else 0
+            val inlineAlloc = if (clsSize in 1..64) b.global("mkh_alloc_c${(clsSize + 15) / 16}${if (allocName == "mk_alloc_armed") "a" else "p"}") else null
             beginGenerated(IrSection.CLASSES, "${f.cName}_new", TString, pnames, ptypes, pexts, fnLinkage(f.cName))
-            val a = call(TString, alloc, listOf(TString), listOf(b.global("${cls}_ti")))
+            val a = call(TString, inlineAlloc ?: alloc, listOf(TString), listOf(b.global("${cls}_ti")))
             val argv = ArrayList<V>()
             val argt = ArrayList<MirType>()
             argv.add(a); argt.add(TString)
@@ -2048,19 +2131,28 @@ private class Lowering<V : Any, B : Any>(
         val string = expr(e.args[0])
         val fallback = newLabel("strlen_null")
         val fast = newLabel("strlen_fast")
+        val noret = CEmitter.strFailNoReturn
         val merge = newLabel("strlen_merge")
-        condBr(icmp(IrCmp.IEQ, string, b.constNull()), fallback, fast)
+        condBr(icmp(IrCmp.IEQ, string, b.constNull()), fallback, fast, true)
 
+        // (the runtime function panics on a null string: the path ends there, like the cold `mkh_fail_str_length` of the C prelude, so no call
+        // clobbers the values the loop keeps in registers)
+        if (noret) {
+            startBlock(fallback)
+            rt("mk_string_length", TInt, listOf(TString), listOf(string))
+            unreachable()
+            startBlock(fast)
+            return load(TInt, gep(string, layouts.headerSize))
+        }
+        // `-Xno-str-fail-noreturn`: the failing path joins the fast path again
         startBlock(fast)
         val length = load(TInt, gep(string, layouts.headerSize))
         val fastEnd = curBlock
         br(merge)
-
         startBlock(fallback)
         val slowLength = rt("mk_string_length", TInt, listOf(TString), listOf(string))
         val slowEnd = curBlock
         br(merge)
-
         startBlock(merge)
         openBlock()
         return b.phi(IrType.I32, length, fastEnd, slowLength, slowEnd)
@@ -2112,7 +2204,15 @@ private class Lowering<V : Any, B : Any>(
         val fastEnd = curBlock
         br(merge)
 
+        // the runtime function panics (null string, index out of range): the path ends there (`mkh_fail_str_char_at` of the C prelude)
         startBlock(slow)
+        if (CEmitter.strFailNoReturn) {
+            rt("mk_string_char_at", TChar, listOf(TString, TInt), listOf(string, index))
+            unreachable()
+            startBlock(merge)
+            openBlock()
+            return value
+        }
         val slowValue = rt("mk_string_char_at", TChar, listOf(TString, TInt), listOf(string, index))
         val slowEnd = curBlock
         br(merge)

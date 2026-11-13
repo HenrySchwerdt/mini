@@ -119,6 +119,11 @@ public fun throwIllegalState(message: String?): Nothing = throw IllegalStateExce
 
 public fun throwIndexOutOfBounds(message: String?): Nothing = throw IndexOutOfBoundsException(message)
 
+// the message of the common bounds failure is built here, not at every check: the checks stay small (one call with two Ints)
+public fun throwIndexOutOfSize(index: Int, size: Int): Nothing = throw IndexOutOfBoundsException("index: $index, size: $size")
+
+public fun throwIndexOutOfLength(index: Int, length: Int): Nothing = throw IndexOutOfBoundsException("index: $index, length: $length")
+
 public fun throwNoSuchElement(message: String?): Nothing = throw NoSuchElementException(message)
 
 public fun throwNumberFormat(message: String?): Nothing = throw NumberFormatException(message)
