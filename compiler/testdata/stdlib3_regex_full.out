@@ -1,0 +1,140 @@
+2024-03-15 3..12
+2024/03/15
+3..6
+[2024-03-15, 2024, 03, 15]
+4
+2024 03 15
+2025-12-01
+null
+15.03.2024
+15/03/2024
+null
+y
+null
+[y, , y]
+no such group
+'hi'
+[aa, bb, ee]
+user
+example
+[22, 44, 66]
+[7, 14]
+[15.50, 7]
+[2, 5]
+1,234,567
+true
+false
+a2b44c666
+EdUcAtIOn
+home@me work@you
+Hello World
+abc
+-a-b-c-
+XbXXcX
+a[1]b[2]
+<a|b> <a|>
+$$$
+$1\$1\$1\
+baa
+a-b-c
+a-b-c
+aXcabc
+[a, b, c, d]
+[a, b,c,d]
+[a, b, c,d]
+[a, b, c, d]
+[a, b, c, d]
+[a, , b, , ]
+[, a]
+[, a, b, c, ]
+[, a, , b, ]
+[, a, b, c, ]
+[a, b]
+[a, b, c, ]
+[a, b2c3]
+[a, b, c, ]
+4
+[a, b, c]
+[a, b, c]
+neg limit
+[1, 22, 333]
+[22, 333]
+0
+[0..-1, 1..1, 2..2, 3..2, 4..3]
+[0..-1, 1..0, 2..1]
+[0, 2, 3, 5]
+[[1a, 1, a], [2, 2, ], [3b, 3, b]]
+[a, null, b]
+[1, 2, 5, 6]
+The|quick|brown|fox
+6
+1..3
+null
+3..3
+true
+false
+true
+abc
+null
+b
+null
+true
+true
+true
+true
+true
+[IGNORE_CASE, MULTILINE]
+1
+false
+true
+true
+true
+false
+true
+true
+true
+false
+true
+2
+abc
+abc
+\Qa.b*c\E
+true
+a.b
+true
+true
+a
+xy
+ab
+World
+héllo
+3
+[12, 123, 123]
+2
+a
+null
+null
+[abcd, a, bcd, ]
+ababab
+[  key =  value  , key, value]
+2
+1
+0..1
+2..3
+2..3
+true
+true
+true
+[a.b@c.com, x@y.org]
+[100 px, 100]
+[b, , b]
+[b, null, b]
+the the
+[12, 12, ]
+bad [
+bad (
+bad a{2
+bad *a
+bad (?<n>a)(?<n>b)
+bad \k<zz>
+bad a)
