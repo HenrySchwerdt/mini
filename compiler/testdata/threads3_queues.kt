@@ -61,6 +61,9 @@ fun main() {
     println("${delays.take().name} ${delays.take().name} ${delays.take().name}")
     println(delays.size)
 
+    val keySet = ConcurrentHashMap.newKeySet<String>()
+    println("${keySet.add("a")} ${keySet.add("a")} ${keySet.add("b")} ${keySet.size} ${keySet.contains("b")} ${keySet.remove("a")} ${keySet.size}")
+
     val cow = CopyOnWriteArraySet<Int>()
     println(cow.add(1))
     println(cow.add(1))

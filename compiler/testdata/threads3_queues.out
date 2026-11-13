@@ -21,6 +21,7 @@ false
 null
 first second third
 0
+true false true 2 true true 1
 true
 false
 [1, 2]

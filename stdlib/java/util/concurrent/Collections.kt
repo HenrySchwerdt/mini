@@ -244,9 +244,23 @@ public class ConcurrentHashMap<K, V>(initialCapacity: Int) : ConcurrentMap<K, V>
     override fun hashCode(): Int = copy().hashCode()
     override fun toString(): String = copy().toString()
 
-    private companion object {
-        const val SEGMENTS = 1
+    public companion object {
+        private const val SEGMENTS = 1
+
+        /** A set backed by a ConcurrentHashMap (the JDK's `KeySetView`). */
+        public fun <T> newKeySet(): MutableSet<T> = ConcurrentKeySet<T>()
     }
+}
+
+internal class ConcurrentKeySet<T> : AbstractMutableSet<T>() {
+    private val map = ConcurrentHashMap<T, Boolean>()
+
+    override val size: Int get() = map.size
+    override fun add(element: T): Boolean = map.putIfAbsent(element, true) == null
+    override fun contains(element: T): Boolean = map.containsKey(element)
+    override fun remove(element: T): Boolean = map.remove(element) != null
+    override fun clear() { map.clear() }
+    override fun iterator(): MutableIterator<T> = ArrayList<T>(map.keys).iterator()
 }
 
 internal class Segment<K, V> {
