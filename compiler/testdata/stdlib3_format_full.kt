@@ -1,0 +1,163 @@
+val nul: Any? = null
+fun p(s: String) = println("[" + s + "]")
+
+fun err(f: () -> String) {
+    try {
+        p(f())
+    } catch (e: Exception) {
+        println(e::class.simpleName)
+    }
+}
+
+fun main() {
+    // integers
+    p("%d".format(42))
+    p("%5d".format(42))
+    p("%-5d|".format(42))
+    p("%05d".format(42))
+    p("%+d".format(42))
+    p("% d".format(42))
+    p("%(d".format(-42))
+    p("%,d".format(1234567))
+    p("%,d".format(-1234567))
+    p("%,.2f".format(1234567.891))
+    p("%d".format(Long.MIN_VALUE))
+    p("%d".format(Long.MAX_VALUE))
+    p("%d".format((-7).toByte()))
+    p("%d".format(300.toShort()))
+    p("%08.3f".format(-3.14159))
+    p("%+08d".format(42))
+    p("%x".format(255))
+    p("%X".format(255))
+    p("%#x".format(255))
+    p("%#X".format(255))
+    p("%08x".format(255))
+    p("%x".format(-1))
+    p("%x".format(-1L))
+    p("%x".format((-1).toByte()))
+    p("%x".format((-2).toShort()))
+    p("%o".format(8))
+    p("%#o".format(8))
+    p("%o".format(-1))
+    p("%o".format(-1L))
+    p("%10x|".format(48879))
+    p("%-10x|".format(48879))
+    // floats
+    p("%f".format(3.14159))
+    p("%.2f".format(3.14159))
+    p("%.0f".format(2.5))
+    p("%.0f".format(3.5))
+    p("%.0f".format(0.5))
+    p("%.1f".format(0.25))
+    p("%.1f".format(0.35))
+    p("%10.3f|".format(3.14159))
+    p("%-10.3f|".format(3.14159))
+    p("%+.2f".format(3.14159))
+    p("%+.2f".format(-3.14159))
+    p("%.3f".format(1e-10))
+    p("%f".format(1e20))
+    p("%.2f".format(Double.NaN))
+    p("%.2f".format(Double.POSITIVE_INFINITY))
+    p("%.2f".format(Double.NEGATIVE_INFINITY))
+    p("%10.2f|".format(Double.NaN))
+    p("%f".format(1.0f))
+    p("%f".format(0.1f))
+    p("%.10f".format(0.1f))
+    p("%.20f".format(0.1))
+    p("%f".format(-0.0))
+    p("%e".format(12345.6789))
+    p("%E".format(12345.6789))
+    p("%.2e".format(12345.6789))
+    p("%.0e".format(12345.6789))
+    p("%e".format(0.000123))
+    p("%e".format(0.0))
+    p("%e".format(1.0))
+    p("%12.3e|".format(-123456.789))
+    p("%-12.3e|".format(123456.789))
+    p("%e".format(1e100))
+    p("%e".format(1e-100))
+    p("%g".format(12345.6789))
+    p("%g".format(0.0001234))
+    p("%g".format(0.00001234))
+    p("%g".format(1234567.0))
+    p("%g".format(123456.0))
+    p("%.3g".format(12345.6789))
+    p("%.3g".format(0.5))
+    p("%G".format(0.00001234))
+    p("%g".format(0.0))
+    p("%.0g".format(5.5))
+    p("%10.4g|".format(3.14159265))
+    p("%g".format(100000.0))
+    p("%g".format(99999.95))
+    // strings
+    p("%s".format("hi"))
+    p("%10s|".format("hi"))
+    p("%-10s|".format("hi"))
+    p("%.1s".format("hi"))
+    p("%5.1s|".format("hi"))
+    p("%S".format("hi"))
+    p("%s".format(nul))
+    p("%S".format(nul))
+    p("%s".format(listOf(1, 2)))
+    p("%s".format(3.5))
+    p("%s".format('c'))
+    p("%s".format(true))
+    p("%10s|".format(nul))
+    // chars
+    p("%c".format('a'))
+    p("%C".format('a'))
+    p("%c".format(65))
+    p("%5c|".format('x'))
+    p("%-5c|".format('x'))
+    // booleans
+    p("%b".format(true))
+    p("%b".format(false))
+    p("%b".format(nul))
+    p("%b".format("x"))
+    p("%B".format(true))
+    p("%7b|".format(true))
+    p("%-7b|".format(false))
+    p("%.3b".format(false))
+    // misc
+    p("%%".format())
+    p("100%%".format())
+    p("a%nb".format().replace("\n", "NL"))
+    p("%2\$s %1\$s".format("a", "b"))
+    p("%1\$s %1\$s %s %s".format("a", "b"))
+    p("%s %<s %s".format("a", "b"))
+    p("%1\$d %<x %<o %<X".format(255))
+    p("%s=%d".format("n", 5))
+    p("%-6s%6s".format("ab", "cd"))
+    p("%3d|%-3d|%03d".format(1, 2, 3))
+    p("no args".format())
+    p("%d items".format(3))
+    println(String.format("%s-%s", 1, 2))
+    println(String.format("%08.2f", 3.14159))
+    println("%.2f%%".format(45.678))
+    println("%5.1f%%".format(5.0))
+    p("%.2f".format(1.005))
+    p("%.2f".format(2.675))
+    p("%.1f".format(0.05))
+    p("%.3f".format(1.0005))
+    p("%.2f".format(0.125))
+    p("%.2f".format(0.135))
+    p("%.0f".format(1e15))
+    p("%.2f".format(123456789.125))
+    p("%s".format(1.0E10))
+    p("%s".format(1.0f))
+    // errors
+    err { "%d".format("x") }
+    err { "%d".format() }
+    err { "%q".format(1) }
+    err { "%d".format(1.5) }
+    err { "%f".format(1) }
+    err { "%.2d".format(1) }
+    err { "%-d".format(1) }
+    err { "%c".format("ab") }
+    err { "%+s".format("a") }
+    err { "%x".format(1.0) }
+    err { "%#d".format(1) }
+    err { "%-05d".format(1) }
+    err { "%+ d".format(1) }
+    err { "%".format(1) }
+}
