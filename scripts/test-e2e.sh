@@ -359,7 +359,7 @@ t_project_leak() { # <name>
     [ -x "$NATIVE/bin/mini" ] || return 77
     mkdir -p "$W/projects-leak"
     local cc="$W/projects-leak/sancc" root="$W/projects-leak/root"
-    if [ ! -x "$cc" ]; then printf '#!/bin/sh\nexec %s %s "$@"\n' "$SANCC" "$SAN_FLAGS" > "$cc.tmp"; chmod +x "$cc.tmp"; mv "$cc.tmp" "$cc"; fi
+    if [ ! -x "$cc" ]; then printf '#!/bin/sh\nexec %s %s "$@"\n' "$SANCC" "$SAN_FLAGS" > "$cc.$$"; chmod +x "$cc.$$"; mv "$cc.$$" "$cc"; fi
     if [ ! -f "$root/.ready" ]; then
         local tmp="$root.$$"; rm -rf "$tmp"; mkdir -p "$tmp/lib"
         local e; for e in "$NATIVE"/*; do [ "$(basename "$e")" = lib ] || ln -s "$e" "$tmp/$(basename "$e")"; done
