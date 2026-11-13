@@ -42,3 +42,49 @@ public fun interface LongBinaryOperator {
 }
 
 public fun interface UnaryOperator<T> : Function<T, T>
+
+public fun interface BinaryOperator<T> : BiFunction<T, T, T>
+
+public fun interface DoubleUnaryOperator {
+    public fun applyAsDouble(operand: Double): Double
+}
+
+public fun interface DoubleBinaryOperator {
+    public fun applyAsDouble(left: Double, right: Double): Double
+}
+
+public fun interface BooleanSupplier {
+    public fun getAsBoolean(): Boolean
+}
+
+public fun interface IntSupplier {
+    public fun getAsInt(): Int
+}
+
+public fun interface LongSupplier {
+    public fun getAsLong(): Long
+}
+
+public fun interface IntConsumer {
+    public fun accept(value: Int)
+}
+
+public fun interface IntFunction<R> {
+    public fun apply(value: Int): R
+}
+
+public fun interface IntPredicate {
+    public fun test(value: Int): Boolean
+}
+
+public fun interface ToIntFunction<T> {
+    public fun applyAsInt(value: T): Int
+}
+
+public fun interface ToLongFunction<T> {
+    public fun applyAsLong(value: T): Long
+}
+
+public fun interface BiPredicate<T, U> {
+    public fun test(t: T, u: U): Boolean
+}

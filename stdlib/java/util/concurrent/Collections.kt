@@ -436,11 +436,6 @@ public class ArrayBlockingQueue<E>(capacity: Int, fair: Boolean) : LinkedBlockin
     public constructor(capacity: Int) : this(capacity, false)
 }
 
-public class LinkedBlockingDeque<E> : LinkedBlockingQueue<E> {
-    public constructor() : super()
-    public constructor(capacity: Int) : super(capacity)
-}
-
 public class ConcurrentLinkedQueue<E> : LinkedBlockingQueue<E> {
     public constructor() : super()
     public constructor(c: Collection<E>) : super(c)
@@ -490,6 +485,26 @@ public class CopyOnWriteArrayList<E> : AbstractMutableList<E> {
     override fun removeAt(index: Int): E {
         lock.lock()
         val r = items.removeAt(index)
+        lock.unlock()
+        return r
+    }
+
+    override fun remove(element: E): Boolean {
+        lock.lock()
+        val r = items.remove(element)
+        lock.unlock()
+        return r
+    }
+
+    override fun clear() {
+        lock.lock()
+        items.clear()
+        lock.unlock()
+    }
+
+    override fun contains(element: E): Boolean {
+        lock.lock()
+        val r = items.contains(element)
         lock.unlock()
         return r
     }

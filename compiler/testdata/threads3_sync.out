@@ -1,0 +1,24 @@
+[advance 0 with 4, advance 1 with 4, advance 2 with 4]
+true true 4
+0 2 0 2
+0
+1
+advanced to 1
+true
+main got from other
+other got from main
+timeout
+true true
+true false 0 0
+false false
+2 true
+2 true 0
+true true
+false false
+8000
+illegal
+true
+true
+false
+woke up
+false

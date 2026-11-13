@@ -98,6 +98,36 @@ public external fun atomicLongCas(a: LongArray, expected: Long, v: Long): Boolea
 @CSymbol("mk_sys_threads_active")
 public external fun threadsActive(): Boolean
 
+@CSymbol("mk_atomic_int_get_at")
+public external fun atomicIntGetAt(a: IntArray, i: Int): Int
+
+@CSymbol("mk_atomic_int_set_at")
+public external fun atomicIntSetAt(a: IntArray, i: Int, v: Int)
+
+@CSymbol("mk_atomic_int_add_at")
+public external fun atomicIntAddAt(a: IntArray, i: Int, d: Int): Int
+
+@CSymbol("mk_atomic_int_exchange_at")
+public external fun atomicIntExchangeAt(a: IntArray, i: Int, v: Int): Int
+
+@CSymbol("mk_atomic_int_cas_at")
+public external fun atomicIntCasAt(a: IntArray, i: Int, expected: Int, v: Int): Boolean
+
+@CSymbol("mk_atomic_long_get_at")
+public external fun atomicLongGetAt(a: LongArray, i: Int): Long
+
+@CSymbol("mk_atomic_long_set_at")
+public external fun atomicLongSetAt(a: LongArray, i: Int, v: Long)
+
+@CSymbol("mk_atomic_long_add_at")
+public external fun atomicLongAddAt(a: LongArray, i: Int, d: Long): Long
+
+@CSymbol("mk_atomic_long_exchange_at")
+public external fun atomicLongExchangeAt(a: LongArray, i: Int, v: Long): Long
+
+@CSymbol("mk_atomic_long_cas_at")
+public external fun atomicLongCasAt(a: LongArray, i: Int, expected: Long, v: Long): Boolean
+
 @CSymbol("mk_atomic_ref_get")
 public external fun atomicRefGet(a: Array<Any?>): Any?
 

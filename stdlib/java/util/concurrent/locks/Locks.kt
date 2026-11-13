@@ -21,6 +21,19 @@ public interface Condition {
     public fun awaitNanos(nanosTimeout: Long): Long
     public fun signal()
     public fun signalAll()
+
+    public fun awaitUninterruptibly() {
+        var interrupted = false
+        while (true) {
+            try {
+                await()
+                break
+            } catch (e: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) java.lang.Thread.currentThread().interrupt()
+    }
 }
 
 public interface ReadWriteLock {
@@ -31,6 +44,8 @@ public interface ReadWriteLock {
 /** A reentrant mutual-exclusion lock. */
 public open class ReentrantLock(fair: Boolean) : Lock {
     public constructor() : this(false)
+
+    public val isFair: Boolean = fair
 
     internal val mutex = LongArray(16)
     private val ownerCell = LongArray(1) // the owner is read by other threads without the mutex: an atomic cell

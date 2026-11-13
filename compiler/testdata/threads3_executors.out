@@ -1,0 +1,23 @@
+[pool-1-thread-1, pool-1-thread-2, pool-1-thread-3]
+true
+terminated=true
+true
+created=true
+12345
+[1, 2, 3]
+any
+fast
+medium
+slow
+null
+scheduled
+delay respected: true
+true
+cancelled=true
+stopped=true
+true
+late
+true
+rejected
+failed: boom
+5

@@ -350,52 +350,87 @@ MkBoolean mk_atomic_long_cas(MkObject *a, MkLong expected, MkLong v) {
     return __atomic_compare_exchange_n(MK_ARRAY_ELEMS(MkLong, a), &expected, v, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 
-/* A reference cell (slot 0 of an object array): the reference counts of the old and new value are updated under a spin lock. */
-static volatile int ref_lock = 0;
-static void ref_lock_acquire(void) {
-    while (__atomic_exchange_n(&ref_lock, 1, __ATOMIC_ACQUIRE) != 0) {}
+/* the same on element [i] of an IntArray / LongArray (AtomicIntegerArray, AtomicLongArray, the atomic element operations of kotlin.concurrent) */
+MkInt mk_atomic_int_get_at(MkObject *a, MkInt i) { return __atomic_load_n(MK_ARRAY_ELEMS(MkInt, a) + i, __ATOMIC_SEQ_CST); }
+void mk_atomic_int_set_at(MkObject *a, MkInt i, MkInt v) { __atomic_store_n(MK_ARRAY_ELEMS(MkInt, a) + i, v, __ATOMIC_SEQ_CST); }
+MkInt mk_atomic_int_add_at(MkObject *a, MkInt i, MkInt d) { return __atomic_fetch_add(MK_ARRAY_ELEMS(MkInt, a) + i, d, __ATOMIC_SEQ_CST) + d; }
+MkInt mk_atomic_int_exchange_at(MkObject *a, MkInt i, MkInt v) { return __atomic_exchange_n(MK_ARRAY_ELEMS(MkInt, a) + i, v, __ATOMIC_SEQ_CST); }
+MkBoolean mk_atomic_int_cas_at(MkObject *a, MkInt i, MkInt expected, MkInt v) {
+    return __atomic_compare_exchange_n(MK_ARRAY_ELEMS(MkInt, a) + i, &expected, v, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
-static void ref_lock_release(void) { __atomic_store_n(&ref_lock, 0, __ATOMIC_RELEASE); }
+MkLong mk_atomic_long_get_at(MkObject *a, MkInt i) { return __atomic_load_n(MK_ARRAY_ELEMS(MkLong, a) + i, __ATOMIC_SEQ_CST); }
+void mk_atomic_long_set_at(MkObject *a, MkInt i, MkLong v) { __atomic_store_n(MK_ARRAY_ELEMS(MkLong, a) + i, v, __ATOMIC_SEQ_CST); }
+MkLong mk_atomic_long_add_at(MkObject *a, MkInt i, MkLong d) { return __atomic_fetch_add(MK_ARRAY_ELEMS(MkLong, a) + i, d, __ATOMIC_SEQ_CST) + d; }
+MkLong mk_atomic_long_exchange_at(MkObject *a, MkInt i, MkLong v) { return __atomic_exchange_n(MK_ARRAY_ELEMS(MkLong, a) + i, v, __ATOMIC_SEQ_CST); }
+MkBoolean mk_atomic_long_cas_at(MkObject *a, MkInt i, MkLong expected, MkLong v) {
+    return __atomic_compare_exchange_n(MK_ARRAY_ELEMS(MkLong, a) + i, &expected, v, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+}
+
+/* A reference cell (slot 0 of an object array): the reference counts of the old and new value are updated under a spin lock chosen by the
+   address of the cell (64 locks, one cache line each, so cells of different atomics do not wait for each other). A waiting thread spins a
+   few rounds with a CPU pause and then yields its time slice (the holder may have been preempted: a pure spin would burn the slice). */
+#define MK_REF_LOCKS 64
+typedef struct { volatile int v; char pad[60]; } MkRefLock;
+static MkRefLock ref_locks[MK_REF_LOCKS];
+static inline void mk_cpu_relax(void) {
+#if defined(__x86_64__) || defined(__i386__)
+    __builtin_ia32_pause();
+#elif defined(__aarch64__)
+    __asm__ __volatile__("yield");
+#endif
+}
+static inline volatile int *ref_lock_of(MkObject *a) { return &ref_locks[(((uintptr_t)a) >> 4) % MK_REF_LOCKS].v; }
+static void ref_lock_acquire(volatile int *l) {
+    int spins = 0;
+    while (__atomic_load_n(l, __ATOMIC_RELAXED) != 0 || __atomic_exchange_n(l, 1, __ATOMIC_ACQUIRE) != 0) {
+        if (++spins < 64) mk_cpu_relax(); else { mk_sys_thread_yield(); spins = 0; }
+    }
+}
+static void ref_lock_release(volatile int *l) { __atomic_store_n(l, 0, __ATOMIC_RELEASE); }
 
 MkObject *mk_atomic_ref_get(MkObject *a) {
-    ref_lock_acquire();
+    volatile int *l = ref_lock_of(a);
+    ref_lock_acquire(l);
     MkObject *r = MK_ARRAY_ELEMS(MkObject *, a)[0];
     mk_retain(r);
-    ref_lock_release();
+    ref_lock_release(l);
     return r;
 }
 
 void mk_atomic_ref_set(MkObject *a, MkObject *v) {
+    volatile int *l = ref_lock_of(a);
     mk_retain(v);
-    ref_lock_acquire();
+    ref_lock_acquire(l);
     MkObject **slot = &MK_ARRAY_ELEMS(MkObject *, a)[0];
     MkObject *old = *slot;
     *slot = v;
-    ref_lock_release();
+    ref_lock_release(l);
     mk_release(old);
 }
 
 MkObject *mk_atomic_ref_exchange(MkObject *a, MkObject *v) {
+    volatile int *l = ref_lock_of(a);
     mk_retain(v);
-    ref_lock_acquire();
+    ref_lock_acquire(l);
     MkObject **slot = &MK_ARRAY_ELEMS(MkObject *, a)[0];
     MkObject *old = *slot;
     *slot = v;
-    ref_lock_release();
+    ref_lock_release(l);
     return old; /* the cell's reference moves to the caller */
 }
 
 MkBoolean mk_atomic_ref_cas(MkObject *a, MkObject *expected, MkObject *v) {
-    ref_lock_acquire();
+    volatile int *l = ref_lock_of(a);
+    ref_lock_acquire(l);
     MkObject **slot = &MK_ARRAY_ELEMS(MkObject *, a)[0];
     if (*slot != expected) {
-        ref_lock_release();
+        ref_lock_release(l);
         return false;
     }
     mk_retain(v);
     MkObject *old = *slot;
     *slot = v;
-    ref_lock_release();
+    ref_lock_release(l);
     mk_release(old);
     return true;
 }

@@ -78,6 +78,34 @@ public class FutureTask<V> : RunnableFuture<V> {
         lock.unlock()
     }
 
+    /** Runs the computation without setting the result (state stays "new" when it succeeds); false when it failed or was cancelled. */
+    internal fun runAndReset(): Boolean {
+        lock.lock()
+        val c = callable
+        if (state != 0 || c == null) {
+            lock.unlock()
+            return false
+        }
+        lock.unlock()
+        try {
+            c.call()
+        } catch (e: Throwable) {
+            lock.lock()
+            if (state == 0) {
+                failure = e
+                state = 3
+                callable = null
+                changed.signalAll()
+            }
+            lock.unlock()
+            return false
+        }
+        lock.lock()
+        val ok = state == 0
+        lock.unlock()
+        return ok
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun report(): V {
         val s = state
@@ -137,19 +165,73 @@ public interface ExecutorService : Executor, AutoCloseable {
     public fun <T> invokeAny(tasks: Collection<Callable<T>>): T
 }
 
-public interface ScheduledFuture<V> : Future<V>
+public interface ScheduledFuture<V> : Delayed, Future<V>
 
 public interface ScheduledExecutorService : ExecutorService {
     public fun schedule(command: Runnable, delay: Long, unit: TimeUnit): ScheduledFuture<*>
     public fun <V> schedule(callable: Callable<V>, delay: Long, unit: TimeUnit): ScheduledFuture<V>
+    public fun scheduleAtFixedRate(command: Runnable, initialDelay: Long, period: Long, unit: TimeUnit): ScheduledFuture<*>
+    public fun scheduleWithFixedDelay(command: Runnable, initialDelay: Long, delay: Long, unit: TimeUnit): ScheduledFuture<*>
 }
 
-private class ScheduledTask<V>(private val inner: FutureTask<V>) : ScheduledFuture<V> {
+public fun interface ThreadFactory {
+    public fun newThread(r: Runnable): Thread
+}
+
+/** The thread factory of [Executors]: threads named `pool-N-thread-M`, N counting the factories made, M the threads of this one. */
+private class DefaultThreadFactory : ThreadFactory {
+    private val poolNumber = DefaultThreadFactoryCounter.next()
+    private val threadNumber = java.util.concurrent.atomic.AtomicInteger(1)
+
+    override fun newThread(r: Runnable): Thread = Thread(r, "pool-" + poolNumber + "-thread-" + threadNumber.getAndIncrement())
+}
+
+private object DefaultThreadFactoryCounter {
+    private val n = java.util.concurrent.atomic.AtomicInteger(1)
+    fun next(): Int = n.getAndIncrement()
+}
+
+/** A delayed or periodic task of a [ThreadPoolExecutor]: [time] is the next run on the monotonic clock; [period] > 0 fixed rate, < 0 fixed delay. */
+private class ScheduledTask<V>(
+    private val pool: ThreadPoolExecutor,
+    callable: Callable<V>,
+    var time: Long,
+    val period: Long,
+    val seq: Long,
+) : ScheduledFuture<V>, Runnable {
+    val inner = FutureTask(callable)
+
+    override fun run() {
+        if (period == 0L) {
+            inner.run()
+        } else if (inner.runAndReset()) {
+            time = if (period > 0L) time + period else sysMonotonicNanos() - period
+            pool.requeue(this)
+        }
+    }
+
     override fun get(): V = inner.get()
     override fun get(timeout: Long, unit: TimeUnit): V = inner.get(timeout, unit)
-    override fun cancel(mayInterruptIfRunning: Boolean): Boolean = inner.cancel(mayInterruptIfRunning)
+
+    override fun cancel(mayInterruptIfRunning: Boolean): Boolean {
+        val ok = inner.cancel(mayInterruptIfRunning)
+        if (ok) pool.removeDelayed(this)
+        return ok
+    }
+
     override val isCancelled: Boolean get() = inner.isCancelled
     override val isDone: Boolean get() = inner.isDone
+    override fun getDelay(unit: TimeUnit): Long = unit.convert(time - sysMonotonicNanos(), TimeUnit.NANOSECONDS)
+
+    override fun compareTo(other: Delayed): Int {
+        if (other === this) return 0
+        if (other is ScheduledTask<*>) {
+            if (time != other.time) return if (time < other.time) -1 else 1
+            return if (seq < other.seq) -1 else if (seq > other.seq) 1 else 0
+        }
+        val d = getDelay(TimeUnit.NANOSECONDS) - other.getDelay(TimeUnit.NANOSECONDS)
+        return if (d < 0L) -1 else if (d > 0L) 1 else 0
+    }
 }
 
 /** A pool of worker threads over a task queue. [maxThreads] workers at most; idle ones beyond [coreThreads] end after [keepAliveNanos]. */
@@ -166,13 +248,106 @@ public open class ThreadPoolExecutor(
     private var idle = 0
     private var shut = false
     private var poolId = 0
+    private val delayed = ArrayList<ScheduledTask<*>>()
+    private val timerCond: Condition = lock.newCondition()
+    private var timerRunning = false
+    private var seqCounter = 0L
+    private var factory: ThreadFactory? = null
 
+    /** The factory of the worker threads (the default one names them `pool-N-thread-M`). */
+    public var threadFactory: ThreadFactory
+        get() {
+            lock.lock()
+            var f = factory
+            if (f == null) {
+                f = DefaultThreadFactory()
+                factory = f
+            }
+            lock.unlock()
+            return f
+        }
+        set(value) {
+            lock.lock()
+            factory = value
+            lock.unlock()
+        }
+
+    // the caller holds the lock
     private fun startWorker() {
         workers++
         val me = this
-        val t = Thread({ me.workerLoop() }, "pool-worker")
+        var f = factory
+        if (f == null) {
+            f = DefaultThreadFactory()
+            factory = f
+        }
+        val t = f.newThread { me.workerLoop() }
         t.isDaemon = true
         t.start()
+    }
+
+    // the caller holds the lock; delayed tasks of a pool that is shut down are still to run (one-shot ones)
+    private fun finished(): Boolean = shut && workers == 0 && queue.isEmpty() && delayed.isEmpty()
+
+    private fun startTimer() {
+        timerRunning = true
+        val me = this
+        val t = Thread({ me.timerLoop() }, "pool-timer")
+        t.isDaemon = true
+        t.start()
+    }
+
+    private fun timerLoop() {
+        lock.lock()
+        while (true) {
+            if (delayed.isEmpty()) {
+                if (shut) break
+                timerCond.await()
+                continue
+            }
+            val first = delayed[0]
+            val now = sysMonotonicNanos()
+            if (first.time > now) {
+                timerCond.awaitNanos(first.time - now)
+                continue
+            }
+            delayed.removeAt(0)
+            enqueue(first)
+        }
+        timerRunning = false
+        work.signalAll()
+        if (finished()) terminated.signalAll()
+        lock.unlock()
+    }
+
+    // the caller holds the lock
+    private fun insertDelayed(t: ScheduledTask<*>) {
+        var i = delayed.size
+        while (i > 0 && delayed[i - 1].compareTo(t) > 0) i--
+        delayed.add(i, t)
+        if (!timerRunning) startTimer()
+        timerCond.signalAll()
+    }
+
+    internal fun requeue(t: ScheduledTask<*>) {
+        lock.lock()
+        if (!shut) insertDelayed(t)
+        lock.unlock()
+    }
+
+    internal fun removeDelayed(t: ScheduledTask<*>) {
+        lock.lock()
+        delayed.remove(t)
+        timerCond.signalAll()
+        if (finished()) terminated.signalAll()
+        lock.unlock()
+    }
+
+    // the caller holds the lock
+    private fun enqueue(command: Runnable) {
+        queue.addLast(command)
+        if (idle < queue.size && workers < maxThreads) startWorker()
+        work.signal()
     }
 
     private fun workerLoop() {
@@ -182,7 +357,7 @@ public open class ThreadPoolExecutor(
             while (task == null) {
                 if (!queue.isEmpty()) {
                     task = queue.removeFirst()
-                } else if (shut) {
+                } else if (shut && delayed.isEmpty()) {
                     break
                 } else {
                     idle++
@@ -202,7 +377,7 @@ public open class ThreadPoolExecutor(
             }
             if (task == null) {
                 workers--
-                if (workers == 0) terminated.signalAll()
+                if (finished()) terminated.signalAll()
                 lock.unlock()
                 return
             }
@@ -221,9 +396,7 @@ public open class ThreadPoolExecutor(
             lock.unlock()
             throw RejectedExecutionException("executor has been shut down")
         }
-        queue.addLast(command)
-        if (idle < queue.size && workers < maxThreads) startWorker()
-        work.signal()
+        enqueue(command)
         lock.unlock()
     }
 
@@ -270,33 +443,51 @@ public open class ThreadPoolExecutor(
         throw ExecutionException(last)
     }
 
-    public override fun schedule(command: Runnable, delay: Long, unit: TimeUnit): ScheduledFuture<*> {
-        val f = FutureTask<Any?>(command, null)
-        scheduleRun(f, delay, unit)
-        return ScheduledTask(f)
+    public override fun schedule(command: Runnable, delay: Long, unit: TimeUnit): ScheduledFuture<*> =
+        scheduleTask(Callable<Any?> { command.run(); null }, delay, unit, 0L)
+
+    public override fun <V> schedule(callable: Callable<V>, delay: Long, unit: TimeUnit): ScheduledFuture<V> =
+        scheduleTask(callable, delay, unit, 0L)
+
+    public override fun scheduleAtFixedRate(command: Runnable, initialDelay: Long, period: Long, unit: TimeUnit): ScheduledFuture<*> {
+        if (period <= 0L) throw IllegalArgumentException()
+        return scheduleTask(Callable<Any?> { command.run(); null }, initialDelay, unit, unit.toNanos(period))
     }
 
-    public override fun <V> schedule(callable: Callable<V>, delay: Long, unit: TimeUnit): ScheduledFuture<V> {
-        val f = FutureTask(callable)
-        scheduleRun(f, delay, unit)
-        return ScheduledTask(f)
+    public override fun scheduleWithFixedDelay(command: Runnable, initialDelay: Long, delay: Long, unit: TimeUnit): ScheduledFuture<*> {
+        if (delay <= 0L) throw IllegalArgumentException()
+        return scheduleTask(Callable<Any?> { command.run(); null }, initialDelay, unit, -unit.toNanos(delay))
     }
 
-    private fun scheduleRun(f: Runnable, delay: Long, unit: TimeUnit) {
-        val me = this
-        val nanos = unit.toNanos(delay)
-        execute {
-            // a pool worker sleeps for the delay (simple, and enough for delays that are short next to the pool size)
-            if (nanos > 0L) sysSleepNanos(nanos)
-            f.run()
+    private fun <V> scheduleTask(callable: Callable<V>, delay: Long, unit: TimeUnit, period: Long): ScheduledTask<V> {
+        lock.lock()
+        if (shut) {
+            lock.unlock()
+            throw RejectedExecutionException("executor has been shut down")
         }
+        val t = ScheduledTask(this, callable, sysMonotonicNanos() + (if (delay > 0L) unit.toNanos(delay) else 0L), period, seqCounter++)
+        insertDelayed(t)
+        lock.unlock()
+        return t
     }
 
     public override fun shutdown() {
         lock.lock()
         shut = true
+        // periodic tasks end with the pool, one-shot delayed tasks still run
+        var i = 0
+        while (i < delayed.size) {
+            val t = delayed[i]
+            if (t.period != 0L) {
+                t.inner.cancel(false)
+                delayed.removeAt(i)
+            } else {
+                i++
+            }
+        }
         work.signalAll()
-        if (workers == 0) terminated.signalAll()
+        timerCond.signalAll()
+        if (finished()) terminated.signalAll()
         lock.unlock()
     }
 
@@ -305,8 +496,11 @@ public open class ThreadPoolExecutor(
         shut = true
         val rest = ArrayList<Runnable>(queue)
         queue.clear()
+        for (t in delayed) rest.add(t)
+        delayed.clear()
         work.signalAll()
-        if (workers == 0) terminated.signalAll()
+        timerCond.signalAll()
+        if (finished()) terminated.signalAll()
         lock.unlock()
         return rest
     }
@@ -316,7 +510,7 @@ public open class ThreadPoolExecutor(
     public override val isTerminated: Boolean
         get() {
             lock.lock()
-            val r = shut && workers == 0
+            val r = finished()
             lock.unlock()
             return r
         }
@@ -324,10 +518,10 @@ public open class ThreadPoolExecutor(
     public override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean {
         val end = sysMonotonicNanos() + unit.toNanos(timeout)
         lock.lock()
-        while (!(shut && workers == 0)) {
+        while (!finished()) {
             if (awaitDeadline(terminated, end)) break
         }
-        val r = shut && workers == 0
+        val r = finished()
         lock.unlock()
         return r
     }
@@ -339,33 +533,97 @@ public open class ThreadPoolExecutor(
 }
 
 public object Executors {
-    public fun newFixedThreadPool(nThreads: Int): ExecutorService {
-        if (nThreads <= 0) throw IllegalArgumentException()
-        return ThreadPoolExecutor(nThreads, nThreads, 0L)
+    public fun defaultThreadFactory(): ThreadFactory = DefaultThreadFactory()
+
+    private fun pool(core: Int, max: Int, keepAliveNanos: Long, factory: ThreadFactory?): ThreadPoolExecutor {
+        val p = ThreadPoolExecutor(core, max, keepAliveNanos)
+        p.threadFactory = factory ?: DefaultThreadFactory()
+        return p
     }
 
-    public fun newSingleThreadExecutor(): ExecutorService = ThreadPoolExecutor(1, 1, 0L)
+    public fun newFixedThreadPool(nThreads: Int): ExecutorService = newFixedThreadPool(nThreads, null)
 
-    public fun newCachedThreadPool(): ExecutorService = ThreadPoolExecutor(0, Int.MAX_VALUE, 60000000000L)
+    public fun newFixedThreadPool(nThreads: Int, threadFactory: ThreadFactory?): ExecutorService {
+        if (nThreads <= 0) throw IllegalArgumentException()
+        return pool(nThreads, nThreads, 0L, threadFactory)
+    }
+
+    public fun newSingleThreadExecutor(): ExecutorService = pool(1, 1, 0L, null)
+
+    public fun newSingleThreadExecutor(threadFactory: ThreadFactory?): ExecutorService = pool(1, 1, 0L, threadFactory)
+
+    public fun newCachedThreadPool(): ExecutorService = pool(0, Int.MAX_VALUE, 60000000000L, null)
+
+    public fun newCachedThreadPool(threadFactory: ThreadFactory?): ExecutorService = pool(0, Int.MAX_VALUE, 60000000000L, threadFactory)
 
     public fun newWorkStealingPool(): ExecutorService {
         var n = sysCpuCount().toInt()
         if (n < 1) n = 1
-        return ThreadPoolExecutor(n, n, 0L)
+        return ForkJoinPool(n)
     }
 
-    public fun newWorkStealingPool(parallelism: Int): ExecutorService = ThreadPoolExecutor(parallelism, parallelism, 0L)
+    public fun newWorkStealingPool(parallelism: Int): ExecutorService = ForkJoinPool(parallelism)
 
     public fun newVirtualThreadPerTaskExecutor(): ExecutorService = newCachedThreadPool()
 
-    public fun newScheduledThreadPool(corePoolSize: Int): ScheduledExecutorService =
-        ThreadPoolExecutor(corePoolSize, corePoolSize * 4, 0L)
+    public fun newThreadPerTaskExecutor(threadFactory: ThreadFactory): ExecutorService = newCachedThreadPool(threadFactory)
 
-    public fun newSingleThreadScheduledExecutor(): ScheduledExecutorService = ThreadPoolExecutor(1, 4, 0L)
+    public fun newScheduledThreadPool(corePoolSize: Int): ScheduledExecutorService = newScheduledThreadPool(corePoolSize, null)
+
+    public fun newScheduledThreadPool(corePoolSize: Int, threadFactory: ThreadFactory?): ScheduledExecutorService =
+        pool(corePoolSize, if (corePoolSize < 1) 1 else corePoolSize, 0L, threadFactory)
+
+    public fun newSingleThreadScheduledExecutor(): ScheduledExecutorService = pool(1, 1, 0L, null)
+
+    public fun newSingleThreadScheduledExecutor(threadFactory: ThreadFactory?): ScheduledExecutorService = pool(1, 1, 0L, threadFactory)
+
+    public fun <T> callable(task: Runnable, result: T): Callable<T> = Callable { task.run(); result }
+
+    public fun callable(task: Runnable): Callable<Any?> = Callable { task.run(); null }
+
+    public fun unconfigurableExecutorService(executor: ExecutorService): ExecutorService = executor
+}
+
+public interface CompletionService<V> {
+    public fun submit(task: Callable<V>): Future<V>
+    public fun submit(task: Runnable, result: V): Future<V>
+    public fun take(): Future<V>
+    public fun poll(): Future<V>?
+    public fun poll(timeout: Long, unit: TimeUnit): Future<V>?
+}
+
+/** A [CompletionService] over an executor: finished futures come out of `take` in the order they finished. */
+public class ExecutorCompletionService<V>(private val executor: Executor) : CompletionService<V> {
+    private val done = LinkedBlockingQueue<Future<V>>()
+
+    private fun wrap(task: Callable<V>): FutureTask<V> {
+        val q = done
+        var self: FutureTask<V>? = null
+        val ft = FutureTask<V>(Callable<V> {
+            try {
+                task.call()
+            } finally {
+                q.add(self!!)
+            }
+        })
+        self = ft
+        return ft
+    }
+
+    public override fun submit(task: Callable<V>): Future<V> {
+        val f = wrap(task)
+        executor.execute(f)
+        return f
+    }
+
+    public override fun submit(task: Runnable, result: V): Future<V> = submit(Callable<V> { task.run(); result })
+    public override fun take(): Future<V> = done.take()
+    public override fun poll(): Future<V>? = done.poll()
+    public override fun poll(timeout: Long, unit: TimeUnit): Future<V>? = done.poll(timeout, unit)
 }
 
 private object CommonPool {
-    val pool: ExecutorService = Executors.newCachedThreadPool()
+    val pool: ExecutorService = ForkJoinPool.commonPool()
 }
 
 /** A future with callbacks. Async stages run on a shared cached pool unless an executor is given. */

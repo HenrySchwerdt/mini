@@ -6,68 +6,81 @@
 package kotlin.concurrent
 
 import mini.concurrent.Lock
+import mini.internal.*
 import mini.concurrent.withLock
 
 private val arrayAtomicsLock = Lock()
 
-public fun IntArray.atomicGet(index: Int): Int = arrayAtomicsLock.withLock { this[index] }
+private fun checkAtomicIndex(index: Int, size: Int) {
+    if (index < 0 || index >= size) throw IndexOutOfBoundsException("index: $index, size: $size")
+}
+
+public fun IntArray.atomicGet(index: Int): Int {
+    checkAtomicIndex(index, size)
+    return atomicIntGetAt(this, index)
+}
 
 public fun IntArray.atomicSet(index: Int, newValue: Int) {
-    arrayAtomicsLock.withLock { this[index] = newValue }
+    checkAtomicIndex(index, size)
+    atomicIntSetAt(this, index, newValue)
 }
 
-public fun IntArray.compareAndExchange(index: Int, expectedValue: Int, newValue: Int): Int = arrayAtomicsLock.withLock {
-    val cur = this[index]
-    if (cur == expectedValue) this[index] = newValue
-    cur
+public fun IntArray.compareAndExchange(index: Int, expectedValue: Int, newValue: Int): Int {
+    checkAtomicIndex(index, size)
+    while (true) {
+        val cur = atomicIntGetAt(this, index)
+        if (cur != expectedValue) return cur
+        if (atomicIntCasAt(this, index, expectedValue, newValue)) return expectedValue
+    }
 }
 
-public fun IntArray.compareAndSet(index: Int, expectedValue: Int, newValue: Int): Boolean = arrayAtomicsLock.withLock {
-    val ok = this[index] == expectedValue
-    if (ok) this[index] = newValue
-    ok
+public fun IntArray.compareAndSet(index: Int, expectedValue: Int, newValue: Int): Boolean {
+    checkAtomicIndex(index, size)
+    return atomicIntCasAt(this, index, expectedValue, newValue)
 }
 
-public fun IntArray.getAndSet(index: Int, newValue: Int): Int = arrayAtomicsLock.withLock {
-    val cur = this[index]
-    this[index] = newValue
-    cur
+public fun IntArray.getAndSet(index: Int, newValue: Int): Int {
+    checkAtomicIndex(index, size)
+    return atomicIntExchangeAt(this, index, newValue)
 }
 
-public fun IntArray.getAndAdd(index: Int, delta: Int): Int = arrayAtomicsLock.withLock {
-    val cur = this[index]
-    this[index] = cur + delta
-    cur
+public fun IntArray.getAndAdd(index: Int, delta: Int): Int {
+    checkAtomicIndex(index, size)
+    return atomicIntAddAt(this, index, delta) - delta
 }
 
-public fun LongArray.atomicGet(index: Int): Long = arrayAtomicsLock.withLock { this[index] }
+public fun LongArray.atomicGet(index: Int): Long {
+    checkAtomicIndex(index, size)
+    return atomicLongGetAt(this, index)
+}
 
 public fun LongArray.atomicSet(index: Int, newValue: Long) {
-    arrayAtomicsLock.withLock { this[index] = newValue }
+    checkAtomicIndex(index, size)
+    atomicLongSetAt(this, index, newValue)
 }
 
-public fun LongArray.compareAndExchange(index: Int, expectedValue: Long, newValue: Long): Long = arrayAtomicsLock.withLock {
-    val cur = this[index]
-    if (cur == expectedValue) this[index] = newValue
-    cur
+public fun LongArray.compareAndExchange(index: Int, expectedValue: Long, newValue: Long): Long {
+    checkAtomicIndex(index, size)
+    while (true) {
+        val cur = atomicLongGetAt(this, index)
+        if (cur != expectedValue) return cur
+        if (atomicLongCasAt(this, index, expectedValue, newValue)) return expectedValue
+    }
 }
 
-public fun LongArray.compareAndSet(index: Int, expectedValue: Long, newValue: Long): Boolean = arrayAtomicsLock.withLock {
-    val ok = this[index] == expectedValue
-    if (ok) this[index] = newValue
-    ok
+public fun LongArray.compareAndSet(index: Int, expectedValue: Long, newValue: Long): Boolean {
+    checkAtomicIndex(index, size)
+    return atomicLongCasAt(this, index, expectedValue, newValue)
 }
 
-public fun LongArray.getAndSet(index: Int, newValue: Long): Long = arrayAtomicsLock.withLock {
-    val cur = this[index]
-    this[index] = newValue
-    cur
+public fun LongArray.getAndSet(index: Int, newValue: Long): Long {
+    checkAtomicIndex(index, size)
+    return atomicLongExchangeAt(this, index, newValue)
 }
 
-public fun LongArray.getAndAdd(index: Int, delta: Long): Long = arrayAtomicsLock.withLock {
-    val cur = this[index]
-    this[index] = cur + delta
-    cur
+public fun LongArray.getAndAdd(index: Int, delta: Long): Long {
+    checkAtomicIndex(index, size)
+    return atomicLongAddAt(this, index, delta) - delta
 }
 
 public fun <T> Array<T>.atomicGet(index: Int): T = arrayAtomicsLock.withLock { this[index] }

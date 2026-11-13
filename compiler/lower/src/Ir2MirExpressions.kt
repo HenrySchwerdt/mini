@@ -28,11 +28,13 @@ internal fun Ir2Mir.isPure(e: MirExpr): Boolean = when (e) {
  * values of earlier operands are first stored in temporaries so evaluation order is kept;
  * operands with side effects (calls, field reads) are stored in temporaries unless last.
  */
-internal fun Ir2Mir.operands(args: List<IrExpression>, out: MutableList<MirStmt>): List<MirExpr> {
+internal fun Ir2Mir.operands(args: List<IrExpression>, out: MutableList<MirStmt>, post: ((MirExpr) -> MirExpr)? = null): List<MirExpr> {
     val results = ArrayList<MirExpr>()
     for ((idx, a) in args.withIndex()) {
         val before = out.size
         var v = value(a, out)
+        // (a string template converts each piece when it is appended: `"$list ${list.add(1)}"` shows the list before the change)
+        if (post != null && idx < args.size - 1) v = post(v)
         if (out.size > before) {
             var insertAt = before
             for (j in results.indices) {
@@ -382,7 +384,7 @@ object ConcatOptions {
 }
 
 internal fun Ir2Mir.stringConcat(e: IrStringConcatenation, out: MutableList<MirStmt>): MirExpr {
-    val vals = operands(e.arguments, out)
+    val vals = operands(e.arguments, out, if (e.arrayContent) null else { v -> if (v.type.isRef && v.type != TString && v.type !is TInline && v !is MirExpr.NullConst) toStringExpr(v, e, out) else v })
     // the pieces; neighbouring constants are joined here. An Int / Long / Char piece stays a number (kind 1 / 2): the concatenation writes its digits
     // itself (mk_string_concat_mN), no string is made for it. A string piece has kind 0.
     val parts = ArrayList<MirExpr>()
