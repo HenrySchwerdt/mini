@@ -1515,6 +1515,11 @@ not recorded) and the cycles that were created while threads ran are collected b
 ended (or at the end of `main`). The documented limitation: a program that keeps a worker thread running for its whole life never
 frees cycles during that time.
 
+The lock around the candidate buffer (`roots_lock`) is a test-and-test-and-set spin lock that calls `mk_sys_thread_yield` after 32 failed
+attempts. It used to spin on the exchange alone: with hundreds of runnable threads on a few processors (`threads_stress` starts a pool of
+220) a preempted holder was starved by the spinners, and under ThreadSanitizer, where every exchange takes a global slot lock, one run took
+from 8 seconds to more than 5 minutes (timeout in CI, `tsan::threads_stress`, after the merge of main changed the timing). Now 3 seconds, 20 of 20
+runs with four at once.
 ### Release depth
 
 Dropping the head of a long singly linked list released the next node from the dispose of the previous one: recursion as deep as

@@ -17,6 +17,13 @@ companions, extension functions, operator overloading, inner classes, `lazy`, va
 `break`/`continue`, reference-cyclic object graphs (the cycle collector), `sequence { yield }`, `generateSequence`, and suspend functions
 driven by a small `startCoroutine` scheduler.
 
+Added by fuzz-2: generics with variance and bounds (`in`/`out`, star projection, `Array<out T>`, `MutableList<in T>`), sealed hierarchies
+with exhaustive `when` (also generic `Res<out T>`), `@JvmInline value class` and data classes in lists, maps and sets, DSLs with receiver
+(nested `Node.() -> Unit` lambdas, `operator fun String.unaryPlus`), exceptions in `finally`, in `use {}` and in lambdas (`runCatching`,
+`lazy`), `mini.coroutines` (`runBlocking`, `launch`, `async`, `yield`, `coroutineScope`; the JVM side runs the same source against
+kotlinx.coroutines), Unicode strings (emoji, combining marks, `ß`, `İ`, `Σ`), Long/Double/Float limits and overflow, and ranges with
+`step`, `downTo` and bounds at `Int.MAX_VALUE`/`Long.MAX_VALUE`.
+
 Left out on purpose, because the output would differ for reasons that are not bugs: hash order (`HashMap`, `HashSet`), floating point
 formatting of arbitrary values (only exactly representable values are printed), identity hash codes, stack traces and `Thread`.
 
@@ -122,17 +129,49 @@ of stdlib calls per input, and a run of the checked build is slow):
 No finding in the runtime's own C code (UTF-8 and UTF-16 conversion, Double/Float formatting and parsing) and none in the number parsing and
 printing, the text functions or the UTF-8 coding of the stdlib.
 
+## Strict variants
+
+`tools/fuzz/genstrict.py SEED` generates a program in `@file:MemoryMode(Mode.Strict)` that the memory checker should accept: objects of
+`@AllocatedBy(Heap::class)` classes that are freed exactly once on every path, borrowed and `@Owned` parameters, owning fields with
+`move()`, linked lists and trees freed with their root, `try`/`finally`, `use {}`, `@Borrowed` results, closures that read an owner
+before it is freed, and all of it nested in loops (with `continue`/`break`), branches and helper functions. There is no JVM side
+(`mini.memory` is not Kotlin); the programs print values.
+
+```
+python3 tools/fuzz/fuzz.py run --strict --seeds 0:500 --variants strict-asan,strict-llvm-asan --jobs 4 --out /tmp/fuzz
+python3 tools/fuzz/fuzz.py reduce --strict --file /tmp/fuzz/fail/strict12.strict-asan.leak.kt --variant strict-asan
+```
+
+| variant | checks |
+|---|---|
+| `strict` | the checker accepts the program (`minic-native --check`); built with C, it runs |
+| `strict-asan` | the same, built with AddressSanitizer, UBSan and LeakSanitizer |
+| `strict-llvm-asan` | the same through the LLVM backend |
+
+A rejection is `strict-rejected` (a false positive of the checker, or a program the generator should not have written). A sanitizer
+or leak report on an accepted program is a **soundness bug of the checker or the runtime**: the checker promised a safe program. This
+is the most important result of the fuzzer.
+
 ## Smoke test in CI
 
 `tools/fuzz/smoke/` holds 50 fixed programs with the JVM output stored. `scripts/test-e2e.sh --suite fuzz` (part of the default suites)
 builds and runs them through the C backend; `fuzz-llvm` does the same through LLVM, `fuzz-leak` under the sanitizers. No JVM is needed.
+`tools/fuzz/smoke-strict/` holds 30 Strict programs (suite `fuzz-strict`): accepted by the checker, clean under the sanitizers, stored output.
 
 ## Found so far
 
 See the list below; each fixed bug has a regression test in `compiler/testdata`.
 
 About 1,500 distinct programs (sizes 14 and 24) were compared with kotlinc 2.1.20, in about 2,300 runs over the variants (C, LLVM, C with
-sanitizers). Two compiler bugs came out, both fixed with a regression test; the rest were differences that are not bugs.
+sanitizers). Two compiler bugs came out (fuzz-1), both fixed with a regression test; the rest were differences that are not bugs.
+
+fuzz-2 (the extended generator and the Strict variants): seeds 10000:10120 of `gen.py` on `c`, `llvm`, `c-asan` and `llvm-asan` (480 runs, 120
+programs, all compared with kotlinc and the coroutines jar) and seeds 20000:20240 of `genstrict.py` on `strict`, `strict-asan` and
+`strict-llvm-asan` (720 runs, 240 programs): no difference, crash, sanitizer report or leak, and the checker accepted every Strict program
+(no soundness bug of the checker found). The bulk runs use `FUZZ_OPT=-O0` for the C compiler (3 times faster; the optimizations that matter
+are mini's own and run before the C compiler). The first 25 of the plain seeds were also run at `-O1`. Found on the way: the fuzzer's own
+bugs (`save --strict` stored empty expectations, and the failure details of `run --strict` and `reduce --strict` were the program output,
+because the result tuple of `run_variant` was unpacked in the wrong order).
 
 ### Fixed
 
