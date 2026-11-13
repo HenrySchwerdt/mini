@@ -1,0 +1,58 @@
+false
+true
+true
+a.txt txt a
+true
+false
+true
+20
+20
+[one, two, three, , five]
+6
+18
+[ONE, TWO, THREE, FIVE, SIX]
+one
+two
+15
+null
+[x, y]
+hello|42 3.14|z|
+hello|42 3.14|z|++
+true
+[a.txt, sub]
+[a.txt, sub]
+[, a.txt, sub, sub/c.txt, sub/deeper, sub/deeper/b.kt]
+true
+[, a.txt, sub, sub/c.txt, sub/deeper, sub/deeper/b.kt]
+true
+[a.txt, b.kt, c.txt]
+3
+a/c
+a/b
+null
+null
+/
+a/b/c
+/c
+gz
+c.tar
+true
+true
+exists
+true
+false
+fnf
+fnf2
+false
+false
+true
+false
+a|1c
+[l1, l2, l3, l4]
+abc
+[a b, c]
+9
+hello|007
+hi
+out
+c5-x

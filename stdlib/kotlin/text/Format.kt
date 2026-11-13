@@ -1,9 +1,22 @@
 /*
  * String.format: the java.util.Formatter subset used by everyday code, with the same output as the JVM:
- * %d %s %S %b %c %f %e %E %g %x %X %o %n %% with flags - 0 + space , ( #, width, precision and argument indexes (%1$s, %<s).
+ * %d %s %S %b %B %h %H %c %C %f %e %E %g %G %x %X %o %n %% with flags - 0 + space , ( #, width, precision and argument indexes (%1$s, %<s).
+ * Byte/Short/Int/Long arguments, and the java.util.*Format*Exception classes (FormatExceptions.kt) for bad specifiers like the JVM.
+ * Not supported: %a, %t/%T (date/time), BigInteger/BigDecimal, Formattable, locales.
  * Floating point values are formatted from their shortest decimal representation and rounded half-up, like Java.
  */
 package kotlin.text
+
+import java.util.DuplicateFormatFlagsException
+import java.util.FormatFlagsConversionMismatchException
+import java.util.IllegalFormatCodePointException
+import java.util.IllegalFormatConversionException
+import java.util.IllegalFormatFlagsException
+import java.util.IllegalFormatPrecisionException
+import java.util.IllegalFormatWidthException
+import java.util.MissingFormatArgumentException
+import java.util.MissingFormatWidthException
+import java.util.UnknownFormatConversionException
 
 public fun String.format(vararg args: Any?): String = formatImpl(this, args)
 
@@ -52,15 +65,19 @@ private fun formatImpl(fmt: String, args: Array<out Any?>): String {
         var flagsDone = false
         while (i < n && !flagsDone) {
             val f = fmt[i]
-            if (f == '-') sp.minus = true
-            else if (f == '0') sp.zero = true
-            else if (f == '+') sp.plus = true
-            else if (f == ' ') sp.space = true
-            else if (f == ',') sp.comma = true
-            else if (f == '(') sp.paren = true
-            else if (f == '#') sp.alt = true
-            else flagsDone = true
-            if (!flagsDone) i++
+            if (f == '-' || f == '0' || f == '+' || f == ' ' || f == ',' || f == '(' || f == '#') {
+                if (hasFlag(sp, f)) throw DuplicateFormatFlagsException(f.toString())
+                if (f == '-') sp.minus = true
+                else if (f == '0') sp.zero = true
+                else if (f == '+') sp.plus = true
+                else if (f == ' ') sp.space = true
+                else if (f == ',') sp.comma = true
+                else if (f == '(') sp.paren = true
+                else sp.alt = true
+                i++
+            } else {
+                flagsDone = true
+            }
         }
         // width
         j = i
@@ -74,14 +91,15 @@ private fun formatImpl(fmt: String, args: Array<out Any?>): String {
             i++
             j = i
             while (j < n && fmt[j] in '0'..'9') j++
-            if (j == i) throw IllegalArgumentException("Illegal format precision in '" + fmt.substring(start, if (i < n) i + 1 else n) + "'")
+            if (j == i) throw UnknownFormatConversionException(if (i < n) fmt[i].toString() else "%")
             sp.precision = fmt.substring(i, j).toInt()
             i = j
         }
-        if (i >= n) throw IllegalArgumentException("Conversion = '%'")
+        if (i >= n) throw UnknownFormatConversionException("%")
         sp.conv = fmt[i]
         i++
         val conv = sp.conv
+        checkSpec(sp, fmt.substring(start, i))
         if (conv == 'n') {
             sb.append('\n')
             continue
@@ -100,7 +118,7 @@ private fun formatImpl(fmt: String, args: Array<out Any?>): String {
             nextArg++
         }
         if (argPos < 0 || argPos >= args.size) {
-            throw IllegalArgumentException("Format specifier '" + fmt.substring(start, i) + "'")
+            throw MissingFormatArgumentException(fmt.substring(start, i))
         }
         lastArg = argPos
         formatArg(sb, args[argPos], sp)
@@ -108,8 +126,82 @@ private fun formatImpl(fmt: String, args: Array<out Any?>): String {
     return sb.toString()
 }
 
+private fun hasFlag(sp: Spec, f: Char): Boolean = when (f) {
+    '-' -> sp.minus
+    '0' -> sp.zero
+    '+' -> sp.plus
+    ' ' -> sp.space
+    ',' -> sp.comma
+    '(' -> sp.paren
+    else -> sp.alt
+}
+
+private fun flagsText(sp: Spec): String {
+    val sb = StringBuilder()
+    if (sp.minus) sb.append('-')
+    if (sp.alt) sb.append('#')
+    if (sp.plus) sb.append('+')
+    if (sp.space) sb.append(' ')
+    if (sp.zero) sb.append('0')
+    if (sp.comma) sb.append(',')
+    if (sp.paren) sb.append('(')
+    return sb.toString()
+}
+
+/** FormatFlagsConversionMismatchException for the first of [bad] (in this order) that is set. */
+private fun checkBad(sp: Spec, bad: String) {
+    for (f in bad) {
+        if (hasFlag(sp, f)) throw FormatFlagsConversionMismatchException(f.toString(), sp.conv)
+    }
+}
+
+private fun checkNumeric(sp: Spec, text: String) {
+    if (sp.width == -1 && (sp.minus || sp.zero)) throw MissingFormatWidthException(text)
+    if ((sp.plus && sp.space) || (sp.minus && sp.zero)) throw IllegalFormatFlagsException(flagsText(sp))
+}
+
+/** the parse-time checks of java.util.Formatter: unknown conversions and flag / width / precision combinations that are never valid. */
+private fun checkSpec(sp: Spec, text: String) {
+    val conv = sp.conv
+    when (conv) {
+        's', 'S', 'b', 'B', 'h', 'H' -> {
+            if (sp.alt) throw FormatFlagsConversionMismatchException("#", conv)
+            if (sp.width == -1 && sp.minus) throw MissingFormatWidthException(text)
+            checkBad(sp, "+ 0,(")
+        }
+        'c', 'C' -> {
+            if (sp.precision != -1) throw IllegalFormatPrecisionException(sp.precision)
+            checkBad(sp, "#+ 0,(")
+            if (sp.width == -1 && sp.minus) throw MissingFormatWidthException(text)
+        }
+        'd', 'o', 'x', 'X' -> {
+            checkNumeric(sp, text)
+            if (sp.precision != -1) throw IllegalFormatPrecisionException(sp.precision)
+            if (conv == 'd') checkBad(sp, "#") else checkBad(sp, ",")
+        }
+        'f', 'e', 'E', 'g', 'G' -> {
+            checkNumeric(sp, text)
+            if (conv == 'e' || conv == 'E') checkBad(sp, ",")
+            else if (conv == 'g' || conv == 'G') checkBad(sp, "#")
+        }
+        '%' -> {
+            if (sp.precision != -1) throw IllegalFormatPrecisionException(sp.precision)
+            if (sp.alt || sp.plus || sp.space || sp.zero || sp.comma || sp.paren) throw IllegalFormatFlagsException(flagsText(sp))
+            if (sp.width == -1 && sp.minus) throw MissingFormatWidthException(text)
+        }
+        'n' -> {
+            if (sp.width != -1) throw IllegalFormatWidthException(sp.width)
+            if (sp.precision != -1) throw IllegalFormatPrecisionException(sp.precision)
+            if (sp.minus || sp.alt || sp.plus || sp.space || sp.zero || sp.comma || sp.paren) throw IllegalFormatFlagsException(flagsText(sp))
+        }
+        else -> throw UnknownFormatConversionException(conv.toString())
+    }
+}
+
 private fun badConversion(sp: Spec, arg: Any?): Nothing {
     val name = when (arg) {
+        is Byte -> "java.lang.Byte"
+        is Short -> "java.lang.Short"
         is Int -> "java.lang.Integer"
         is Long -> "java.lang.Long"
         is Double -> "java.lang.Double"
@@ -119,7 +211,7 @@ private fun badConversion(sp: Spec, arg: Any?): Nothing {
         is Boolean -> "java.lang.Boolean"
         else -> "java.lang.Object"
     }
-    throw IllegalArgumentException(sp.conv.toString() + " != " + name)
+    throw IllegalFormatConversionException(sp.conv, name)
 }
 
 private fun pad(sb: StringBuilder, text: String, sp: Spec) {
@@ -152,6 +244,12 @@ private fun formatArg(sb: StringBuilder, arg: Any?, sp: Spec) {
             if (conv == 'S') t = t.uppercase()
             pad(sb, t, sp)
         }
+        'h', 'H' -> {
+            var t = if (arg == null) "null" else unsignedDigits(arg.hashCode().toLong() and 0xFFFFFFFFL, 4)
+            if (sp.precision >= 0 && sp.precision < t.length) t = t.substring(0, sp.precision)
+            if (conv == 'H') t = t.uppercase()
+            pad(sb, t, sp)
+        }
         'b', 'B' -> {
             var t = if (arg == null) "false" else if (arg is Boolean) arg.toString() else "true"
             if (sp.precision >= 0 && sp.precision < t.length) t = t.substring(0, sp.precision)
@@ -164,7 +262,9 @@ private fun formatArg(sb: StringBuilder, arg: Any?, sp: Spec) {
             } else {
                 var t = when (arg) {
                     is Char -> arg.toString()
-                    is Int -> arg.toChar().toString()
+                    is Byte -> codePointText(arg.toInt())
+                    is Short -> codePointText(arg.toInt())
+                    is Int -> codePointText(arg)
                     else -> badConversion(sp, arg)
                 }
                 if (conv == 'C') t = t.uppercase()
@@ -176,6 +276,8 @@ private fun formatArg(sb: StringBuilder, arg: Any?, sp: Spec) {
                 pad(sb, "null", sp)
             } else {
                 val v: Long = when (arg) {
+                    is Byte -> arg.toLong()
+                    is Short -> arg.toLong()
                     is Int -> arg.toLong()
                     is Long -> arg
                     else -> badConversion(sp, arg)
@@ -189,7 +291,12 @@ private fun formatArg(sb: StringBuilder, arg: Any?, sp: Spec) {
             } else {
                 val radixBits = if (conv == 'o') 3 else 4
                 var digits: String
-                if (arg is Int) {
+                if (arg is Int || arg is Byte || arg is Short || arg is Long) checkBad(sp, "( +")
+                if (arg is Byte) {
+                    digits = unsignedDigits(arg.toLong() and 0xFFL, radixBits)
+                } else if (arg is Short) {
+                    digits = unsignedDigits(arg.toLong() and 0xFFFFL, radixBits)
+                } else if (arg is Int) {
                     digits = unsignedDigits(arg.toLong() and 0xFFFFFFFFL, radixBits)
                 } else if (arg is Long) {
                     digits = unsignedDigits(arg, radixBits)
@@ -211,7 +318,7 @@ private fun formatArg(sb: StringBuilder, arg: Any?, sp: Spec) {
             } else {
                 val v: Double = when (arg) {
                     is Double -> arg
-                    is Float -> arg.toString().toDouble()
+                    is Float -> arg.toDouble()
                     else -> badConversion(sp, arg)
                 }
                 formatFloating(sb, v, sp)
@@ -219,6 +326,16 @@ private fun formatArg(sb: StringBuilder, arg: Any?, sp: Spec) {
         }
         else -> throw IllegalArgumentException("Conversion = '" + conv + "'")
     }
+}
+
+private fun codePointText(cp: Int): String {
+    if (cp < 0 || cp > 0x10FFFF) throw IllegalFormatCodePointException(cp)
+    if (cp < 0x10000) return cp.toChar().toString()
+    val v = cp - 0x10000
+    val sb = StringBuilder()
+    sb.append((0xD800 + (v shr 10)).toChar())
+    sb.append((0xDC00 + (v and 0x3FF)).toChar())
+    return sb.toString()
 }
 
 private fun unsignedDigits(value: Long, bits: Int): String {
