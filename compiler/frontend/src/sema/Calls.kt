@@ -1018,8 +1018,12 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
         if (cands.isNotEmpty()) break
     }
     var expectedOf: Array<Type?> = arrayOfNulls(args.size)
+    val byShape = if (cands.size > 1) pruneByCallArgs(cands, args) else null
     if (cands.size == 1) {
         expectedOf = argExpectations(cands[0], args, typeArgs, expected)
+    } else if (byShape != null) {
+        // `PriorityQueue<String>(compareByDescending { it.length })` over `(Int)`, `(Comparator<in E>?)`, `(Collection<E>)`: only one of them can take the result of the argument call
+        expectedOf = argExpectations(byShape, args, typeArgs, expected)
     } else if (cands.size > 1 && expected != null && cands.size <= 4) {
         // overloads that all take the argument as a bare type parameter (`listOf(x)`, `listOf(vararg x)`): the expected type of the call decides for all of them
         var all: Array<Type?>? = null
@@ -1054,6 +1058,49 @@ fun BodyChecker.analyzeArgs(args: List<Arg>, groups: List<List<Candidate>>, type
         }
         i++
     }
+}
+
+/**
+ * Several overloads bind the arguments and an argument is a call with lambdas (`f(g { it.x })`): the candidates whose parameter class no
+ * function named `g` can return are dropped. The single candidate left gives the expected type of the argument (the lambda of `g` needs
+ * it to type `it`). The final overload resolution still looks at all candidates: this only decides the expectation.
+ */
+fun BodyChecker.pruneByCallArgs(cands: List<Candidate>, args: List<Arg>): Candidate? {
+    var left: List<Candidate> = cands
+    var pruned = false
+    var i = 0
+    while (i < args.size) {
+        val ex = args[i].expr
+        val a = if (ex == null) null else AstWalk.unparen(ex)
+        if (a is CallExpr && a.lambdas.isNotEmpty() && a.callee is NameExpr && !args[i].postponed) {
+            val rets = ArrayList<Type>()
+            var known = true
+            for (g in unqualifiedGroups((a.callee as NameExpr).name)) {
+                for (c in g) {
+                    val r = if (c.fn.kind == FunKind.CONSTRUCTOR) c.fn.owner?.thisType() else sema.returnTypeOf(c.fn)
+                    if (r is ClassType) rets.add(r) else known = false
+                }
+                if (g.isNotEmpty()) break
+            }
+            if (known && rets.isNotEmpty()) {
+                val keep = ArrayList<Candidate>()
+                for (c in left) {
+                    val params = paramsOf(c)
+                    val b = bindArgs(params, args)
+                    val pt = if (b == null) null else params[b.paramOfArg[i]].type
+                    var ok = pt !is ClassType
+                    if (pt is ClassType) for (r in rets) if (ops.asSuper(r, pt.cls) != null) ok = true
+                    if (ok) keep.add(c)
+                }
+                if (keep.size < left.size && keep.isNotEmpty()) {
+                    left = keep
+                    pruned = true
+                }
+            }
+        }
+        i++
+    }
+    return if (pruned && left.size == 1) left[0] else null
 }
 
 /** The expected types of the arguments of a call of [single]: its parameter types, as far as no unsolved type parameter is left in them. */
