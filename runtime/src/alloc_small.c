@@ -100,6 +100,10 @@ static int central_pop(size_t cls, Batch *out) {
 static void flush_all(void *unused) {
     (void)unused;
     MkSmallCache *t = &mk_small_cache;
+    if (t->cycles_bytes != 0) { /* the thread's share of the allocation volume goes to the global counter */
+        __atomic_fetch_add(&mk_cycles_alloc_bytes, t->cycles_bytes, __ATOMIC_RELAXED);
+        t->cycles_bytes = 0;
+    }
     for (size_t c = 1; c < MK_SMALL_CLASSES; c++) {
         if (t->spare[c] != NULL) central_push(c, t->spare[c], t->spare_tail[c], MK_SMALL_BATCH);
         if (t->free[c] != NULL) central_push(c, t->free[c], t->tail[c], t->count[c]);
@@ -189,6 +193,18 @@ void *mk_small_carve(size_t cls) {
     return mk_small_refill(cls);
 }
 
+#else
+/* (no small-object allocator: generated code of the LLVM backend still names the thread's cache; it stays empty, so its inline allocation always takes the runtime) */
+MK_TLS MkSmallCache mk_small_cache;
 #endif /* MK_SMALL_ALLOC */
+
+#if MK_SMALL_ALLOC && __SIZEOF_POINTER__ == 8
+/* the offsets that the LLVM backend's inline allocation (compiler/backend/src/llvm/Lowering.kt, emitAllocHelpers) writes into; 64-bit targets only
+ * (the emitter does not inline the allocation for 32-bit pointers, e.g. wasm32: Lowering.inlineAllocOk requires ptrBytes == 8) */
+_Static_assert(__builtin_offsetof(MkSmallCache, count) == 544, "MkSmallCache.count");
+_Static_assert(__builtin_offsetof(MkSmallCache, bump) == 616, "MkSmallCache.bump");
+_Static_assert(__builtin_offsetof(MkSmallCache, end) == 624, "MkSmallCache.end");
+_Static_assert(__builtin_offsetof(MkSmallCache, cycles_bytes) == 648, "MkSmallCache.cycles_bytes");
+#endif
 
 typedef int mk_alloc_small_translation_unit_not_empty;

@@ -8,6 +8,8 @@
 #   -o DIR    work directory for the binaries (default: a temporary one, removed at the end)
 #   prog      benchmarks of bench/ (default: all that have a .kt and a .rs)
 #
+# The LLVM column: `compiler/bootstrap.sh --backend=llvm-api <dir>` (LLVM 18 and `llvm-config` installed; about 8 minutes) builds an API compiler, the file
+# <dir>/stage3 is the MINIC_API to pass. It must be built from the sources that are measured (it carries its own copy of the optimizer and the stdlib lowering).
 # Environment: MINIC (default <repo>/minic, the C-backend driver), MINIC_API (a minic-native built with the LLVM C API, e.g. the
 # stage3 of `compiler/bootstrap.sh --backend=llvm-api`; the LLVM column is skipped without it), MINI_LIB (default build/native/lib/stdlib.mlib),
 # RUNTIME_LIB (default build/native/lib/libminirt.a), CC, RUSTC. The binaries are run one after the other, interleaved per program (C, LLVM, Rust,
