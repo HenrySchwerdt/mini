@@ -5,6 +5,9 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 /* ---- type name / identity hash ---------------------------------------------------- */
 
@@ -485,6 +488,52 @@ void mk_ref_array_move(MkObject *dst, MkObject *src, MkInt count) {
         s->items[i] = NULL;
         if (old != NULL) mk_release(old);
     }
+}
+
+/* A list that grows to half a million slots (4 MiB of storage) is built again and again by the programs that have one at all (a graph of
+ * objects, a work queue per search): glibc maps each block of 128 KiB or more with mmap and unmaps it when it is freed, so every growth and
+ * every new list page-faults its way through fresh memory (a third of the system time of the graph benchmark). From the first such list on, blocks up to
+ * 32 MiB come from the heap and a freed one is reused by the next growth, and the heap keeps up to 32 MiB of padding when it is trimmed (peak RSS
+ * +12 MB on graph). A program that never has a list of this size keeps glibc's defaults (the settings cost a hash table benchmark 3 percent). */
+static void big_storage_tuning(void) {
+#if defined(__GLIBC__)
+    static int tuned;
+    if (__atomic_load_n(&tuned, __ATOMIC_RELAXED) == 0 && __atomic_exchange_n(&tuned, 1, __ATOMIC_RELAXED) == 0) {
+        mallopt(M_MMAP_THRESHOLD, 32 << 20);
+        mallopt(M_TOP_PAD, 32 << 20);
+    }
+#endif
+}
+
+/* A new array of max(2 * capacity, min_capacity) slots that took over the first `count` slots of `src` (no reference count changes;
+ * `src` has length 0 afterwards, so it must not be used for anything but its release). One
+ * out-of-line call for the rare growth of a collection, so that the common append path stays small. */
+MkObject *mk_ref_array_grow(MkObject *src, MkInt min_capacity, MkInt count) {
+    if (src == NULL) mk_panic("NullPointerException");
+    MkInt cap = ((MkRefArray *)src)->length;
+    MkInt n = cap > INT32_MAX / 2 ? INT32_MAX : cap * 2;
+    if (n < min_capacity) n = min_capacity;
+    if (n >= (1 << 19)) big_storage_tuning();
+    MkRefArray *s = (MkRefArray *)src;
+    if (count < 0 || count > cap) mk_panic("ArrayIndexOutOfBoundsException");
+    MkObject *dst = mk_ref_array_new(n);
+    memcpy(((MkRefArray *)dst)->items, s->items, (size_t)count * sizeof(MkObject *));
+    /* The slots of src are not cleared one by one: src is emptied (length 0) and is only good to be released, which then has nothing
+     * to visit (the old array of a growing list is garbage the moment the caller stores the new one). */
+    s->length = 0;
+    return dst;
+}
+
+/* A hint: the object in slot `index` of a reference array and the cache line behind it are about to be read (generated code expands
+ * the same test inline: mkh_ra_prefetch of the C prelude). Nothing for a null array or an index out of range. */
+void mk_ref_array_prefetch(MkObject *o, MkInt index) {
+    MkRefArray *a = (MkRefArray *)o;
+    if (a == NULL || (uint32_t)index >= (uint32_t)a->length) return;
+#if defined(__GNUC__) || defined(__clang__)
+    const char *p = (const char *)a->items[index];
+    __builtin_prefetch(p);
+    __builtin_prefetch(p + 64);
+#endif
 }
 
 MkInt mk_ref_array_length(MkObject *o) {

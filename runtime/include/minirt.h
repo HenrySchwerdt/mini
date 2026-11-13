@@ -543,6 +543,10 @@ void mk_ref_array_set_o(MkObject *array, MkInt index, MkObject *value); /* D2: t
 /* Moves the first `count` slots of `src` into the same slots of `dst` (whose slots there must be NULL): no reference count changes,
  * the slots of `src` are NULL afterwards. Growing a collection's storage. */
 void mk_ref_array_move(MkObject *dst, MkObject *src, MkInt count);
+/* A new array (owned) of max(2 * length of src, min_capacity) slots holding the first `count` slots of `src`; `src` has length 0 afterwards (only fit to be released). */
+MkObject *mk_ref_array_grow(MkObject *src, MkInt min_capacity, MkInt count);
+/* A hint for the cache: the object in slot `index` and the line behind it will be read soon (nothing for a null array / a slot out of range). */
+void mk_ref_array_prefetch(MkObject *array, MkInt index);
 
 /* Failures of the stdlib (until exceptions exist): print "fatal: <Kind>: <message>" to stderr and abort. */
 _Noreturn void mk_throw_illegal_argument(const MkString *message);

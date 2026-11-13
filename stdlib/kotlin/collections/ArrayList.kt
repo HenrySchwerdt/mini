@@ -10,8 +10,9 @@ import kotlin.internal.TakesOwnership
 import mini.internal.refArrayGet
 import mini.internal.refArrayGetBorrowed
 import mini.internal.refArrayLength
-import mini.internal.refArrayMove
+import mini.internal.refArrayGrow
 import mini.internal.refArrayNew
+import mini.internal.refArrayPrefetch
 import mini.internal.refArraySet
 import mini.internal.refArraySetOwned
 
@@ -44,7 +45,11 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     @ReturnsBorrowed
     override fun get(index: Int): E {
         checkElementIndex(index)
-        return refArrayGetBorrowed(array, index) as E
+        val arr = array
+        // a loop that reads the list front to back (a work queue, a scan) reaches elements that are scattered over the heap: the cache
+        // line of an element a few slots ahead, and the one behind it, are requested now (no effect on the result)
+        refArrayPrefetch(arr, index + 8)
+        return refArrayGetBorrowed(arr, index) as E
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -58,6 +63,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     // NoHeapEffects: appending only fills the first free (NULL) slot, and growing moves every element into the new storage, so
     // no reference that an element read (a borrowed alias of an element, of the list) depends on is ever dropped.
     @kotlin.internal.NoHeapEffects
+    @kotlin.internal.AlwaysInline
     override fun add(@TakesOwnership element: E): Boolean {
         // one read of the storage and of the length on the common path (room left); growing is the rare case
         val len = length
@@ -157,11 +163,7 @@ public open class ArrayList<E> : AbstractMutableList<E>, RandomAccess {
     public fun ensureCapacity(minCapacity: Int) {
         val cap = refArrayLength(array)
         if (minCapacity <= cap) return
-        var newCap = cap * 2
-        if (newCap < minCapacity) newCap = minCapacity
-        val newArray = refArrayNew(newCap)
-        refArrayMove(newArray, array, length)
-        array = newArray
+        array = refArrayGrow(array, minCapacity, length)
     }
 
     private fun checkElementIndex(index: Int) {

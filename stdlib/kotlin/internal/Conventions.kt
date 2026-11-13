@@ -31,6 +31,16 @@ internal annotation class ReturnsBorrowed
 internal annotation class NoHeapEffects
 
 /**
+ * `@AlwaysInline` on a function: the code generation asks the C compiler / LLVM to expand every call of it (`always_inline` /
+ * `alwaysinline`). For the few small hot functions (`ArrayList.add`) that are just above the inliner's size thresholds because of
+ * their rare paths (growth, a failing check). It is not `inline` (no MIR expansion: the function's effects stay what its
+ * `@NoHeapEffects` says) and never changes what a program means; `-Xno-always-inline` ignores it.
+ */
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+internal annotation class AlwaysInline
+
+/**
  * `@JoinsChildren` on the `suspend CoroutineScope.() -> T` block of a scope builder (`runBlocking`, `coroutineScope`, ...): the callee runs the
  * block and does not return before every coroutine that the block starts with its scope (`launch` / `async` without an explicit context) is
  * complete. Such a child cannot outlive what the caller of the builder owns: the ownership checker lets it borrow the owners the block borrows.

@@ -199,6 +199,43 @@ int main(void) {
         mk_release(src);
         mk_release(dst); /* frees the item exactly once */
     }
+    /* growing in one call: the first `count` slots move into an array of max(2 * capacity, min) slots, the old one is only fit to be released */
+    {
+        MkObject *src = mk_ref_array_new(4);
+        MkObject *a = mk_box_int(111111), *b = mk_box_int(222222);
+        mk_ref_array_set_o(src, 0, a);
+        mk_ref_array_set_o(src, 1, b);
+        MkObject *dst = mk_ref_array_grow(src, 5, 2);
+        CHECK_EQ_INT(mk_ref_array_length(dst), 8);
+        CHECK(mk_ref_array_get_b(dst, 0) == a);
+        CHECK(mk_ref_array_get_b(dst, 1) == b);
+        CHECK(mk_ref_array_get_b(dst, 2) == NULL);
+        CHECK(mk_ref_array_get_b(dst, 7) == NULL);
+        CHECK_EQ_INT(a->refcount, 1);
+        mk_release(src); /* releases nothing it held: the items belong to dst now */
+        CHECK_EQ_INT(a->refcount, 1);
+        CHECK_EQ_INT(b->refcount, 1);
+        MkObject *bigger = mk_ref_array_grow(dst, 100, 2);
+        CHECK_EQ_INT(mk_ref_array_length(bigger), 100);
+        CHECK(mk_ref_array_get_b(bigger, 1) == b);
+        mk_release(dst);
+        mk_release(bigger); /* frees both items exactly once */
+    }
+    /* the cache hint changes nothing: null array, slot out of range, empty slot, a real object */
+    {
+        MkObject *arr = mk_ref_array_new(3);
+        MkObject *item = mk_box_int(333333);
+        mk_ref_array_set_o(arr, 1, item);
+        mk_ref_array_prefetch(NULL, 0);
+        mk_ref_array_prefetch(arr, -1);
+        mk_ref_array_prefetch(arr, 3);
+        mk_ref_array_prefetch(arr, INT32_MAX);
+        mk_ref_array_prefetch(arr, 0);
+        mk_ref_array_prefetch(arr, 1);
+        CHECK(mk_ref_array_get_b(arr, 1) == item);
+        CHECK_EQ_INT(item->refcount, 1);
+        mk_release(arr);
+    }
     MkObject *empty_arr = mk_ref_array_new(0);
     CHECK_EQ_INT(mk_ref_array_length(empty_arr), 0);
     mk_release(empty_arr);

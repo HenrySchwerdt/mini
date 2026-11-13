@@ -119,6 +119,12 @@ MK_ALWAYS_INLINE MkObject *alloc_small_rc(const MkTypeInfo *type, size_t size, b
 /* A block for an object that may be part of a cycle (the storage of an ArrayList): the small allocator directly, armed. */
 MkObject *mk_alloc_sized_armed(const MkTypeInfo *type, size_t size) {
 #if MK_SMALL_ALLOC
+    /* the storage of a list that starts with its default capacity (4 slots: 56 bytes): the size class, the alignment and the
+     * zeroing are compile-time constants here (a list per object of a graph is built this way) */
+    if (size == 56) {
+        MkObject *object = alloc_small_rc(type, 56, true);
+        if (object != NULL) return object;
+    }
     if (size >= sizeof(MkObject) && size <= MK_SMALL_MAX) {
         MkObject *object = alloc_small_rc(type, size, true);
         if (object != NULL) return object;

@@ -108,6 +108,20 @@ public external fun refArrayLength(array: Any): Int
 @CSymbol("mk_ref_array_move")
 public external fun refArrayMove(to: Any, from: Any, count: Int)
 
+/**
+ * A hint for the cache, no effect on the program: the object in slot [index] of [array] and the cache line behind it (what its constructor
+ * allocated next: its list, its storage) will be read soon. Nothing happens for a slot out of range. `-Xno-prefetch` removes the calls.
+ */
+@CSymbol("mk_ref_array_prefetch")
+public external fun refArrayPrefetch(array: Any, index: Int)
+
+/**
+ * A new array of max(2 * capacity of [from], [minCapacity]) slots that holds the first [count] slots of [from] ([from] has length 0
+ * afterwards and is only fit to be released). The growth of a collection's storage as one out-of-line call.
+ */
+@CSymbol("mk_ref_array_grow")
+public external fun refArrayGrow(from: Any, minCapacity: Int, count: Int): Any
+
 // ---- failures ------------------------------------------------------------------------------
 // Every `throw` of the stdlib goes through these functions (one seam). The backend supports exceptions
 // natively (error-return ABI, see compiler/README.md), so they are ordinary Kotlin `throw`s. The native
