@@ -38,12 +38,12 @@ public class StringBuilder : Appendable {
     public override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = substring(startIndex, endIndex)
 
     public override operator fun get(index: Int): Char {
-        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfLength(index, length)
         return sbCharAt(buf, index)
     }
 
     public operator fun set(index: Int, value: Char) {
-        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfLength(index, length)
         sbSetCharAt(buf, index, value)
     }
 
@@ -109,7 +109,7 @@ public class StringBuilder : Appendable {
     public fun appendLine(value: Int): StringBuilder = append(value).append('\n')
 
     public fun insert(index: Int, value: String): StringBuilder {
-        if (index < 0 || index > length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index > length) mini.internal.throwIndexOutOfLength(index, length)
         val s = toString()
         clear()
         sbAppendString(buf, s.substring(0, index))
@@ -222,7 +222,7 @@ public class StringBuilder : Appendable {
     public fun insert(index: Int, value: Boolean): StringBuilder = insert(index, value.toString())
 
     public fun deleteCharAt(index: Int): StringBuilder {
-        if (index < 0 || index >= length) mini.internal.throwIndexOutOfBounds("index: $index, length: $length")
+        if (index < 0 || index >= length) mini.internal.throwIndexOutOfLength(index, length)
         return delete(index, index + 1)
     }
 

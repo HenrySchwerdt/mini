@@ -74,6 +74,12 @@ internal class Eff {
     }
 }
 
+internal class ReadCollector(private val fx: RcEffects, private val out: Eff, private val seen: HashSet<String>) : MirVisitor() {
+    override fun visit(e: MirExpr) {
+        fx.noteRead(e, out, seen)
+    }
+}
+
 /**
  * Per-function [Eff] of a module. [mutating] is the compatibility view: the functions with a non-empty effect.
  */
@@ -89,6 +95,45 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
     private var allDynEff: Eff? = null
     private val byName = HashMap<String, MirFunction>()
     private val edgeMap = HashMap<String, ArrayList<Any>>()
+
+    private val readCache = HashMap<String, Eff>()
+
+    /**
+     * What the Kotlin function [cName] reads (transitively through direct calls): the fields it loads and, when it reads an array, the slots; `unknown` when it
+     * calls through a dispatch, a runtime function that is not known to be pure, or a function that is not in the module. A borrowed result of the function
+     * (`@ReturnsBorrowed`) stays valid until a store overwrites something of this set.
+     */
+    fun readEff(cName: String): Eff {
+        val c = readCache[cName]
+        if (c != null) return c
+        val out = Eff()
+        collectReads(cName, out, HashSet())
+        readCache[cName] = out
+        return out
+    }
+
+    internal fun collectReads(cName: String, out: Eff, seen: HashSet<String>) {
+        if (!seen.add(cName)) return
+        val f = byName[cName]
+        if (f == null) {
+            out.unknown = true
+            return
+        }
+        ReadCollector(this, out, seen).walk(f.body)
+    }
+
+    internal fun noteRead(e: MirExpr, out: Eff, seen: HashSet<String>) {
+        when (e) {
+            is MirExpr.FieldGet -> out.addField(fieldId(e.owner, e.field))
+            is MirExpr.Call -> collectReads(e.cName, out, seen)
+            is MirExpr.New -> collectReads(e.ctorCName, out, seen)
+            is MirExpr.RuntimeCall ->
+                if (e.cName.startsWith("mk_ref_array") || e.cName.startsWith("mk_array_get") || e.cName.startsWith("mk_arrayu_get")) out.slots = true
+                else if (!isPureRuntime(e.cName)) out.unknown = true
+            is MirExpr.VCall, is MirExpr.ICall, is MirExpr.ObjectGet -> out.unknown = true
+            else -> {}
+        }
+    }
 
     fun fieldId(owner: String, field: String): Int {
         val key = "$owner#$field"
