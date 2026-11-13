@@ -83,7 +83,11 @@ public class CoroutineImpl(completion: Continuation<Any?>, private val step: (Co
     public fun resumeValue(r: Any?): Any? {
         val res = r as Result<Any?>
         res.throwOnFailure()
-        return res.value
+        // the value moves out of the result: a result that went on holding (and counting) an owner that the resumed code frees
+        // (`val b = makeOwned()`, `suspend fun makeOwned(): @Owned Box`) would release the freed object when it dies
+        val v = res.value
+        res.value = null
+        return v
     }
 
     public fun isSuspended(v: Any?): Boolean = v is SuspendMarker
