@@ -160,7 +160,7 @@ private class MirWriterImpl {
         sb.append(") ")
         type(f.returnType); sb.append(' ')
         optStr(f.constructorOf)
-        sb.append(' ').append(f.strict).append(' ').append(f.returnsBorrowed).append(' ').append(f.noHeapEffects).append(" (owns")
+        sb.append(' ').append(f.strict).append(' ').append(f.returnsBorrowed).append(' ').append(f.noHeapEffects).append(' ').append(f.alwaysInline).append(" (owns")
         for (i in f.ownsParams) sb.append(' ').append(i)
         sb.append(')')
         for (s in f.body) {
@@ -696,11 +696,16 @@ private class MirReaderImpl {
         val strict = bool(it[6])
         val borrowed = bool(it[7])
         val noEffects = bool(it[8])
+        // (an `alwaysInline` flag after `noHeapEffects`; MIR written before it existed has the `(owns ...)` list there)
+        val hasInline = it[9] is Sx.Atom
+        val inline = hasInline && bool(it[9])
+        val ownsAt = if (hasInline) 10 else 9
+        need(it, ownsAt + 1, "fun")
         val owns = ArrayList<Int>()
-        for (k in lst(it[9], "owns").drop(1)) owns.add(int(k))
+        for (k in lst(it[ownsAt], "owns").drop(1)) owns.add(int(k))
         val body = ArrayList<MirStmt>()
-        for (k in 10 until it.size) body.add(stmt(it[k]))
-        return MirFunction(str(it[1]), str(it[2]), params, ret, body, ctor, strict, borrowed, owns, noEffects)
+        for (k in ownsAt + 1 until it.size) body.add(stmt(it[k]))
+        return MirFunction(str(it[1]), str(it[2]), params, ret, body, ctor, strict, borrowed, owns, noEffects, inline)
     }
 
     fun local(x: Sx): MirLocal {

@@ -22,6 +22,7 @@ private const val BORROWED = "mini.memory.Borrowed"
 private const val RETURNS_BORROWED = "kotlin.internal.ReturnsBorrowed"
 private const val TAKES_OWNERSHIP = "kotlin.internal.TakesOwnership"
 private const val NO_HEAP_EFFECTS = "kotlin.internal.NoHeapEffects"
+private const val ALWAYS_INLINE = "kotlin.internal.AlwaysInline"
 
 /** An allocator object visible as a context argument: its class and the local that holds it. */
 internal class AllocRef(val classFq: String, val local: MirLocal, val ownerCName: String)
@@ -202,3 +203,6 @@ internal fun Ir2Mir.noHeapEffectsAnnotation(f: IrFunction): Boolean {
     val prop = (f as? IrSimpleFunction)?.correspondingProperty
     return prop != null && hasAnnotation(prop.annotations, NO_HEAP_EFFECTS)
 }
+
+/** `@kotlin.internal.AlwaysInline`: the C compiler / LLVM must expand calls of this stdlib function (see [MirFunction.alwaysInline]). */
+internal fun Ir2Mir.alwaysInlineAnnotation(f: IrFunction): Boolean = hasAnnotation(f.annotations, ALWAYS_INLINE)

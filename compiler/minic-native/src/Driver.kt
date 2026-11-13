@@ -439,7 +439,9 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
         throw DriverExit(1)
     }
     val guarded = NullGuard.run(unoptimized)
-    val module = if (separateMlibs || wasmLib) guarded else MirOpt.run(guarded, optOptions) { line -> errln(line) }
+    val optimized = if (separateMlibs || wasmLib) guarded else MirOpt.run(guarded, optOptions) { line -> errln(line) }
+    val inlined = if (optOptions.on("always-inline")) optimized else MirOpt.withoutAlwaysInline(optimized)
+    val module = if (optOptions.on("prefetch")) inlined else MirOpt.withoutPrefetch(inlined)
     CEmitter.plainLoops = optOptions.on("plain-loops")
     RcOpt.branchExclusion = optOptions.on("rc-branch-exclusion")
     CEmitter.inlineAlloc = optOptions.on("inline-alloc")

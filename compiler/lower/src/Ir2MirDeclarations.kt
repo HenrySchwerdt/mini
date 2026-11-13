@@ -134,7 +134,7 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         if (ret == TUnit) inner += MirStmt.Break(label)
         out += MirStmt.Loop(label, inner)
     } else convertBody(f, ret, out)
-    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
+    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f), alwaysInlineAnnotation(f))
 }
 
 private fun Ir2Mir.convertBody(f: IrFunction, ret: MirType, out: ArrayList<MirStmt>) {

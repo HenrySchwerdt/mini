@@ -271,7 +271,7 @@ object CEmitter {
 
         fun prototype(f: MirFunction): String {
             val params = if (f.params.isEmpty()) "void" else f.params.joinToString(", ") { cType(it.type) + " " + Mangling.local(it.name, it.id) }
-            val linkage = if (closedWorld && f.cName != Mangling.MAIN) "MKH_STATIC " else ""
+            val linkage = (if (f.alwaysInline) "MKH_ALWAYS_INLINE " else "") + (if (closedWorld && f.cName != Mangling.MAIN) "MKH_STATIC " else "")
             return "$linkage${cType(f.returnType)} ${if (f.cName == Mangling.MAIN) USER_MAIN else f.cName}($params)"
         }
 
@@ -1434,9 +1434,11 @@ MKH_FN void *mkh_padd(void *p, MkLong n) { return (void *)((char *)p + n); }
 #if defined(__GNUC__) || defined(__clang__)
 #define MKH_FN static inline __attribute__((unused))
 #define MKH_STATIC static __attribute__((unused))
+#define MKH_ALWAYS_INLINE __attribute__((always_inline))
 #else
 #define MKH_FN static inline
 #define MKH_STATIC static
+#define MKH_ALWAYS_INLINE
 #endif
 
 /* Reference counting with inline fast paths (RcOpt code generation). Anything unusual goes to the runtime:
@@ -1497,6 +1499,20 @@ MKH_FN MkInt mkh_ra_length(MkObject *a) {
     if (__builtin_expect(a == NULL, 0)) return (mk_ref_array_length)(a);
     return ((MkArray *)a)->length;
 }
+/* A hint (the stdlib's `refArrayPrefetch`): the object in slot `i` of a reference array, and the cache line behind it (what its constructor
+ * allocated next: its own list, its storage), are about to be read. Nothing for a null array or a slot out of range. */
+MKH_FN void mkh_ra_prefetch(MkObject *a, MkInt i) {
+#if defined(__GNUC__) || defined(__clang__)
+    if (a != NULL && (uint32_t)i < (uint32_t)((MkArray *)a)->length) {
+        const char *p = (const char *)MKH_RA_ITEMS(a)[i];
+        __builtin_prefetch(p);
+        __builtin_prefetch(p + 64);
+    }
+#else
+    (void)a; (void)i;
+#endif
+}
+#define mk_ref_array_prefetch(a, i) mkh_ra_prefetch((a), (i))
 #define mk_ref_array_get_b(a, i) mkh_ra_get_b((a), (i))
 #define mk_ref_array_get(a, i) mkh_ra_get((a), (i))
 #define mk_ref_array_set_o(a, i, v) mkh_ra_set_o((a), (i), (v))

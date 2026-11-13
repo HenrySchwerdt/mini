@@ -136,6 +136,11 @@ class MirFunction(
      * An assertion of the stdlib author, not checked.
      */
     val noHeapEffects: Boolean = false,
+    /**
+     * `kotlin.internal.AlwaysInline`: a small hot stdlib function (`ArrayList.add`) that the C compiler / LLVM expands at every call
+     * site although its size is above their thresholds. Not a change of meaning; `-Xno-always-inline` clears it ([MirOpt]).
+     */
+    val alwaysInline: Boolean = false,
 )
 
 class MirLocal(

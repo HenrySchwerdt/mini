@@ -30,7 +30,48 @@ class MirOptions {
     }
 }
 
+/** `-Xno-prefetch`: drops the calls of the cache hint `refArrayPrefetch` (`mk_ref_array_prefetch`), a statement that only ever stands alone. */
+private class DropPrefetch : MirTransform() {
+    override fun stmts(l: List<MirStmt>): List<MirStmt> {
+        var out: ArrayList<MirStmt>? = null
+        for (i in l.indices) {
+            val s = l[i]
+            val drop = s is MirStmt.Eval && s.expr.let { it is MirExpr.RuntimeCall && it.cName == "mk_ref_array_prefetch" }
+            val r = if (drop) null else stmt(s)
+            if (out == null && (drop || r !== s)) {
+                out = ArrayList(l.size)
+                for (k in 0 until i) out.add(l[k])
+            }
+            if (out != null && r != null) out.add(r)
+        }
+        return out ?: l
+    }
+}
+
 object MirOpt {
+    fun withoutPrefetch(module: MirModule): MirModule {
+        val t = DropPrefetch()
+        val fs = ArrayList<MirFunction>(module.functions.size)
+        var changed = false
+        for (f in module.functions) {
+            val body = t.stmts(f.body)
+            if (body === f.body) fs.add(f) else { changed = true; fs.add(f.withBody(body)) }
+        }
+        return if (!changed) module else MirModule(module.sourceName, fs, module.classes, module.externs, module.includes, module.links, module.wasmExports)
+    }
+
+    /** `-Xno-always-inline`: [module] with the `kotlin.internal.AlwaysInline` request of every function cleared. */
+    fun withoutAlwaysInline(module: MirModule): MirModule {
+        if (module.functions.none { it.alwaysInline }) return module
+        val fs = ArrayList<MirFunction>(module.functions.size)
+        for (f in module.functions) {
+            fs.add(if (!f.alwaysInline) f else MirFunction(
+                f.qualifiedName, f.cName, f.params, f.returnType, f.body, f.constructorOf, f.strict, f.returnsBorrowed, f.ownsParams, f.noHeapEffects, false,
+            ))
+        }
+        return MirModule(module.sourceName, fs, module.classes, module.externs, module.includes, module.links, module.wasmExports)
+    }
+
     fun run(module: MirModule, options: MirOptions, report: (String) -> Unit): MirModule {
         var m = module
         if (options.on("inline") || options.on("sroa") || options.on("exact-devirt")) {

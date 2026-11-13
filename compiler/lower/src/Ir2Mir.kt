@@ -205,12 +205,12 @@ class Ir2Mir {
                 // (as Kotlin/Native and the JVM do: a file whose properties are never read does not run its initialisers)
                 val force = (if (file.declarations.any { (it is IrProperty && it.backingField != null) || it is IrField }) listOf(facadeFor(file)) else emptyList())
                     .map { MirStmt.Eval(MirExpr.ObjectGet(it.cName, it.type)) }
-                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects)
+                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, force + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects, mf.alwaysInline)
             }
             else if (initializesWithEffects(file)) {
                 // a call of a function of a file whose property initialisers run program code starts the initialisation of the file
                 val fa = facadeFor(file)
-                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, listOf<MirStmt>(MirStmt.Eval(MirExpr.ObjectGet(fa.cName, fa.type))) + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects)
+                mf = MirFunction(mf.qualifiedName, mf.cName, mf.params, mf.returnType, listOf<MirStmt>(MirStmt.Eval(MirExpr.ObjectGet(fa.cName, fa.type))) + mf.body, mf.constructorOf, mf.strict, mf.returnsBorrowed, mf.ownsParams, mf.noHeapEffects, mf.alwaysInline)
             }
             functions += mf
         }

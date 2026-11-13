@@ -185,5 +185,5 @@ abstract class MirVisitor : MirTransform() {
 
 /** A copy of [f] with another [body]. */
 internal fun MirFunction.withBody(body: List<MirStmt>): MirFunction = MirFunction(
-    qualifiedName, cName, params, returnType, body, constructorOf, strict, returnsBorrowed, ownsParams, noHeapEffects,
+    qualifiedName, cName, params, returnType, body, constructorOf, strict, returnsBorrowed, ownsParams, noHeapEffects, alwaysInline,
 )

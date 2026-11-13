@@ -208,7 +208,7 @@ private class Lowering<V : Any, B : Any>(
     fun predeclare() {
         for (f in module.functions) {
             val name = fname(f.cName)
-            b.declareDefined(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, IrAttrs.STD, fnLinkage(f.cName))
+            b.declareDefined(name, ity(f.returnType), rext(f.returnType), f.params.map { ity(it.type) }, f.params.map { ext(it.type) }, if (f.alwaysInline) IrAttrs.INLINE else IrAttrs.STD, fnLinkage(f.cName))
             val cls = f.constructorOf
             if (cls != null) {
                 val ps = f.params.drop(1)
@@ -1203,7 +1203,7 @@ private class Lowering<V : Any, B : Any>(
         b.beginFunction(
             IrSection.FUNCTIONS, fname(f.cName), ity(f.returnType), rext(f.returnType),
             f.params.map { "in_" + Mangling.local(it.name, it.id) }, f.params.map { ity(it.type) }, f.params.map { ext(it.type) },
-            IrAttrs.STD, fnLinkage(f.cName),
+            if (f.alwaysInline) IrAttrs.INLINE else IrAttrs.STD, fnLinkage(f.cName),
         )
         curBlock = b.entryBlock()
         for ((i, p) in f.params.withIndex()) {
@@ -1822,6 +1822,7 @@ private class Lowering<V : Any, B : Any>(
                 if (e.cName == "mk_free_dealloc" && !tr.enabled) b.none
                 else if (arrayAccessKind(e.cName) != null) arrayAccess(e, fplan?.borrowedReads?.contains(e) == true)
                 else if (isRefArrayAccess(e)) refArrayAccess(e, fplan?.borrowedReads?.contains(e) == true)
+                else if (e.cName == "mk_ref_array_prefetch" && e.args.size == 2 && e.args[1].type === TInt) refArrayPrefetch(e)
                 else if (isStringLengthCall(e)) stringLength(e)
                 else if (isStringCharAtCall(e)) stringCharAt(e)
                 else if (e.cName == "mk_sb_append_char" && e.type === TUnit && e.args.size == 2 && e.args[1].type === TChar) {
@@ -1991,6 +1992,40 @@ private class Lowering<V : Any, B : Any>(
     }
 
     /** The slot accessors of the stdlib's reference arrays (runtime v1s.c; the layout is MkArray's), inlined like the `mk_array_*_obj` ones. */
+    /**
+     * `mk_ref_array_prefetch(array, index)` (the C prelude's mkh_ra_prefetch): `llvm.prefetch` of the object in slot [index] and of the
+     * cache line behind it; nothing for a null array or an index out of range, and nothing at all on the wasm targets (no prefetch there).
+     */
+    private fun refArrayPrefetch(e: MirExpr.RuntimeCall): V {
+        val vs = e.args.map { expr(it) }
+        if (pb != 8) return b.none
+        val arr = vs[0]
+        val idx = vs[1]
+        val nonNull = newLabel("rapn")
+        val inRange = newLabel("rapr")
+        val done = newLabel("rapd")
+        condBr(icmp(IrCmp.IEQ, arr, b.constNull()), done, nonNull)
+        startBlock(nonNull)
+        val len = loadTag(TInt, gep(arr, layouts.headerSize), "array length")
+        condBr(icmp(IrCmp.UGE, idx, len), done, inRange)
+        startBlock(inRange)
+        openBlock()
+        val elemOff = (layouts.headerSize + 4 + 7) / 8 * 8
+        val off = b.bin(IrOp.ADD, b.bin(IrOp.MUL, b.cast(IrCast.SEXT, idx, IrType.I64, ""), c64(pb), ""), c64(elemOff), "")
+        val slot = b.gep(arr, off, true, "")
+        val obj = b.loadTagged(IrType.PTR, slot, "array obj", "")
+        val next = b.gep(obj, c64(64), false, "")
+        val prefetch = b.declareExternal(
+            "llvm.prefetch.p0", IrType.VOID, IrExt.NONE, listOf(IrType.PTR, IrType.I32, IrType.I32, IrType.I32), listOf(IrExt.NONE, IrExt.NONE, IrExt.NONE, IrExt.NONE), IrAttrs.NONE, false,
+        )
+        val none4 = listOf(IrExt.NONE, IrExt.NONE, IrExt.NONE, IrExt.NONE)
+        b.call(prefetch, IrType.VOID, IrExt.NONE, listOf(obj, c32(0), c32(3), c32(1)), none4, -1, "")
+        b.call(prefetch, IrType.VOID, IrExt.NONE, listOf(next, c32(0), c32(3), c32(1)), none4, -1, "")
+        startBlock(done)
+        openBlock()
+        return b.none
+    }
+
     private fun isRefArrayAccess(e: MirExpr.RuntimeCall): Boolean = when (e.cName) {
         "mk_ref_array_get", "mk_ref_array_get_b" -> e.args.size == 2 && e.args[1].type === TInt
         "mk_ref_array_set", "mk_ref_array_set_o" -> e.args.size == 3 && e.args[1].type === TInt

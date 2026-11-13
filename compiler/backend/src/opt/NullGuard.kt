@@ -77,7 +77,7 @@ object NullGuard {
 
     /** Runtime functions without an effect that could be told from a later NullPointerException (they may fail with an index error only). */
     private fun pureRuntime(name: String): Boolean =
-        name.startsWith("mk_array_get_") || name == "mk_array_length" || name.startsWith("mk_ref_array_get") || name == "mk_ref_array_length"
+        name.startsWith("mk_array_get_") || name == "mk_array_length" || name.startsWith("mk_ref_array_get") || name == "mk_ref_array_length" || name == "mk_ref_array_prefetch"
 
     fun isNonNullRef(t: MirType): Boolean = t === TString || (t is TObject && !t.nullable)
 

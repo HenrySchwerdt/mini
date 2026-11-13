@@ -320,7 +320,7 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
         fun isPureRuntime(name: String): Boolean =
             name.startsWith("mk_string_") || name.startsWith("mk_print") || name.startsWith("mk_box_") ||
                 name.startsWith("mk_checked_") || name == "mk_is_number" || name == "mk_is_function" || name == "mk_is_instance" || name == "mk_ref_array_get" ||
-                name == "mk_ref_array_length" || name == "mk_ref_array_get_b" || name == "mk_ref_array_new" || name.startsWith("mk_array_new") ||
+                name == "mk_ref_array_length" || name == "mk_ref_array_get_b" || name == "mk_ref_array_prefetch" || name == "mk_ref_array_new" || name.startsWith("mk_array_new") ||
                 name == "mk_array_length" || name.startsWith("mk_array_get_") || name == "mk_sys_threads_active" || name.startsWith("mk_arrayu_get_") ||
                 name == "mk_arrayu_set_int" || name == "mk_arrayu_set_long" || name == "mk_arrayu_set_double" || name == "mk_arrayu_set_float" || name == "mk_arrayu_set_byte" || name == "mk_arrayu_set_short" ||
                 name == "mk_arrayu_set_boolean" || name == "mk_arrayu_set_char" ||

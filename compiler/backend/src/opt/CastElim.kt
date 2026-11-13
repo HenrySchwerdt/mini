@@ -51,6 +51,6 @@ internal class CastElim(module: MirModule) : MirTransform() {
     fun run(f: MirFunction): MirFunction {
         val b = stmts(f.body)
         if (b === f.body) return f
-        return MirFunction(f.qualifiedName, f.cName, f.params, f.returnType, b, f.constructorOf, f.strict, f.returnsBorrowed, f.ownsParams, f.noHeapEffects)
+        return MirFunction(f.qualifiedName, f.cName, f.params, f.returnType, b, f.constructorOf, f.strict, f.returnsBorrowed, f.ownsParams, f.noHeapEffects, f.alwaysInline)
     }
 }

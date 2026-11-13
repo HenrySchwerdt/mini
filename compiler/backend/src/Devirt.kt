@@ -116,7 +116,7 @@ object Devirt {
                 if (f.strict) { out.add(f); continue }
                 val body = stmts(f.body)
                 out.add(if (body === f.body) f else MirFunction(f.qualifiedName, f.cName, f.params, f.returnType, body, f.constructorOf, f.strict,
-                    f.returnsBorrowed, f.ownsParams, f.noHeapEffects))
+                    f.returnsBorrowed, f.ownsParams, f.noHeapEffects, f.alwaysInline))
             }
             if (!hasMain) return if (!changed) m else MirModule(m.sourceName, out, m.classes, m.externs, m.includes, m.links, m.wasmExports)
             return prune(out)
