@@ -161,3 +161,14 @@ The measurement found one checker bug, which is fixed: a collection of default-a
 assigned to a variable of an outer scope (`if (k) { b = listOf(stmt()) }`, as in `mini_interpreter`) was reported as used
 after free (corpus `s231_collection_assigned_to_outer_var`). `mini_interpreter` is now rejected for a correct reason
 (`env` is a borrowed value stored in an owned field).
+
+### The two M0101 rejections (`bignum_arithmetic`, `trie_autocomplete`), examined in strict-m0101
+
+* `trie_autocomplete` (`longestCommonPrefix`, `val (c, child) = n.children.entries.first(); ... n = child`) was a **checker bug**: the destructured `Map.Entry` was treated as a collection of its own, and
+  rebinding it in the next round ended the loan of `child`, so `n` was reported as read after the collection changed. The same program with `n = n.children.entries.first().value` was accepted.
+  Fixed (an entry is a view of its map, `docs/memory-model.md` "Map views and entries"); corpus `s514` (accepted) and `s515`-`s518` (the real error class, a map cleared while a value read from it is in use, is still M0101;
+  the same four programs were *accepted* before, a false negative that this fix closes). `trie_autocomplete` is still rejected, now only for the M0109 of group 1 (`find` returns the loan `n`).
+* `bignum_arithmetic` (`fibonacci`: `val t = a + b; a = b; b = t` in `repeat`) is a **correct rejection**. By section 5.1 `b = t` with an existing owner `t` on the right makes `b` an alias, and `t` is
+  released at the end of the loop body, so `b` (and `a`, an alias of `b`) read a released object in the next round. Corpus `s519` (rejected) is the reduced program; `s520` (accepted, runs) is the same
+  rotation written with moves (`a = b.move()`, `b = t.move()`), the form the diagnostic's help should lead to. The rest of the file is group 1 (`return result`) and one M0110 (group 3).
+  The message names `t` ("use of `t` after it was freed") although the use is of the aliases `a`/`b`; improving that text is a possible follow-up.

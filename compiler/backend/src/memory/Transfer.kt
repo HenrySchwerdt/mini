@@ -504,6 +504,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val roots = collRoots(rv)
             if (roots != null) return AVal(rt, false, -1, roots, emptySet(), false, false, e.pos)
         }
+        if (rv != null && rt.holds && !rt.tracked && isEntryType(rt) && !fn.mutates) {
+            // an entry read from a map (`first()`, `next()`, `get(i)` on a view of it): it is a view of the map, so the loans that are read from it end with the map's changes
+            val roots = collRoots(rv)
+            if (roots != null) return AVal(rt, false, -1, roots, emptySet(), false, false, e.pos)
+        }
         if (rt.tracked && fn.ret.annot.borrowed == null && !u.suspend) {
             // a function that returns an object of a local / anonymous class over its receiver or parameters (FnSummary.carries): the caller owns the
             // object (it is released when the owner ends) and the object is a loan of what the arguments borrow (strict-5d)
@@ -603,13 +608,19 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val s = slot(r) ?: continue
             if (s.bits and C != 0) out += r
         }
-        if (v.src >= 0 && out.isEmpty()) { val s = slot(v.src); if (s != null && s.bits and C != 0) out += v.src }
+        // a `Map.Entry` local is a view of its map, not a collection of its own: what is read from it depends on the map it came from (the roots in
+        // its refs), never on the variable (rebinding `val (k, v) = it.next()` in a loop changes the variable, not the map)
+        if (v.src >= 0 && out.isEmpty() && !isEntryType(v.type)) { val s = slot(v.src); if (s != null && s.bits and C != 0) out += v.src }
         return if (out.isEmpty()) null else out
     }
+
+    private fun isEntryType(t: MType): Boolean = t.className?.endsWith("Entry") == true
 
     private fun isView(fn: MFun, rt: MType): Boolean {
         val n = fn.qname.substringAfterLast('.')
         if (n == "iterator" || n == "listIterator" || n == "subList" || n == "asReversed") return true
+        // the key, value and entry views of a map (`m.values.first()`, `m.entries.first()`): what is read through them is read from the map
+        if (n == "entries" || n == "keys" || n == "values" || n == "<get-entries>" || n == "<get-keys>" || n == "<get-values>") return true
         val cn = rt.className ?: return false
         return cn.endsWith("Iterator")
     }
@@ -935,6 +946,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         }
         if (!l.type.tracked) {
             discard(v)
+            if (l.type.holds && isEntryType(l.type) && v.refs.isEmpty()) {
+                // an entry of a map the checker has no root for (`n.children.entries.first()`): a view, no collection of its own, so no loans hang on this variable
+                if (slot(l.id) != null) put(l.id, Slot(0, emptySet(), emptySet(), v.pos))
+                return
+            }
             if (l.type.holds) {
                 // a collection of tracked values: assigning it ends the loans of the elements of the old value
                 if (assign) killLoans(setOf(l.id))

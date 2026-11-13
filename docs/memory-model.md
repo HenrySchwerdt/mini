@@ -1553,6 +1553,13 @@ Corpus `s300`-`s312` (REJECT M0101: `clear`, `removeAt`, `removeAll`, `sortBy`, 
 a loop variable that outlives the list's block, a callee that clears the list, `MutableMap.remove`, a change on one path, a sublist) and `s320`-`s323` (ACCEPT, run: reads between the read and the use,
 re-reading after the change, copying what is needed out first, loops that only read). `s147` now reports M0101 besides M0110 (corpus header `// REJECT M0101+M0110`).
 
+**Map views and entries (strict-m0101).** The `entries`, `keys` and `values` views of a map are views like `iterator()`: what is read through them is read from the map, so
+`val b = m.values.first()`, `val (k, b) = m.entries.first()`, `m.entries.first().value` and the destructured variable of `for ((k, b) in m)` are loans that `m.clear()` ends (before this,
+all four were accepted and read freed memory: corpus `s515`-`s518`). A `Map.Entry` is a view of its map, not a collection of its own: the loans of what is read from it hang on the map, never on the
+entry variable, so rebinding the entry each round of a loop (`val (c, child) = n.children.entries.first(); n = child`, corpus `s514`) does not end the loan of `child`. An entry whose
+map the checker has no root for (a collection that is a field of an object, `n.children`) is not tracked at all, as `n.children.entries.first().value` always was.
+*Known gap, unchanged:* a collection held in a *field* of a Strict object has no root, so `val c = n.children['a']; n.children.clear(); use(c)` is not found (the elements are loans of nothing the checker follows).
+
 ## Round strict-5c: default-allocated values in collections and varargs
 
 Putting Strict values into Kotlin collections was refused (M0110, 5.4) because nothing owned them: the collection keeps a reference, the owner frees the object at once and the
