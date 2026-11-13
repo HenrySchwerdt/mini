@@ -1558,7 +1558,19 @@ re-reading after the change, copying what is needed out first, loops that only r
 all four were accepted and read freed memory: corpus `s515`-`s518`). A `Map.Entry` is a view of its map, not a collection of its own: the loans of what is read from it hang on the map, never on the
 entry variable, so rebinding the entry each round of a loop (`val (c, child) = n.children.entries.first(); n = child`, corpus `s514`) does not end the loan of `child`. An entry whose
 map the checker has no root for (a collection that is a field of an object, `n.children`) is not tracked at all, as `n.children.entries.first().value` always was.
-*Known gap, unchanged:* a collection held in a *field* of a Strict object has no root, so `val c = n.children['a']; n.children.clear(); use(c)` is not found (the elements are loans of nothing the checker follows).
+
+**Collections held in fields (strict-fieldcoll).** A collection in a field of a Strict object (`n.children`, `kids` in a method of the class) used to have no root, so an element read from it was a loan of
+nothing the checker followed: `val c = n.children['a']; n.children.clear(); println(c?.size)` was accepted and read freed memory (also through `get`, `values.first()`, `for`, a local that stands for the
+field's collection, and two levels down, `h.a.children`). Now such a field is a root of its own (per object and field name), and the loans of its elements end at:
+* a `@Mutates` call on it, directly (`n.children.clear()`), through an alias (`val m = n.children; m.clear()`) or through a view (`n.children.values`);
+* the assignment of the field (`n.children = ...`);
+* a call of a function of the program on the object (or with it as argument) **that may change a collection held in a field**: the call graph is searched for a `@Mutates` call on a field, a
+  parameter or a local that is no fresh collection, or the assignment of a collection field (`FieldEffects`). A function that only reads (`value(i.offset)` in `aoc_instructions`) does not end them.
+A loan of an element also needs the object that holds the collection alive (`n.free()` before the use is M0101). The collections of `java.util.TreeMap` / `TreeSet` (`sortedMapOf`, `sortedSetOf`) count like
+`kotlin.collections` ones. An object that is itself an element (`n = n.children[c]` walking down a tree) is told apart from the object that holds it, and changing *its* collection does not end *its* loan.
+*Limits, on the safe side except the last:* two objects of the same root and field name share one root (the loans of `a.children` end when `b.children` changes through a path that has the same root); a loan read
+before `val next = n.children[c]; if (next == null) { n.children[c] = x; ... }` is "may be gone" after the join (as for a local map; `getOrPut` is the way to write it); a constructor that changes a collection of
+an argument is not searched. *Known gap:* the loans of the elements of a collection that is reached through a *function result* (`fun kids() = children`; `kids()[0]`) are not tracked.
 
 ## Round strict-5c: default-allocated values in collections and varargs
 

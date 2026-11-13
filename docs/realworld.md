@@ -172,3 +172,6 @@ after free (corpus `s231_collection_assigned_to_outer_var`). `mini_interpreter` 
   released at the end of the loop body, so `b` (and `a`, an alias of `b`) read a released object in the next round. Corpus `s519` (rejected) is the reduced program; `s520` (accepted, runs) is the same
   rotation written with moves (`a = b.move()`, `b = t.move()`), the form the diagnostic's help should lead to. The rest of the file is group 1 (`return result`) and one M0110 (group 3).
   The message names `t` ("use of `t` after it was freed") although the use is of the aliases `a`/`b`; improving that text is a possible follow-up.
+
+Field collections (strict-fieldcoll): the loans of the elements of a collection held in a field (`program[pc]` in `aoc_instructions`, `n.children` in `trie_autocomplete`) are now tracked and ended by a mutating call, a
+reassignment of the field, or a call that may change a collection field (`docs/memory-model.md`, "Collections held in fields"). Measured over the 35 programs: still 16 accepted, no new M0101.
