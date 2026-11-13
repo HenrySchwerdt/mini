@@ -1,0 +1,24 @@
+false
+true
+a.txt txt a
+true
+alpha|beta|gamma
+[alpha, beta, gamma]
+16
+true
+[x, y]
+[a.txt, sub]
+[, a.txt, sub, sub/b.txt]
+a/b/c
+a/c
+a/c
+true
+true
+16
+exists
+(false, true)
+nosuch
+true
+false
+false
+false

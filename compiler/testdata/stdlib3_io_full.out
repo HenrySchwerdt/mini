@@ -1,0 +1,108 @@
+alpha
+beta
+gamma
+
+xyz
+[1, 2, 3, 4, 5]
+5
+héllo wörld ✓
+
+18
+18
+[héllo wörld ✓]
+4
+[a, b]
+4
+[a, b, c, d]
+A, B, C, D
+3 a|b
+97
+7
+-1
+ABC
+w1
+qrtu
+[1, two, 3.5]
+block 9 49
+block4 10
+open a
+in a
+close a
+open b
+close b
+42
+open c
+close c
+boom
+open d
+close d
+boom2 [close-d]
+open e
+body
+close e
+close-e
+open f
+open g
+fg
+close g
+close f
+open h
+close h
+1
+open i
+close i
+7
+auto
+auto closed
+[d1/a.txt, d1/d2/b.txt, d1/d2/c.kt, t.txt]
+[a.txt, d1, t.txt]
+[c.kt]
+16
+[, d1, d1/a.txt, d1/d2, t.txt]
+true
+d1
+[a.txt]
+[d2]
+[a.txt]
+true
+[a.txt, d2/b.txt, d2/c.kt]
+BB
+true
+false
+d1/a.txt
+true
+true
+a/b
+false
+true
+/a/b
+/a/c
+truefalse
+true
+true
+false
+0
+null
+false
+true
+false
+true
+truetrue
+t
+true
+false
+abcd
+[line1, line2]
+[a, b]
+3
+1
+Hi!
+[72, 105, 33]
+hello
+5
+[x, y]
+6
+io true
+io2
+fnf
+true

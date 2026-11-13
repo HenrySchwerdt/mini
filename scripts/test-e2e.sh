@@ -6,7 +6,7 @@
 # Suites (default: c leak memcheck memrun strict multifile mlib):
 #   c          build every compiler/testdata/*.kt through the C backend (cc -std=c17 -Wall -Werror), run it, compare
 #                <name>.out (stdout), <name>.err (substrings of stderr; the program must then exit non-zero),
-#                <name>.cerr (the build must fail with exit 1 and the output must contain each line)
+#                <name>.cerr (the build must fail with exit 1 and the output must contain each line); <name>.in is standard input (else empty)
 #   strict-leak, strict-llvm-leak   the runnable programs of the strict corpus under AddressSanitizer + LeakSanitizer (C and LLVM backend)
 #   leak       the same programs (and the Strict programs of testdata/memory with a .out) built with AddressSanitizer +
 #                LeakSanitizer + UBSan: same output, exit 0, no report. Skipped without a C compiler that links the sanitizers.
@@ -142,6 +142,7 @@ want_suite() { local s; for s in "${SUITES[@]}"; do [ "$s" = "$1" ] && return 0;
 # ---- test bodies: each prints nothing on success; on failure a message and exit status 1; exit status 77 = skipped ----------
 
 sib() { echo "${1%.kt}.$2"; }                 # sibling file of a source
+stdin_of() { if [ -f "${1%.kt}.in" ]; then echo "${1%.kt}.in"; else echo /dev/null; fi; }   # standard input of a program: <name>.in, else empty
 has_lines_in() { # <file with expected lines> <text file>: every non-blank line of the first occurs in the second
     local line missing=0
     while IFS= read -r line || [ -n "$line" ]; do
@@ -180,7 +181,7 @@ run_and_compare() { # <name> <src> <exe> <label>: run, compare stdout with .out,
     # Strict programs that move an owned value into `spawn { }` are accepted by the checker but not run: the closure that carries the value
     # into the thread is itself reference counted (move capture in escaping lambdas, docs/memory-model.md section 9)
     if [ "${5:-}" = skip-threads ] && grep -q 'spawn *{' "$src"; then return 77; fi
-    ( cd "$W" && run_with_timeout 60 "$exe" > "$out" 2> "$err" ); code=$?
+    ( cd "$W" && run_with_timeout 60 "$exe" < "$(stdin_of "$src")" > "$out" 2> "$err" ); code=$?
     if [ $code -eq 124 ]; then echo "$label: timed out"; return 1; fi
     if grep -q "threads are not supported yet" "$err" 2>/dev/null && [ "$5" = skip-threads ]; then return 77; fi
     if ! cmp -s "$(sib "$src" out)" "$out"; then echo "$label: stdout differs from $(sib "$src" out)"; diff "$(sib "$src" out)" "$out" | head -10; return 1; fi
@@ -212,7 +213,7 @@ t_c() { # <src> [asan]
         # shellcheck disable=SC2086
         "$SANCC" -std=c17 -O1 -w $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$c" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "sanitizer build failed:"; head -20 "$W/$name.cc"; return 1; }
         local out="$W/$name.stdout" err="$W/$name.stderr" code
-        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
+        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" < "$(stdin_of "$src")" > "$out" 2> "$err" ); code=$?
         [ $code -eq 0 ] || { echo "failed under sanitizers (exit $code; leak or memory error):"; head -30 "$err"; return 1; }
         cmp -s "$(sib "$src" out)" "$out" || { echo "stdout differs under sanitizers"; diff "$(sib "$src" out)" "$out" | head; return 1; }
         return 0
@@ -239,7 +240,7 @@ t_llvm() { # <src> [asan]
         # shellcheck disable=SC2086
         "$SANCC" $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$W/$name.o" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links >> "$W/$name.cc" 2>&1 || { echo "sanitizer link failed:"; head -20 "$W/$name.cc"; return 1; }
         local out="$W/$name.stdout" err="$W/$name.stderr" code
-        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
+        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" < "$(stdin_of "$src")" > "$out" 2> "$err" ); code=$?
         [ $code -eq 0 ] || { echo "failed under sanitizers (exit $code):"; head -30 "$err"; return 1; }
         cmp -s "$(sib "$src" out)" "$out" || { echo "stdout differs under sanitizers"; return 1; }
         return 0
@@ -631,7 +632,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
+export -f t_fuzz t_fuzz_llvm sib stdin_of has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line

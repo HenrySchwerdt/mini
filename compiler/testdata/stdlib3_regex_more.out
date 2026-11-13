@@ -1,0 +1,122 @@
+id:x1@0..1
+op:=@3..3
+num:3.14@5..8
+op:*@10..10
+op:(@12..12
+id:y@13..13
+op:+@15..15
+num:42@17..18
+op:)@19..19
+192.168.0.1 GET /index.html 200
+7
+17..36
+[a, b, "c,d", e]
+[camel, Case, String, HTTP, Server]
+snakeCaseHere
+camel_case_here
+trim inner spaces
+1=a, 2=b
+a1b3
+banAnA
+hi <name>, <x>
+a$1\b
+a[b]c
+ioobe
+iae
+3
+null
+0..1
+[10-, 10, ]
+10
+[10, ]
+[10-, 10]
+0..2
+2
+[20-30, 20, 30]
+null
+[two, three]
+one
+three
+3
+11
+[]
+[a1, b2, c3]
+ab
+[a, , b]
+[a, b]
+[, a, b, c, ]
+[, abc]
+[]
+[, ]
+[a,b]
+[2024, 01, 02, 03, 04]
+[a, b22c]
+3
+[, ]
+[, , ]
+[a, x, b]
+4
+3
+1..1
+ab
+cd
+12 a
+ab
+def
+true
+aaaa
+aa
+ababc
+true
+abc
+true
+0..-1
+3..2
+1
+2
+2
+0..0
+2
+3
+false
+true
+true
+true
+50
+4..4
+[4, 6]
+[ab, bc, cd]
+true
+false
+is is
+true
+false
+]a]
+a]
+[]
+-a-
+-a-
+ab
+1..1
+0..-1
+3
+[, ]
+0..-1
+true
+a2b3
+true
+a-b
+a_b c
+abcabc
+ab
+[IGNORE_CASE]
+false
+[4, 2, 3]
+true
+1..1
+[1f, a0]
+true
+true
+true
+true
+[255, 165, 0]
