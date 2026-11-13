@@ -543,7 +543,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         // strict-5b: a call that changes a collection ends every loan of one of its elements; code we cannot see into may do it, too
         if (rv != null && (fn.mutates || fn.userCode && rv.type.holds)) killLoansOf(rv)
         if (fn.userCode) for (a in args) if (a.type.holds) killLoansOf(a)
-        if (fn.userCode) { if (rv != null) killFieldLoansOf(rv); for (a in args) killFieldLoansOf(a) }
+        if (fn.userCode && FieldEffects.mayChange(fn)) { if (rv != null) killFieldLoansOf(rv); for (a in args) killFieldLoansOf(a) }
         val rt = e.type
         if (rv != null && rt.holds && !rt.tracked && isView(fn, rt)) {
             // an iterator or sublist of a collection: what is read or changed through it is read or changed in the collection
