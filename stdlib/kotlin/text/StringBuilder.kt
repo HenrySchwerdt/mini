@@ -21,7 +21,7 @@ import mini.internal.sbToString
  * know it; length / get / subSequence implement the interface. Values of that type are a String or an object of a class that
  * implements the interface (runtime mk_cs_*). Everything else follows kotlin.text.StringBuilder.
  */
-public class StringBuilder : Appendable {
+public class StringBuilder : Appendable, Comparable<StringBuilder> {
     private val buf: Any = sbNew()
 
     public constructor()
@@ -267,6 +267,8 @@ public class StringBuilder : Appendable {
     public fun toCharArray(): CharArray = toString().toCharArray()
 
     override fun toString(): String = sbToString(buf)
+
+    override fun compareTo(other: StringBuilder): Int = toString().compareTo(other.toString())
 }
 
 public fun StringBuilder.append(vararg value: String?): StringBuilder {
