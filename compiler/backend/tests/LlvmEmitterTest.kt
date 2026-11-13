@@ -1,3 +1,4 @@
+import mini.backend.CEmitter
 import mini.backend.BinaryOp
 import mini.backend.EmitError
 import mini.backend.MirExpr
@@ -173,11 +174,38 @@ class LlvmEmitterTest {
             assertTrue("icmp uge i32" in atBody, "unsigned comparison covers negative indexes\n$atBody")
             assertTrue(", $charsOffset" in atBody, "UTF-16 data offset must follow target header + length\n$atBody")
             assertTrue("call zeroext i16 @mk_string_char_at" in atBody, "cold path must preserve runtime panic behavior\n$atBody")
-            assertTrue("phi i16" in atBody, atBody)
+            // the runtime functions panic: the failing paths end the function (the loop keeps its values in registers)
+            assertTrue("unreachable" in atBody, atBody)
             assertTrue("icmp eq ptr" in lenBody, lenBody)
             assertTrue("call i32 @mk_string_length" in lenBody, "null must take the runtime, which traps with a NullPointerException\n$lenBody")
-            assertTrue("phi i32" in lenBody, lenBody)
+            assertFalse("phi i32" in lenBody, lenBody)
+            assertTrue("unreachable" in lenBody, lenBody)
             assertFalse("mk_pending_exception" in atBody || "mk_pending_exception" in lenBody, ll)
+        }
+    }
+
+    @Test
+    fun stringFailPathsMergeAgainWithTheSwitchOff() {
+        val text = MirLocal(0, "text", TString)
+        val index = MirLocal(1, "index", TInt)
+        val at = MirFunction(
+            "at", "kt_at", listOf(text, index), TChar,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_char_at", listOf(MirExpr.Local(text), MirExpr.Local(index)), TChar))),
+        )
+        val length = MirFunction(
+            "length", "kt_length", listOf(text), TInt,
+            listOf(MirStmt.Return(MirExpr.RuntimeCall("mk_string_length", listOf(MirExpr.Local(text)), TInt))),
+        )
+        CEmitter.strFailNoReturn = false // -Xno-str-fail-noreturn
+        try {
+            val ll = LlvmEmitter.emit(module(at, length))
+            val atBody = ll.substringAfter("define zeroext i16 @kt_at(").substringBefore("\n}")
+            val lenBody = ll.substringAfter("define i32 @kt_length(").substringBefore("\n}")
+            assertTrue("phi i16" in atBody, atBody)
+            assertTrue("phi i32" in lenBody, lenBody)
+            assertFalse("unreachable" in atBody || "unreachable" in lenBody, ll)
+        } finally {
+            CEmitter.strFailNoReturn = true
         }
     }
 
