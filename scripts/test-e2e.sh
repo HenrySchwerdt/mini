@@ -18,6 +18,7 @@
 #                1x, and under the limit in `<name>.rss` (KiB) when there is one: memory must not grow with the number of rounds
 #   fuzz       tools/fuzz/smoke: 50 fixed programs of the differential fuzzer (docs/fuzzing.md) against the stored kotlinc output; fuzz-llvm,
 #                fuzz-leak, fuzz-llvm-leak: the LLVM backend, the sanitizers, both
+#   fuzz-strict  tools/fuzz/smoke-strict: stored Strict programs of the fuzzer must be accepted by the checker and run clean under the sanitizers
 #   llvm       like `c`, through the LLVM backend (MIR -> textual LLVM IR -> clang)
 #   llvm-leak  the sanitizer run on the LLVM build
 #   llvm-variants  --stats, --no-rc-opt, --no-strict and --no-conv through bin/native-driver (needs NATIVE_DRIVER)
@@ -67,7 +68,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak realworld realworld-leak projects projects-leak)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak fuzz-strict realworld realworld-leak projects projects-leak)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -272,6 +273,13 @@ t_llvm() { # <src> [asan]
 # the generated programs of the fuzzer contain tautologies (`x > x`, `2 ^ 5`) the C compiler warns about: no -Werror for them
 t_fuzz() { CWARN=-w t_c "$@"; }
 t_fuzz_llvm() { CWARN=-w t_llvm "$@"; }
+
+# a stored Strict program of the fuzzer: the checker accepts it, and it runs clean under the sanitizers with the stored output
+t_fuzz_strict() {
+    local got; got="$("$MINIC" --check --brief "$1" $(cat "$W/stdlib.txt") 2>&1 | grep -o 'M0[0-9]*' | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
+    [ -z "$got" ] || { echo "a Strict program of the fuzzer was rejected: $got"; return 1; }
+    CWARN=-w t_c "$1" asan
+}
 
 t_llvm_variant() { # <flag>: rc_stress through native-driver with the flag
     local flag="$1" src="$TESTDATA/rc_stress.kt" name="rc_stress_v${1//-/_}"
@@ -661,7 +669,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC TSANCC TSAN_FLAGS ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f t_fuzz t_fuzz_llvm sib stdin_of has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_project_leak t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
+export -f t_fuzz t_fuzz_llvm t_fuzz_strict sib stdin_of has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_project_leak t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -708,6 +716,8 @@ want_suite fuzz && for f in $(fuzz_progs); do add fuzz "$(basename "$f" .kt)" "t
 want_suite fuzz-llvm && for f in $(fuzz_progs); do add fuzz-llvm "$(basename "$f" .kt)" "t_fuzz_llvm $f"; done
 want_suite fuzz-leak && for f in $(fuzz_progs); do add fuzz-leak "$(basename "$f" .kt)" "t_c $f asan"; done
 want_suite fuzz-llvm-leak && for f in $(fuzz_progs); do add fuzz-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
+fuzz_strict_progs() { find "$ROOT/tools/fuzz/smoke-strict" -maxdepth 1 -name '*.kt' 2>/dev/null | LC_ALL=C sort; }
+want_suite fuzz-strict && for f in $(fuzz_strict_progs); do add fuzz-strict "$(basename "$f" .kt)" "t_fuzz_strict $f"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
 want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib stubCache t_mlib_stubcache; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
 want_suite projects-leak && for d in $(find "$ROOT/tests/projects" -maxdepth 2 -name mini.toml | LC_ALL=C sort); do [ -f "$(dirname "$d")/expected.err" ] || add projects-leak "$(basename "$(dirname "$d")")" "t_project_leak $(basename "$(dirname "$d")")"; done
@@ -719,7 +729,7 @@ total="$(wc -l < "$LISTFILE" | tr -d ' ')"
 if [ "$LIST" = 1 ]; then awk -F'|' '{ print $1 "::" $2 }' "$LISTFILE"; echo "$total tests" >&2; exit 0; fi
 
 # runtime objects for the sanitizer / stats flavours, once
-if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|realworld-leak|realworld-llvm-leak|projects-leak)\|' "$LISTFILE"; then
+if grep -qE '^(leak|llvm-leak|strict-leak|strict-llvm-leak|stress-leak|stress-llvm-leak|fuzz-leak|fuzz-llvm-leak|fuzz-strict|realworld-leak|realworld-llvm-leak|projects-leak)\|' "$LISTFILE"; then
     if [ -n "$SANCC" ]; then build_rt "$W/rt-asan" "$SANCC" $SAN_FLAGS; else echo "test-e2e: no C compiler can link the sanitizer runtimes: the leak suites are skipped" >&2; fi
 fi
 if grep -q '^tsan|' "$LISTFILE" && [ -n "$TSANCC" ]; then build_rt "$W/rt-tsan" "$TSANCC" $TSAN_FLAGS; fi
