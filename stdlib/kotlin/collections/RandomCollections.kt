@@ -3,7 +3,7 @@ package kotlin.collections
 import kotlin.random.Random
 
 
-public fun <T> MutableList<T>.shuffle(random: Random) {
+@mini.memory.Mutates public fun <T> MutableList<T>.shuffle(random: Random) {
     var i = size - 1
     while (i >= 1) {
         val j = random.nextInt(i + 1)
@@ -14,7 +14,7 @@ public fun <T> MutableList<T>.shuffle(random: Random) {
     }
 }
 
-public fun <T> MutableList<T>.shuffle() { shuffle(Random.Default) }
+@mini.memory.Mutates public fun <T> MutableList<T>.shuffle() { shuffle(Random.Default) }
 
 public fun <T> Iterable<T>.shuffled(random: Random): List<T> {
     val l = toMutableList()

@@ -256,6 +256,8 @@ class IrVariable(override var name: String, override var type: Type, var isVar: 
     var typeAnnotations: List<IrAnnotation> = emptyList()
     /** The hoisted result of a suspend call (type `Any?`): the type the callee declares; a Strict class there makes the cell borrowed. */
     var suspendResultType: Type? = null
+    /** Memory checker result (docs/memory-model.md, "Default allocator"): the variable owns an object of the default allocator, released when its scope ends. */
+    var dropOwner = false
 }
 
 class IrProperty(val name: String, val sym: PropSym?) : IrDeclaration() {
@@ -349,7 +351,10 @@ class IrExpressionBody(val expression: IrExpression) : IrBody()
 
 class IrConst(type: Type, val value: Any?) : IrExpression(type)
 
-class IrGetValue(var owner: IrValueDeclaration, type: Type, val origin: String? = null) : IrExpression(type)
+class IrGetValue(var owner: IrValueDeclaration, type: Type, val origin: String? = null) : IrExpression(type) {
+    /** Memory checker result: this read moves the owner out of the variable (the variable is set to null); the variable it is. */
+    var movedOwner: IrValueDeclaration? = null
+}
 
 class IrSetValue(val owner: IrValueDeclaration, var value: IrExpression, type: Type, val origin: String? = null) : IrExpression(type)
 
@@ -366,9 +371,14 @@ abstract class IrFunctionAccessExpression(type: Type) : IrExpression(type) {
 class IrCall(var callee: IrSimpleFunction, type: Type) : IrFunctionAccessExpression(type) {
     /** `super.f()`: the class named by the qualifier */
     var superQualifier: IrClass? = null
+    /** Memory checker result: the owned default-allocated result is bound by nobody and released after the statement. */
+    var ownedTemp = false
 }
 
-class IrConstructorCall(val callee: IrConstructor, type: Type) : IrFunctionAccessExpression(type)
+class IrConstructorCall(val callee: IrConstructor, type: Type) : IrFunctionAccessExpression(type) {
+    /** Memory checker result: the object of this default-allocated site has an owner (no temporary of its own). */
+    var escapes = false
+}
 
 class IrDelegatingConstructorCall(val callee: IrConstructor, type: Type) : IrFunctionAccessExpression(type)
 

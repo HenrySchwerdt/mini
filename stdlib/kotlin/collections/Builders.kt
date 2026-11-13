@@ -289,7 +289,7 @@ public fun <K, V> Map<K, V>.getOrDefault(key: K, defaultValue: V): V {
     return v as V
 }
 
-public inline fun <K, V> MutableMap<K, V>.getOrPut(key: K, defaultValue: () -> V): V {
+@mini.memory.Mutates public inline fun <K, V> MutableMap<K, V>.getOrPut(key: K, defaultValue: () -> V): V {
     val value = get(key)
     return if (value == null) {
         val answer = defaultValue()
@@ -300,7 +300,7 @@ public inline fun <K, V> MutableMap<K, V>.getOrPut(key: K, defaultValue: () -> V
     }
 }
 
-public operator fun <K, V> MutableMap<K, V>.set(@kotlin.internal.TakesOwnership key: K, @kotlin.internal.TakesOwnership value: V) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<K, V>.set(@kotlin.internal.TakesOwnership key: K, @kotlin.internal.TakesOwnership value: V) {
     put(key, value)
 }
 
@@ -419,7 +419,7 @@ public operator fun <K, V> Map<out K, V>.minus(key: K): Map<K, V> {
     return result
 }
 
-public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pair: Pair<K, V>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pair: Pair<K, V>) {
     put(pair.first, pair.second)
 }
 

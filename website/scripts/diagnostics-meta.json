@@ -129,9 +129,9 @@
   "M0204": {
     "title": "No allocator for an escaping Strict value",
     "severity": "error",
-    "example": "no_allocator_escape",
-    "meaning": "In a Strict file there is no default allocator. A value that escapes (is returned, stored, passed as `@Owned`) needs one from a visible `context(...)` parameter or from an `@AllocatedBy` class annotation. Non-escaping values simply live on the stack and need none.",
-    "fix": "Add `context(h: Heap)` to the function, wrap the call in `context(Heap()) { ... }`, or annotate the class with `@AllocatedBy(Heap::class)`."
+    "example": "default_into_thread",
+    "meaning": "A Strict class without `@AllocatedBy` and without a visible allocator uses the default allocator: its objects may be returned and stored, and the owner releases them when it ends. The default allocator cannot be used where an object leaves the owner's thread or its stack frame in a way the owner cannot follow: moved into a thread, owned across the suspension points of a coroutine, or an owner returned from a lambda.",
+    "fix": "Allocate the object with a `ThreadSafe` allocator (`context(h: Heap)` on the function, `context(Heap()) { ... }` around the call, or `@AllocatedBy(Heap::class)` on the class), or return the allocation itself (`{ Box(1) }`) instead of an owner."
   },
   "M0205": {
     "title": "Allocation in a @NoAlloc function",

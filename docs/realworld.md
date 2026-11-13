@@ -125,16 +125,39 @@ What the projects found:
 
 | programs | accepted | (a) correct rejection | (b) limitation | (c) ICE |
 |---:|---:|---:|---:|---:|
-| 35 | 6 (17 %) | 19 | 10 | 0 |
+| 35 | 16 (46 %) | 13 | 6 | 0 |
+
+Before strict-5 (no default allocator, no Strict collections) it was 6 of 35 (19 + 10 + 0). Every rejection of that measurement
+was a consequence of the default allocator (5a) or of default-allocated values in collections, varargs and pairs (5c); both are
+in now.
 
 | class | cause | programs |
 |---|---|---:|
-| (a) | an escaping allocation of a class that never opted into an allocator (every program that keeps objects in a collection or returns them) | 14 |
-| (a) | M0109: a borrowed value is stored or returned as owned (for example `list.add(strictValue)`) | 3 |
-| (a) | an allocation that is never released (the program never calls `free()` on its objects) | 1 |
-| (a) | use after move (`val pair = a to b` then `a` again) | 1 |
-| (b) | M0110: a Strict value is handed to Managed code that keeps it (`ArrayList.add`, `HashMap.set`, `Pair`): the collections of the standard library are Managed | 10 |
+| (a) | M0109: a borrowed value is returned as owned or stored in an owned field (`return account`, a parameter that becomes a field) | 9 |
+| (a) | M0109: owner and borrower are mixed (an owner that is moved into a collection and read again; a value that is a new object on one path and a borrowed one on another) | 2 |
+| (a) | a closure that captures the borrowed `this` is kept by a scheduler (release of a non-owned value) | 1 |
+| (a) | two borrowed parameters put into a `Pair` (`from to to`): the pair would keep values whose allocator is unknown | 1 |
+| (b) | M0110: a borrowed parameter or an element read from a collection is put into another collection (`chosen.add(items[i])`, `queue.addLast(start)`): the object of a borrowed parameter has an unknown allocator, so it cannot be counted by the new collection | 4 |
+| (b) | M0109 / M0112: a closure that borrows a local or an owner is kept by a Managed function (`register(handler)`, `iterator { ... }`) | 2 |
 
-Accepted: `csv_report`, `game_of_life`, `sequences_generators`, `sudoku_solver`, `text_statistics`, `tictactoe_minimax`. Every
-rejection traces back to one of the open specification questions (the default allocator, `@Owned T`, Strict collections); none of
-them is a bug of the checker that could be fixed without a decision, so none was changed. The numbers were measured again after the visibility fixes (unchanged: 35 programs, 6 accepted, 19 + 10 + 0).
+Accepted (16): `aoc_instructions`, `calendar_dates`, `csv_report`, `delegated_properties`, `extension_toolkit`, `game_of_life`,
+`inventory_generics`, `markdown_html`, `matrix_library`, `regex_logs`, `sequences_generators`, `stdlib_breadth`,
+`string_formatting`, `sudoku_solver`, `text_statistics`, `tictactoe_minimax`. The rest is rejected for the ownership rules of the
+specification: a function that returns or stores a *borrowed* value as an owner, or puts a value of unknown allocator into a
+collection, is not memory safe without a reference count on every object, which Strict does not have. The (b) rows would need a
+new specification decision (a count on every Strict object, or a `@Owned` copy), none is made here.
+
+Rejected (19), grouped by cause (each needs a specification decision, none is made in strict-5; a rejection stays sound):
+
+| cause | programs |
+|---|---|
+| a borrowed value (parameter, `this`, a read element) is returned as owned or stored in an owned field | `bank_domain`, `bignum_arithmetic`, `cli_tool`, `html_dsl`, `huffman_coding`, `json_codec`, `library_system`, `mini_interpreter`, `trie_autocomplete` |
+| owner and borrower mixed (an owner moved into a collection and read again; new object on one path, borrowed on another) | `expression_calculator`, `state_machine` |
+| a borrowed parameter or collection element is put into another collection (needs an `@Owned` copy or a count) | `aoc_dynamic_programming`, `aoc_grid_paths`, `graph_algorithms`, `priority_scheduler` |
+| a closure that captures a borrowed `this` or an owner is kept by a Managed function (scheduler, `iterator {}`, handler registry) | `coroutine_scheduler`, `language_tour`, `event_system` |
+| two borrowed parameters put into a `Pair` (`a to b`) | `thread_pool` |
+
+The measurement found one checker bug, which is fixed: a collection of default-allocated objects built in an inner scope and
+assigned to a variable of an outer scope (`if (k) { b = listOf(stmt()) }`, as in `mini_interpreter`) was reported as used
+after free (corpus `s231_collection_assigned_to_outer_var`). `mini_interpreter` is now rejected for a correct reason
+(`env` is a borrowed value stored in an owned field).

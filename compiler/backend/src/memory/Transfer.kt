@@ -15,6 +15,8 @@ internal class UnitInfo(
     val paramIndex: Map<Int, Int> = emptyMap(),
     /** Ids of the locals this lambda unit captures from the function around it. */
     val capturedIds: Set<Int> = emptySet(),
+    /** The unit is (lowered into) a coroutine state machine: no default-allocated object may escape there (M0204). */
+    val suspend: Boolean = false,
 )
 
 private const val HEAP_CLASS = "mini.memory.Heap"
@@ -91,7 +93,20 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
 
     private fun rootsOf(id: Int): Set<Int> {
         val s = slot(id) ?: return setOf(id)
+        // an owner that borrows (the object a call returned over its receiver, strict-5d): alive only while what it borrows is, and itself
+        if (s.bits and K != 0 && s.bits and B == 0 && s.bits and O != 0 && s.refs.isNotEmpty()) return s.refs + id
         return if (s.bits and B != 0 && s.refs.isNotEmpty()) s.refs else setOf(id)
+    }
+
+    /** [v] is an instance of a local / anonymous class that borrows only parameters (the receiver included) of the function being analysed. */
+    private fun borrowsOnlyParams(v: AVal): Boolean {
+        if (!v.caps || v.refs.isEmpty() || v.src >= 0 || !v.tracked) return false
+        for (r in v.refs) {
+            if (r in u.declared) return false
+            val s = slot(r) ?: return false
+            if (s.bits and B == 0) return false
+        }
+        return true
     }
 
     /** Use of slot [id] (read, call, borrow): M0101 / M0104 when the owner is gone. */
@@ -100,6 +115,18 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val s = slot(r) ?: continue
             if (s.bits and (F or M) == 0) continue
             val maybe = s.bits and (F or M).inv() and (O or N or B or X) != 0
+            if (r < 0) {
+                // a loan of an element of a collection: the collection was changed (or ended) since the element was read
+                val cn = name(pseudoColl[r] ?: id)
+                diag(
+                    "M0101", pos, "use of `${name(id)}` after the collection it was read from changed",
+                    if (maybe) "an element read from `$cn` may be gone: `$cn` may have been changed before" else "an element read from `$cn` is gone: `$cn` was changed before",
+                    "read the element again after the change, or copy what you need out of it first",
+                    slot = r,
+                )
+                put(r, Slot((s.bits and (F or M).inv()) or X, s.refs, s.sites, s.vpos))
+                continue
+            }
             val nm = name(r)
             if (s.bits and F != 0) {
                 diag(
@@ -118,8 +145,43 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         }
     }
 
+    /** Whether a value of the default allocator is among [sites]. */
+    private fun hasDefault(sites: Set<Site>): Boolean {
+        for (s in sites) if (s.kind == SK.Default) return true
+        return false
+    }
+
+    /** The default-allocated objects of [sites] get an owner: their allocation is not a temporary of the statement (the object is released by whoever owns it). */
+    private fun markOwned(sites: Set<Site>) {
+        if (!reporting) return
+        for (s in sites) if (s.kind == SK.Default && s.id >= 0) newNodes[s.id].escapes = true
+    }
+
+    private val newNodes = ArrayList<MExpr.New>()
+    private val newIds = HashMap<MExpr.New, Int>()
+    private fun siteIdOf(e: MExpr.New): Int {
+        val k = newIds[e]
+        if (k != null) return k
+        newNodes.add(e)
+        val id = newNodes.size - 1
+        newIds[e] = id
+        return id
+    }
+
+    /** A local that owns a default-allocated object: the code generation releases it at the end of its scope. */
+    private fun markDropOwner(l: MLocal) {
+        if (reporting) l.dropOwner = true
+    }
+
+    /** The read [v] moves the owner out of its local: the code generation sets the local to null. */
+    private fun markMove(v: AVal) {
+        if (reporting) v.node?.moves = true
+    }
+
     private fun discard(v: AVal) {
         if (!v.fresh) return
+        // an owned default-allocated result of a call that nobody binds is released after its statement
+        if (reporting && v.call != null && hasDefault(v.sites)) v.call.ownedTemp = true
         for (s in v.sites) if (s.kind.obligation && s.kind != SK.Unknown) {
             diag(
                 "M0102", s.pos, "allocation from `${s.kind.label}` is never released", "allocated here; path: result discarded",
@@ -129,13 +191,20 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     }
 
     private fun escape(v: AVal) {
+        if (hasDefault(v.sites)) {
+            if (u.suspend) {
+                for (s in v.sites) if (s.kind == SK.Default) {
+                    diag(
+                        "M0204", s.pos, "no allocator for an escaping Strict value", "a default-allocated object cannot leave a coroutine body",
+                        "add `context(h: Heap)` to the function or `@AllocatedBy(Heap::class)` to the class",
+                    )
+                }
+                return
+            }
+            markOwned(v.sites)
+        }
         for (s in v.sites) {
-            if (s.kind == SK.Stack) {
-                diag(
-                    "M0204", s.pos, "no allocator for an escaping Strict value", "this value escapes but no allocator is selectable",
-                    "add `context(h: Heap)` to the function or `@AllocatedBy(Heap::class)` to the class",
-                )
-            } else if (u.noAlloc && s.kind != SK.Param && s.kind != SK.Field && s.kind != SK.Unknown) {
+            if (u.noAlloc && s.kind != SK.Param && s.kind != SK.Field && s.kind != SK.Unknown) {
                 diag("M0205", s.pos, "allocation in `@NoAlloc` function `${u.fnName}`", "allocates here", "remove `@NoAlloc` or avoid the escaping allocation")
             }
         }
@@ -160,7 +229,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     /** Hands [v] to a new owner (owned parameter, return, owning field, thread). False when it is a borrow (M0109 reported). */
     private fun takeOwnership(v: AVal, whatFor: String): Boolean {
         if (!v.tracked || v.isNull) return true
-        if (v.caps && v.refs.isNotEmpty()) { escapeClosure(v, "is $whatFor"); return false }
+        if (v.caps && v.refs.isNotEmpty()) {
+            // the object of a local / anonymous class that borrows the receiver or a parameter and is returned as it is made: the caller owns the object
+            // (reference counted) and holds a loan of what it borrows (the summary's `carries`), strict-5d
+            if (whatFor == "returned as owned" && borrowsOnlyParams(v)) { escape(v); return true }
+            escapeClosure(v, "is $whatFor")
+            return false
+        }
         if (v.fresh) { escape(v); return true }
         if (v.src >= 0) {
             val s = slot(v.src) ?: return true
@@ -173,6 +248,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 return false
             }
             escape(v)
+            markMove(v)
             put(v.src, Slot(M, s.refs, s.sites, s.vpos))
             return true
         }
@@ -217,18 +293,23 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val t = e.type
         val s = slot(id)
         if (s == null) return AVal.untracked(t, e.pos)
+        if (t.holds && s.bits and C != 0) {
+            // a collection of tracked values: reading it is a use (its owner may be gone); what it lends out is checked at the element reads
+            checkUse(id, e.pos)
+            return AVal(t, false, id, rootsOf(id), emptySet(), false, false, e.pos, node = e)
+        }
         if (s.bits and K != 0) {
             // a closure: every use needs the owners it borrows from to be alive (a call of a function value has no position of its own)
             checkUse(id, if (e.pos.line > 0) e.pos else s.vpos)
             val c = slot(id) ?: s
-            return AVal(t, false, id, rootsOf(id), if (t.tracked) sitesOf(id) else c.sites, false, false, c.vpos, caps = true)
+            return AVal(t, false, id, rootsOf(id), if (t.tracked) sitesOf(id) else c.sites, false, false, c.vpos, caps = true, node = e)
         }
         if (!t.tracked) return AVal.untracked(t, e.pos)
         checkUse(id, e.pos)
         val s2 = slot(id)!!
         val refs = rootsOf(id)
         val sites = sitesOf(id)
-        return AVal(t, false, id, refs, sites, s2.bits and N != 0 || t.nullable && s2.bits and (O or B) == 0, false, e.pos)
+        return AVal(t, false, id, refs, sites, s2.bits and N != 0 || t.nullable && s2.bits and (O or B) == 0, false, e.pos, node = e)
     }
 
     private fun evalFieldGet(e: MExpr.FieldGet, env: Env): AVal {
@@ -252,7 +333,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val (refs, arena) = captureOf(e.captures, e.pos)
         if (refs.isEmpty()) return r
         // an instance of a local / anonymous class that borrows what it captures: a closure like a lambda
-        return AVal(r.type, false, -1, refs, arena, false, false, e.pos, caps = true)
+        return AVal(r.type, false, -1, refs, arena + r.sites, false, false, e.pos, caps = true)
     }
 
     private fun evalNew0(e: MExpr.New, env: Env): AVal {
@@ -276,7 +357,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 )
                 return AVal.untracked(t, e.pos)
             }
-            is AR.NoneFound -> site = Site(e.pos, SK.Stack, -1)
+            is AR.NoneFound -> site = Site(e.pos, SK.Default, siteIdOf(e))
             is AR.Found -> {
                 val k = siteKind(r.kind) ?: return AVal.untracked(t, e.pos)
                 site = Site(e.pos, k, r.id)
@@ -314,7 +395,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             val bad = when (v.type.tk) {
                 TK.Str -> !v.strLit
                 TK.Managed -> true
-                TK.Strict, TK.Alloc -> v.sites.any { it.kind != SK.Arena && it.kind != SK.Stack && it.kind != SK.Param && it.kind != SK.Field }
+                TK.Strict, TK.Alloc -> v.sites.any { it.kind != SK.Arena && it.kind != SK.Param && it.kind != SK.Field }
                     || v.sites.any { it.kind == SK.Arena && it.id != arenaTarget.id }
                 else -> false
             }
@@ -358,7 +439,10 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (!v.tracked) { arenaEscapeArg(v); continue }
             if (foreign) {
                 val why = if (p.annot.borrowed == null && !fn.borrowsAll) Summaries.escapeReason(fn, i) else null
-                if (why != null) {
+                if (why != null && countsReferences(fn) && ownedByDefault(v)) {
+                    // an owner of the default allocator handed to a collection, a vararg array or a pair: the keeper retains its own count of the
+                    // reference counted object (the owner keeps its count and releases it when it ends), so nothing is moved and nothing dangles
+                } else if (why != null) {
                     val fnName = fn.qname.substringAfterLast('.')
                     diag(
                         "M0110", v.pos, "Strict value handed to Managed code that keeps it",
@@ -411,7 +495,37 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         // exception: methods of local owners may be called while a field is moved out
         if (!(e.receiver is MExpr.Local)) checkMovedFields(e.pos)
         val args = processArgs(fn, rv, e.args, env, e)
+        // strict-5b: a call that changes a collection ends every loan of one of its elements; code we cannot see into may do it, too
+        if (rv != null && (fn.mutates || fn.userCode && rv.type.holds)) killLoansOf(rv)
+        if (fn.userCode) for (a in args) if (a.type.holds) killLoansOf(a)
         val rt = e.type
+        if (rv != null && rt.holds && !rt.tracked && isView(fn, rt)) {
+            // an iterator or sublist of a collection: what is read or changed through it is read or changed in the collection
+            val roots = collRoots(rv)
+            if (roots != null) return AVal(rt, false, -1, roots, emptySet(), false, false, e.pos)
+        }
+        if (rt.tracked && fn.ret.annot.borrowed == null && !u.suspend) {
+            // a function that returns an object of a local / anonymous class over its receiver or parameters (FnSummary.carries): the caller owns the
+            // object (it is released when the owner ends) and the object is a loan of what the arguments borrow (strict-5d)
+            val carries: Set<Int> = Summaries.of(fn)?.carries ?: emptySet()
+            if (carries.isNotEmpty()) {
+                val refs = LinkedHashSet<Int>()
+                for (i in carries) {
+                    val a = if (i == FnSummary.RECEIVER) rv else args.getOrNull(i)
+                    if (a != null && !a.fresh && !a.isNull) refs += a.refs
+                }
+                if (refs.isNotEmpty()) return AVal(rt, true, -1, refs, setOf(Site(e.pos, SK.Default, -1)), rt.nullable, false, e.pos, caps = true, call = e)
+            }
+        }
+        if (rt.tracked && (fn.mode == MemMode.Managed || fn.external) && fn.ret.annot.owned != null && fn.ret.annot.borrowed == null && !u.suspend) {
+            // `removeAt`, `set`, `remove`: the collection hands the element it held (with its count) to the caller: a new owner of the default allocator
+            return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, SK.Default, -1)), true, false, e.pos, call = e)
+        }
+        if (rv != null && rt.tracked && (fn.mode == MemMode.Managed || fn.external || fn.ret.annot.borrowed != null)) {
+            // an element of a collection (or what a Strict container lends out): a loan that the next `@Mutates` call on the container ends
+            val roots = collRoots(rv)
+            if (roots != null && fn.ret.annot.owned == null) return elementLoan(roots, rt, e.pos)
+        }
         if (!rt.tracked) {
             // a function that returns a closure over some of its parameters (FnSummary.carries): the result borrows what those arguments borrow
             val carries: Set<Int> = Summaries.of(fn)?.carries ?: emptySet()
@@ -433,6 +547,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 val p = fn.params.getOrNull(i)
                 if (p != null && !p.isContext && a.tracked && !a.fresh) { refs += a.refs; sites += a.sites }
             }
+            // what a Strict container lends out is a loan that its next `@Mutates` call ends
+            if (rv != null) {
+                val roots = loanRoots(rv)
+                if (roots != null) refs += elementLoan(roots, rt, e.pos).refs.first()
+            }
             return AVal(rt, false, -1, refs, sites, true, false, e.pos)
         }
         // owned result: where does it live?
@@ -452,8 +571,81 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (ab == HEAP_CLASS) { kind = AllocKind.Heap } else if (ab == RC_CLASS) kind = AllocKind.Rc
         }
         if (kind == AllocKind.Rc || kind == AllocKind.Other) return AVal.untracked(rt, e.pos)
-        val sk = if (fn.cFree != null) SK.Extern else kind?.let { siteKind(it) } ?: SK.Unknown
-        return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, sk, id)), rt.nullable, false, e.pos)
+        // no allocator visible at the call (the callee allocates, or hands on a value of its own): the default allocator, whose objects the owner releases
+        val sk = if (fn.cFree != null) SK.Extern else if (kind == null) (if (u.suspend) SK.Unknown else SK.Default) else siteKind(kind) ?: SK.Unknown
+        return AVal(rt, true, -1, emptySet(), setOf(Site(e.pos, sk, id)), rt.nullable, false, e.pos, call = e)
+    }
+
+    /** Library containers that count the references they keep: collections, the array of a vararg, pairs and triples (strict-5c). */
+    private fun countsReferences(fn: MFun): Boolean {
+        val n = fn.qname
+        return n.startsWith("kotlin.collections.") || n == "kotlin.vararg" || n.startsWith("mini.internal.refArraySet") || n.startsWith("kotlin.Pair") || n.startsWith("kotlin.Triple")
+    }
+
+    /** [v] is a value of the default allocator that has an owner (fresh, or an owner variable): its object is reference counted. */
+    private fun ownedByDefault(v: AVal): Boolean {
+        if (v.isNull || v.sites.isEmpty()) return false
+        for (s in v.sites) if (s.kind != SK.Default) return false
+        if (v.src >= 0) { val sl = slot(v.src); if (sl == null || sl.bits and B != 0) return false }
+        return v.refs.isEmpty() || v.src >= 0
+    }
+
+    // ---- strict-5b: loans of the elements of a collection ----------------------------------------------------
+
+    /** Pseudo slot of an element loan (negative id) -> the collection it was read from. */
+    private val pseudoColl = HashMap<Int, Int>()
+
+    /** The collections (slots with [C], not views) [v] stands for, or null when it is no collection of tracked values. */
+    private fun collRoots(v: AVal): Set<Int>? {
+        if (!v.type.holds) return null
+        val out = LinkedHashSet<Int>()
+        for (r in v.refs) {
+            val s = slot(r) ?: continue
+            if (s.bits and C != 0) out += r
+        }
+        if (v.src >= 0 && out.isEmpty()) { val s = slot(v.src); if (s != null && s.bits and C != 0) out += v.src }
+        return if (out.isEmpty()) null else out
+    }
+
+    private fun isView(fn: MFun, rt: MType): Boolean {
+        val n = fn.qname.substringAfterLast('.')
+        if (n == "iterator" || n == "listIterator" || n == "subList" || n == "asReversed") return true
+        val cn = rt.className ?: return false
+        return cn.endsWith("Iterator")
+    }
+
+    /** Reading an element of a collection: a loan with a pseudo slot of its own, which every mutating call on the collection ends. */
+    private fun elementLoan(roots: Set<Int>, rt: MType, pos: Pos): AVal {
+        val pid = -(pos.line * 4096 + pos.col) - 1
+        pseudoColl[pid] = roots.first()
+        put(pid, Slot(O, roots, emptySet(), pos))
+        val refs = LinkedHashSet<Int>()
+        refs += pid
+        refs += roots
+        return AVal(rt, false, -1, refs, emptySet(), true, false, pos)
+    }
+
+    /** The owners an element loan read through [v] depends on: the collections [v] stands for, or the owner of a Strict container. */
+    private fun loanRoots(v: AVal): Set<Int>? {
+        val c = collRoots(v)
+        if (c != null) return c
+        if (v.type.tracked && !v.fresh && v.refs.isNotEmpty()) return v.refs
+        return null
+    }
+
+    private fun killLoansOf(v: AVal) {
+        val roots = loanRoots(v) ?: return
+        killLoans(roots)
+    }
+
+    /** Ends every element loan of the collections [roots]: the elements may have been removed, replaced or released. */
+    private fun killLoans(roots: Set<Int>) {
+        for ((id, sl) in st.slots.entries.toList()) {
+            if (id >= 0 || sl.bits and O == 0) continue
+            var hit = false
+            for (r in sl.refs) if (r in roots) hit = true
+            if (hit) put(id, Slot(F, sl.refs, sl.sites, sl.vpos))
+        }
     }
 
     private fun checkMovedFields(pos: Pos) {
@@ -493,6 +685,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         }
         val s = slot(id) ?: return unit
         val nm = t.local.name
+        if (s.bits and K != 0 && s.bits and B == 0 && s.bits and O != 0 && s.refs.isNotEmpty()) {
+            diag(
+                "M0107", e.pos, "`$nm` borrows `${name(s.refs.first())}` and cannot be freed", "`$nm` is released when its scope ends",
+                "remove the `free()`: the object is released with `$nm`, and it must not outlive `${name(s.refs.first())}`", slot = id,
+            )
+            return unit
+        }
         if (s.bits and B != 0) {
             // an alias (or borrowed parameter) can never release the value; the owner is unaffected
             diag(
@@ -562,6 +761,13 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (s == null) return AVal.untracked(t.type, e.pos)
             checkUse(t.local.id, t.pos)
             val s2 = slot(t.local.id)!!
+            if (e.implicit && s2.bits and B != 0 && s2.bits and O != 0 && hasDefault(s2.sites) && !u.suspend) {
+                // `if (c) Box(1) else other`: an owned object on one path, a borrowed one on the other: nobody can tell at run time who releases it
+                diag(
+                    "M0109", e.pos, "the value is a new default-allocated object on some paths and a borrowed one on others", "owner and borrower are mixed here",
+                    "make every branch produce an owner (`other.move()` or a new object), or bind the borrowed value to a variable first",
+                )
+            }
             if (s2.bits and B != 0) {
                 if (!e.implicit) {
                     diag(
@@ -571,8 +777,9 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 }
                 return AVal(t.type, false, -1, rootsOf(t.local.id), sitesOf(t.local.id), s2.bits and N != 0, false, if (e.implicit) s2.vpos else e.pos, caps = s2.bits and K != 0)
             }
+            if (reporting) t.moves = true
             put(t.local.id, Slot(M, s2.refs, s2.sites, s2.vpos))
-            return AVal(t.type, true, -1, emptySet(), s2.sites, s2.bits and N != 0, s2.bits == N, if (e.implicit) s2.vpos else e.pos)
+            return AVal(t.type, true, -1, emptySet(), s2.sites, s2.bits and N != 0, s2.bits == N, if (e.implicit) s2.vpos else e.pos, call = slotCalls[t.local.id])
         }
         val v = eval(t, env)
         return v
@@ -703,6 +910,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (s.annot.owned != null && v.tracked && !v.fresh && v.src >= 0) {
             val src = slot(v.src)
             if (src != null && src.bits and B == 0) {
+                markMove(v)
                 put(v.src, Slot(M, src.refs, src.sites, src.vpos))
                 v = AVal(v.type, true, -1, emptySet(), src.sites, v.nullable, false, v.pos)
             }
@@ -716,13 +924,23 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         bind(l, v, forceAlias = false, assign = true, scopes = op.scopes)
     }
 
+    /** The call whose fresh result a local was bound to last (a conduit that is moved on keeps the call, so that a result nobody binds is found). */
+    private val slotCalls = HashMap<Int, MExpr.Call>()
+
     private fun bind(l: MLocal, v: AVal, forceAlias: Boolean, assign: Boolean, scopes: Set<Int>) {
+        if (v.fresh && v.call != null) slotCalls[l.id] = v.call
         // arena objects assigned to a local that outlives the arena scope
         if (assign && v.sites.isNotEmpty()) {
             arenaEscape(v) { id -> id !in scopes }
         }
         if (!l.type.tracked) {
             discard(v)
+            if (l.type.holds) {
+                // a collection of tracked values: assigning it ends the loans of the elements of the old value
+                if (assign) killLoans(setOf(l.id))
+                put(l.id, Slot(C or (if (v.refs.isNotEmpty()) B else 0), v.refs, emptySet(), v.pos))
+                return
+            }
             if (v.caps && v.refs.isNotEmpty()) put(l.id, Slot(B or K, v.refs, v.sites, if (v.pos.line > 0) v.pos else l.pos))
             else if (slot(l.id) != null) put(l.id, Slot(0, emptySet(), emptySet(), v.pos))
             return
@@ -743,12 +961,24 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val ns: Slot = when {
             v.isNull -> Slot(N, emptySet(), emptySet(), v.pos)
             forceAlias -> Slot(B or kb or (if (v.nullable) N else 0), v.refs.ifEmpty { if (v.src >= 0) setOf(v.src) else emptySet() }, emptySet(), v.pos)
+            v.fresh && v.caps && v.refs.isNotEmpty() -> Slot(O or K or (if (v.nullable) N else 0), v.refs, v.sites, v.pos)
             v.fresh -> Slot(O or (if (v.nullable) N else 0), emptySet(), v.sites, v.pos)
             v.tracked && (v.src >= 0 || v.refs.isNotEmpty()) ->
                 Slot(B or kb or (if (v.nullable) N else 0), v.refs.ifEmpty { setOf(v.src) }, if (v.caps) v.sites else emptySet(), vp)
             else -> Slot(B or (if (v.nullable) N else 0), emptySet(), emptySet(), v.pos)
         }
         put(l.id, ns)
+        if (ns.bits and B != 0 && reporting) l.aliasSeen = true
+        // (a coroutine body keeps the old behaviour: a default-allocated object lives and dies with its local, it cannot be handed on)
+        if (ns.bits and O != 0 && hasDefault(ns.sites) && !u.suspend) {
+            if (l.dropCapable) {
+                markDropOwner(l)
+                markOwned(ns.sites)
+            } else if (l.origin != null && v.fresh && v.call != null && reporting) {
+                // a parameter of an inline lambda (`make().let { it.v }`) only borrows the value: the call result is released at the end of the enclosing scope
+                v.call.ownedTemp = true
+            }
+        }
         v.initFields?.let { m -> for ((f, b) in m) st = st.withField(FKey(l.id, f), FieldSt(b, emptySet())) }
     }
 
@@ -843,15 +1073,26 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (!v.tracked && v.caps && v.refs.isNotEmpty() && (u.retTracked && !u.isLambda || v.refs.any { r -> slot(r)?.let { it.bits and B == 0 } != false })) escapeClosure(v, "is returned" + if (u.retTracked && !u.isLambda) " as owned" else "")
             if (v.tracked) {
                 if (v.caps && v.refs.isNotEmpty() && !u.isLambda && !u.retOwned) {
-                    // an instance of an anonymous / local class that borrows its receiver or a parameter, returned as a value of a Strict type
-                    escapeClosure(v, "is returned as owned")
+                    // an instance of an anonymous / local class that borrows its receiver or a parameter, returned as a value of a type that owns nothing (`Any`)
+                    // (the object stays a counted temporary of the allocation: the reference counted `Any` result carries its count)
+                    if (!borrowsOnlyParams(v)) escapeClosure(v, "is returned as owned")
                 } else if (u.retOwned && !u.isLambda) {
                     takeOwnership(v, "returned as owned")
                 } else if (v.fresh && !u.isLambda) {
                     // borrowed return of a fresh value: nobody owns it
                     discard(v)
                 } else if (u.isLambda) {
-                    if (v.fresh) escape(v)
+                    // the result of a lambda is a reference counted (+1) reference for whoever calls it: the allocation itself may be returned (it is
+                    // not released here), an owner of the default allocator is released when the lambda ends and cannot be handed out
+                    if (hasDefault(v.sites) && !v.fresh && v.src >= 0 && slot(v.src)?.let { it.bits and B == 0 } == true) {
+                        for (s in v.sites) if (s.kind == SK.Default) {
+                            diag(
+                                "M0204", s.pos, "no allocator for an escaping Strict value", "the owner `${name(v.src)}` is released when the lambda ends but is returned from it",
+                                "return the allocation itself (`{ Box(1) }`), or build the value in a function that returns it",
+                                slot = v.src,
+                            )
+                        }
+                    } else if (v.fresh && !hasDefault(v.sites)) discard(v)
                 }
             }
         }
@@ -860,9 +1101,25 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
 
     private fun doExit(op: Op.Exit) {
         for (l in op.locals.asReversed()) {
+            if (l.type.holds) {
+                // the collection ends with its scope: the loans of its elements end with it
+                val cs = slot(l.id)
+                // a collection that another collection variable stands for (`outer = inner`) lives on through it: the object is not released
+                val aliased = st.slots.any { (id, sl) -> id >= 0 && id != l.id && sl.bits and C != 0 && l.id in sl.refs }
+                if (cs != null && cs.bits and C != 0 && cs.bits and B == 0 && !aliased) {
+                    killLoans(setOf(l.id))
+                    put(l.id, Slot(F, cs.refs, cs.sites, cs.vpos))
+                }
+                continue
+            }
             if (!l.type.tracked) continue
             val s = slot(l.id) ?: continue
             if (s.bits and O == 0) continue
+            // the end of the scope releases an object of the default allocator: an alias that outlives the owner is a use after free (7.1)
+            if (l.dropCapable && !u.suspend && hasDefault(s.sites) && s.bits and B == 0 && s.sites.none { it.kind.obligation }) {
+                put(l.id, Slot((s.bits and O.inv()) or F, s.refs, s.sites, s.vpos))
+                continue
+            }
             for (site in s.sites) {
                 if (!site.kind.obligation) continue
                 val where = site.pos
@@ -915,6 +1172,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             }
             val sites = sitesOf(c.id)
             when {
+                hasDefault(sites) && s.bits and B == 0 ->
+                    diag(
+                        "M0204", op.pos, "no allocator for an escaping Strict value", "the default allocator's object `${c.name}` cannot be moved into a thread",
+                        "allocate it with a `Heap` (`context(h: Heap)` or `@AllocatedBy(Heap::class)`)", slot = c.id,
+                    )
                 sites.any { it.kind == SK.Arena } ->
                     diag("M0105", op.pos, "arena object `${c.name}` cannot be moved into a thread", "captured here", "copy the data out of the arena first")
                 sites.any { it.kind == SK.Pool } ->
@@ -948,7 +1210,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun checkAnnotLocal(s: MStmt.Decl) = annotCheck(s.annot, s.local.type)
 
     fun annotCheck(a: MAnnot, t: MType) {
-        if (a.owned != null && !t.tracked) {
+        if (a.owned != null && !t.tracked && !t.typeParam) {
             diag(
                 "M0111", a.owned, "`@Owned` on `${t}`, which has no ownership", "no ownership here",
                 "remove the annotation",
@@ -964,7 +1226,10 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     fun initParam(p: MParam) {
         val l = p.local
         val t = l.type
-        if (!t.tracked) return
+        if (!t.tracked) {
+            if (t.holds && !p.isContext) put(l.id, Slot(C or B, emptySet(), emptySet(), l.pos))
+            return
+        }
         if (p.isContext) {
             if (t.isResource) put(l.id, Slot(B, emptySet(), emptySet(), l.pos))
             return

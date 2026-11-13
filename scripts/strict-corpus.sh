@@ -37,7 +37,8 @@ for f in "$DIR"/*.kt; do
     case "$h" in
         "// ACCEPT"*) [ -z "$got" ] || { verdict="FP($got)"; fp=$((fp+1)); } ;;
         "// REJECT"*)
-            want="$(echo "$h" | grep -o 'M0[0-9]*' | head -1)"
+            # `// REJECT M0101+M0110: why` expects both codes (and nothing else)
+            want="$(echo "$h" | sed -E 's|^// REJECT ([M0-9+]+).*|\1|' | tr '+' '\n' | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
             if [ -z "$got" ]; then verdict="FN(want $want)"; fn=$((fn+1))
             elif [ "$got" != "$want" ]; then verdict="WRONG(want $want got $got)"; wrong=$((wrong+1)); fi ;;
     esac

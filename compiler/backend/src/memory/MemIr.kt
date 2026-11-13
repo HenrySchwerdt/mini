@@ -67,6 +67,11 @@ class MType(
     val className: String? = null,
     val display: String = "",
 ) {
+    /** The type is a type parameter (`T`): `@Owned` is allowed on declarations of it (strict-5c). */
+    var typeParam: Boolean = false
+    /** A Managed collection, iterator or view whose type arguments are tracked values: its elements are loans (strict-5b). */
+    var holds: Boolean = false
+
     /** Tracked by the ownership analysis (obligations / state). */
     val tracked: Boolean get() = tk == TK.Strict || (tk == TK.Alloc && (alloc == AllocKind.Arena || alloc == AllocKind.Pool))
     val isResource: Boolean get() = tk == TK.Alloc && (alloc == AllocKind.Arena || alloc == AllocKind.Pool)
@@ -88,6 +93,17 @@ class MLocal(
 ) {
     /** A `var`: a closure that captures it shares a heap cell with the declaring function. */
     var isVar: Boolean = false
+    /** The declaration this local was made from (the producer's own object, for [Checker] results that flow back). */
+    var origin: Any? = null
+    /**
+     * Result of the checker: the local owns a value of the default allocator (docs/memory-model.md 2.2); the code generation releases it
+     * when the local's scope ends unless it was moved or freed (a moved or freed local is set to null), see "Default allocator".
+     */
+    var dropOwner: Boolean = false
+    /** A local variable the code generation can release at the end of its scope (not a parameter, not a compiler temporary). */
+    var dropCapable: Boolean = false
+    /** Checker bookkeeping: the local also held a borrowed alias at some point (then it is never a [dropOwner]). */
+    var aliasSeen: Boolean = false
 }
 
 /** Annotation facts of one declaration site. [owned]/[borrowed] hold the position of the annotation if present. */
@@ -154,6 +170,12 @@ class MFun(
     var summary: FnSummary? = null
     internal var summaryBusy: Boolean = false
     internal var summaryAssumed: FnSummary? = null
+    /** Declared in a file of the program being checked (not in a library): its body can change a collection it receives. */
+    var userCode: Boolean = false
+    /** `@Mutates`: a call may change the receiver so that every loan of one of its elements ends (strict-5b). */
+    var mutates: Boolean = false
+    /** The body is a coroutine (suspend function or lambda): the default allocator is not supported there (M0204 for an escaping default object). */
+    var suspendBody: Boolean = false
     /** Parameters that are visible allocators (context parameters whose type is an allocator). */
     val contextAllocParams: List<MParam> get() = params.filter { it.isContext && it.local.type.tk == TK.Alloc }
     /** Summary: contains (transitively) a throw. Filled by the checker. */
@@ -176,6 +198,10 @@ sealed class MExpr {
 
     class Local(val local: MLocal, override val pos: Pos) : MExpr() {
         override val type: MType get() = local.type
+        /** The producer's node this read was made from. */
+        var origin: Any? = null
+        /** Result of the checker: this read moves the owner out of the local (the local must be nulled by the code generation). */
+        var moves: Boolean = false
     }
 
     /** Allocation site of a class instance (or allocator object). [args] align with the constructor's parameters. */
@@ -187,7 +213,11 @@ sealed class MExpr {
         override val pos: Pos,
         /** Outer values a local or anonymous class captures (hidden fields of the instance); read like the captures of a lambda. */
         val captures: List<MLocal> = emptyList(),
-    ) : MExpr()
+    ) : MExpr() {
+        var origin: Any? = null
+        /** Result of the checker: the object of this default-allocated site has an owner that releases it (no temporary of its own). */
+        var escapes: Boolean = false
+    }
 
     /** [args] align with [MFun.params] (context arguments included); defaults omitted are [Opaque]. */
     class Call(
@@ -196,7 +226,11 @@ sealed class MExpr {
         val args: List<MExpr>,
         override val type: MType,
         override val pos: Pos,
-    ) : MExpr()
+    ) : MExpr() {
+        var origin: Any? = null
+        /** Result of the checker: the call returns an owned default-allocated value nobody binds (released after its statement). */
+        var ownedTemp: Boolean = false
+    }
 
     class FieldGet(val obj: MExpr, val field: MField, override val type: MType, override val pos: Pos) : MExpr()
 
@@ -238,6 +272,8 @@ sealed class MExpr {
         override val pos: Pos,
         /** The block of a `launch` / `async` (default context) started with the scope of a `@JoinsChildren` block: the scope joins it before the call that owns the block returns. */
         val child: Boolean = false,
+        /** The lambda is a coroutine body (a `suspend` lambda). */
+        val suspend: Boolean = false,
     ) : MExpr() {
         override val type: MType get() = MType.OTHER
     }

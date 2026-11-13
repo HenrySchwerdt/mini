@@ -238,7 +238,7 @@ internal fun Ir2Mir.closureClass(
             l
         }
         makeBody(self, args, caps, out)
-        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, out, strict = strictHere)
+        MirFunction("$qualified.invoke", invokeName, listOf(self) + args, retType, withDrops(out), strict = strictHere)
     }
     // the constructor, invoke and class are registered together and only after the body lowered: when building a library an unsupported
     // construct in the body is recorded and the enclosing function becomes a stub, which must not leave a constructor without its class
@@ -513,7 +513,7 @@ internal fun Ir2Mir.liftLocalFunction(f: IrSimpleFunction) {
         }
         val out = ArrayList<MirStmt>()
         convertBodyOf(f, ret, out)
-        MirFunction("$outerName.${f.name}", cName, params, ret, out)
+        MirFunction("$outerName.${f.name}", cName, params, ret, withDrops(out))
     }
     extraFunctions += fn
 }

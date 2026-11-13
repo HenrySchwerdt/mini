@@ -78,10 +78,11 @@ Order; the first applicable rule wins:
    of `X`, if there is one. That is only the case for `Heap` and `Rc` (stateless);
    `Arena` and `Pool` always need a context.
 3. **Module default.** In **Managed** files the default is `Rc`. In **Strict** files
-   there is no default.
-4. No allocator found:
-   * The value does not escape: it lives on the stack, without obligations (2.1).
-   * The value escapes: error **M0204**.
+   the default is the **default allocator** (strict-5a, section "Default allocator"): an
+   object nobody chose an allocator for is allocated by it and released by the one who owns
+   it when that owner ends (or earlier by `free()`), see 2.2a.
+4. No allocator found: the default allocator of rule 3 (the old M0204 for an escaping
+   value is gone; M0204 remains for the few places the default allocator cannot be used, 7.15).
 
 Derived from this, which class has which behavior (determined by the file or
 class in which the **class is declared**, not by the caller):
@@ -89,7 +90,7 @@ class in which the **class is declared**, not by the caller):
 | Class declared in | nominal allocator without context |
 |---|---|
 | `Managed` file/class | `Rc` (no obligations) |
-| `Strict` file/class | none: stack or M0204 |
+| `Strict` file/class | the default allocator (2.2a): no obligation to release, the owner releases it |
 
 Constructing a Strict class in Managed code is allowed and uses rules 1 and 2,
 otherwise `Rc` (see 6.2 for the boundary).
@@ -106,8 +107,40 @@ fun buildList(n: Int): Node? {
 ```
 
 ```kotlin
-fun make(): @Owned Box = Box(1)     // Strict, escapes, no allocator: M0204
+fun make(): @Owned Box = Box(1)     // Strict, escapes, no allocator: the default allocator (2.2a); the caller owns the Box
 ```
+
+### 2.2a The default allocator (strict-5a)
+
+A constructor call in Strict code that rule 1 and rule 2 find no allocator for allocates from the **default allocator**.
+It is a *virtual* allocator, not an object you can name: its objects are reference counted with a count of exactly one, and that
+count belongs to the owner of the object. What the owner rules of section 5 say about any other allocator holds for it:
+
+* the object has one owner (a local variable, a parameter, an owning field, the result of a call that is returned),
+  it moves by the moves of 5.1 (`return`, `@Owned` argument, owning field, `move()`), borrowers are aliases;
+* `x.free()` releases the object at once; a later use is M0101, a second `free()` M0103, a use after a move M0104,
+  `free()` of a borrower M0107;
+* **the difference to `Heap`**: ending the owner without a `free()` is not a leak (no M0102): when the owner of a local variable
+  ends (end of its block, `return`, `break`, `continue`, an exception) the object is released, unless the local was moved or freed on the way.
+  The owner of a tree releases the tree: the owning fields of a released object are released with it (5.3).
+  A parameter marked `@Owned` keeps its explicit obligation (`free()` or pass it on): the contract of the callee is written in its signature;
+* an alias of the object that is used after its owner ended is a use after free (M0101, 5.1): `val b = run { val x = Box(1); x }` is rejected
+  (the result of an inline lambda that returns an owner declared inside it is a loan of a dead owner), `val b = Box(1).also { }` is
+  not (the receiver of `also`/`apply` moves to the result);
+* the value of a call whose result nobody binds (`println(make().v)`, `make()`) is released at the end of the enclosing block.
+
+*Not supported* (M0204, 7.15): a default-allocated object cannot be moved into a thread, owned across the suspension points of a coroutine body,
+or be the result of a lambda while it is owned by a local of that lambda (return the allocation itself, `{ Box(1) }`, which is a counted
+reference for the caller). Code that needs one of these chooses `Heap` (or any `ThreadSafe` allocator) with `context(h: Heap)` or `@AllocatedBy`.
+
+*Soundness.* The checker (5.2) proves who owns an object at every point. The generated code follows it exactly: the checker hands back
+which locals own such an object, which reads move an owner out of its local, which allocation sites have an owner and which call
+results nobody binds. A read that moves an owner out sets the local to null, `free()` sets it to null after the release, and every
+scope that declares an owning local releases it (`mk_discard`: nothing for null, arena objects and static objects) on all ways out, so
+no object is released twice and none is kept alive by a forgotten owner. Because the allocation is a counted one, a missed release is a
+leak at worst, never a use after free. A local that holds both owned and borrowed values (`var x = Box(1); x = other`) and an owner captured by
+a closure's `var` cell are not released (they leak, with the old behaviour of the code generation); a program written for the default
+allocator rarely has them.
 
 A nominal allocator with the trait `Deallocating` creates the obligation "free exactly
 once or pass on" (sections 3 and 5). A `Scoped` allocator creates the obligation
@@ -397,7 +430,7 @@ println(peek?.v)               // M0101
 ### 4.4 Validity of the annotations
 
 `@Owned`/`@Borrowed` only make sense on types of tracked classes (4.1, also nullable).
-`@Owned` on primitives, `String` or Managed classes is an error: **M0111**.
+`@Owned` on primitives, `String` or Managed classes is an error: **M0111**. A type parameter (`@Owned x: T`, `class Cell<@Owned T>`) is allowed (ownership polymorphism, strict-5c): the argument is moved when `T` is a tracked type.
 `@Borrowed` is additionally allowed on fields and parameters of arbitrary reference types (also `String`,
 Managed) and there means "non-owning" (needed for fields of arena objects, 2.4). Both
 at the same place: likewise M0111. `@Borrowed` on an `@Owned` return
@@ -524,7 +557,11 @@ fun swapOut(s: Slot): @Owned Box? {
 
 ### 5.4 Collections of owned values
 
-**Not supported yet.** Tracked values must not be put into Kotlin collections
+**Since round strict-5c, for objects of the default allocator (2.2a): supported.** A fresh object or an owner variable of the default allocator may be put into a Kotlin collection, a vararg
+(`listOf(a, b)`, `arrayOf(..)`), a map, a set or a pair: the collection holds its own reference count and the owner keeps its ownership (section "Round strict-5c"); elements read back are
+loans that end at the next mutating call (strict-5b). The rest of this section holds for every other tracked value (objects of `Heap`, `Pool`, `Arena`, borrowed values).
+
+**Not supported yet (everything but the default allocator).** Tracked values must not be put into Kotlin collections
 (`List`, `MutableList`, `Map`, ...): M0110 (Strict → Managed). Type arguments
 like `List<@Owned T>` and arrays of owned elements are part of P3 (section 9). For now
 you build your own container classes from owning fields (see `ok_linked_list`).
@@ -541,6 +578,7 @@ temporaries in Strict functions first. The sound alternatives, in the order they
 (the closure rules of 5.5 already track such a value: a use after the owner's `free()` is M0101, an escape is M0112/M0110);
 (2) an owning `OwnedList<T>` in `mini.memory` whose `free()` frees its elements, the collection analogue of an owning field.
 Until then: container classes with owning fields, or Managed classes in collections.
+Round strict-5b (see "Round strict-5b" below) tracks the *loans* of elements read from a collection: they end at the next mutating call (`@Mutates`).
 
 ### 5.5 Lambdas and captures
 
@@ -924,14 +962,19 @@ an arena (heap + `free`). Corpus: `arena_owns_string`, `arena_owns_heap`, `arena
 
 ### 7.15 M0204 Strict: allocation without a selectable allocator (error)
 
-**Rule:** 2.2, rule 4 (plan: "needs Managed fallback"). A Strict value escapes, and
-no context and no `@AllocatedBy` default instance is available.
+**Rule:** 2.2a. Since strict-5a an escaping allocation without a visible allocator is *accepted* (the default allocator), so M0204 is
+left for what the default allocator cannot do:
+
+* a default-allocated object (or the owner of one) is moved into a thread (`Thread { b.v }`, `thread { }`): a thread needs a `ThreadSafe` allocator;
+* an owner of a coroutine body (a `suspend` function or lambda) escapes: the state machine keeps its locals across suspension points;
+* an owner local of a lambda is returned from the lambda (the allocation itself may be returned).
 
 ```kotlin
-fun make(): @Owned Box = Box(1)      // error[M0204]: no allocator for an escaping Strict value
+val f: () -> Box = { val b = Box(1); b }   // error[M0204]: the owner `b` is released when the lambda ends but is returned from it
+val f: () -> Box = { Box(1) }              // ok: the result is a counted reference for the caller
 ```
-Fixed: `context(h: Heap)` on `make` or `@AllocatedBy(Heap::class)` on `Box`. Corpus:
-`no_allocator_escape`.
+Fixed: `context(h: Heap)` on the function or `@AllocatedBy(Heap::class)` on the class, or return the allocation itself. Corpus:
+`s215_default_into_thread`, `s216_default_returned_from_lambda`.
 
 ### 7.16 M0205 Allocation in `@NoAlloc`
 
@@ -991,7 +1034,7 @@ Lints never change whether a program is accepted. `-Werror` turns warnings into 
 | M0202 | warning | loop allocation in arena |
 | M0203 | warning | large stack object |
 | M0115 | error | arena object owns a reference of another allocator |
-| M0204 | error | Strict: no allocator selectable |
+| M0204 | error | Strict: the default allocator cannot be used here (thread, coroutine, lambda result) |
 | M0205 | error (`@NoAlloc`) / warning | allocation in `@NoAlloc` |
 | M0206 | error | object leaves the thread, allocator not ThreadSafe |
 
@@ -1202,8 +1245,8 @@ source libraries; a version-1 library is rejected with the usual "rebuild the li
 
 ### What remains
 
-* Strict values in Kotlin collections (`List<Box>`): still M0110 by 5.4; the design note there says what is needed (statement-scoped
-  release of temporaries, then a temporary collection of loans; or an owning `OwnedList<T>`).
+* Strict values in Kotlin collections (`List<Box>`): M0110 by 5.4 for objects of an explicit allocator; for objects of the default allocator accepted
+  since rounds strict-5b (loans) and strict-5c (counted references).
 * Local functions (`fun helper()` inside a function) that capture owners are lifted and called directly: a call reads the captures
   (a call after the owner's `free()` is M0101), and a local function used as a value (`::helper`) is a closure over the same captures
   (it was not tracked before: `val f = ::peek; a.free(); f()` was a use after free that the checker accepted; corpus `s100`, `s101`).
@@ -1411,7 +1454,7 @@ had no source position and was dropped. Now every return of a closure object (an
 parameter, from a function whose declared result is a Strict type (an interface or `Any` included), is M0109 (`s172`, `s173`, `s174`). Returning
 such an object as a *function value* is unchanged (the `carries` summary, `s165`/`s166`).
 
-Why the accepting direction stays out of reach (analysis, no code): an object that owns nothing but borrows its receiver needs an *owned value that
+(Round strict-5d, below, makes the accepting direction work after all.) Why it had stayed out of reach (analysis, no code): an object that owns nothing but borrows its receiver needs an *owned value that
 borrows* at the call site. The result's static type is a Strict class or interface, so the caller of a Strict function keeps no reference counts for it
 and would never release the counted closure object (a leak), and `r.free()` on it would deallocate memory that reference counting owns. Either the call
 site needs a loan result for tracked types with the object kept by counts (a new value category in checker and in both backends) or the object is
@@ -1439,6 +1482,135 @@ M0110). Two things block it, both measured under ASan:
 
 Neither piece was shipped: accepting the moves without (2) would trade a conservative rejection for a use after free. The collection
 tests (`s44`, `s45`, `s79`, `s147`) stay REJECT M0110.
+
+## Round strict-5a: the default allocator
+
+The largest group of programs the coverage measurement rejected (71 of 121 rejected programs, `a`: "escaping allocation without allocator") are
+programs that are right in every other respect: an ordinary class, built in a function and handed to the caller. Strict asked for an
+`@AllocatedBy` or a `context(h: Heap)` for every such class. Round 5a gives every Strict class that has neither one **an implicit default
+allocator** (2.2a): the object may leave the function, it belongs to whoever holds it, and it is released when that owner ends or by `free()`.
+
+**What the checker does.** `SK.Default` replaces the old stack site: an allocation without allocator has no release obligation (no M0102), and the
+moves of 5.1 apply as before (`return`, `@Owned` argument, owning field, `move()`); the escape that was M0204 is an ordinary move. The slots of owners of such
+objects have no leak obligation, so the end of their scope *frees* them for the analysis: an alias that outlives the owner is a use after free
+(M0101; `val b = run { val x = Box(1); x }` was accepted, and a use after free at run time, before this round, see "Pre-existing hole" below). Three places
+stay M0204: a thread (`Thread { b.v }`), a coroutine body, and the result of a lambda that is an owner of that lambda.
+A call whose owned result has no visible allocator (`make()`) yields a `Default` site, too (it was an owner with unknown allocator, which had to be freed).
+`if (c) Box(1) else other` (an owner on one path, a borrowed value on the other) cannot be released by anybody: M0109 (before, silently accepted and a use after free).
+
+**What the code generation does.** The object is allocated from the reference counting allocator with a count of one: the count of its owner.
+The checker hands its decisions back on the IR (`MemoryFacts.publishFlags`: `IrVariable.dropOwner`, `IrGetValue.movedOwner`, `IrConstructorCall.escapes`,
+`IrCall.ownedTemp`), and `Ir2MirDrops.kt` turns them into code:
+
+* a local that owns such an object is released with `mk_discard` when its scope ends, on every way out (end of the block, `return`, `break`, `continue`, an
+  exception): the rest of the block is wrapped in a `try` with a catch-all that releases and rethrows, `return`/`break`/`continue` release first;
+  assigning to the local releases the old value;
+* a read that moves the owner out of a local (the checker's moves) copies the pointer and **sets the local to null**, so a moved owner is never
+  released twice; `free()` of such a local (or of an `@Owned` parameter) is `mk_free_owned` (release the owner's count, or free) and then null;
+* an allocation with an owner is a plain counted allocation; an allocation without one (a temporary: `Box(1).v`) is released by the emitter after its
+  statement as before; the owned result of a call nobody binds is kept in a temporary that the enclosing scope releases.
+
+*Why this is sound.* The generated code releases exactly what the checker says is still owned when the scope ends. An object whose owner the
+checker lost track of (a local that is both an owner and an alias of another owner, a `var` captured by a closure) is not released: a leak, never a
+use after free. The release of an object runs the dispose of its class, which releases its owning fields with `mk_free_owned` (5.3), so a tree is
+released from its root.
+
+**Pre-existing hole found while doing this.** `val b = run { val x = Box(1); x }` and `val d = maybe() ?: Box(-1)` were accepted and read freed memory (the
+temporary that holds the object is released with its block, the alias is not an owner). Both are fixed: the result of `run`/`let` that is an owner of
+the lambda is a loan of a dead owner (M0101); the result of `also`/`apply` moves the receiver to the caller; the left side of an elvis hands its owner to the
+result.
+
+Corpus `s200`-`s209` (ACCEPT, built, run and leak-checked under AddressSanitizer + LeakSanitizer on the C and the LLVM backend) and `s210`-`s223`
+(REJECT: use after free, double free, use after move, use of an alias after the owner's scope or free, free of a borrower, thread, lambda result, overwritten
+field, the leak of an `@Owned` parameter and of a `Heap` object that stays reported).
+
+## Round strict-5b: loans of collection elements end at a mutating call
+
+An element read from a collection (`xs[i]`, `xs.first()`, the value an iterator returns, the variable of a `for` loop, the parameter of a `forEach` lambda)
+is a reference that no owner in Strict code keeps alive: the collection owns the element, and a call that changes the collection may release it. The checker
+did not know it: `fun f(xs: MutableList<Box>) { val first = xs[0]; xs.clear(); println(first.v) }`, with the list built by Managed code (`mutableListOf(Box(7))`
+in a Managed file), read freed memory (AddressSanitizer: `heap-use-after-free`; corpus `s147` shows the same with a moved owner). Round 5b adds the missing state.
+
+**`@Mutates`** (`mini.memory.Mutates`, a function annotation): the call may change the container it is called on so that elements that were read earlier are gone or
+replaced. The standard library's mutators carry it: the members of `MutableCollection`/`MutableList`/`MutableSet`/`MutableMap`/`MutableIterator`/`MutableListIterator`
+(`add`, `remove`, `addAll`, `removeAll`, `retainAll`, `clear`, `set`, `removeAt`, `put`, `putAll`, `remove()` of an iterator ...), their overriders in `ArrayList`,
+`ArrayDeque`, `HashMap`, `HashSet`, and the extensions on mutable receivers (`sort`, `sortBy`, `reverse`, `shuffle`, `fill`, `removeFirst`, `plusAssign` ...). A call through
+an interface is a mutator when the declaration it resolves to or one it overrides is annotated. `add` counts although it only appends (elements are objects of their own, but the
+rule is "every mutating call"); a Strict class with a container of its own marks its mutators.
+
+**State.** A local variable or parameter of a type `kotlin.collections.X<..Strict..>` has a slot with the new bit `C` (a collection; with `B` a view or an alias of one).
+`iterator()`, `listIterator()`, `subList()` and `asReversed()` give views of the collection they are called on. Reading an element (a call of a Managed function whose result type is a
+tracked class, or whose result is generic) gives a loan that has a pseudo slot of its own (negative id, one per read site) next to the collection: the loan lists both as owners it depends on.
+A call of a `@Mutates` function on the collection or a view of it, the assignment of the variable, and the end of its scope set the pseudo slots of that collection to freed.
+A call of a function declared in the program (not in a library) that receives the collection as argument or receiver ends the loans, too: its body may change the collection.
+Any use of the loan afterwards is **M0101** ("use of `first` after the collection it was read from changed"; "may" when the change is on one path only). Loans are
+ordinary loans otherwise: they cannot be moved, stored in an owning field or returned as owned (M0109), and a loan outlives its collection only until the collection's scope ends.
+A Strict class's `@Borrowed` result (4.3) is read the same way: the `@Mutates` methods of the class end the loans that its other methods lent out.
+
+Not followed (a loan of such an element is not tracked, as before): sequences, arrays, `Pair`s and other Managed containers, elements read through a function value or a non-inline lambda.
+
+Corpus `s300`-`s312` (REJECT M0101: `clear`, `removeAt`, `removeAll`, `sortBy`, `Iterator.remove`, a lambda that clears the list it iterates, a `for` loop, a reassigned variable,
+a loop variable that outlives the list's block, a callee that clears the list, `MutableMap.remove`, a change on one path, a sublist) and `s320`-`s323` (ACCEPT, run: reads between the read and the use,
+re-reading after the change, copying what is needed out first, loops that only read). `s147` now reports M0101 besides M0110 (corpus header `// REJECT M0101+M0110`).
+
+## Round strict-5c: default-allocated values in collections and varargs
+
+Putting Strict values into Kotlin collections was refused (M0110, 5.4) because nothing owned them: the collection keeps a reference, the owner frees the object at once and the
+collection dangles (the two blockers measured in "Strict values in collections" above: the code generation leaked the owner's count, and a read element was an untracked loan).
+With the default allocator (5a) and the element loans (5b) both are solved for objects of the default allocator, and the rule is one line.
+
+**The decision, and why it is the safer path.** Two designs were on the table:
+
+1. *An owning collection* (`OwnedList<T>` in `mini.memory`, or an owner-count hand-over in the backends for every Kotlin collection). `OwnedList<T>` gives up the Kotlin collection API
+   (the hundreds of `kotlin.collections` extensions work on `List`/`MutableList`, not on a new type), and the count hand-over only works for objects that are counted at all:
+   an object of `Heap`, `Pool` or `Arena` is not counted, `free()` deallocates it at once whatever a collection holds, so a collection that holds one dangles after the owner's `free()`;
+   making them counted would put the reference counting back into Strict code, which is what Strict mode exists to avoid.
+2. *Reference counting where the object already is counted.* An object of the default allocator is a counted object (5a: its count of one belongs to its owner). A Managed collection that
+   retains the reference it is given, as it does for every value, holds a count of its own; the owner keeps its ownership and releases its count when it ends (or by `free()`, which releases that
+   count only). The object is freed when the last of them lets go. Nothing is moved and nothing can dangle, **by construction**: a missed release is a leak, never a use after free.
+
+Round 5c takes (2): the collection owns what it holds *by its own count*. The checker, `Interp.processArgs`: a value handed to a parameter that the callee keeps (the `escapeReason` of the
+summary) is no longer M0110 when the callee is a library container that counts references (`kotlin.collections.*`, the array of a vararg, `Pair`, `Triple`) **and** the value is an owner of the
+default allocator (fresh, or a variable whose sites are all `Default`). Everything else stays M0110: objects of an explicit allocator (not counted), borrowed parameters and aliases (the allocator is
+unknown), `Thread`, `Channel` and user Managed functions (other threads, other lifetimes). The elements that are read back are loans of 5b: `val first = ys[0]; ys.clear(); first.id` is M0101.
+`s147` (a `Heap` class) is M0101 and M0110; its default-allocated twin `s410` is M0101 only, because the `add` is accepted.
+
+**Elements that come back are owners.** `removeAt`, `set`, `put`, `remove`, `removeFirst`, `removeLast` (and the `OrNull` forms) hand the element they held, with its count, to the caller: they are annotated
+`@Owned` on their result in the library, and a call is a new owner of the default allocator (`val gone = ys.removeAt(0)` releases the element when `gone` ends; `gone.free()` and a later use is M0101). Code
+generation: the result of a call of generic type sits in a compiler temporary of the erased type, which the scope releases; the owner variable retains it once for itself (`Ir2Mir.retainIfCounted`), so both releases drop their own count.
+
+**`@Owned` on type parameters** (ownership polymorphism): `class Cell<@Owned T>(val item: T)` and `fun <T> wrap(@Owned x: T)` are accepted (M0111 is not raised for a type parameter's type). An `@Owned` parameter of a type
+parameter's type is an *owned reference parameter* in the code generation, like `@TakesOwnership` in the library: the caller hands over its count and the callee releases or stores it. The owner of the container
+is the container: `wrap(Item(6))` gives the new `Cell` the only count of the `Item`.
+
+Corpus `s400`-`s404`, `s420`-`s425` (ACCEPT, run under AddressSanitizer + LeakSanitizer, C and LLVM backend: lists, `listOf`/`arrayOf` varargs, maps, sets, deques, pairs, removal and replacement, an owner freed after it was added, a list that
+outlives its owners, a stress loop), `s410`-`s415` (REJECT: the loan after `clear`/`add`/`set`, an `Heap` object in a list, a borrowed parameter in a list, a removed element that is freed and used).
+The five M0110 corpus programs with an `@AllocatedBy(Heap::class)` class (`s44`, `s45`, `s79`, `s147`, `s143`) keep their verdict: an explicit allocator's object cannot be counted by a collection. `s420`-`s422` are their default-allocated twins.
+
+## Round strict-5d: objects that borrow
+
+Round strict-4c made the rejecting direction sound: a method that returns `object : Reader { ... n ... }` (an anonymous object, or an instance of a local class) that reads its receiver or a
+parameter was M0109 (`s172`-`s174`), because the model had no *owned value that borrows*: the caller would own the object while it holds a loan of the receiver. The default allocator (5a) and the loans of 5b
+supply both halves, so round 5d accepts the use inside the lifetime and keeps rejecting every use after it.
+
+**The rule.** The object is an ordinary counted object of the default allocator (it owns nothing it borrows: its captured values are not counted and not released by it). A function that returns such an
+object *as it is made* (`return object : I { .. }`, `return R()`) and that borrows only the receiver and parameters of that function (borrowed ones, `B` state, not owners made inside the function) now has them in its summary's
+`carries` (before: `escapes`, "is captured by an object that is returned"). At the call site the result is a **fresh owner of the default allocator that borrows** what the carried arguments borrow: the slot of the
+variable it is bound to has the bits `O` and `K` and lists the roots it borrows. Consequences, all checked with the existing machinery:
+
+* the object is released when its variable ends (a drop owner, 2.2a); an alias of it that outlives that scope is M0101;
+* every use of it checks that what it borrows is alive: `val r = c.reader(); c.free(); r.get()` is M0101 (the lifetime of the loan ends with the borrowed owner);
+* the caller cannot free it: `r.free()` is **M0107** ("`r` borrows `c` and cannot be freed"; the object is released with `r`);
+* it cannot be moved on or stored as an owner (`Holder(c.reader())`, `return r` from a function that did not make it): M0112 / M0109 as for every closure over an owner;
+* an object that borrows an owner *local to the function* (`val c = Counter(1); return object : Reader { c.n }`) is still M0112 (the owner ends first), and `val r = object ...; return r` (through a variable) is still M0109 (an alias cannot be handed out as owned).
+
+An anonymous object returned as `Any` is a loan of its receiver for the caller like a returned lambda (`FnSummary.carries`, unchanged): the caller's `Any` variable is a reference counted holder of the object.
+
+**Code generation.** Nothing new: the object is allocated with a count of one that is handed to the caller (a tracked result is uncounted, the plain allocation carries its count to the caller's drop owner; an `Any` result is a counted
+reference of the caller). A borrowing object never frees what it borrows, so the corpus runs leak free under AddressSanitizer + LeakSanitizer on the C and the LLVM backend.
+
+Corpus: `s500`-`s503` (ACCEPT, run: over the receiver, over a parameter, an instance of a local class, as `Any`, a chain of borrowing objects, with an explicit allocator and with the default one), `s172` (now M0101 + M0107),
+`s173` (M0107), `s174` (M0101), `s510`-`s513` (REJECT: the object over a parameter after its owner was freed, over a local owner, stored into an owning field, an alias that outlives the object).
 
 ## Cycles: the cycle collector of Managed mode
 

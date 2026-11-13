@@ -1,4 +1,4 @@
-// REJECT M0109: a function returns an anonymous object (of a Strict interface type) that borrows a parameter
+// REJECT M0107: a function returns an anonymous object that borrows a parameter: the object is released with its owner, the caller cannot free it
 @file:MemoryMode(Mode.Strict)
 
 import mini.memory.*
@@ -6,7 +6,9 @@ import mini.memory.*
 interface Reader { fun get(): Int }
 
 @AllocatedBy(Heap::class)
-class Counter(var n: Int)
+class Counter(var n: Int) {
+    fun reader(): Reader = object : Reader { override fun get(): Int = n }
+}
 
 fun readerOf(c: Counter): Reader {
     return object : Reader { override fun get(): Int = c.n }
