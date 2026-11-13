@@ -39,6 +39,9 @@ object CEmitter {
     /** `-Xno-dispose-flat` clears it: the type info of a class has no `dispose_all`, so the release path walks the superclass chain and calls each `dispose` through the type info again. */
     var disposeFlat = true
 
+    /** `-Xno-sb-room` clears it: the inline `StringBuilder.append(Char)` tests capacity and the wide flag separately again (instead of the one compare against `MkSb.room`). */
+    var sbRoom = true
+
     private const val LINE_RESET = "#mk-line-reset"
 
     /**
@@ -177,6 +180,7 @@ object CEmitter {
             out.append("\n")
             // a program that can start threads: every reference count operation goes through the runtime (atomic once a thread runs)
             if (module.functions.any { it.qualifiedName == "java.lang.Thread.start" }) out.append("#define MK_ATOMIC_RC 1\n")
+            if (!sbRoom) out.append("#define MKH_NO_SB_ROOM 1\n")
             out.append(PRELUDE)
             if (usesMemory) out.append(MEMORY_PRELUDE)
             if (literals.isNotEmpty()) {
@@ -1584,8 +1588,9 @@ MKH_FN MkChar mkh_str_char_at(const MkString *s, MkInt i) {
 #define mk_string_length(s) mkh_str_length((s))
 #define mk_string_char_at(s, i) mkh_str_char_at((s), (i))
 
-/* StringBuilder.append(Char): the room is there and the character fits the buffer (narrow below 256, or wide): two stores, no call. A builder
- * that shares a string's characters (backing != NULL) has capacity == length, so it takes the runtime too. */
+/* StringBuilder.append(Char): a narrow buffer with room and a character below 256: two stores, no call. `room` is the capacity of a narrow buffer
+ * (0 when wide, and for a builder that shares a string's characters: capacity == length), so one compare covers both; everything else takes the runtime. */
+#ifdef MKH_NO_SB_ROOM /* -Xno-sb-room */
 MKH_FN void mkh_sb_append_char(MkObject *o, MkChar c) {
     MkSb *sb = (MkSb *)o;
     if (__builtin_expect(o != NULL && sb->length < sb->capacity, 1)) {
@@ -1595,6 +1600,18 @@ MKH_FN void mkh_sb_append_char(MkObject *o, MkChar c) {
     }
     (mk_sb_append_char)(o, c);
 }
+#else
+MKH_FN void mkh_sb_append_char(MkObject *o, MkChar c) {
+    MkSb *sb = (MkSb *)o;
+    if (__builtin_expect(o != NULL && sb->length < sb->room && c < 256, 1)) {
+        MkInt len = sb->length;
+        ((uint8_t *)sb->data)[len] = (uint8_t)c;
+        sb->length = len + 1;
+        return;
+    }
+    (mk_sb_append_char)(o, c);
+}
+#endif
 #define mk_sb_append_char(o, c) mkh_sb_append_char((o), (c))
 
 /* Boxing an Int: the shared boxes of small values are found inline (runtime classes.c), anything else takes the runtime. */

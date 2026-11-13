@@ -529,6 +529,7 @@ typedef struct MkSb {
     MkInt length;
     MkInt capacity;  /* in characters */
     MkInt wide;
+    MkInt room;      /* the narrow characters that can be appended without a call: `capacity` while the buffer is narrow (and does not share a string's characters), 0 when it is wide */
     MkString *backing; /* NULL, or the string whose characters `data` is (see mk_sb_to_string); the builder owns one reference */
     MkChar inline_chars[];
 } MkSb;

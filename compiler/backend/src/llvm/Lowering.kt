@@ -934,9 +934,42 @@ private class Lowering<V : Any, B : Any>(
             b.ret(b.call(boxInt, ptr, IrExt.NONE, listOf(v), listOf(IrExt.NONE), -1, "r"))
         }
         endHelper()
-        // ---- mkh_sb_append_char(o, c): struct MkSb { MkObject header; void *data; MkInt length; MkInt capacity; MkInt wide; ... }
+        // ---- mkh_sb_append_char(o, c): struct MkSb { MkObject header; void *data; MkInt length; MkInt capacity; MkInt wide; MkInt room; ... }
+        // (runtime/src/v1s.c asserts the offsets for every pointer width): `room` is the capacity of a narrow buffer, 0 when wide or sharing a string's characters,
+        // so one compare covers "narrow and room"; a character of 256 and above, a wide builder and a full buffer take the runtime
         val appendChar = declare("mk_sb_append_char", TUnit, listOf(TString, TChar))
         beginHelper("mkh_sb_append_char", IrType.VOID, listOf("o", "c"), listOf(ptr, IrType.I16), IrAttrs.INLINE)
+        if (CEmitter.sbRoom) {
+        run {
+            val o = b.param(0)
+            val c = b.param(1)
+            val chk = b.newBlock("b_chk")
+            val narrowChk = b.newBlock("b_narrow")
+            val narrowB = b.newBlock("b_nstore")
+            val slow = b.newBlock("b_slow")
+            val isNull = b.cmp(IrCmp.IEQ, o, b.constNull(), "nul")
+            b.condBr(isNull, slow, chk, true)
+            b.appendBlock(chk)
+            val lenP = b.gep(o, c64(hs + pb), true, "lp")
+            val len = b.loadTagged(i32, lenP, "sb length", "len")
+            val room = b.loadTagged(i32, b.gep(o, c64(hs + pb + 12), true, "rp"), "sb room", "room")
+            val hasRoom = b.cmp(IrCmp.SLT, len, room, "hasroom")
+            b.condBr(hasRoom, narrowChk, slow, false)
+            b.appendBlock(narrowChk)
+            val fits = b.cmp(IrCmp.ULT, c, b.constInt(IrType.I16, 256L), "fits")
+            b.condBr(fits, narrowB, slow, false)
+            b.appendBlock(narrowB)
+            val data = b.loadTagged(ptr, b.gep(o, c64(hs), true, "dp"), "sb data", "data")
+            val len64 = b.cast(IrCast.SEXT, len, IrType.I64, "len64")
+            val len1 = b.bin(IrOp.ADD, len, c32(1), "len1")
+            b.store(b.cast(IrCast.TRUNC, c, IrType.I8, "c8"), b.gep(data, len64, true, "nslot"), 1)
+            b.storeTagged(len1, lenP, "sb length")
+            b.retVoid()
+            b.appendBlock(slow)
+            b.call(appendChar, IrType.VOID, IrExt.NONE, listOf(o, c), listOf(IrExt.NONE, IrExt.ZERO), -1, "")
+            b.retVoid()
+        }
+        } else {
         run {
             val o = b.param(0)
             val c = b.param(1)
@@ -975,6 +1008,7 @@ private class Lowering<V : Any, B : Any>(
             b.appendBlock(slow)
             b.call(appendChar, IrType.VOID, IrExt.NONE, listOf(o, c), listOf(IrExt.NONE, IrExt.ZERO), -1, "")
             b.retVoid()
+        }
         }
         endHelper()
     }

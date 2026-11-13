@@ -150,7 +150,7 @@ class LlvmEmitterTest {
         assertEquals(LlvmEmitter.emit(m), LlvmEmitter.emit(m))
         val wasm = LlvmEmitter.emit(m, target = LlvmTarget.WASM32)
         assertTrue("target triple = \"wasm32-unknown-wasi\"" in wasm)
-        assertTrue("%MkTypeInfo = type <{ ptr, i32, ptr, ptr, ptr, i32, ptr, i32, ptr, ptr }>" in wasm, wasm)
+        assertTrue("%MkTypeInfo = type <{ ptr, i32, ptr, ptr, ptr, i32, ptr, i32, ptr, ptr, ptr }>" in wasm, wasm)
     }
 
     @Test
@@ -260,6 +260,89 @@ class LlvmEmitterTest {
         } finally {
             CEmitter.forHeaderTest = true
         }
+    }
+
+    private fun disposeChainModule(): MirModule {
+        val classes = listOf(
+            MirClass("P", "kc_P", false, null, listOf(MirField("name", TString)), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("Q", "kc_Q", false, "kc_P", emptyList(), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("R", "kc_R", false, "kc_Q", listOf(MirField("more", TString)), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("Plain", "kc_Plain", false, null, listOf(MirField("n", TInt)), emptyList(), listOf(null, null, null), emptyList()),
+            MirClass("Foreign", "kc_Foreign", false, null, emptyList(), emptyList(), listOf(null, null, null), emptyList(), external = true),
+            MirClass("G", "kc_G", false, "kc_Foreign", listOf(MirField("s", TString)), emptyList(), listOf(null, null, null), emptyList()),
+        )
+        return MirModule("test.kt", emptyList(), classes)
+    }
+
+    private fun typeInfoLine(ll: String, cName: String): String = ll.lineSequence().first { it.startsWith("@${cName}_ti = ") }
+
+    @Test
+    fun typeInfoCarriesTheWholeDisposeChainAndTheSwitchRemovesIt() {
+        for (target in listOf(LlvmTarget.HOST, LlvmTarget.WASM32)) {
+            val ll = LlvmEmitter.emit(disposeChainModule(), target = target)
+            assertTrue("define internal void @kc_R_dispose_all(ptr %self)" in ll, ll)
+            assertTrue("@kc_R_dispose_all }>" in typeInfoLine(ll, "kc_R"), typeInfoLine(ll, "kc_R"))
+            assertTrue("@kc_P_dispose }>" in typeInfoLine(ll, "kc_Q"), "one dispose in the chain: no wrapper\n" + typeInfoLine(ll, "kc_Q"))
+            assertTrue("@mk_dispose_none }>" in typeInfoLine(ll, "kc_Plain"), typeInfoLine(ll, "kc_Plain"))
+            assertTrue("ptr null }>" in typeInfoLine(ll, "kc_G"), "runtime-defined superclass: the chain is walked\n" + typeInfoLine(ll, "kc_G"))
+        }
+        CEmitter.disposeFlat = false // -Xno-dispose-flat
+        try {
+            val ll = LlvmEmitter.emit(disposeChainModule())
+            assertFalse("dispose_all" in ll || "mk_dispose_none" in ll, ll)
+            assertTrue("ptr null }>" in typeInfoLine(ll, "kc_R"), typeInfoLine(ll, "kc_R"))
+        } finally {
+            CEmitter.disposeFlat = true
+        }
+    }
+
+    @Test
+    fun cBackendTypeInfoCarriesTheWholeDisposeChain() {
+        val c = CEmitter.emit(disposeChainModule())
+        assertTrue("static void kc_R_dispose_all(MkObject *self) {\n    kc_R_dispose(self);\n    kc_P_dispose(self);\n}" in c, c)
+        assertTrue("kc_R_vt, 3, NULL, 0, NULL, NULL, kc_R_dispose_all};" in c, c)
+        assertTrue("kc_Q_vt, 3, NULL, 0, NULL, NULL, kc_P_dispose};" in c, c)
+        assertTrue("kc_Plain_vt, 3, NULL, 0, NULL, NULL, mk_dispose_none};" in c, c)
+        assertTrue("kc_G_vt, 3, NULL, 0, NULL, NULL, NULL};" in c, c)
+        CEmitter.disposeFlat = false
+        try {
+            assertFalse("dispose_all" in CEmitter.emit(disposeChainModule()), "-Xno-dispose-flat")
+        } finally {
+            CEmitter.disposeFlat = true
+        }
+    }
+
+    private fun appendCharModule(): MirModule {
+        val sb = MirLocal(0, "sb", TString)
+        val c = MirLocal(1, "c", TChar)
+        val f = MirFunction(
+            "add", "kt_add", listOf(sb, c), TUnit,
+            listOf(MirStmt.Eval(MirExpr.RuntimeCall("mk_sb_append_char", listOf(MirExpr.Local(sb), MirExpr.Local(c)), TUnit))),
+        )
+        return MirModule("test.kt", listOf(f))
+    }
+
+    @Test
+    fun appendCharComparesAgainstRoomAndTheSwitchBringsBackTheWideFlag() {
+        for (target in listOf(LlvmTarget.HOST, LlvmTarget.WASM32)) {
+            val off = if (target == LlvmTarget.WASM32) 12 + 4 + 12 else 16 + 8 + 12 // header + data pointer + length / capacity / wide, then room
+            val helper = LlvmEmitter.emit(appendCharModule(), target = target).substringAfter("define internal void @mkh_sb_append_char(").substringBefore("\n}")
+            assertTrue("i64 $off" in helper, "room at offset $off\n$helper")
+            assertFalse("!tbaa" in helper && "sb wide" in helper, helper)
+            assertTrue("icmp ult i16" in helper, helper)
+            assertEquals(1, occurrences(helper, "store i8"), helper)
+            assertFalse("store i16" in helper, "wide builders take the runtime\n$helper")
+        }
+        CEmitter.sbRoom = false // -Xno-sb-room
+        try {
+            val helper = LlvmEmitter.emit(appendCharModule()).substringAfter("define internal void @mkh_sb_append_char(").substringBefore("\n}")
+            assertTrue("store i16" in helper, helper)
+            assertTrue("define void @kt_add" in LlvmEmitter.emit(appendCharModule()))
+            assertTrue("#define MKH_NO_SB_ROOM 1" in CEmitter.emit(appendCharModule()))
+        } finally {
+            CEmitter.sbRoom = true
+        }
+        assertFalse("MKH_NO_SB_ROOM 1\n" in CEmitter.emit(appendCharModule()).substringBefore("#ifdef MKH_NO_SB_ROOM"))
     }
 
     @Test

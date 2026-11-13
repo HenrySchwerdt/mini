@@ -129,6 +129,16 @@ MkDouble mk_string_parse_double(const MkString *s) {
 #define SB_STEAL_MIN 65536 /* characters: from here on mk_sb_to_string shares the buffer instead of copying it */
 #define MK_SB_INLINE_BYTES 32 /* the inline storage: 32 narrow or 16 wide characters */
 
+/* The inline appends of generated code (the C prelude's mkh_sb_append_char, the LLVM helper) read these offsets: for pointer width W, data at sizeof(MkObject), length at +W, capacity +4, wide +8, room +12. */
+_Static_assert(offsetof(MkSb, data) == sizeof(MkObject), "MkSb layout");
+_Static_assert(offsetof(MkSb, length) == sizeof(MkObject) + sizeof(void *), "MkSb layout");
+_Static_assert(offsetof(MkSb, capacity) == offsetof(MkSb, length) + 4, "MkSb layout");
+_Static_assert(offsetof(MkSb, wide) == offsetof(MkSb, length) + 8, "MkSb layout");
+_Static_assert(offsetof(MkSb, room) == offsetof(MkSb, length) + 12, "MkSb layout");
+
+/* `room` follows capacity and wide: call this after changing either. */
+static inline void sb_sync_room(MkSb *sb) { sb->room = sb->wide ? 0 : sb->capacity; }
+
 static inline int sb_is_inline(const MkSb *sb) { return sb->data == (const void *)sb->inline_chars; }
 
 /* A heap buffer has room in front of its characters for the block prefix and the MkString header: a big narrow buffer can then
@@ -171,6 +181,7 @@ static void sb_unshare(MkSb *sb) {
     if (n > 0) memcpy(d, sb->data, n);
     sb->data = d;
     sb->capacity = (MkInt)n;
+    sb_sync_room(sb);
     sb->backing = NULL;
     mk_release(&b->header);
 }
@@ -194,6 +205,7 @@ static void sb_widen(MkSb *sb) {
         for (MkInt i = len - 1; i >= 0; i--) dst[i] = src[i];
         sb->capacity = MK_SB_INLINE_BYTES / 2;
         sb->wide = 1;
+        sb_sync_room(sb);
         return;
     }
     MkInt cap = sb->capacity > len ? sb->capacity : len;
@@ -209,6 +221,7 @@ static void sb_widen(MkSb *sb) {
     sb->data = n;
     sb->capacity = cap;
     sb->wide = 1;
+    sb_sync_room(sb);
 }
 
 static void sb_grow(MkSb *sb, MkInt need) {
@@ -233,6 +246,7 @@ static void sb_grow(MkSb *sb, MkInt need) {
     }
     sb->data = n;
     sb->capacity = cap;
+    sb_sync_room(sb);
 }
 
 static inline void sb_reserve(MkSb *sb, MkInt extra) {
@@ -248,6 +262,7 @@ MkObject *mk_sb_new(void) {
     sb->data = sb->inline_chars;
     sb->capacity = MK_SB_INLINE_BYTES;
     sb->wide = 0;
+    sb_sync_room(sb);
     return &sb->header;
 }
 
@@ -374,6 +389,7 @@ MkString *mk_sb_to_string(MkObject *o) {
                 r->length = n;
                 sb->data = (void *)r->chars;
                 sb->capacity = n;
+                sb_sync_room(sb);
                 sb->backing = r;
                 return r;
             }
