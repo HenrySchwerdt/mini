@@ -147,6 +147,16 @@ specification: a function that returns or stores a *borrowed* value as an owner,
 collection, is not memory safe without a reference count on every object, which Strict does not have. The (b) rows would need a
 new specification decision (a count on every Strict object, or a `@Owned` copy), none is made here.
 
+Rejected (19), grouped by cause (each needs a specification decision, none is made in strict-5; a rejection stays sound):
+
+| cause | programs |
+|---|---|
+| a borrowed value (parameter, `this`, a read element) is returned as owned or stored in an owned field | `bank_domain`, `bignum_arithmetic`, `cli_tool`, `html_dsl`, `huffman_coding`, `json_codec`, `library_system`, `mini_interpreter`, `trie_autocomplete` |
+| owner and borrower mixed (an owner moved into a collection and read again; new object on one path, borrowed on another) | `expression_calculator`, `state_machine` |
+| a borrowed parameter or collection element is put into another collection (needs an `@Owned` copy or a count) | `aoc_dynamic_programming`, `aoc_grid_paths`, `graph_algorithms`, `priority_scheduler` |
+| a closure that captures a borrowed `this` or an owner is kept by a Managed function (scheduler, `iterator {}`, handler registry) | `coroutine_scheduler`, `language_tour`, `event_system` |
+| two borrowed parameters put into a `Pair` (`a to b`) | `thread_pool` |
+
 The measurement found one checker bug, which is fixed: a collection of default-allocated objects built in an inner scope and
 assigned to a variable of an outer scope (`if (k) { b = listOf(stmt()) }`, as in `mini_interpreter`) was reported as used
 after free (corpus `s231_collection_assigned_to_outer_var`). `mini_interpreter` is now rejected for a correct reason
