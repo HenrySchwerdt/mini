@@ -212,6 +212,11 @@ class TextIrBuilder : IrBuilder<TextVal, String> {
         return TextVal(gname(sym), "ptr")
     }
 
+    override fun externGlobal(sym: String, t: IrType, threadLocal: Boolean): TextVal {
+        if (!externGlobals.containsKey(sym)) externGlobals[sym] = "@$sym = external ${if (threadLocal) "thread_local(initialexec) " else ""}global ${tyText(t)}"
+        return TextVal(gname(sym), "ptr")
+    }
+
     override fun declareGlobalOfStruct(name: String, typeName: String, linkage: IrLinkage) {}
 
     override fun defineGlobal(s: IrSection, name: String, init: TextVal, constant: Boolean, linkage: IrLinkage, align: Int, unnamedAddr: Boolean): TextVal {

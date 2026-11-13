@@ -191,6 +191,19 @@ class ApiIrBuilder(val context: LLVMContextRef, val module: LLVMModuleRef) : IrB
         return memScoped { ApiVal(LLVMAddGlobal(module, namedType("MkTypeInfo"), sym.cstr.ptr)) }
     }
 
+    override fun externGlobal(sym: String, t: IrType, threadLocal: Boolean): ApiVal {
+        val g = findGlobal(sym)
+        if (g != null) return ApiVal(g)
+        return memScoped {
+            val v = LLVMAddGlobal(module, ty(t), sym.cstr.ptr)
+            if (threadLocal) {
+                LLVMSetThreadLocal(v, 1)
+                LLVMSetThreadLocalMode(v, 3) // LLVMInitialExecTLSModel
+            }
+            ApiVal(v)
+        }
+    }
+
     private fun linkageOf(l: IrLinkage): Int = if (l == IrLinkage.INTERNAL) LLVMInternalLinkage else if (l == IrLinkage.PRIVATE) LLVMPrivateLinkage else LLVMExternalLinkage
 
     override fun declareGlobalOfStruct(name: String, typeName: String, linkage: IrLinkage) {
