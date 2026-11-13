@@ -13,7 +13,7 @@ typedef struct { MkObject h; MkObject *child; } Pair;
 /* the bytes one Pair takes: a size class of the small-object allocator (no prefix), else the malloc block with its prefix */
 #define PAIR_BLOCK ((size_t)(MK_SMALL_ALLOC ? (sizeof(Pair) + 15) / 16 * 16 : sizeof(Pair) + MK_PREFIX_SIZE))
 static void pair_dispose(MkObject *s) { mk_release(((Pair *)s)->child); }
-static const MkTypeInfo T_Pair = {"Pair", sizeof(Pair), &mk_type_Any, pair_dispose, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Pair = {"Pair", sizeof(Pair), &mk_type_Any, pair_dispose, 0, 0, 0, 0, NULL, NULL, NULL};
 
 static MkStats snap(void) {
     MkStats s;

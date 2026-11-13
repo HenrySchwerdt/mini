@@ -10,7 +10,7 @@ static void tracked_dispose(MkObject *self) {
 }
 
 static const MkTypeInfo tracked_type = {
-    "Tracked", sizeof(Tracked), &mk_type_Any, tracked_dispose, NULL, 0, NULL, 0, NULL, NULL,
+    "Tracked", sizeof(Tracked), &mk_type_Any, tracked_dispose, NULL, 0, NULL, 0, NULL, NULL, NULL
 };
 
 int main(void) {

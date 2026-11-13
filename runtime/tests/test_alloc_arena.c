@@ -6,7 +6,7 @@
 typedef struct { MkObject h; int payload; } Obj;
 static int disposed;
 static void count_dispose(MkObject *s) { (void)s; disposed++; }
-static const MkTypeInfo T_Count = {"Count", sizeof(Obj), &mk_type_Any, count_dispose, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Count = {"Count", sizeof(Obj), &mk_type_Any, count_dispose, 0, 0, 0, 0, NULL, NULL, NULL};
 
 static void *A(MkAllocator *a, size_t size, size_t align) { return a->allocate(a, size, align); }
 

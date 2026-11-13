@@ -62,7 +62,7 @@ static void start(test_thread_t *t, void (*f)(void)) { CHECK(pthread_create(t, N
 static void join(test_thread_t *t) { CHECK(pthread_join(*t, NULL) == 0); }
 #endif
 
-static const MkTypeInfo T = {"Counted", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T = {"Counted", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL, NULL};
 
 int main(void) {
     int64_t t0 = mk_sys_monotonic_ns();

@@ -30,8 +30,8 @@ static void leaf_dispose(MkObject *self) {
     leaf_disposed++;
 }
 
-static const MkTypeInfo node_type = {"Node", sizeof(Node), &mk_type_Any, node_dispose, NULL, 0, NULL, 0, node_trace, NULL};
-static const MkTypeInfo leaf_type = {"Leaf", sizeof(MkObject), &mk_type_Any, leaf_dispose, NULL, 0, NULL, 0, NULL, NULL};
+static const MkTypeInfo node_type = {"Node", sizeof(Node), &mk_type_Any, node_dispose, NULL, 0, NULL, 0, node_trace, NULL, NULL};
+static const MkTypeInfo leaf_type = {"Leaf", sizeof(MkObject), &mk_type_Any, leaf_dispose, NULL, 0, NULL, 0, NULL, NULL, NULL};
 
 static Node *node_new(void) { return (Node *)mk_alloc(&node_type); }
 

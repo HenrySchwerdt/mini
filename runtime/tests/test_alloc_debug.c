@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 typedef struct { MkObject h; int payload; } Obj;
-static const MkTypeInfo T_Foo = {"app.Foo", sizeof(Obj), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
-static const MkTypeInfo T_Bar = {"app.Bar", sizeof(Obj), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Foo = {"app.Foo", sizeof(Obj), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL, NULL};
+static const MkTypeInfo T_Bar = {"app.Bar", sizeof(Obj), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL, NULL};
 
 /* Reads a leak report into a string. */
 static char report_buf[2048];

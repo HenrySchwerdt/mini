@@ -8,7 +8,7 @@
 #include <stdlib.h>
 
 typedef struct { MkObject h; unsigned char data[1]; } Blob;
-static const MkTypeInfo T_Blob = {"Blob", sizeof(Blob), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Blob = {"Blob", sizeof(Blob), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL, NULL};
 
 static MkObject *blob(MkAllocator *a, size_t payload) {
     return mk_alloc_sized(a, &T_Blob, sizeof(MkObject) + payload);

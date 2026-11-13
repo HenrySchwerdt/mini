@@ -51,7 +51,7 @@ static void dispose_it(MkObject *s) {
     (void)s;
     disposed++;
 }
-static const MkTypeInfo T = {"Shared", sizeof(MkObject), &mk_type_Any, dispose_it, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T = {"Shared", sizeof(MkObject), &mk_type_Any, dispose_it, 0, 0, 0, 0, NULL, NULL, NULL};
 
 enum { THREADS = 4, ITERS = 200000 };
 
@@ -67,7 +67,7 @@ static void worker(void *arg) {
 }
 
 /* Shared DebugAllocator over the Heap: every thread allocates and frees. */
-static const MkTypeInfo T_Plain = {"Plain", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Plain = {"Plain", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL, NULL};
 static void alloc_worker(void *arg) {
     MkAllocator *d = arg;
     for (int i = 0; i < 5000; i++) {
@@ -86,7 +86,7 @@ static void id_worker(void *arg) {
 }
 
 /* The per-thread data slot: every thread sees only its own object, the slot keeps a reference, and clearing it releases it. */
-static const MkTypeInfo T_Slot = {"Slot", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL};
+static const MkTypeInfo T_Slot = {"Slot", sizeof(MkObject), &mk_type_Any, NULL, 0, 0, 0, 0, NULL, NULL, NULL};
 static void slot_worker(void *arg) {
     MkObject **out = arg;
     out[0] = mk_sys_thread_data(); /* nothing stored by this thread: NULL */

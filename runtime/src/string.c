@@ -8,7 +8,7 @@
 #include <string.h>
 
 const MkTypeInfo mk_type_String = {
-    "kotlin.String", sizeof(MkString), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL,
+    "kotlin.String", sizeof(MkString), &mk_type_Any, NULL, NULL, 0, NULL, 0, NULL, NULL, NULL
 };
 
 static MkString *string_alloc(size_t length) {
