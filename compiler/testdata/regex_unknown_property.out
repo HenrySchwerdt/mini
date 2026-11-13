@@ -1,0 +1,6 @@
+rejected \P,
+rejected \p{Nope}
+rejected [a\p{Zzz}]
+rejected x\pQ
+compiled \p{Lu}+ true
+compiled [\P{Alpha}] false

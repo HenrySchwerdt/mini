@@ -68,6 +68,67 @@ first; 40 candidates are checked per kotlinc run and in parallel on the mini sid
 program and mini still fails in the same way (same kind, and for compiler, sanitizer and C compiler failures the same first message line with
 the numbers masked). The prelude, `run()` and `main` stay. The result is written to `OUT/reduced.SEED.VARIANT.kt`.
 
+## libFuzzer harnesses
+
+The differential fuzzer above needs a JVM and works on whole programs. `tools/fuzz/libfuzzer/` holds coverage-guided harnesses (libFuzzer) for
+the functions that parse and format data, built with `-fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined` over the runtime
+(every file of `runtime/src` except `entry.c`, compiled with `-Wall -Wextra -Werror`) and, for the targets written in mini, over the generated
+code of the standard library as well. Any ASan, UBSan or LeakSanitizer report, any uncaught exception, any broken invariant (`abort`) and any
+input that needs more than 30 seconds or 2 GB is a finding.
+
+| harness | what | invariants |
+|---|---|---|
+| `utf8` (`fuzz_utf8.c`) | `mk_utf8_decode`, `mk_string_from_utf8`, `mk_string_to_utf8`, `mk_utf16_to_utf8` on arbitrary bytes and arbitrary UTF-16 (lone surrogates) | every step is 1-4 bytes inside the input and a scalar value or U+FFFD; bytes to String to bytes to String is stable and the output is well-formed; no more than 3 bytes per unit; both encoders agree |
+| `numfmt` (`fuzz_numfmt.c`) | Double/Float to String (`numfmt.c`), `mk_string_is_double` / `mk_string_parse_double` on arbitrary text | the text of any bit pattern fits the buffer, is accepted by the parser and gives back the same value (sign of zero, NaN) |
+| `parse` (`targets/parse.kt`) | `toIntOrNull(radix)`, `toLong`, `toShort`, `toByte`, `toUInt`, `toULong` with radix 2..36, `toDouble`, `toFloat`, `toBooleanStrictOrNull` | the `OrNull` and the throwing form agree (`NumberFormatException` is the only exception), what parses prints and parses back |
+| `numstr` (`targets/numstr.kt`) | number to String: `toString(radix)` of all integer types, hex, Double and Float `toString` | each text parses back to the same bits |
+| `format` (`targets/format.kt`) | `String.format` with a fuzzed format string and fixed or derived arguments (Int, Long, Double incl. NaN/Infinity/denormals, String, Char, Boolean, null), and every conversion behind a fuzzed flag/width/precision prefix | only the `java.util.*Format*Exception` family (`IllegalArgumentException`) may be thrown |
+| `regex` (`targets/regex.kt`) | the regular expression engine (`stdlib/kotlin/text/Regex.kt`, written in Kotlin): the input is pattern, NUL, text; options from the first byte; `matches`, `find`, `findAll`, `split`, `replace`, `matchAt`, `escape` | a bad pattern throws `IllegalArgumentException` when the `Regex` is built and never later; matches lie inside the text and do not overlap |
+| `text` (`targets/text.kt`) | the text functions of the stdlib: case mapping, trim, search, split, replace, pad, `lines`, indentation, `chunked`/`windowed`, `Char` classification, UTF-8 `encodeToByteArray` / `decodeToString` (also strict), `StringBuilder` | no exception; the UTF-8 round trip is stable |
+
+The targets in mini are ordinary programs with a function `fuzzX(s: String, a: Int, b: Int): Int` and a `main` that calls it (so the reachability
+pruning keeps it). `build.sh` translates one to C with `minic-native`, and `fuzz_kt.c` includes that C file (its functions are `static`) and
+feeds it: byte 0 is `a`, byte 1 is `b`, byte 2 selects how the rest becomes the `String` (UTF-8, raw UTF-16 units, or one byte per character,
+which reaches the three representations of the runtime's strings). An exception that escapes the target is reported with
+`mk_report_uncaught` and counts as a crash; the exceptions that are part of the documented behavior are caught in the target.
+
+```
+tools/fuzz/libfuzzer/build.sh --out /tmp/lf                 # all harnesses (CC=clang with libFuzzer; FUZZ_STDLIB=source: the stdlib sources instead of stdlib.mlib)
+tools/fuzz/libfuzzer/run.sh --out /tmp/lf --time 300 --jobs 4          # fuzz, 300 s each; the corpus grows in /tmp/lf/corpus/NAME
+tools/fuzz/libfuzzer/run.sh --out /tmp/lf --regress                    # replay only regress/NAME/*: fast, for CI
+/tmp/lf/fuzz_regex /tmp/lf/crash-regex-...                             # reproduce
+/tmp/lf/fuzz_regex -minimize_crash=1 -runs=100000 crash-regex-...      # minimise
+```
+
+`build.sh` looks for a clang that links libFuzzer, ASan and UBSan: `$CC`, `clang`, or the clang of the Kotlin/Native LLVM dependency in
+`~/.konan` (the system clang here has no sanitizer runtimes). `<sanitizer/asan_interface.h>`, which some clang installs lack, is taken from gcc.
+
+**Crashes** are reproduced with the binary, minimised, fixed at the cause, and the minimised input is stored in `tools/fuzz/libfuzzer/regress/NAME/`
+(replayed by `run.sh --regress`) together with a program in `compiler/testdata` where the behavior is visible from Kotlin. `seeds/NAME` has
+a few hand-made inputs per harness.
+
+**CI**: the step "libFuzzer smoke run" of the `e2e` shard (Linux) builds the harnesses, replays the regression inputs and fuzzes every harness
+for 90 seconds (three at a time); a crash fails the step.
+
+### Findings of the libFuzzer harnesses
+
+Seven harnesses, 5.5 to 6 minutes each, four at a time on a 4-core machine, on the final code (executions: `utf8` 0.8M, `parse` 1.1M,
+`numfmt` 1.2M, `numstr` 0.44M, `format` 64K, `text` 20K plus 172K in an earlier run, `regex` 14K plus 52K and 40K earlier; the last three run dozens
+of stdlib calls per input, and a run of the checked build is slow):
+
+* **Regex: an unknown character property was detected at the first match.** `Regex("\\P,")` (also `\p{Nope}`, inside classes too) compiled and the
+  `IllegalArgumentException` came out of `matches`/`find` instead of the constructor, as `java.util.regex` does it. The property name is
+  now checked by the parser (`NamedPred.isKnown`). Regression: `compiler/testdata/regex_unknown_property.kt`,
+  `regress/regex/unknown-property-at-match-time`.
+* **`String.format`: zero padding was quadratic.** `%080282d`, `%#0300000x`, `%+0300000.2f` built the padding by prepending one `"0"` at a time
+  (80282 copies of up to 80 KB for one conversion: 13 seconds and 2.3 GB of quarantined blocks under ASan for one input). Now one `zeros(n)`
+  and one concatenation. Regression: `compiler/testdata/format_zero_pad_linear.kt`, `regress/format/quadratic-zero-padding`.
+* A width or precision between 100000 and `Int.MAX_VALUE` is skipped by the `format` target (`%1111111110d` asks for a 2 GB string, on the
+  JVM too): that is resource use by the request, not a defect.
+
+No finding in the runtime's own C code (UTF-8 and UTF-16 conversion, Double/Float formatting and parsing) and none in the number parsing and
+printing, the text functions or the UTF-8 coding of the stdlib.
+
 ## Strict variants
 
 `tools/fuzz/genstrict.py SEED` generates a program in `@file:MemoryMode(Mode.Strict)` that the memory checker should accept: objects of
