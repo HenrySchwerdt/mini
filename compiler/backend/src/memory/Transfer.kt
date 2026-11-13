@@ -1104,7 +1104,9 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
             if (l.type.holds) {
                 // the collection ends with its scope: the loans of its elements end with it
                 val cs = slot(l.id)
-                if (cs != null && cs.bits and C != 0 && cs.bits and B == 0) {
+                // a collection that another collection variable stands for (`outer = inner`) lives on through it: the object is not released
+                val aliased = st.slots.any { (id, sl) -> id >= 0 && id != l.id && sl.bits and C != 0 && l.id in sl.refs }
+                if (cs != null && cs.bits and C != 0 && cs.bits and B == 0 && !aliased) {
                     killLoans(setOf(l.id))
                     put(l.id, Slot(F, cs.refs, cs.sites, cs.vpos))
                 }
