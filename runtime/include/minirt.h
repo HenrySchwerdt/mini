@@ -847,6 +847,12 @@ MkLong mk_platform_nanos(void);
 MkString *mk_b1_read_file(const MkString *path);
 /* Writes `text` as UTF-8 (create/truncate); false when it cannot be written. */
 MkBoolean mk_b1_write_file(const MkString *path, const MkString *text);
+/* Reads the whole file as bytes (a ByteArray); NULL when it cannot be opened or read. */
+MkObject *mk_b1_read_bytes(const MkString *path);
+/* Writes the bytes of a ByteArray (create/truncate, or append); false when it cannot be written. */
+MkBoolean mk_b1_write_bytes(const MkString *path, const MkObject *bytes, MkBoolean append);
+/* what 0 = size in bytes, 1 = last modification time in ms since the epoch; -1 when the file does not exist. */
+MkLong mk_b1_file_stat(const MkString *path, MkInt what);
 /* 0 = does not exist, 1 = regular file, 2 = directory (stat, symbolic links followed). */
 MkInt mk_b1_file_kind(const MkString *path);
 /* The entries of a directory (without "." and ".."), sorted, joined with '\n'; NULL when it is not a readable directory. */

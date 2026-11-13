@@ -15,7 +15,7 @@ user file. The Strict outcome is classified:
 The split between (a) and (b) is by diagnostic code and message (RULES below), refined by reading the biggest clusters.
 
   strict_coverage.py --minic build/native/bin/minic-native --mlib build/native/lib/stdlib.mlib --id <compiler id>
-                     [--set testdata|samples|conformance|all] [--sample N] [--jobs N] [--list] [--json out.json]
+                     [--set testdata|samples|realworld|conformance|all] [--sample N] [--jobs N] [--list] [--json out.json]
 """
 import argparse, collections, hashlib, importlib.util, json, os, re, shutil, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -119,6 +119,11 @@ def classify(rc, diags, err):
 def programs_testdata():
     d = os.path.join(ROOT, 'compiler', 'testdata')
     return [('testdata/' + f, [os.path.join(d, f)]) for f in sorted(os.listdir(d)) if f.endswith('.kt')]
+
+
+def programs_realworld():
+    d = os.path.join(ROOT, 'tests', 'realworld')
+    return [('realworld/' + f, [os.path.join(d, f)]) for f in sorted(os.listdir(d)) if f.endswith('.kt')]
 
 
 def programs_samples():
@@ -230,6 +235,8 @@ def main():
         progs += programs_testdata()
     if a.set in ('samples', 'all'):
         progs += programs_samples()
+    if a.set == 'realworld':
+        progs += programs_realworld()
     if a.set in ('conformance', 'all'):
         progs += programs_conformance(a, run)
     if a.only:

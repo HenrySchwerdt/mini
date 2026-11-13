@@ -143,20 +143,33 @@ class Ir2Mir {
         // local and anonymous classes (declared inside function bodies)
         val localCounts = HashMap<String, Int>()
         val localNames = HashSet<String>()
+        val inlineShadows = HashMap<IrFile, IrFile>()
         for (lc in closure.localClasses) {
-            if (lc.file.isLib) continue
-            setFile(lc.file)
-            val n = (localCounts[lc.enclosing] ?: 0) + 1
-            localCounts[lc.enclosing] = n
+            var lfile = lc.file
+            var prefix = ""
+            if (lc.file.isLib) {
+                // a local class of an inline function of a library: the consumer expands the function, so it compiles its own copy of the class
+                // (named apart from the library's: both are in one program)
+                if (!inInlineFunction(lc.cls)) continue
+                lfile = inlineShadows.getOrPut(lc.file) {
+                    val sh = IrFile(lc.file.path, lc.file.text, lc.file.packageFqName, lc.file.isStdlib)
+                    sh.isBuiltin = lc.file.isBuiltin
+                    sh
+                }
+                prefix = "inl\$"
+            }
+            setFile(lfile)
+            val n = (localCounts[prefix + lc.enclosing] ?: 0) + 1
+            localCounts[prefix + lc.enclosing] = n
             val nm = lc.cls.name.let { if (it.startsWith("<")) "" + n else it }
             val pkg = lc.file.packageFqName
             // two local classes of one name in one function (or enum entry bodies of the same name in two enums) must not share a C name
-            var full = lc.enclosing + "$" + nm
+            var full = prefix + lc.enclosing + "$" + nm
             if (!localNames.add(pkg + "/" + full)) {
-                full = lc.enclosing + "$" + n + "$" + nm
+                full = prefix + lc.enclosing + "$" + n + "$" + nm
                 localNames.add(pkg + "/" + full)
             }
-            collectClass(lc.cls, pkg, listOf(full), lc.file)
+            collectClass(lc.cls, pkg, listOf(full), lfile)
         }
         // pass 2: names of all functions
         for ((file, f) in tops) {
@@ -250,6 +263,18 @@ class Ir2Mir {
         var k = 2
         while (!topLevelNames.add(name + "_O" + k)) k++
         return name + "_O" + k
+    }
+
+    /** is [c] declared inside an inline function (possibly inside a lambda or another local class of it)? */
+    internal fun inInlineFunction(c: IrClass): Boolean {
+        var p: IrDeclarationParent? = c.parent
+        var n = 0
+        while (p != null && n < 32) {
+            if (p is IrSimpleFunction && p.isInline) return true
+            p = (p as? IrDeclaration)?.parent
+            n++
+        }
+        return false
     }
 
     /** Does the function have a body in the source (a library stub drops the body, but the function exists in the library)? */

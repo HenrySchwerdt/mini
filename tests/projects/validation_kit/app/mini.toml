@@ -1,0 +1,7 @@
+[package]
+name = "validapp"
+version = "0.1.0"
+kind = "app"
+
+[dependencies]
+validk = { path = "../lib" }

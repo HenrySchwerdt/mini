@@ -6,7 +6,7 @@
 # Suites (default: c leak memcheck memrun strict multifile mlib):
 #   c          build every compiler/testdata/*.kt through the C backend (cc -std=c17 -Wall -Werror), run it, compare
 #                <name>.out (stdout), <name>.err (substrings of stderr; the program must then exit non-zero),
-#                <name>.cerr (the build must fail with exit 1 and the output must contain each line)
+#                <name>.cerr (the build must fail with exit 1 and the output must contain each line); <name>.in is standard input (else empty)
 #   strict-leak, strict-llvm-leak   the runnable programs of the strict corpus under AddressSanitizer + LeakSanitizer (C and LLVM backend)
 #   leak       the same programs (and the Strict programs of testdata/memory with a .out) built with AddressSanitizer +
 #                LeakSanitizer + UBSan: same output, exit 0, no report. Skipped without a C compiler that links the sanitizers.
@@ -28,6 +28,8 @@
 #   realworld, realworld-llvm, realworld-leak, realworld-llvm-leak   tests/realworld: everyday Kotlin programs (100-600 lines, standard
 #                library only) with the expected output of the reference compiler: C backend, LLVM backend and the sanitizer builds of both
 #                (docs/realworld.md; the outputs are made by tests/realworld/gen-expected.sh)
+#   projects   tests/projects: multi-module projects (a library and an app, a dependency chain, internal visibility errors) built, run and
+#                tested with `mini` and the .mlib artifacts of their libraries (tests/projects/run.sh, docs/realworld.md)
 #   strict     compiler/testdata/strict-corpus: everyday Strict programs; `// ACCEPT` ones must pass the checker (and, with a .out,
 #                build and run to it), `// REJECT Mxxxx` ones must be rejected with exactly that code (scripts/strict-corpus.sh)
 #   multifile  several input files, reachability pruning, all user files are memory-checked
@@ -63,7 +65,7 @@ while [ $# -gt 0 ]; do
         *) FILTER="$1"; shift ;;
     esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak realworld realworld-leak)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(c leak memcheck memrun strict strict-leak strict-llvm-leak multifile mlib stress-leak stress-rss fuzz fuzz-leak realworld realworld-leak projects)
 
 [ -x "$MINIC" ] || { echo "test-e2e: no native compiler at $MINIC (run ./mini once, or set MINIC_NATIVE)" >&2; exit 2; }
 [ -f "$RTLIB" ] || { echo "test-e2e: no runtime library at $RTLIB" >&2; exit 2; }
@@ -140,6 +142,7 @@ want_suite() { local s; for s in "${SUITES[@]}"; do [ "$s" = "$1" ] && return 0;
 # ---- test bodies: each prints nothing on success; on failure a message and exit status 1; exit status 77 = skipped ----------
 
 sib() { echo "${1%.kt}.$2"; }                 # sibling file of a source
+stdin_of() { if [ -f "${1%.kt}.in" ]; then echo "${1%.kt}.in"; else echo /dev/null; fi; }   # standard input of a program: <name>.in, else empty
 has_lines_in() { # <file with expected lines> <text file>: every non-blank line of the first occurs in the second
     local line missing=0
     while IFS= read -r line || [ -n "$line" ]; do
@@ -178,7 +181,7 @@ run_and_compare() { # <name> <src> <exe> <label>: run, compare stdout with .out,
     # Strict programs that move an owned value into `spawn { }` are accepted by the checker but not run: the closure that carries the value
     # into the thread is itself reference counted (move capture in escaping lambdas, docs/memory-model.md section 9)
     if [ "${5:-}" = skip-threads ] && grep -q 'spawn *{' "$src"; then return 77; fi
-    ( cd "$W" && run_with_timeout 60 "$exe" > "$out" 2> "$err" ); code=$?
+    ( cd "$W" && run_with_timeout 60 "$exe" < "$(stdin_of "$src")" > "$out" 2> "$err" ); code=$?
     if [ $code -eq 124 ]; then echo "$label: timed out"; return 1; fi
     if grep -q "threads are not supported yet" "$err" 2>/dev/null && [ "$5" = skip-threads ]; then return 77; fi
     if ! cmp -s "$(sib "$src" out)" "$out"; then echo "$label: stdout differs from $(sib "$src" out)"; diff "$(sib "$src" out)" "$out" | head -10; return 1; fi
@@ -210,7 +213,7 @@ t_c() { # <src> [asan]
         # shellcheck disable=SC2086
         "$SANCC" -std=c17 -O1 -w $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$c" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "sanitizer build failed:"; head -20 "$W/$name.cc"; return 1; }
         local out="$W/$name.stdout" err="$W/$name.stderr" code
-        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
+        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" < "$(stdin_of "$src")" > "$out" 2> "$err" ); code=$?
         [ $code -eq 0 ] || { echo "failed under sanitizers (exit $code; leak or memory error):"; head -30 "$err"; return 1; }
         cmp -s "$(sib "$src" out)" "$out" || { echo "stdout differs under sanitizers"; diff "$(sib "$src" out)" "$out" | head; return 1; }
         return 0
@@ -237,7 +240,7 @@ t_llvm() { # <src> [asan]
         # shellcheck disable=SC2086
         "$SANCC" $SAN_FLAGS -I "$INCLUDE" -I "$TESTDATA" "$W/$name.o" $extra "$W/rt-asan"/*.o -o "$exe" -lm $links >> "$W/$name.cc" 2>&1 || { echo "sanitizer link failed:"; head -20 "$W/$name.cc"; return 1; }
         local out="$W/$name.stdout" err="$W/$name.stderr" code
-        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" > "$out" 2> "$err" ); code=$?
+        ( cd "$W" && ASAN_OPTIONS="detect_leaks=$ASAN_LEAKS:exitcode=99" run_with_timeout 120 "$exe" < "$(stdin_of "$src")" > "$out" 2> "$err" ); code=$?
         [ $code -eq 0 ] || { echo "failed under sanitizers (exit $code):"; head -30 "$err"; return 1; }
         cmp -s "$(sib "$src" out)" "$out" || { echo "stdout differs under sanitizers"; return 1; }
         return 0
@@ -323,6 +326,12 @@ t_memrun() { # <src>
     # shellcheck disable=SC2086
     "$CC" -std=c17 -O1 -w -I "$INCLUDE" "$W/$name.c" "$RTLIB" -o "$W/$name.exe" -lm $links > "$W/$name.cc" 2>&1 || { echo "C compiler failed:"; head "$W/$name.cc"; return 1; }
     run_and_compare "$name" "$src" "$W/$name.exe" "memrun" skip-threads
+}
+
+t_project() { # <name>: a multi-module project of tests/projects built, run and tested with `mini` (tests/projects/run.sh)
+    [ -x "$NATIVE/bin/mini" ] || return 77
+    mkdir -p "$W/projects"
+    MINI_ROOT="$NATIVE" CC="$CC" "$ROOT/tests/projects/run.sh" "$1" "$W/projects"
 }
 
 t_multifile() {
@@ -623,7 +632,7 @@ t_mlib_errors() {
 
 export STDMODE STD
 export WNO ROOT NATIVE MINIC RTLIB INCLUDE TESTDATA CC SANCC ASAN_LEAKS SAN_FLAGS W NATIVE_DRIVER MINIC_API
-export -f t_fuzz t_fuzz_llvm sib has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
+export -f t_fuzz t_fuzz_llvm sib stdin_of has_lines_in links_of c_extra run_and_compare compile_to_c t_stress_rss t_c t_llvm t_llvm_variant t_llvm_api t_memcheck t_memrun t_strict t_multifile t_project t_multifile_layout t_allfiles t_mlib_chain t_mlib_errors t_mlib_stubcache t_mlib_summaries t_mlib_layout run_with_timeout
 export TIMEOUT_CMD
 
 # a test list: "<suite> <id> <function and arguments>" per line
@@ -669,6 +678,7 @@ want_suite fuzz-leak && for f in $(fuzz_progs); do add fuzz-leak "$(basename "$f
 want_suite fuzz-llvm-leak && for f in $(fuzz_progs); do add fuzz-llvm-leak "$(basename "$f" .kt)" "t_llvm $f asan"; done
 want_suite stress-rss && for f in $(stress_progs); do add stress-rss "$(basename "$f" .kt)" "t_stress_rss $f"; done
 want_suite mlib && { add mlib chainOfLibraries t_mlib_chain; add mlib errors t_mlib_errors; add mlib stubCache t_mlib_stubcache; add mlib summaries t_mlib_summaries; add mlib objectLayout t_mlib_layout; }
+want_suite projects && for d in $(find "$ROOT/tests/projects" -maxdepth 2 -name mini.toml | LC_ALL=C sort); do add projects "$(basename "$(dirname "$d")")" "t_project $(basename "$(dirname "$d")")"; done
 want_suite multifile && { add multifile twoFilesAndTheStdlib t_multifile; add multifile allUserFilesAreChecked t_allfiles; add multifile classChainAcrossFiles t_multifile_layout; }
 
 if [ -n "$FILTER" ]; then grep -F -- "$FILTER" "$LISTFILE" > "$LISTFILE.f" || true; mv "$LISTFILE.f" "$LISTFILE"; fi
