@@ -878,6 +878,44 @@ Regression test: `compiler/testdata/conformance13_refs.kt`.
 
 Left: `kt51247` (context-receiver references: the context parameters would be leading parameters of the reference, the adapted-reference lowering has no place for them), `kt42042` (old-inference leniency for violated bounds), `anonymousObjectInExtension`, `enumEntriesNameClashes` (`E::entries` is a static property reference, no `KProperty0` is made for the synthetic `entries`), `objectToPrimitiveWithAssertion`, `signedToUnsignedConversions` (`@ImplicitIntegerCoercion`: Int constants for unsigned parameters), boxed small-value identity (2).
 
+## Fifteenth round (branch claude/conformance-15): language-core corners, written by hand
+
+No JetBrains test source was used this round: 65 small programs (`compiler/testdata/conf15_*.kt`, 20 to 40 statements each, one corner of the
+language per program) were written for this repository, and their expected output (`.out`) is what kotlinc 2.1.20 prints on the JVM
+(`kotlinc -nowarn x.kt -include-runtime`, `java -jar`, as in `docs/realworld.md`). The programs cover: generics and variance (use-site `in` / `out`, star
+projections, `reified` with bounds, `where` clauses, recursive bounds, sealed generic results), value classes (boxing at generic boundaries,
+nullable, equality, `init`, secondary constructors, companions), `sealed` / `when` (exhaustiveness, smart casts through `&&` / `||` / `!` /
+early returns / `when` subjects / properties), operator conventions (`compareTo`, `contains`, `rangeTo` / `rangeUntil`, `invoke`, multi-argument
+`get` / `set`, `plusAssign` vs `plus`, `iterator`, `componentN`), ranges and progressions (`step`, `downTo`, `reversed`, empty ranges, the limits
+of Int / Long / Char), nullability (`?.let` / `?:` with `return` / `break` / `throw`, `!!`, nullable generics), exceptions (`finally` with `return` /
+`break` / `continue`, `try` as an expression, `use`, suppressed exceptions, cause chains), initialization order (initializers vs `init`,
+superclass constructors calling open members, companions and objects, `lateinit`, `lazy`), strings (templates, raw strings,
+`trimMargin` / `trimIndent`, `Char` arithmetic), functions (defaults that use earlier parameters, named arguments and their evaluation order,
+`vararg` with spread, function references of all kinds, lambda inference, local functions and closures, `inline` / `crossinline` / `noinline`,
+overload resolution, DSL builders), delegated properties, enums, interfaces with diamond inheritance, arrays, collections, sequences, numbers
+(overflow, conversions, shifts, floating point text).
+
+Result: 65 programs, 58 passed at the first run, the others exposed 7 gaps, all fixed (the compiler gaps with the program as regression test):
+
+| gap | fix |
+|---|---|
+| `x.isNullOrEmpty()` / `x.isNullOrBlank()` returning `false` did not make `x` non-null (the contracts of the standard library: `if (s.isNullOrEmpty()) return; s.length` was "unresolved call") | `condFacts` (frontend, `Exprs.kt`): a call of `isNullOrEmpty` / `isNullOrBlank` of package `kotlin.*` gives the non-null fact of its receiver on the false branch (also under `!`, `&&`, `||`) |
+| `local += 1`, `local++`, `--local` on a **local delegated property** (`var x by Delegates.observable(..)`) was an internal compiler error ("variable is not declared in the IR") | `Ast2IrFlow.kt`: compound assignment and increment / decrement call the delegate's `getValue`, the operator and `setValue` |
+| an anonymous function without parameter types as an argument (`list.map(fun(x) = x * 3)`): "no operator times for T" | `Calls.kt`: the type variables of the expected function type that the other arguments determine are fixed before the parameter types are taken, as for a lambda |
+| `"abc".substring(5)` threw `IndexOutOfBoundsException`, not `StringIndexOutOfBoundsException` (a `catch` of the JVM type did not match) | stdlib `Strings.kt` |
+| `"abc".lastIndexOf("")` was 3, kotlin: 2 (`startIndex` defaults to `lastIndex`) | stdlib `Strings.kt` |
+| `Map.getOrElse(key) { .. }` returned `null` for a key mapped to `null` (kotlin: the default) | stdlib `Builders.kt` |
+| `cbrt(27.0)` was `3.0000000000000004` (the C library is off by one ulp for some exact cubes, the JVM's is exact) | stdlib `Math.kt`: an exact integer cube root is returned as such |
+
+Not fixed, deliberately (recorded here, the programs avoid them):
+
+* **Reading a reference field that no initializer has run yet** (a superclass constructor calls an open member that reads a `String` property of the
+  subclass): the JVM sees `null` (and prints it), Mini stops with `NullPointerException: null cannot be cast to non-null type` (the NullGuard of
+  docs/memory-model.md, "Null values behind a non-null type"). Reading a primitive field there gives 0 on both; `conf15_init_order_inherit` covers that.
+* The default `toString()` of an object (`Class@hash`) differs in the class name of a nested class (`Opt$None` on the JVM, `Opt.None` here) and in the
+  hash, so no program prints it.
+* kotlinc itself rejects a local expression-bodied function followed by `;` on the same line (`fun f() = 1; println(f())`); the programs use a newline there.
+
 ## Results
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
