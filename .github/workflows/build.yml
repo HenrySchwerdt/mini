@@ -227,6 +227,12 @@ jobs:
         env:
           CC: clang
         run: scripts/test-e2e.sh --suite tsan
+      - name: Projects under AddressSanitizer
+        if: matrix.shard == 'e2e' && runner.os == 'Linux'
+        timeout-minutes: 15
+        env:
+          CC: clang
+        run: scripts/test-e2e.sh --suite projects-leak
       - name: GNU GCC strict FP regression (C backend)
         if: matrix.shard == 'e2e' && runner.os == 'Linux'
         env:
