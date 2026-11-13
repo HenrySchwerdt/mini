@@ -56,13 +56,13 @@ fun main() {
     try {
         pool.invoke(Failing())
     } catch (e: IllegalStateException) {
-        println("caught " + e.javaClass.simpleName)
+        println("caught " + e::class.simpleName)
     }
     val failing = Failing()
     try {
         pool.submit(failing).get()
     } catch (e: ExecutionException) {
-        println("execution: " + e.cause!!.javaClass.simpleName)
+        println("execution: " + e.cause!!::class.simpleName)
     }
     println(failing.isCompletedAbnormally)
     pool.shutdown()

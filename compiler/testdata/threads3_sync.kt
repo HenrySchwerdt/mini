@@ -39,10 +39,12 @@ fun main() {
 
     // Exchanger
     val ex = Exchanger<String>()
-    val other = Thread { println("other got " + ex.exchange("from other")) }
+    var got = ""
+    val other = Thread { got = ex.exchange("from other")!! }
     other.start()
     println("main got " + ex.exchange("from main"))
     other.join()
+    println("other got $got")
     try {
         ex.exchange("alone", 30, TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {

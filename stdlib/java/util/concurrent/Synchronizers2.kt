@@ -229,6 +229,18 @@ public class Exchanger<V> {
 
 /** A random number generator of the calling thread (`ThreadLocalRandom.current()`). */
 public class ThreadLocalRandom private constructor() : java.util.Random() {
+    // one shared instance (as on the JVM) whose state is kept per thread
+    protected override fun next(bits: Int): Int = state().nextInt() ushr (32 - bits)
+
+    private fun state(): java.util.Random {
+        var r = states.get()
+        if (r == null) {
+            r = java.util.Random()
+            states.set(r)
+        }
+        return r
+    }
+
     public fun nextLong(bound: Long): Long {
         if (bound <= 0L) throw IllegalArgumentException("bound must be positive")
         return nextLong(0L, bound)
@@ -262,15 +274,9 @@ public class ThreadLocalRandom private constructor() : java.util.Random() {
     }
 
     public companion object {
-        private val cell = java.lang.ThreadLocal<ThreadLocalRandom>()
+        private val states = java.lang.ThreadLocal<java.util.Random>()
+        private val instance = ThreadLocalRandom()
 
-        public fun current(): ThreadLocalRandom {
-            var r = cell.get()
-            if (r == null) {
-                r = ThreadLocalRandom()
-                cell.set(r)
-            }
-            return r
-        }
+        public fun current(): ThreadLocalRandom = instance
     }
 }

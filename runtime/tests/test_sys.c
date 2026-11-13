@@ -17,6 +17,7 @@ static MkObject *lock_storage, *cond_storage;
 static int ready_flag;
 static MkObject *int_cell, *long_cell, *ref_cell;
 static MkObject *counted;
+static MkObject *int_arr, *long_arr;
 enum { THREADS = 4, ITERS = 50000 };
 
 static void worker(void) {
@@ -26,6 +27,14 @@ static void worker(void) {
         mk_sys_lock(lock_storage);
         ready_flag++;
         mk_sys_unlock(lock_storage);
+    }
+}
+
+/* the element atomics: every thread adds to every element of the arrays */
+static void elem_worker(void) {
+    for (int i = 0; i < ITERS; i++) {
+        mk_atomic_int_add_at(int_arr, i % 4, 1);
+        mk_atomic_long_add_at(long_arr, i % 3, 2);
     }
 }
 
@@ -89,6 +98,26 @@ int main(void) {
     CHECK(mk_atomic_int_cas(int_cell, THREADS * ITERS, 7));
     CHECK(!mk_atomic_int_cas(int_cell, 1, 8));
     CHECK_EQ_INT(mk_atomic_int_exchange(int_cell, 9), 7);
+
+    /* element atomics */
+    int_arr = mk_array_new_int(4);
+    long_arr = mk_array_new_long(3);
+    for (int i = 0; i < THREADS; i++) start(&th[i], elem_worker);
+    for (int i = 0; i < THREADS; i++) join(&th[i]);
+    int64_t lsum = 0;
+    int32_t isum = 0;
+    for (int i = 0; i < 4; i++) isum += mk_atomic_int_get_at(int_arr, i);
+    for (int i = 0; i < 3; i++) lsum += mk_atomic_long_get_at(long_arr, i);
+    CHECK_EQ_INT(isum, THREADS * ITERS);
+    CHECK_EQ_INT(lsum, (int64_t)THREADS * ITERS * 2);
+    CHECK(mk_atomic_int_cas_at(int_arr, 2, mk_atomic_int_get_at(int_arr, 2), 77));
+    CHECK_EQ_INT(mk_atomic_int_get_at(int_arr, 2), 77);
+    CHECK_EQ_INT(mk_atomic_int_exchange_at(int_arr, 2, 5), 77);
+    mk_atomic_long_set_at(long_arr, 1, 123);
+    CHECK(!mk_atomic_long_cas_at(long_arr, 1, 1, 2));
+    CHECK_EQ_INT(mk_atomic_long_exchange_at(long_arr, 1, 9), 123);
+    mk_release(int_arr);
+    mk_release(long_arr);
 
     /* condition variable: a timeout, then a real wake-up */
     mk_sys_lock(lock_storage);

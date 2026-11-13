@@ -373,6 +373,9 @@ internal class RcEffects(private val module: MirModule, private val tr: Tracking
                 name == "mk_array_set_boolean" || name == "mk_array_set_char" || name.startsWith("mk_sb_") ||
                 name == "mk_type_name" || name == "mk_identity_hash" || name == "mk_any_new" || name.startsWith("mk_any_") ||
                 name.startsWith("mk_b1_") || name.startsWith("mk_raise") || name == "mk_throwable_init" ||
+                // the atomics on int / long cells and the non-waiting lock operations store no references (`mk_atomic_ref_*` and the waits do)
+                name.startsWith("mk_atomic_int_") || name.startsWith("mk_atomic_long_") ||
+                name == "mk_sys_lock" || name == "mk_sys_unlock" || name == "mk_sys_try_lock" || name == "mk_sys_cond_signal" || name == "mk_sys_cond_broadcast" ||
                 (name.startsWith("Mk") && name.endsWith("_new"))
     }
 }

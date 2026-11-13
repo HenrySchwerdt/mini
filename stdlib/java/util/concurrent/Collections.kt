@@ -290,6 +290,9 @@ public open class LinkedBlockingQueue<E>(private val capacity: Int) : AbstractMu
     private val notEmpty: Condition = lock.newCondition()
     private val notFull: Condition = lock.newCondition()
     private val items = ArrayDeque<E>()
+    // threads waiting on the two conditions: a signal is only sent when somebody waits
+    private var takers = 0
+    private var putters = 0
 
     override val size: Int
         get() {
@@ -309,7 +312,7 @@ public open class LinkedBlockingQueue<E>(private val capacity: Int) : AbstractMu
         val ok = items.size < capacity
         if (ok) {
             items.addLast(e)
-            notEmpty.signal()
+            if (takers > 0) notEmpty.signal()
         }
         lock.unlock()
         return ok
@@ -320,14 +323,17 @@ public open class LinkedBlockingQueue<E>(private val capacity: Int) : AbstractMu
         lock.lock()
         var ok = true
         while (items.size >= capacity) {
-            if (awaitDeadline(notFull, end)) {
+            putters++
+            val timedOut = awaitDeadline(notFull, end)
+            putters--
+            if (timedOut) {
                 ok = items.size < capacity
                 break
             }
         }
         if (ok) {
             items.addLast(e)
-            notEmpty.signal()
+            if (takers > 0) notEmpty.signal()
         }
         lock.unlock()
         return ok
@@ -335,16 +341,20 @@ public open class LinkedBlockingQueue<E>(private val capacity: Int) : AbstractMu
 
     public override fun put(e: E) {
         lock.lock()
-        while (items.size >= capacity) notFull.await()
+        while (items.size >= capacity) {
+            putters++
+            notFull.await()
+            putters--
+        }
         items.addLast(e)
-        notEmpty.signal()
+        if (takers > 0) notEmpty.signal()
         lock.unlock()
     }
 
     public override fun poll(): E? {
         lock.lock()
         val r = if (items.isEmpty()) null else items.removeFirst()
-        if (r != null) notFull.signal()
+        if (r != null) if (putters > 0) notFull.signal()
         lock.unlock()
         return r
     }
@@ -353,19 +363,26 @@ public open class LinkedBlockingQueue<E>(private val capacity: Int) : AbstractMu
         val end = sysMonotonicNanos() + unit.toNanos(timeout)
         lock.lock()
         while (items.isEmpty()) {
-            if (awaitDeadline(notEmpty, end)) break
+            takers++
+            val timedOut = awaitDeadline(notEmpty, end)
+            takers--
+            if (timedOut) break
         }
         val r = if (items.isEmpty()) null else items.removeFirst()
-        if (r != null) notFull.signal()
+        if (r != null) if (putters > 0) notFull.signal()
         lock.unlock()
         return r
     }
 
     public override fun take(): E {
         lock.lock()
-        while (items.isEmpty()) notEmpty.await()
+        while (items.isEmpty()) {
+            takers++
+            notEmpty.await()
+            takers--
+        }
         val r = items.removeFirst()
-        notFull.signal()
+        if (putters > 0) notFull.signal()
         lock.unlock()
         return r
     }
@@ -397,7 +414,7 @@ public open class LinkedBlockingQueue<E>(private val capacity: Int) : AbstractMu
             c.add(items.removeFirst())
             n++
         }
-        if (n > 0) notFull.signalAll()
+        if (n > 0 && putters > 0) notFull.signalAll()
         lock.unlock()
         return n
     }
@@ -405,7 +422,7 @@ public open class LinkedBlockingQueue<E>(private val capacity: Int) : AbstractMu
     override fun remove(element: E): Boolean {
         lock.lock()
         val r = items.remove(element)
-        if (r) notFull.signal()
+        if (r) if (putters > 0) notFull.signal()
         lock.unlock()
         return r
     }

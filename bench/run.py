@@ -18,7 +18,7 @@ import argparse, datetime, json, os, platform, re, shutil, socket, subprocess, s
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BENCH = os.path.join(ROOT, "bench")
 
-PROGRAMS = ["binarytrees", "nbody", "fannkuch", "spectralnorm", "mandelbrot", "wordcount", "strbuild", "json"]
+PROGRAMS = ["binarytrees", "nbody", "fannkuch", "spectralnorm", "mandelbrot", "wordcount", "strbuild", "json", "mutex", "atomics", "queue"]
 # (id, label)
 LANGS = [
     ("c", "C (clang -O2)"),

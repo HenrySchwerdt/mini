@@ -102,6 +102,15 @@ void mk_sys_sleep_ns(int64_t ns) { (void)ns; }
 int64_t mk_sys_cpu_count(void) { return 1; }
 #endif
 
+/* a hint to the CPU in a spin loop */
+static inline void mk_cpu_relax(void) {
+#if defined(__x86_64__) || defined(__i386__)
+    __builtin_ia32_pause();
+#elif defined(__aarch64__)
+    __asm__ __volatile__("yield");
+#endif
+}
+
 /* ---- locks and condition variables ----------------------------------------------------------------------------------- */
 
 #if defined(MK_POSIX_THREADS)
@@ -372,13 +381,6 @@ MkBoolean mk_atomic_long_cas_at(MkObject *a, MkInt i, MkLong expected, MkLong v)
 #define MK_REF_LOCKS 64
 typedef struct { volatile int v; char pad[60]; } MkRefLock;
 static MkRefLock ref_locks[MK_REF_LOCKS];
-static inline void mk_cpu_relax(void) {
-#if defined(__x86_64__) || defined(__i386__)
-    __builtin_ia32_pause();
-#elif defined(__aarch64__)
-    __asm__ __volatile__("yield");
-#endif
-}
 static inline volatile int *ref_lock_of(MkObject *a) { return &ref_locks[(((uintptr_t)a) >> 4) % MK_REF_LOCKS].v; }
 static void ref_lock_acquire(volatile int *l) {
     int spins = 0;
