@@ -32,7 +32,7 @@
 #                (docs/realworld.md; the outputs are made by tests/realworld/gen-expected.sh)
 #   projects   tests/projects: multi-module projects (a library and an app, a dependency chain, internal visibility errors) built, run and
 #                tested with `mini` and the .mlib artifacts of their libraries (tests/projects/run.sh, docs/realworld.md)
-#   projects-leak   the same projects (without the diagnostics ones) with the C compiler of `mini` replaced by one that adds AddressSanitizer + LeakSanitizer + UBSan
+#   projects-leak   the same projects (without the diagnostics ones) with the C compiler of `mini` replaced by one that adds AddressSanitizer + LeakSanitizer + UBSan, and the runtime library built with them
 #   strict     compiler/testdata/strict-corpus: everyday Strict programs; `// ACCEPT` ones must pass the checker (and, with a .out,
 #                build and run to it), `// REJECT Mxxxx` ones must be rejected with exactly that code (scripts/strict-corpus.sh)
 #   multifile  several input files, reachability pruning, all user files are memory-checked
@@ -123,7 +123,7 @@ build_rt() { # <dir> <cc> <flags...>
     find "$ROOT/runtime/src" -maxdepth 1 -name '*.c' -print0 |
         xargs -0 -P "$JOBS" /bin/sh -c '
             for f do
-                "$RT_BUILD_CC" -std=c17 -O1 -w -I "$INCLUDE" $RT_BUILD_FLAGS -c "$f" -o "$RT_BUILD_DIR/$(basename "$f" .c).o" || exit
+                "$RT_BUILD_CC" -std=c17 -O1 -Wall -Wextra -Werror -I "$INCLUDE" $RT_BUILD_FLAGS -c "$f" -o "$RT_BUILD_DIR/$(basename "$f" .c).o" || exit
             done
         ' sh
 }
@@ -362,13 +362,20 @@ t_project() { # <name>: a multi-module project of tests/projects built, run and 
 }
 
 # the project under AddressSanitizer + LeakSanitizer + UBSan: `mini` compiles the generated C through a wrapper compiler that adds the sanitizer
-# flags (the prebuilt runtime library is linked as is, so this covers the generated code and the allocations the runtime makes for it)
+# flags, and links a sanitized runtime (lib/libminirt.a of a copy of the installation made of links, except for the runtime: rt-asan archived)
 t_project_leak() { # <name>
     [ -x "$NATIVE/bin/mini" ] || return 77
     mkdir -p "$W/projects-leak"
-    local cc="$W/projects-leak/sancc"
-    if [ ! -x "$cc" ]; then printf '#!/bin/sh\nexec %s %s "$@"\n' "$SANCC" "$SAN_FLAGS" > "$cc.tmp"; chmod +x "$cc.tmp"; mv "$cc.tmp" "$cc"; fi
-    ASAN_OPTIONS="detect_leaks=1" UBSAN_OPTIONS="print_stacktrace=1" MINI_CC="$cc" MINI_ROOT="$NATIVE" "$ROOT/tests/projects/run.sh" "$1" "$W/projects-leak"
+    local cc="$W/projects-leak/sancc" root="$W/projects-leak/root"
+    if [ ! -x "$cc" ]; then printf '#!/bin/sh\nexec %s %s "$@"\n' "$SANCC" "$SAN_FLAGS" > "$cc.$$"; chmod +x "$cc.$$"; mv "$cc.$$" "$cc"; fi
+    if [ ! -f "$root/.ready" ]; then
+        local tmp="$root.$$"; rm -rf "$tmp"; mkdir -p "$tmp/lib"
+        local e; for e in "$NATIVE"/*; do [ "$(basename "$e")" = lib ] || ln -s "$e" "$tmp/$(basename "$e")"; done
+        for e in "$NATIVE"/lib/*; do [ "$(basename "$e")" = libminirt.a ] || ln -s "$e" "$tmp/lib/$(basename "$e")"; done
+        ar rcs "$tmp/lib/libminirt.a" "$W/rt-asan"/*.o || return 1
+        touch "$tmp/.ready"; mv "$tmp" "$root" 2>/dev/null || rm -rf "$tmp"
+    fi
+    ASAN_OPTIONS="detect_leaks=1" UBSAN_OPTIONS="print_stacktrace=1" MINI_CC="$cc" MINI_ROOT="$root" "$ROOT/tests/projects/run.sh" "$1" "$W/projects-leak"
 }
 
 t_multifile() {
