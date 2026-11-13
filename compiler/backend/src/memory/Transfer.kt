@@ -30,7 +30,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     var st: State = State.EMPTY
     var reporting = false
 
-    private fun name(id: Int) = u.names[id] ?: "value"
+    private fun name(id: Int) = u.names[id] ?: fieldRootNames[id] ?: "value"
 
     private fun diag(
         code: String, pos: Pos, msg: String, label: String, help: String? = null,
@@ -322,9 +322,49 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
                 diag("M0104", e.pos, "use of moved field `${o.local.name}.${e.field.name}`", "moved out before", "restore the field with an assignment first")
             }
         }
-        if (!e.type.tracked) return AVal.untracked(e.type, e.pos)
+        if (!e.type.tracked) {
+            // strict-fieldcoll: a collection of tracked values held in a field of a Strict object (`n.children`): the elements read from it are loans of that field,
+            // which every mutating call on it, the assignment of the field and a call of user code on the object end (the owners of the object stay alive too)
+            if (e.type.holds && ov.type.tracked) {
+                val owners = ownerIds(ov)
+                if (owners.isNotEmpty()) return AVal(e.type, false, -1, owners.mapTo(LinkedHashSet()) { fieldRoot(it, e.field.name) }, emptySet(), false, false, e.pos)
+            }
+            return AVal.untracked(e.type, e.pos)
+        }
         val roots = if (ov.refs.isNotEmpty()) ov.refs else if (ov.src >= 0) setOf(ov.src) else emptySet()
         return AVal(e.type, false, -1, roots, ov.sites, true, false, e.pos)
+    }
+
+    // ---- strict-fieldcoll: collections held in fields of Strict objects ------------------------------------------
+
+    private val fieldRootIds = HashMap<Pair<Int, String>, Int>()
+    private val fieldRootInfo = HashMap<Int, Pair<Int, String>>()
+    private val fieldRootNames = HashMap<Int, String>()
+
+    /** The pseudo root (negative id, stable across the passes of a loop) of the collection in field [field] of the owner slot [owner]. */
+    private fun fieldRoot(owner: Int, field: String): Int {
+        val key = owner to field
+        fieldRootIds[key]?.let { return it }
+        val id = -(1 shl 30) - fieldRootIds.size
+        fieldRootIds[key] = id
+        fieldRootInfo[id] = key
+        fieldRootNames[id] = "${u.names[owner] ?: "value"}.$field"
+        return id
+    }
+
+    /** The real owner slots the object [v] stands for (the roots it borrows from, or its own slot). */
+    private fun ownerIds(v: AVal): Set<Int> {
+        val base = if (v.refs.isNotEmpty()) v.refs else if (v.src >= 0) setOf(v.src) else emptySet()
+        return base.filterTo(LinkedHashSet()) { it >= 0 }
+    }
+
+    /** Ends the loans of the elements of every collection held in a field of the object [v] (user code may change them). */
+    private fun killFieldLoansOf(v: AVal) {
+        if (fieldRootInfo.isEmpty() || !v.type.tracked || v.fresh) return
+        val owners = ownerIds(v)
+        if (owners.isEmpty()) return
+        val ids = fieldRootInfo.filter { it.value.first in owners }.keys
+        if (ids.isNotEmpty()) killLoans(ids)
     }
 
     private fun evalNew(e: MExpr.New, env: Env): AVal {
@@ -498,6 +538,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         // strict-5b: a call that changes a collection ends every loan of one of its elements; code we cannot see into may do it, too
         if (rv != null && (fn.mutates || fn.userCode && rv.type.holds)) killLoansOf(rv)
         if (fn.userCode) for (a in args) if (a.type.holds) killLoansOf(a)
+        if (fn.userCode) { if (rv != null) killFieldLoansOf(rv); for (a in args) killFieldLoansOf(a) }
         val rt = e.type
         if (rv != null && rt.holds && !rt.tracked && isView(fn, rt)) {
             // an iterator or sublist of a collection: what is read or changed through it is read or changed in the collection
@@ -605,6 +646,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         if (!v.type.holds) return null
         val out = LinkedHashSet<Int>()
         for (r in v.refs) {
+            if (r in fieldRootInfo) { out += r; continue }
             val s = slot(r) ?: continue
             if (s.bits and C != 0) out += r
         }
@@ -629,10 +671,11 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
     private fun elementLoan(roots: Set<Int>, rt: MType, pos: Pos): AVal {
         val pid = -(pos.line * 4096 + pos.col) - 1
         pseudoColl[pid] = roots.first()
-        put(pid, Slot(O, roots, emptySet(), pos))
+        put(pid, Slot(O, roots + roots.mapNotNull { fieldRootInfo[it]?.first }, emptySet(), pos))
         val refs = LinkedHashSet<Int>()
         refs += pid
         refs += roots
+        for (r in roots) fieldRootInfo[r]?.let { refs += it.first }   // a collection in a field: the loan also needs the object alive
         return AVal(rt, false, -1, refs, emptySet(), true, false, pos)
     }
 
@@ -1006,6 +1049,7 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         discard(ov)
         val vv = eval(s.value, op.env)
         val f = s.field
+        if (f.type.holds && !f.type.tracked) for (o in ownerIds(ov)) fieldRootIds[o to f.name]?.let { killLoans(setOf(it)) }
         if (!vv.tracked) escapeClosure(vv, "is stored into field `${f.name}` of `${f.owner.name.substringAfterLast('.')}`")
         // Strict value stored into a Managed class
         if (f.owner.mode == MemMode.Managed) {
