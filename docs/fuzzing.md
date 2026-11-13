@@ -105,8 +105,9 @@ for 90 seconds (three at a time); a crash fails the step.
 
 ### Findings of the libFuzzer harnesses
 
-Seven harnesses, 5 to 6 minutes each (several minutes of CPU per harness on a 4-core machine: `utf8` 0.8M runs, `numfmt` 1.2M, `parse` 1.1M,
-`numstr` 0.4M, `format` and `regex` and `text` 0.05 to 0.5M, the slower ones because every input runs dozens of stdlib calls):
+Seven harnesses, 5.5 to 6 minutes each, four at a time on a 4-core machine, on the final code (executions: `utf8` 0.8M, `parse` 1.1M,
+`numfmt` 1.2M, `numstr` 0.44M, `format` 64K, `text` 20K plus 172K in an earlier run, `regex` 14K plus 52K and 40K earlier; the last three run dozens
+of stdlib calls per input, and a run of the checked build is slow):
 
 * **Regex: an unknown character property was detected at the first match.** `Regex("\\P,")` (also `\p{Nope}`, inside classes too) compiled and the
   `IllegalArgumentException` came out of `matches`/`find` instead of the constructor, as `java.util.regex` does it. The property name is
