@@ -15,14 +15,7 @@ class Trie {
     fun insert(word: String) {
         var n = root
         for (c in word) {
-            val next = n.children[c]
-            if (next == null) {
-                val fresh = Node(c)
-                n.children[c] = fresh
-                n = n.children.getValue(c)
-            } else {
-                n = next
-            }
+            n = n.children.getOrPut(c) { Node(c) }
             n.hits++
         }
     }

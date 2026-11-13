@@ -348,14 +348,19 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
         val id = -(1 shl 30) - fieldRootIds.size
         fieldRootIds[key] = id
         fieldRootInfo[id] = key
-        fieldRootNames[id] = "${u.names[owner] ?: "value"}.$field"
+        fieldRootNames[id] = "${u.names[owner] ?: fieldRootNames[owner]?.let { "an element of $it" } ?: "value"}.$field"
         return id
     }
 
-    /** The real owner slots the object [v] stands for (the roots it borrows from, or its own slot). */
+    /**
+     * The identity of the object [v] stands for, for the field roots: the element loans it is (an object read from a collection is told apart from the object
+     * that holds the collection: `n = n.children[c]` walks down a tree) and the real owner slots it borrows from or is.
+     */
     private fun ownerIds(v: AVal): Set<Int> {
         val base = if (v.refs.isNotEmpty()) v.refs else if (v.src >= 0) setOf(v.src) else emptySet()
-        return base.filterTo(LinkedHashSet()) { it >= 0 }
+        val out = LinkedHashSet<Int>()
+        for (r in base) if (r >= 0 || r in pseudoColl) out += r
+        return out
     }
 
     /** Ends the loans of the elements of every collection held in a field of the object [v] (user code may change them). */
@@ -694,8 +699,10 @@ internal class Interp(private val u: UnitInfo, private val sink: (Diag) -> Unit,
 
     /** Ends every element loan of the collections [roots]: the elements may have been removed, replaced or released. */
     private fun killLoans(roots: Set<Int>) {
+        // a change of the collection of an object that is itself an element loan does not end that loan (`n = n.children[c]; n.children[d] = x` keeps `n`)
+        val self = roots.mapNotNull { fieldRootInfo[it]?.first }.filter { it < 0 }.toSet()
         for ((id, sl) in st.slots.entries.toList()) {
-            if (id >= 0 || sl.bits and O == 0) continue
+            if (id >= 0 || sl.bits and O == 0 || id in self) continue
             var hit = false
             for (r in sl.refs) if (r in roots) hit = true
             if (hit) put(id, Slot(F, sl.refs, sl.sites, sl.vpos))

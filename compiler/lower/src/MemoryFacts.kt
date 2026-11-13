@@ -436,7 +436,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton && !plainValue) return MType(TK.Strict, nullable, mc, null, fq, display)
         val managed = MType(TK.Managed, nullable, mc, null, fq, display)
         // a collection (iterator, sublist...) of tracked values: reading an element of it is a loan (strict-5b)
-        if (t is ClassType && fq.startsWith("kotlin.collections.")) {
+        if (t is ClassType && (fq.startsWith("kotlin.collections.") || fq == "java.util.TreeMap" || fq == "java.util.TreeSet")) {
             for (a in t.args) {
                 val at = a.type ?: continue
                 val m = mapType(at)
