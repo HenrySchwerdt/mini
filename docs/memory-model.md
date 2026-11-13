@@ -1354,8 +1354,21 @@ of the state machine; the freed object is the `Box` that `b.free()` returned a m
 Verified under AddressSanitizer + LeakSanitizer on the C and the LLVM backend: corpus `s148` (an owner between two suspension points, a plain
 object), `s149` (owner across `delay`, `runBlocking` block and suspend function), `s150` (across `await`, `join`, suspend calls), `s151` (moved
 into a suspend function, loops, `try/finally`); REJECT `s152` (use after free across `delay`, M0101), `s153` (never freed, M0102), `s154`
-(use after the move into a suspend function, M0104). Not supported (as before): returning an owner from a suspend function (`suspend fun
-make(): @Owned Box` is typed `Any?` in the lowered signature: M0111/M0102, conservative).
+(use after the move into a suspend function, M0104). Round strict-4b lifts the old restriction on returning an owner from a suspend function (`suspend fun make(): @Owned Box`):
+
+* *The checker sees the declared type.* The lowered signature is `Any?`, which carries no ownership (M0111/M0102 before). `IrFunction.memoryReturnsDeclared`
+  (set by `lowerSuspendBody` when the body is kept as written: no suspension point, or `memoryBody`) makes `MemoryFacts.declaredReturnType` use
+  `origReturnType`, so `@Owned`/`@Borrowed` on the result and the tracked result type are checked like for any Strict function. A suspend function whose
+  body could not be kept (local functions or classes in it) keeps the lowered `Any?` view. A *library* suspend function (stub, no body) is still seen as `Any?`.
+* *Code generation.* The result of the call travels as `Any?` through the hoisted `$tmp` cell of the caller's state machine and, when the callee
+  suspended, through the `Result` that resumes it. Both held a counted reference to the object while the caller freed it (heap-use-after-free at the
+  cell's or the result's dispose). Fixes: the hoisted result cell of a call whose declared result is a Strict class is a borrowed cell
+  (`IrVariable.suspendResultType`, `Ir2Mir.cellBorrowed`; `Tracking.borrowedField`/`rcField` now honour `borrowed` on `mk.Ref` cells of any reference
+  type), and `CoroutineImpl.resumeValue` moves the value out of the `Result` (`Result.value` is a `var` for this) so the result no longer owns it.
+* Corpus: ACCEPT `s167` (return, pass on from another suspend function, branches, free after `join`; ASan + LSan on the C and the LLVM backend),
+  REJECT `s168` (use after free, M0101), `s169` (never freed, M0102), `s170` (a borrowed parameter returned as owned, M0109), `s171` (returned after it moved into
+  a suspend function, M0104). Still rejected: an owner returned *through a lambda* (`async { make() }`, the `Deferred` is Managed).
+  Not supported: a suspend function of a library built with an older compiler (no declared type in its stub).
 
 **Structured children (`launch` inside `runBlocking`)**
 
@@ -1388,6 +1401,21 @@ parameters: the result was an unrelated function value, so `val f = c.peek(); c.
 form): a call of such a method yields a loan of the receiver's owner, so `f()` after `c.free()` is M0101 (`s166`) and the closure may be used while the owner
 lives (`s165`). A *local class or anonymous object* returned from such a method (`inner_receivers_super`, `localExtendsInner`) stays M0109: its instance is a
 tracked allocation that the caller must own while it holds a loan of the receiver; the model has no owner that borrows.
+
+**Round strict-4c: a false negative found while looking at that case.** `fun reader(): Reader = object : Reader { override fun get() = n }` (an anonymous
+object of a Strict interface type that reads the receiver, or a parameter) was *accepted* when it was returned directly (`return object : ...`), while
+the same object returned through a local (`val r = object ...; return r`) or a local class (`return R()`) was M0109. The caller of the first form got an
+owned result without a loan: `val r = c.reader(); c.free(); r.get()` was a use after free that nobody reported. The cause was two-fold: the
+return of a tracked closure object with captures was only checked when the declared result was owned, and a diagnostic at the anonymous object
+had no source position and was dropped. Now every return of a closure object (anonymous object, local class instance) that borrows the receiver or a
+parameter, from a function whose declared result is a Strict type (an interface or `Any` included), is M0109 (`s172`, `s173`, `s174`). Returning
+such an object as a *function value* is unchanged (the `carries` summary, `s165`/`s166`).
+
+Why the accepting direction stays out of reach (analysis, no code): an object that owns nothing but borrows its receiver needs an *owned value that
+borrows* at the call site. The result's static type is a Strict class or interface, so the caller of a Strict function keeps no reference counts for it
+and would never release the counted closure object (a leak), and `r.free()` on it would deallocate memory that reference counting owns. Either the call
+site needs a loan result for tracked types with the object kept by counts (a new value category in checker and in both backends) or the object is
+declared in the language as non-owning (spec change). That is the same gap as in the strict-4a analysis (an owner needs a holder-aware count).
 
 **Coverage of round strict-3**
 
@@ -1487,6 +1515,11 @@ not recorded) and the cycles that were created while threads ran are collected b
 ended (or at the end of `main`). The documented limitation: a program that keeps a worker thread running for its whole life never
 frees cycles during that time.
 
+The lock around the candidate buffer (`roots_lock`) is a test-and-test-and-set spin lock that calls `mk_sys_thread_yield` after 32 failed
+attempts. It used to spin on the exchange alone: with hundreds of runnable threads on a few processors (`threads_stress` starts a pool of
+220) a preempted holder was starved by the spinners, and under ThreadSanitizer, where every exchange takes a global slot lock, one run took
+from 8 seconds to more than 5 minutes (timeout in CI, `tsan::threads_stress`, after the merge of main changed the timing). Now 3 seconds, 20 of 20
+runs with four at once.
 ### Release depth
 
 Dropping the head of a long singly linked list released the next node from the dispose of the previous one: recursion as deep as
@@ -1502,6 +1535,13 @@ the linear-memory stack a frame address would measure (and its size is unknown),
 nesting of armed releases instead and queues beyond 200 levels; there is only one thread there. `release_deep` runs on every backend
 including wasm32; `release_deep_threads` (the same in worker threads) is `.nowasm`.
 
+Under ThreadSanitizer the floor is a fixed 256 KB below the first frame instead of the middle of the stack. TSan keeps a shadow stack of every
+call and replays all of it into its event trace each time a trace part fills up, so a dispose chain nested over 4 MB of stack (tens of
+thousands of frames, larger than usual under the instrumentation) was quadratic (minutes) and, with three threads doing it, crashed
+inside clang's TSan runtime (SEGV in `TracePartAlloc`; `tsan::release_deep_threads` in CI, clang 18; it passed with gcc's TSan). It is the
+instrumentation that cannot follow that depth, not a defect in the release code (the same program is clean under ASan/UBSan and without
+sanitizers), and the test is unchanged: the chains are still 200000 deep, they are queued earlier. The e2e `tsan` suite passes 20 of 20
+runs of the test, also with four runs at once.
 ### Measured overhead
 
 Reference: the same benchmark compiled by `origin/main` (no collector), runtime built the same way (-O1, like `libminirt.a`). The
@@ -1672,6 +1712,34 @@ Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-
 `StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
 catchable. Unsynchronized writes to a *shared mutable* collection from several threads are a data race of the program (as on the JVM)
 and are not made safe; the cycle collector still only runs while no Kotlin thread runs (section "Threads").
+
+## Sanitizer runs (memsafe-2)
+
+Every program of the e2e corpus is also run with the C compiler's sanitizers. The suites of `scripts/test-e2e.sh`:
+
+| suite | what | sanitizers | detects |
+|---|---|---|---|
+| `leak`, `llvm-leak` | `compiler/testdata` (and `testdata/memory` with a `.out`), C and LLVM backend | `-fsanitize=address,undefined` + LeakSanitizer, runtime built with the same flags | OOB, use-after-free, double free, leaks, UB (shift, signed overflow, alignment, null) |
+| `realworld-leak`, `realworld-llvm-leak` | `tests/realworld` | same | same |
+| `strict-leak`, `strict-llvm-leak` | the runnable Strict corpus | same | same |
+| `projects-leak` | `tests/projects` (13 multi-module projects, built and run with `mini`), the C compiler of `mini` replaced by a wrapper that adds the sanitizer flags; the prebuilt runtime library is linked as is | same | same, for the generated code |
+| `fuzz-leak`, `fuzz-llvm-leak`, `stress-leak` | `tools/fuzz/smoke`, `testdata/stress` | same | same |
+| `tsan` | the programs that start threads (`spawn`, `Thread`, `java.util.concurrent`, coroutines on threads, `tests/realworld/thread_pool`), runtime built with `-fsanitize=thread` | ThreadSanitizer | data races, also in the reference counting and the allocators |
+| (runtime) `runtime/run_tests.sh` | every `runtime/tests/test_*.c`, `-Wall -Wextra -Werror` | ASan+UBSan, UBSan alone (size-class allocator), TSan for the threading tests | the same classes inside libminirt |
+
+`UBSan` runs with `-fno-sanitize-recover=undefined`, so any finding fails the test; ASan runs with `detect_leaks=1`, TSan with `halt_on_error=1`.
+`tsan` is skipped when the C compiler cannot link ThreadSanitizer. CI: the `e2e` shard runs the default suites (which include `leak`) and a
+separate "Thread programs under ThreadSanitizer" step (`scripts/test-e2e.sh --suite tsan`, 12 programs, about 2 minutes); `runtime/run_tests.sh`
+is the `runtime` job.
+
+Result of the full pass (memsafe-2, clang, Linux x86-64, after the merge of the 0.10.0 seed): no finding in any class (OOB, use-after-free,
+double free, leak, UB such as shift, signed overflow or alignment, data race), so no runtime, codegen or stdlib change was needed. The pass
+covered: runtime tests under ASan/UBSan, UBSan and TSan; `leak` 313, `memcheck` 123, `memrun` 34 (`ok_thread_move` is skipped there: the
+threads are covered by `tsan`), `strict-leak` 97, `fuzz-leak` 50, `realworld-leak` 35, `stress-leak` 4 (655 programs, about 38 minutes on a
+machine under heavy load), `projects-leak` 13 projects (3 minutes) and `tsan` 12 programs (under 3 minutes). New in memsafe-2: the `tsan` suite and
+its CI step, and `projects-leak`; the other suites existed and are the reason the corpus is clean. The leak suites are not a separate CI job:
+they are part of the default `e2e` shard, whose whole run is well beyond 15 minutes. Not covered: Windows and macOS (LeakSanitizer does not exist on macOS, the run there still checks memory
+errors and UB), and `MemorySanitizer` (uninitialized reads; clang only, needs an instrumented libc).
 
 ## Experience from D2 (Strict code generation)
 

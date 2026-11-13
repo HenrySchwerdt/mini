@@ -97,3 +97,4 @@ coverage.info
 # prebuilt wasm clang (npm)
 scripts/wasm/node_modules/
 website/public/toolchain/
+__pycache__/
