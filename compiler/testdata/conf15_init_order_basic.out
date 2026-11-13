@@ -1,0 +1,19 @@
+a
+init1 p=7
+b
+init2
+c=14
+secondary
+--
+a
+init1 p=3
+b
+init2
+c=6
+--
+y init
+created
+computing x
+42
+42
+abi |a|abi

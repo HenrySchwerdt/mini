@@ -1,0 +1,24 @@
+top1
+main start
+Config init
+cfg
+2
+5
+K companion init
+K instance, created=1
+1
+K instance, created=2
+2
+Inner init
+10
+named
+named
+made
+false
+true
+set
+E init A
+E init B
+[A, B]
+2
+1
