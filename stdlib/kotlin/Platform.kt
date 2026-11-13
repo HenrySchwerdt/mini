@@ -14,11 +14,23 @@ public interface AutoCloseable {
 }
 
 public inline fun <T : AutoCloseable?, R> T.use(block: (T) -> R): R {
+    var exception: Throwable? = null
     try {
         return block(this)
+    } catch (e: Throwable) {
+        exception = e
+        throw e
     } finally {
         // Mini: `use` ends the ownership of the receiver, so it closes and frees (docs/memory-model.md 3.2); free() is close()
-        // on the JVM and a no-op for reference counted objects
-        this.free()
+        // on the JVM and a no-op for reference counted objects. When the block threw, an exception of close() is added to it as suppressed.
+        if (exception == null) {
+            this.free()
+        } else {
+            try {
+                this.free()
+            } catch (closeException: Throwable) {
+                exception.addSuppressed(closeException)
+            }
+        }
     }
 }
