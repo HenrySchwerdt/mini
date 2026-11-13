@@ -1682,6 +1682,7 @@ Every program of the e2e corpus is also run with the C compiler's sanitizers. Th
 | `leak`, `llvm-leak` | `compiler/testdata` (and `testdata/memory` with a `.out`), C and LLVM backend | `-fsanitize=address,undefined` + LeakSanitizer, runtime built with the same flags | OOB, use-after-free, double free, leaks, UB (shift, signed overflow, alignment, null) |
 | `realworld-leak`, `realworld-llvm-leak` | `tests/realworld` | same | same |
 | `strict-leak`, `strict-llvm-leak` | the runnable Strict corpus | same | same |
+| `projects-leak` | `tests/projects` (13 multi-module projects, built and run with `mini`), the C compiler of `mini` replaced by a wrapper that adds the sanitizer flags; the prebuilt runtime library is linked as is | same | same, for the generated code |
 | `fuzz-leak`, `fuzz-llvm-leak`, `stress-leak` | `tools/fuzz/smoke`, `testdata/stress` | same | same |
 | `tsan` | the programs that start threads (`spawn`, `Thread`, `java.util.concurrent`, coroutines on threads, `tests/realworld/thread_pool`), runtime built with `-fsanitize=thread` | ThreadSanitizer | data races, also in the reference counting and the allocators |
 | (runtime) `runtime/run_tests.sh` | every `runtime/tests/test_*.c`, `-Wall -Wextra -Werror` | ASan+UBSan, UBSan alone (size-class allocator), TSan for the threading tests | the same classes inside libminirt |
@@ -1691,10 +1692,13 @@ Every program of the e2e corpus is also run with the C compiler's sanitizers. Th
 separate "Thread programs under ThreadSanitizer" step (`scripts/test-e2e.sh --suite tsan`, 12 programs, about 2 minutes); `runtime/run_tests.sh`
 is the `runtime` job.
 
-Result of the first full pass (memsafe-2, clang 18, Linux x86-64): no finding in any class, so no runtime, codegen or stdlib change was needed. The
-pass covered: runtime tests under ASan/UBSan, UBSan and TSan; `leak` 323, `llvm-leak`, `memcheck` 123, `memrun` 33, `strict-leak`, `fuzz-leak`,
-`realworld-leak`, `stress-leak` and `tsan` 12 programs. Only the `tsan` suite and its CI step are new; the other suites existed and are
-the reason the corpus is clean. Not covered: Windows and macOS (LeakSanitizer does not exist on macOS, the run there still checks memory
+Result of the full pass (memsafe-2, clang, Linux x86-64, after the merge of the 0.10.0 seed): no finding in any class (OOB, use-after-free,
+double free, leak, UB such as shift, signed overflow or alignment, data race), so no runtime, codegen or stdlib change was needed. The pass
+covered: runtime tests under ASan/UBSan, UBSan and TSan; `leak` 313, `memcheck` 123, `memrun` 34 (`ok_thread_move` is skipped there: the
+threads are covered by `tsan`), `strict-leak` 97, `fuzz-leak` 50, `realworld-leak` 35, `stress-leak` 4 (655 programs, about 38 minutes on a
+machine under heavy load), `projects-leak` 13 projects (3 minutes) and `tsan` 12 programs (under 3 minutes). New in memsafe-2: the `tsan` suite and
+its CI step, and `projects-leak`; the other suites existed and are the reason the corpus is clean. The leak suites are not a separate CI job:
+they are part of the default `e2e` shard, whose whole run is well beyond 15 minutes. Not covered: Windows and macOS (LeakSanitizer does not exist on macOS, the run there still checks memory
 errors and UB), and `MemorySanitizer` (uninitialized reads; clang only, needs an instrumented libc).
 
 ## Experience from D2 (Strict code generation)
