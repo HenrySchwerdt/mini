@@ -56,7 +56,13 @@ struct MkTypeInfo {
      * element type is not known, and the base `MkObjectArray_ti`); every other object array has its own type info (interned by
      * mk_array_new_of) whose `super` is MkObjectArray_ti, so `is Array<*>` is the ordinary super walk. */
     const MkTypeInfo *elem;
+    /* The whole dispose chain of this class in one function (its own dispose and those of its superclasses, most derived first), or
+     * `mk_dispose_none` when no class of the chain has a dispose, or NULL when the chain has to be walked (`dispose` of every
+     * `super`: classes with a runtime-defined superclass, dynamic array types, `-Xno-dispose-flat`). Only the release path uses it. */
+    MkDisposeFn dispose_all;
 };
+/* The `dispose_all` of a class whose chain has nothing to release. */
+void mk_dispose_none(MkObject *self);
 
 /* Every heap or stack object starts with this header. */
 struct MkObject {

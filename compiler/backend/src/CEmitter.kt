@@ -36,6 +36,9 @@ object CEmitter {
     /** `-Xno-typed-array-gep` clears it: the LLVM backend addresses array elements with a byte offset (`gep i8, base, idx * size + header`) instead of a typed `gep inbounds <elem>, elems, idx`. */
     var typedArrayGep = true
 
+    /** `-Xno-dispose-flat` clears it: the type info of a class has no `dispose_all`, so the release path walks the superclass chain and calls each `dispose` through the type info again. */
+    var disposeFlat = true
+
     private const val LINE_RESET = "#mk-line-reset"
 
     /**
@@ -340,6 +343,7 @@ object CEmitter {
         }
 
         fun emitClasses(out: StringBuilder) {
+            val ownDispose = HashMap<String, String?>() // class -> its own dispose function (null: none); a class missing here is not generated in this module
             for (c in module.classes) {
                 if (c.external) continue
                 out.append("/* ${if (c.isInterface) "interface" else "class"} ${comment(c.qualifiedName)} */\n")
@@ -400,6 +404,29 @@ object CEmitter {
                     if (releaseReasons.isNotEmpty()) reasons["<dispose ${c.qualifiedName}>"] = retainReasons to releaseReasons
                     out.append("}\n")
                 }
+                ownDispose[c.cName] = if (dispose == "NULL") null else dispose
+                // the whole chain in one function (runtime free_dead): only when every class of the chain is generated here
+                var disposeAll = "NULL"
+                if (CEmitter.disposeFlat) {
+                    val chain = ArrayList<String>()
+                    var k: String? = c.cName
+                    while (k != null && ownDispose.containsKey(k)) {
+                        ownDispose[k]?.let { chain.add(it) }
+                        k = classes[k]?.superCName
+                    }
+                    if (k == null) { // every class up to kotlin.Any is generated here
+                        disposeAll = when (chain.size) {
+                            0 -> "mk_dispose_none"
+                            1 -> chain[0]
+                            else -> {
+                                out.append("static void ${c.cName}_dispose_all(MkObject *self) {\n")
+                                for (d in chain) out.append("    $d(self);\n")
+                                out.append("}\n")
+                                "${c.cName}_dispose_all"
+                            }
+                        }
+                    }
+                }
                 // itables and vtable
                 val vt = ArrayList<String>()
                 val anyDefaults = listOf("mk_any_to_string", "mk_any_equals", "mk_any_hash_code")
@@ -415,7 +442,7 @@ object CEmitter {
                 val superTi = if (sup == null) "&mk_type_Any" else "&${sup.cName}_ti"
                 out.append(
                     "static const MkTypeInfo ${c.cName}_ti = {${cStringLiteral(c.qualifiedName)}, sizeof(struct ${c.cName}), $superTi, $dispose, " +
-                        "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}, $trace};\n",
+                        "${c.cName}_vt, ${vt.size}, $ifs, ${c.interfaces.size}, $trace, NULL, $disposeAll};\n",
                 )
                 if (c.objectCtor != null) {
                     out.append("static MkObject *${c.cName}_obj;\n")

@@ -528,6 +528,7 @@ static const MkTypeInfo *array_type_of(const MkTypeInfo *tag) {
     n->tag = tag;
     n->ti = MkObjectArray_ti;
     n->ti.super = &MkObjectArray_ti;
+    n->ti.dispose_all = NULL; /* (the chain is walked) */
     n->ti.dispose = NULL; /* (the superclass's dispose releases the elements: free_dead runs the whole chain) */
     n->ti.elem = tag;
     do {

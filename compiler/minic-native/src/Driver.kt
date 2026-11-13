@@ -447,6 +447,7 @@ private fun driverMain(args: Array<String>, llvm: LlvmApi?, diag: DiagOptions) {
     CEmitter.strFailNoReturn = optOptions.on("str-fail-noreturn")
     CEmitter.forHeaderTest = optOptions.on("for-header-test")
     CEmitter.typedArrayGep = optOptions.on("typed-array-gep")
+    CEmitter.disposeFlat = optOptions.on("dispose-flat")
     if (mirOut != null) writeTextFile(mirOut, MirWriter.write(module))
     if (optOptions.layoutStats) LayoutStats.report(module, if (wasm32) 4 else 8) { line -> errln(line) }
     if (wasmLib) {

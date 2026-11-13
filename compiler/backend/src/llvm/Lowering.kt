@@ -191,7 +191,7 @@ private class Lowering<V : Any, B : Any>(
         typeCheckPlan = if (customIsInstanceSymbol) TypeCheckPlan.EMPTY else TypeChecks.analyze(module, externalClassNames)
 
         b.beginModule(module.sourceName, module.links, target)
-        b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT, IrType.PTR, IrType.PTR))
+        b.defineNamedStruct("MkTypeInfo", listOf(IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR, szT, IrType.PTR, szT, IrType.PTR, IrType.PTR, IrType.PTR))
         predeclare()
         for (f in module.functions) emitFunction(f)
         val userMain = module.functions.firstOrNull { it.cName == Mangling.MAIN }
@@ -1072,6 +1072,7 @@ private class Lowering<V : Any, B : Any>(
 
     fun emitClasses() {
         val classLinkage = if (externalClasses) IrLinkage.EXTERNAL else IrLinkage.INTERNAL
+        val ownDispose = HashMap<String, String?>() // class -> its own dispose function (null: none); a class missing here is not generated in this module
         for (c in module.classes) {
             if (isExternalClass(c)) {
                 b.externTypeInfo(c.cName + "_ti")
@@ -1088,7 +1089,7 @@ private class Lowering<V : Any, B : Any>(
             if (c.isInterface) {
                 val init = b.constNamedStruct(
                     "MkTypeInfo",
-                    listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong()), b.constNull(), b.constNull()),
+                    listOf(nameSym, b.constInt(szT, 0L), b.constNull(), b.constNull(), b.constNull(), b.constInt(szT, 0L), ifs, b.constInt(szT, c.interfaces.size.toLong()), b.constNull(), b.constNull(), b.constNull()),
                 )
                 b.defineGlobal(IrSection.CLASSES, "${c.cName}_ti", init, true, if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage, 8, false)
                 b.blankLine(IrSection.CLASSES)
@@ -1115,6 +1116,31 @@ private class Lowering<V : Any, B : Any>(
                 retVoid()
                 b.endFunction()
                 dispose = b.global("${c.cName}_dispose")
+            }
+            ownDispose[c.cName] = if (refFields.isNotEmpty() || ownedFields.isNotEmpty()) "${c.cName}_dispose" else null
+            // the whole chain in one function (runtime free_dead): only when every class of the chain is generated here (`-Xno-dispose-flat`: NULL, the chain is walked)
+            var disposeAll: V = b.constNull()
+            if (CEmitter.disposeFlat) {
+                val chain = ArrayList<String>()
+                var k: String? = c.cName
+                while (k != null && ownDispose.containsKey(k)) {
+                    ownDispose[k]?.let { chain.add(it) }
+                    k = classes[k]?.superCName
+                }
+                if (k == null) {
+                    disposeAll = when (chain.size) {
+                        0 -> declare("mk_dispose_none", TUnit, listOf(TString))
+                        1 -> b.global(chain[0])
+                        else -> {
+                            beginGenerated(IrSection.CLASSES, "${c.cName}_dispose_all", TUnit, listOf("self"), listOf(IrType.PTR), listOf(IrExt.NONE), IrLinkage.INTERNAL)
+                            val self = b.param(0)
+                            for (d in chain) call(TUnit, b.global(d), listOf(TString), listOf(self))
+                            retVoid()
+                            b.endFunction()
+                            b.global("${c.cName}_dispose_all")
+                        }
+                    }
+                }
             }
             // cycle collection (docs/memory-model.md, "Cycles"): visits the fields that can lead to a cycle; strings and boxes cannot
             val traceFields = refFields.filter { cycles.fieldCapable(c, it) }
@@ -1161,7 +1187,7 @@ private class Lowering<V : Any, B : Any>(
                 "MkTypeInfo",
                 listOf(
                     nameSym, b.constInt(szT, lay.size.toLong()), superTi, dispose, vtg, b.constInt(szT, vt.size.toLong()), ifs,
-                    b.constInt(szT, c.interfaces.size.toLong()), trace, b.constNull(),
+                    b.constInt(szT, c.interfaces.size.toLong()), trace, b.constNull(), disposeAll,
                 ),
             )
             val typeInfoLinkage = if (c.cName in exportedClassNames) IrLinkage.EXTERNAL else classLinkage

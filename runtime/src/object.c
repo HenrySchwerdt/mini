@@ -149,9 +149,16 @@ MK_NOINLINE static void pending_drain(bool force);
 
 /* the dispose chain of an object whose count reached zero, then its memory. Objects that the disposes queued (the stack was
  * deep) are worked off from here when this frame is above the floor again (before the block is freed: a tail call). */
+void mk_dispose_none(MkObject *self) { (void)self; }
+
 MK_INLINE void free_dead(MkObject *object, bool buffered, bool watch) {
-    for (const MkTypeInfo *t = object->type; t != NULL; t = t->super) {
-        if (t->dispose != NULL) t->dispose(object);
+    MkDisposeFn all = object->type->dispose_all;
+    if (all != NULL) {
+        if (all != mk_dispose_none) all(object); /* (the generated glue of the class: one call for the whole chain) */
+    } else {
+        for (const MkTypeInfo *t = object->type; t != NULL; t = t->super) {
+            if (t->dispose != NULL) t->dispose(object);
+        }
     }
     if (watch && MK_UNLIKELY(pending_n != 0)) pending_drain(false);
     if (MK_UNLIKELY(buffered)) mk_cycles_hooks.forget(object); /* (its slot in the candidate buffer) */
