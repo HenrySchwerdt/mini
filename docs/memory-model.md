@@ -1515,6 +1515,11 @@ not recorded) and the cycles that were created while threads ran are collected b
 ended (or at the end of `main`). The documented limitation: a program that keeps a worker thread running for its whole life never
 frees cycles during that time.
 
+The lock around the candidate buffer (`roots_lock`) is a test-and-test-and-set spin lock that calls `mk_sys_thread_yield` after 32 failed
+attempts. It used to spin on the exchange alone: with hundreds of runnable threads on a few processors (`threads_stress` starts a pool of
+220) a preempted holder was starved by the spinners, and under ThreadSanitizer, where every exchange takes a global slot lock, one run took
+from 8 seconds to more than 5 minutes (timeout in CI, `tsan::threads_stress`, after the merge of main changed the timing). Now 3 seconds, 20 of 20
+runs with four at once.
 ### Release depth
 
 Dropping the head of a long singly linked list released the next node from the dispose of the previous one: recursion as deep as
@@ -1530,6 +1535,13 @@ the linear-memory stack a frame address would measure (and its size is unknown),
 nesting of armed releases instead and queues beyond 200 levels; there is only one thread there. `release_deep` runs on every backend
 including wasm32; `release_deep_threads` (the same in worker threads) is `.nowasm`.
 
+Under ThreadSanitizer the floor is a fixed 256 KB below the first frame instead of the middle of the stack. TSan keeps a shadow stack of every
+call and replays all of it into its event trace each time a trace part fills up, so a dispose chain nested over 4 MB of stack (tens of
+thousands of frames, larger than usual under the instrumentation) was quadratic (minutes) and, with three threads doing it, crashed
+inside clang's TSan runtime (SEGV in `TracePartAlloc`; `tsan::release_deep_threads` in CI, clang 18; it passed with gcc's TSan). It is the
+instrumentation that cannot follow that depth, not a defect in the release code (the same program is clean under ASan/UBSan and without
+sanitizers), and the test is unchanged: the chains are still 200000 deep, they are queued earlier. The e2e `tsan` suite passes 20 of 20
+runs of the test, also with four runs at once.
 ### Measured overhead
 
 Reference: the same benchmark compiled by `origin/main` (no collector), runtime built the same way (-O1, like `libminirt.a`). The
@@ -1700,6 +1712,54 @@ Remaining, known and documented: Indexing a `String` (`s[i]`) reports an out-of-
 `StringIndexOutOfBoundsException` that cannot be caught (the access is safe, only not catchable); `OutOfMemoryError` is fatal, not
 catchable. Unsynchronized writes to a *shared mutable* collection from several threads are a data race of the program (as on the JVM)
 and are not made safe; the cycle collector still only runs while no Kotlin thread runs (section "Threads").
+
+## Sanitizer runs (memsafe-2)
+
+Every program of the e2e corpus is also run with the C compiler's sanitizers. The suites of `scripts/test-e2e.sh`:
+
+| suite | what | sanitizers | detects |
+|---|---|---|---|
+| `leak`, `llvm-leak` | `compiler/testdata` (and `testdata/memory` with a `.out`), C and LLVM backend | `-fsanitize=address,undefined` + LeakSanitizer, runtime built with the same flags | OOB, use-after-free, double free, leaks, UB (shift, signed overflow, alignment, null) |
+| `realworld-leak`, `realworld-llvm-leak` | `tests/realworld` | same | same |
+| `strict-leak`, `strict-llvm-leak` | the runnable Strict corpus | same | same |
+| `projects-leak` | `tests/projects` (13 multi-module projects, built and run with `mini`), the C compiler of `mini` replaced by a wrapper that adds the sanitizer flags, and `MINI_ROOT` a copy of the installation (links) whose `lib/libminirt.a` is the sanitized runtime | same | same, for the generated code and the runtime |
+| `fuzz-leak`, `fuzz-llvm-leak`, `stress-leak` | `tools/fuzz/smoke`, `testdata/stress` | same | same |
+| `tsan` | the programs that start threads (`spawn`, `Thread`, `java.util.concurrent`, coroutines on threads, `tests/realworld/thread_pool`), runtime built with `-fsanitize=thread` | ThreadSanitizer | data races, also in the reference counting and the allocators |
+| (runtime) `runtime/run_tests.sh` | every `runtime/tests/test_*.c`, `-Wall -Wextra -Werror` | ASan+UBSan, UBSan alone (size-class allocator), TSan for the threading tests | the same classes inside libminirt |
+
+`UBSan` runs with `-fno-sanitize-recover=undefined`, so any finding fails the test; ASan runs with `detect_leaks=1`, TSan with `halt_on_error=1`.
+`tsan` is skipped when the C compiler cannot link ThreadSanitizer. CI: the `e2e` shard runs the default suites (which include `leak`) and a
+separate "Thread programs under ThreadSanitizer" step (`scripts/test-e2e.sh --suite tsan`, 12 programs, about 2 minutes); `runtime/run_tests.sh`
+is the `runtime` job.
+
+Result of the full pass (memsafe-2, clang, Linux x86-64, after the merge of the 0.10.0 seed): no finding in any class (OOB, use-after-free,
+double free, leak, UB such as shift, signed overflow or alignment, data race), so no runtime, codegen or stdlib change was needed. The pass
+covered: runtime tests under ASan/UBSan, UBSan and TSan; `leak` 313, `memcheck` 123, `memrun` 34 (`ok_thread_move` is skipped there: the
+threads are covered by `tsan`), `strict-leak` 97, `fuzz-leak` 50, `realworld-leak` 35, `stress-leak` 4 (655 programs, about 38 minutes on a
+machine under heavy load), `projects-leak` 13 projects (3 minutes) and `tsan` 12 programs (under 3 minutes). New in memsafe-2: the `tsan` suite and
+its CI step, and `projects-leak`; the other suites existed and are the reason the corpus is clean. The leak suites are not a separate CI job:
+they are part of the default `e2e` shard, whose whole run is well beyond 15 minutes. Not covered: Windows and macOS (LeakSanitizer does not exist on macOS, the run there still checks memory
+errors and UB), and `MemorySanitizer` (uninitialized reads; clang only, needs an instrumented libc).
+
+## The runtime and the parsers under sanitizers and fuzzing (memsafe-3)
+
+**The runtime is part of every sanitized run.** The `*-leak` suites do not link the installed `lib/libminirt.a`: `scripts/test-e2e.sh` builds
+the runtime once per run from `runtime/src` with the flags of the suites (`-fsanitize=address,undefined -fno-sanitize-recover=undefined -g`,
+and `-Wall -Wextra -Werror`, no longer `-w`) into `rt-asan` and links that. `projects-leak` does the same through a copy of the
+installation: `mini` runs with `MINI_ROOT` pointing at a directory of links to the installation in which only `lib/libminirt.a` is the
+sanitized archive, and `MINI_CC` is the sanitizing wrapper (`tests/projects/run.sh` uses `MINI_CC` for the step that links the `.mlib` artifacts as well:
+with an unsanitized compiler it linked generated code that allocates through the inline small-object cache against the sanitized runtime, which
+has no such cache under ASan, and failed with `undefined reference to mk_small_cache`). The runtime under ASan allocates every object with
+plain `malloc` (see `alloc_small.h`), so use-after-free and overflows of runtime objects are visible too; UBSan alone runs the size-class
+allocator in `runtime/run_tests.sh`.
+
+**Fuzzing the parsers and formatters.** `tools/fuzz/libfuzzer/` (`docs/fuzzing.md`, "libFuzzer harnesses") runs seven coverage-guided harnesses
+over the runtime and the standard library with ASan + UBSan: UTF-8 decoding and encoding, Double/Float to text and text to Double, integer and
+floating point parsing with a radix, number to text, `String.format`, the regex engine and the text functions. Result: no memory error, no UB and
+no leak in the runtime's C code or in the generated code of the stdlib; two defects of the stdlib surfaced (both fixed at the cause, with a
+test in `compiler/testdata` and the minimised input in `tools/fuzz/libfuzzer/regress`): a regex with an unknown character property failed at
+the first match instead of at compilation, and the zero padding of `String.format` was quadratic in the width. A CI step runs the stored
+inputs and 90 seconds of every harness.
 
 ## Experience from D2 (Strict code generation)
 
