@@ -1354,8 +1354,21 @@ of the state machine; the freed object is the `Box` that `b.free()` returned a m
 Verified under AddressSanitizer + LeakSanitizer on the C and the LLVM backend: corpus `s148` (an owner between two suspension points, a plain
 object), `s149` (owner across `delay`, `runBlocking` block and suspend function), `s150` (across `await`, `join`, suspend calls), `s151` (moved
 into a suspend function, loops, `try/finally`); REJECT `s152` (use after free across `delay`, M0101), `s153` (never freed, M0102), `s154`
-(use after the move into a suspend function, M0104). Not supported (as before): returning an owner from a suspend function (`suspend fun
-make(): @Owned Box` is typed `Any?` in the lowered signature: M0111/M0102, conservative).
+(use after the move into a suspend function, M0104). Round strict-4b lifts the old restriction on returning an owner from a suspend function (`suspend fun make(): @Owned Box`):
+
+* *The checker sees the declared type.* The lowered signature is `Any?`, which carries no ownership (M0111/M0102 before). `IrFunction.memoryReturnsDeclared`
+  (set by `lowerSuspendBody` when the body is kept as written: no suspension point, or `memoryBody`) makes `MemoryFacts.declaredReturnType` use
+  `origReturnType`, so `@Owned`/`@Borrowed` on the result and the tracked result type are checked like for any Strict function. A suspend function whose
+  body could not be kept (local functions or classes in it) keeps the lowered `Any?` view. A *library* suspend function (stub, no body) is still seen as `Any?`.
+* *Code generation.* The result of the call travels as `Any?` through the hoisted `$tmp` cell of the caller's state machine and, when the callee
+  suspended, through the `Result` that resumes it. Both held a counted reference to the object while the caller freed it (heap-use-after-free at the
+  cell's or the result's dispose). Fixes: the hoisted result cell of a call whose declared result is a Strict class is a borrowed cell
+  (`IrVariable.suspendResultType`, `Ir2Mir.cellBorrowed`; `Tracking.borrowedField`/`rcField` now honour `borrowed` on `mk.Ref` cells of any reference
+  type), and `CoroutineImpl.resumeValue` moves the value out of the `Result` (`Result.value` is a `var` for this) so the result no longer owns it.
+* Corpus: ACCEPT `s167` (return, pass on from another suspend function, branches, free after `join`; ASan + LSan on the C and the LLVM backend),
+  REJECT `s168` (use after free, M0101), `s169` (never freed, M0102), `s170` (a borrowed parameter returned as owned, M0109), `s171` (returned after it moved into
+  a suspend function, M0104). Still rejected: an owner returned *through a lambda* (`async { make() }`, the `Deferred` is Managed).
+  Not supported: a suspend function of a library built with an older compiler (no declared type in its stub).
 
 **Structured children (`launch` inside `runBlocking`)**
 
@@ -1388,6 +1401,21 @@ parameters: the result was an unrelated function value, so `val f = c.peek(); c.
 form): a call of such a method yields a loan of the receiver's owner, so `f()` after `c.free()` is M0101 (`s166`) and the closure may be used while the owner
 lives (`s165`). A *local class or anonymous object* returned from such a method (`inner_receivers_super`, `localExtendsInner`) stays M0109: its instance is a
 tracked allocation that the caller must own while it holds a loan of the receiver; the model has no owner that borrows.
+
+**Round strict-4c: a false negative found while looking at that case.** `fun reader(): Reader = object : Reader { override fun get() = n }` (an anonymous
+object of a Strict interface type that reads the receiver, or a parameter) was *accepted* when it was returned directly (`return object : ...`), while
+the same object returned through a local (`val r = object ...; return r`) or a local class (`return R()`) was M0109. The caller of the first form got an
+owned result without a loan: `val r = c.reader(); c.free(); r.get()` was a use after free that nobody reported. The cause was two-fold: the
+return of a tracked closure object with captures was only checked when the declared result was owned, and a diagnostic at the anonymous object
+had no source position and was dropped. Now every return of a closure object (anonymous object, local class instance) that borrows the receiver or a
+parameter, from a function whose declared result is a Strict type (an interface or `Any` included), is M0109 (`s172`, `s173`, `s174`). Returning
+such an object as a *function value* is unchanged (the `carries` summary, `s165`/`s166`).
+
+Why the accepting direction stays out of reach (analysis, no code): an object that owns nothing but borrows its receiver needs an *owned value that
+borrows* at the call site. The result's static type is a Strict class or interface, so the caller of a Strict function keeps no reference counts for it
+and would never release the counted closure object (a leak), and `r.free()` on it would deallocate memory that reference counting owns. Either the call
+site needs a loan result for tracked types with the object kept by counts (a new value category in checker and in both backends) or the object is
+declared in the language as non-owning (spec change). That is the same gap as in the strict-4a analysis (an owner needs a holder-aware count).
 
 **Coverage of round strict-3**
 
