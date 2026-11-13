@@ -148,7 +148,7 @@ public abstract class AbstractList<out E> protected constructor() : AbstractColl
     override fun listIterator(): ListIterator<E> = ListIteratorImpl(this, 0)
 
     override fun listIterator(index: Int): ListIterator<E> {
-        if (index < 0 || index > size) mini.internal.throwIndexOutOfBounds("index: $index, size: $size")
+        if (index < 0 || index > size) mini.internal.throwIndexOutOfSize(index, size)
         return ListIteratorImpl(this, index)
     }
 
@@ -211,7 +211,7 @@ internal class SubList<out E>(private val list: List<E>, private val fromIndex: 
         get() = _size
 
     override fun get(index: Int): E {
-        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfSize(index, _size)
         return list[fromIndex + index]
     }
 }
@@ -253,7 +253,7 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
     }
 
     override fun addAll(index: Int, elements: Collection<E>): Boolean {
-        if (index < 0 || index > size) mini.internal.throwIndexOutOfBounds("index: $index, size: $size")
+        if (index < 0 || index > size) mini.internal.throwIndexOutOfSize(index, size)
         var i = index
         val it = elements.iterator()
         var modified = false
@@ -289,7 +289,7 @@ public abstract class AbstractMutableList<E> protected constructor() : AbstractM
     override fun listIterator(): MutableListIterator<E> = MutableListIteratorImpl(this, 0)
 
     override fun listIterator(index: Int): MutableListIterator<E> {
-        if (index < 0 || index > size) mini.internal.throwIndexOutOfBounds("index: $index, size: $size")
+        if (index < 0 || index > size) mini.internal.throwIndexOutOfSize(index, size)
         return MutableListIteratorImpl(this, index)
     }
 
@@ -353,23 +353,23 @@ internal class MutableSubList<E>(private val list: MutableList<E>, private val f
         get() = _size
 
     override fun get(index: Int): E {
-        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfSize(index, _size)
         return list[fromIndex + index]
     }
 
     override fun set(index: Int, element: E): @mini.memory.Owned E {
-        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfSize(index, _size)
         return list.set(fromIndex + index, element)
     }
 
     override fun add(index: Int, element: E) {
-        if (index < 0 || index > _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
+        if (index < 0 || index > _size) mini.internal.throwIndexOutOfSize(index, _size)
         list.add(fromIndex + index, element)
         _size++
     }
 
     override fun removeAt(index: Int): @mini.memory.Owned E {
-        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfBounds("index: $index, size: $_size")
+        if (index < 0 || index >= _size) mini.internal.throwIndexOutOfSize(index, _size)
         val r = list.removeAt(fromIndex + index)
         _size--
         return r

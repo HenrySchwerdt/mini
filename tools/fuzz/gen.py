@@ -53,6 +53,7 @@ class Gen:
         self.funs = []  # (name, [param types], ret type) top-level generated functions
         self.classes = []  # (kind, ...) described below
         self.uses_co = False
+        self.uses_co3 = False
         self.pure = 0  # > 0: no calls that print (the selector of sortedBy is called a different number of times on the JVM)
         self.effects = self.r.random() < 0.5  # expressions with side effects (tick): double or misordered evaluation
         self.env = Env()
@@ -717,6 +718,126 @@ class Gen:
             parts.append(lines)
             self.classes.append({"kind": "b2dia", "name": dm})
 
+
+        # --- feature bank 3: variance, sealed trees, value classes, DSLs, finally, coroutines, limits, ranges ---
+        if self.chance(0.6):
+            vn = self.fresh("Var")
+            lines = [
+                "interface %sSrc<out T> { fun get(): T }" % vn,
+                "interface %sSink<in T> { fun put(x: T) }" % vn,
+                "class %sBox<T : Comparable<T>>(var v: T) : %sSrc<T>, %sSink<T> {" % (vn, vn, vn),
+                "    override fun get(): T = v",
+                "    override fun put(x: T) { if (x > v) v = x }",
+                "}",
+                "fun %sFill(sink: %sSink<Int>, xs: List<Int>) { for (x in xs) sink.put(x) }" % (vn, vn),
+                "fun %sStar(l: List<*>): Int = l.size + (l.firstOrNull()?.toString()?.length ?: 0)" % vn,
+                "fun %sOut(a: Array<out Any>): String = a.joinToString(\"|\") { it.toString() }" % vn,
+                "fun <T> %sCopy(dst: MutableList<in T>, src: List<T>) { for (x in src) dst.add(x) }" % vn,
+                "fun <T, R : Comparable<R>> %sMaxBy(xs: List<T>, f: (T) -> R): T? { var best: T? = null; for (x in xs) { if (best == null || f(x) > f(best)) best = x }; return best }" % vn,
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b3var", "name": vn})
+        if self.chance(0.7):
+            en = self.fresh("Ex")
+            lines = [
+                "sealed interface %s" % en,
+                "data class %sNum(val v: Int) : %s" % (en, en),
+                "data class %sAdd(val l: %s, val r: %s) : %s" % (en, en, en, en),
+                "data class %sMul(val l: %s, val r: %s) : %s" % (en, en, en, en),
+                "data class %sNeg(val e: %s) : %s" % (en, en, en),
+                "object %sZero : %s { override fun toString() = \"Zero\" }" % (en, en),
+                "fun eval%s(e: %s): Int = when (e) {" % (en, en),
+                "    is %sNum -> e.v" % en,
+                "    is %sAdd -> eval%s(e.l) + eval%s(e.r)" % (en, en, en),
+                "    is %sMul -> eval%s(e.l) * eval%s(e.r)" % (en, en, en),
+                "    is %sNeg -> -eval%s(e.e)" % (en, en),
+                "    %sZero -> 0" % en,
+                "}",
+                "fun show%s(e: %s): String = when (e) {" % (en, en),
+                "    is %sNum -> e.v.toString()" % en,
+                "    is %sAdd -> \"(\" + show%s(e.l) + \" + \" + show%s(e.r) + \")\"" % (en, en, en),
+                "    is %sMul -> show%s(e.l) + \" * \" + show%s(e.r)" % (en, en, en),
+                "    is %sNeg -> \"-\" + show%s(e.e)" % (en, en),
+                "    %sZero -> \"0\"" % en,
+                "}",
+                "sealed class %sRes<out T> {" % en,
+                "    data class Ok<T>(val v: T) : %sRes<T>()" % en,
+                "    data class Err(val m: String) : %sRes<Nothing>()" % en,
+                "}",
+                "fun <T, R> %sRes<T>.mapRes(f: (T) -> R): %sRes<R> = when (this) { is %sRes.Ok -> %sRes.Ok(f(v)); is %sRes.Err -> this }" % (en, en, en, en, en),
+                "fun %sSafeDiv(a: Int, b: Int): %sRes<Int> = if (b == 0) %sRes.Err(\"div\" + a) else %sRes.Ok(a / b)" % (en, en, en, en),
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b3sealed", "name": en})
+        if self.chance(0.7):
+            vc = self.fresh("Vc")
+            lines = [
+                "@JvmInline value class %sM(val v: Int) { operator fun plus(o: %sM) = %sM(v + o.v); fun doubled() = %sM(v * 2); override fun toString() = \"M\" + v }" % (vc, vc, vc, vc),
+                "@JvmInline value class %sN(val s: String) { val size: Int get() = s.length }" % vc,
+                "data class %sP(val x: Int, val y: Int)" % vc,
+                "data class %sW(val m: %sM, val n: %sN, val tags: List<String> = emptyList())" % (vc, vc, vc),
+                "fun %sSum(xs: List<%sM>): %sM = xs.fold(%sM(0)) { a, b -> a + b }" % (vc, vc, vc, vc),
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b3value", "name": vc})
+        if self.chance(0.7):
+            dn = self.fresh("Dsl")
+            lines = [
+                "class %sNode(val name: String) {" % dn,
+                "    val parts = ArrayList<String>()",
+                "    var depth = 0",
+                "    fun tag(n: String, body: %sNode.() -> Unit) { val inner = %sNode(n); inner.depth = depth + 1; inner.body(); parts.add(\"<\" + n + \">\" + inner.parts.joinToString(\"\") + \"</\" + n + \">\") }" % (dn, dn),
+                "    fun text(s: String) { parts.add(s) }",
+                "    operator fun String.unaryPlus() { parts.add(this) }",
+                "    infix fun String.to2(v: Int) { parts.add(this + \"=\" + v) }",
+                "}",
+                "fun %sBuild(body: %sNode.() -> Unit): String { val n = %sNode(\"root\"); n.body(); return n.parts.joinToString(\"\") }" % (dn, dn, dn),
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b3dsl", "name": dn})
+        if self.chance(0.7):
+            fn = self.fresh("fin")
+            lines = [
+                "fun %sNested(n: Int): String {" % fn,
+                "    val sb = StringBuilder()",
+                "    try {",
+                "        try {",
+                "            sb.append(\"a\")",
+                "            if (n % 3 == 0) throw IllegalStateException(\"x\" + n)",
+                "            sb.append(\"b\")",
+                "        } finally {",
+                "            sb.append(\"f1\")",
+                "            if (n % 4 == 1) throw IllegalArgumentException(\"fin\" + n)",
+                "        }",
+                "    } catch (e: IllegalStateException) {",
+                "        sb.append(\"ise\")",
+                "    } catch (e: IllegalArgumentException) {",
+                "        sb.append(\"iae:\" + e.message)",
+                "    } finally {",
+                "        sb.append(\"f2\")",
+                "    }",
+                "    return sb.toString()",
+                "}",
+                "fun %sRet(n: Int): Int { try { if (n > 2) return n * 2; return n } finally { println(\"cleanup\" + n) } }" % fn,
+                "fun %sOverride(n: Int): Int { try { if (n > 0) throw RuntimeException(\"lost\"); return 1 } finally { if (n > 1) return 7 } }" % fn,
+                "fun %sLoop(n: Int): Int { var s = 0; for (i in 0 until n) { try { if (i %% 2 == 1) continue; if (i > 6) break; s += i } finally { s += 100 } }; return s }" % fn,
+                "class %sRes(val name: String) : AutoCloseable { override fun close() { println(\"close \" + name); if (name == \"bad\") throw IllegalStateException(\"close failed\") } }" % fn,
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b3fin", "name": fn})
+        if self.chance(0.6):
+            self.uses_co3 = True
+            cn = self.fresh("cor")
+            lines = [
+                "suspend fun %sStep(x: Int): Int { yield(); return x * 2 + 1 }" % cn,
+                "suspend fun %sChain(n: Int): Int { var a = 0; for (i in 0 until n) { a += %sStep(i) }; return a }" % (cn, cn),
+            ]
+            parts.append(lines)
+            self.classes.append({"kind": "b3cor", "name": cn})
+
+        if self.chance(0.8):
+            self.classes.append({"kind": "b3lim", "name": "lim"})
+
         # top-level functions with statements (no recursion into later ones)
         for _ in range(r.randint(1, 4)):
             self.gen_function(parts)
@@ -823,8 +944,11 @@ class Gen:
 
     def stmt(self, out, env, depth, in_fun):
         r = self.r
-        k = r.randint(0, 33)
+        k = r.randint(0, 34)
         ex = lambda t, d=3: self.expr(t, d, env)
+        if self.classes and depth > 0 and self.chance(0.25):
+            self.class_stmt(out, self.pick(self.classes), env)
+            return
         if k <= 3:
             ty = self.pick(["Int", "Int", "Long", "String", "Boolean", "List<Int>", "Char", "Double"])
             v = self.fresh()
@@ -1028,6 +1152,9 @@ class Gen:
             out.append("val %s = generateSequence(%s) { if (it > %d || it < -%d) null else it * 2 + 1 }" % (v, ex("Int", 1) + " and 1023", r.randint(10, 500), r.randint(10, 500)))
             out.append(self.show("%s.toList()" % v))
             return
+        if k == 34 and self.chance(0.5):
+            out.extend(self.limits_stmts(env))
+            return
         if k == 33 and self.effects:
             self.effect_stmt(out, env)
             return
@@ -1138,6 +1265,93 @@ class Gen:
         out.append(self.show('"x${tick(%s)}y${tickL(%s)}z"' % (ex("Int", 1), ex("Long", 1))))
         out.append(self.show("when (tick(%s)) { 1 -> tick(10); in 2..9 -> tick(20); else -> tick(30) }" % ex("Int", 1)))
         out.append(self.show("tickL(%s).hashCode() + tickB(%s).hashCode()" % (ex("Long", 1), ex("Boolean", 1))))
+
+    def expr_tree(self, n, d, env):
+        k = self.r.randint(0, 5) if d > 0 else self.r.randint(0, 1)
+        if k <= 1:
+            return "%sNum(%s)" % (n, self.expr("Int", 1, env))
+        if k == 2:
+            return "%sAdd(%s, %s)" % (n, self.expr_tree(n, d - 1, env), self.expr_tree(n, d - 1, env))
+        if k == 3:
+            return "%sMul(%s, %s)" % (n, self.expr_tree(n, d - 1, env), self.expr_tree(n, d - 1, env))
+        if k == 4:
+            return "%sNeg(%s)" % (n, self.expr_tree(n, d - 1, env))
+        return "%sZero" % n
+
+    def dsl_body(self, n, d, env, depth):
+        r = self.r
+        parts = []
+        for _ in range(r.randint(1, 3)):
+            k = r.randint(0, 5)
+            if k == 0:
+                parts.append("text(%s)" % self.expr("String", 1, env))
+            elif k == 1:
+                parts.append("+%s" % self.expr("String", 1, env))
+            elif k == 2:
+                parts.append("%s to2 %s" % (self.expr("String", 0, env), self.expr("Int", 1, env)))
+            elif k == 3 and d > 0:
+                parts.append('tag("%s") { %s }' % (self.pick(["a", "b", "ul", "li"]), self.dsl_body(n, d - 1, env, depth + 1)))
+            elif k == 4:
+                parts.append("for (i in 0 until %d) text(i.toString() + depth)" % r.randint(0, 3))
+            elif k == 5 and d > 0:
+                parts.append("with(%sNode(\"w\")) { text(\"in\"); tag(\"q\") { text(depth.toString()) }; this@%sBuild.let { }; parts.size.let { this@tag.text(it.toString()) } }" % (n, n) if False else 'run { text("run" + depth) }')
+            else:
+                parts.append("text(depth.toString())")
+        return "; ".join(parts)
+
+    def limits_stmts(self, env):
+        r = self.r
+        out = []
+        ex = lambda t, d=2: self.expr(t, d, env)
+        pick = self.pick
+        out.append(self.show("%s" % pick(["Int.MAX_VALUE + 1", "Int.MIN_VALUE - 1", "-Int.MIN_VALUE", "Int.MAX_VALUE * 2", "Int.MIN_VALUE / -1", "Int.MIN_VALUE % -1", "kotlin.math.abs(Int.MIN_VALUE)", "Int.MAX_VALUE.inc()", "Int.MIN_VALUE.dec()"])))
+        out.append(self.show("%s" % pick(["Long.MAX_VALUE + 1", "Long.MIN_VALUE - 1", "-Long.MIN_VALUE", "Long.MAX_VALUE * 3", "Long.MIN_VALUE / -1", "Long.MIN_VALUE % -1L", "kotlin.math.abs(Long.MIN_VALUE)", "Long.MAX_VALUE.toInt()", "Long.MIN_VALUE.toInt()", "Long.MAX_VALUE.toDouble().toLong()", "(Long.MAX_VALUE shr 63) + (Long.MIN_VALUE ushr 63)"])))
+        out.append(self.show("%s" % pick(["0.0 / 0.0", "1.0 / 0.0", "-1.0 / 0.0", "Double.MAX_VALUE", "Double.MIN_VALUE", "Double.MAX_VALUE * 2", "(0.0 / 0.0).toInt()", "(1e20).toInt()", "(-1e20).toLong()", "(0.0 / 0.0).toLong()", "-0.0", "0.0 == -0.0", "(0.0 / 0.0) == (0.0 / 0.0)", "(0.0).compareTo(-0.0)", "1e21", "1e-7", "123456789.0", "1.0E7", "100.0 / 3.0", "0.1 + 0.2", "Float.MAX_VALUE", "1.1f", "(0.1f + 0.2f)", "16777217f", "(1.0 / 3.0).toFloat()"])))
+        out.append(self.show("%s.toDouble() / %s" % (ex("Int", 1), pick(["3", "7", "1e3", "0.25"]))))
+        out.append(self.show("%s.toLong() * %s" % (ex("Int", 1), pick(["Int.MAX_VALUE", "4294967297L", "Long.MIN_VALUE"]))))
+        out.append(self.show("(%s).toByte().toInt() + (%s).toShort().toInt()" % (ex("Int", 1), ex("Int", 1))))
+        out.append(self.show("%s.toChar().code" % ("(" + ex("Int", 1) + " and 0xffff)")))
+        out.append(self.show("(%s).toDouble().toString()" % ex("Long", 1)))
+        out.append(self.show("kotlin.math.%s(%s)" % (pick(["sqrt", "floor", "ceil", "abs"]), pick(["2.0", "-2.5", "9.0", "0.5", "1e300", "-0.0"]))))
+        out.append(self.show("(%s).roundToInt()" % pick(["2.5", "-2.5", "3.5", "0.49999999999999994", "1e10"])) if False else self.show("kotlin.math.round(%s)" % pick(["2.5", "-2.5", "3.5", "0.4999999", "1e10"])))
+        # ranges
+        out.append(self.show("(%d..%d step %d).toList()" % (r.randint(-5, 5), r.randint(0, 20), r.randint(1, 5))))
+        out.append(self.show("(%d downTo %d step %d).toList()" % (r.randint(0, 20), r.randint(-5, 5), r.randint(1, 5))))
+        out.append(self.show("(%d until %d step %d).toList().size" % (r.randint(-5, 5), r.randint(0, 20), r.randint(1, 5))))
+        out.append(self.show("('a'..'%s').toList().joinToString(\"\")" % pick(["e", "k", "b", "a"])))
+        out.append(self.show("(%d..%d).reversed().toList()" % (r.randint(0, 5), r.randint(0, 8))))
+        out.append(self.show("(%d..%d step 3).last + (%d..%d step 3).step" % (r.randint(0, 5), r.randint(5, 20), r.randint(0, 5), r.randint(5, 20))))
+        out.append(self.show("(5 downTo 1).count() + (1..0).count() + (1..5).sum()"))
+        out.append(self.show("(Int.MAX_VALUE - 3..Int.MAX_VALUE).toList().size"))
+        i = self.fresh("i")
+        out.append("var %s = 0L; for (x in (Int.MAX_VALUE - 5)..Int.MAX_VALUE step %d) %s += x" % (i, r.randint(1, 3), i))
+        out.append("for (x in (Int.MIN_VALUE + 4) downTo Int.MIN_VALUE step %d) %s += x" % (r.randint(1, 3), i))
+        out.append("for (x in (Long.MAX_VALUE - 3)..Long.MAX_VALUE) %s += x / 1000" % i)
+        out.append("for (x in 'a'..'e' step 2) %s += x.code" % i)
+        out.append(self.show(i))
+        out.append(self.show("(%s in %d..%d) && (%s !in %d downTo %d)" % (ex("Int", 1), r.randint(0, 5), r.randint(5, 20), ex("Int", 1), r.randint(10, 20), r.randint(0, 5))))
+        out.append(self.show("(1L..%dL step 7L).toList()" % r.randint(1, 30)))
+        out.append(self.show("(0 until 0).isEmpty() && (3..1).isEmpty() && !(1..1).isEmpty()"))
+        # unicode strings
+        words = ["été", "日本語", "\U0001F600x", "straße", "İstanbul", "áb", "ΣΣ", "\U0001F468‍\U0001F469", "über", "Å", "Å"]
+        w = lambda: '"%s"' % pick(words)
+        out.append(self.show("%s.length" % w()))
+        out.append(self.show("%s.uppercase()" % w()))
+        out.append(self.show("%s.lowercase()" % w()))
+        out.append(self.show("%s.reversed()" % w()))
+        out.append(self.show("%s.map { it.code }" % w()))
+        out.append(self.show("%s.encodeToByteArray().size" % w()))
+        out.append(self.show("%s.encodeToByteArray().toList()" % w()))
+        out.append(self.show("%s.hashCode()" % w()))
+        out.append(self.show("%s.compareTo(%s)" % (w(), w())))
+        out.append(self.show("(%s + %s).indexOf(%s)" % (w(), w(), w())))
+        out.append(self.show("(%s + %s).substring(%d)" % (w(), w(), r.randint(0, 2))))
+        out.append(self.show("%s.toCharArray().concatToString()" % w()))
+        out.append(self.show("%s.first().isLetter() to %s.last().isUpperCase()" % (w(), w())))
+        out.append(self.show("%s.padEnd(8, '-')" % w()))
+        out.append(self.show("(%s + \" \" + %s).split(\" \")" % (w(), w())))
+        out.append(self.show("%s.capitalize()" % w() if False else "%s.replaceFirstChar { it.uppercaseChar() }" % w()))
+        return out
 
     def _with(self, env, name, ty):
         e = Env(env)
@@ -1333,6 +1547,91 @@ class Gen:
             out.append(self.show("%sD().hi()" % n))
             out.append(self.show("%sSum(listOf(%sBox(%s), %sBox(%s.toLong())))" % (n, n, ex("Int", 1), n, ex("Int", 1))))
             out.append(self.show("(%sD() as %sA).hi().length" % (n, n)))
+        elif k == "b3var":
+            n = c["name"]
+            b = self.fresh("pb")
+            out.append("val %s = %sBox(%s)" % (b, n, ex("Int", 1)))
+            out.append("%sFill(%s, %s)" % (n, b, ex("List<Int>", 2)))
+            out.append(self.show("%s.get()" % b))
+            out.append("val %s: %sSrc<Number> = %s" % (self.fresh("src"), n, b))
+            out.append("val %s: %sSink<Int> = object : %sSink<Number> { override fun put(x: Number) { println(\"put \" + x) } }" % (self.fresh("snk"), n, n))
+            al = self.fresh("al")
+            out.append("val %s = ArrayList<Any>()" % al)
+            out.append("%sCopy(%s, %s)" % (n, al, ex("List<Int>", 2)))
+            out.append("%sCopy(%s, listOf(\"s\", \"t\"))" % (n, al))
+            out.append(self.show(al))
+            out.append(self.show("%sStar(%s)" % (n, ex("List<Int>", 2))))
+            out.append(self.show("%sOut(arrayOf(%s, %s, %s))" % (n, ex("Int", 1), ex("String", 1), ex("Long", 1))))
+            out.append(self.show("%sMaxBy(%s) { it %% 7 }" % (n, ex("List<Int>", 2))))
+            out.append(self.show("%sMaxBy(listOf(\"a\", \"bcd\", \"ef\")) { it.length }" % n))
+        elif k == "b3sealed":
+            n = c["name"]
+            e = self.fresh("tr")
+            out.append("val %s: %s = %s" % (e, n, self.expr_tree(n, r.randint(1, 4), env)))
+            out.append(self.show("eval%s(%s)" % (n, e)))
+            out.append(self.show("show%s(%s)" % (n, e)))
+            out.append(self.show("%s == %s" % (e, self.expr_tree(n, 2, env))))
+            out.append(self.show("%s.hashCode() == %s.hashCode()" % (e, e)))
+            out.append(self.show(e))
+            out.append(self.show("%sSafeDiv(%s, %s).mapRes { it * 2 }" % (n, ex("Int", 1), ex("Int", 1))))
+            out.append(self.show("%sSafeDiv(%s, 3).mapRes { it.toString() + \"!\" }" % (n, ex("Int", 1))))
+        elif k == "b3value":
+            n = c["name"]
+            l = self.fresh("vl")
+            out.append("val %s = listOf(%s)" % (l, ", ".join("%sM(%s)" % (n, ex("Int", 1)) for _ in range(r.randint(1, 4)))))
+            out.append(self.show("%s.map { it.v }" % l))
+            out.append(self.show("%sSum(%s)" % (n, l)))
+            out.append(self.show("%s.sortedBy { it.v }" % l))
+            out.append(self.show("%s.maxByOrNull { it.v }" % l))
+            m = self.fresh("mp")
+            out.append("val %s = mutableMapOf<%sP, %sM>()" % (m, n, n))
+            out.append("%s[%sP(1, 2)] = %sM(%s)" % (m, n, n, ex("Int", 1)))
+            out.append("%s[%sP(1, 2)] = %s[%sP(1, 2)]!! + %sM(%s)" % (m, n, m, n, n, ex("Int", 1)))
+            out.append("%s[%sP(2, 1)] = %sM(3).doubled()" % (m, n, n))
+            out.append(self.show(m))
+            out.append(self.show("setOf(%sP(1, 2), %sP(1, 2), %sP(2, 1)).size" % (n, n, n)))
+            out.append(self.show("listOf(%sN(%s), %sN(%s)).joinToString { it.s + it.size }" % (n, ex("String", 1), n, ex("String", 1))))
+            out.append(self.show("%sW(%sM(%s), %sN(%s)).copy(tags = listOf(%s))" % (n, n, ex("Int", 1), n, ex("String", 1), ex("String", 1))))
+            out.append(self.show("%sM(%s) == %sM(%s)" % (n, ex("Int", 1), n, ex("Int", 1))))
+            out.append(self.show("%s.groupBy { it.v %% 2 }" % l))
+            out.append(self.show("%s.associate { it to it.v }" % l))
+        elif k == "b3dsl":
+            n = c["name"]
+            out.append(self.show("%sBuild { %s }" % (n, self.dsl_body(n, r.randint(1, 3), env, 0))))
+        elif k == "b3fin":
+            n = c["name"]
+            out.append(self.show("(0..%d).map { %sNested(it) }" % (r.randint(2, 7), n)))
+            out.append(self.show("%sRet(%s and 7)" % (n, ex("Int", 1))))
+            out.append("try { println(%sOverride(%s and 3)) } catch (e: RuntimeException) { println(\"lost \" + e.message) }" % (n, ex("Int", 1)))
+            out.append(self.show("%sLoop(%s and 15)" % (n, ex("Int", 1))))
+            out.append("try { %sRes(\"a\").use { println(\"in \" + it.name); throw IllegalArgumentException(\"body\") } } catch (e: Exception) { println(e.message + \" \" + e.suppressedExceptions.size) }" % n if False else "try { %sRes(\"a\").use { println(\"in \" + it.name); throw IllegalArgumentException(\"body\") } } catch (e: Exception) { println(e.message) }" % n)
+            out.append("try { %sRes(\"bad\").use { println(\"in2\") } } catch (e: IllegalStateException) { println(e.message) }" % n)
+            rr = self.fresh("rc")
+            out.append("val %s = runCatching { listOf(1, 2, 3).map { if (it == %d) throw IllegalStateException(\"m\" + it); it * 2 } }" % (rr, r.randint(1, 4)))
+            out.append(self.show("%s.isFailure" % rr))
+            out.append(self.show("%s.exceptionOrNull()?.message" % rr))
+            out.append(self.show("%s.getOrNull()" % rr))
+            out.append("listOf(1, 2, 3).forEach { try { if (it == %d) throw Exception(\"e\" + it); println(it) } catch (e: Exception) { println(\"c\" + e.message) } finally { println(\"f\" + it) } }" % r.randint(1, 3))
+            out.append("try { val l = lazy { if (%s > 0) throw IllegalStateException(\"lz\"); 5 }; println(l.value) } catch (e: IllegalStateException) { println(e.message) }" % ex("Int", 1))
+        elif k == "b3cor":
+            n = c["name"]
+            a, b = self.fresh("ca"), self.fresh("cb")
+            out.append("runBlocking {")
+            out.append("    val %s = async { %sChain(%d) }" % (a, n, r.randint(1, 4)))
+            out.append("    val %s = async { %sStep(%s) }" % (b, n, ex("Int", 1)))
+            out.append("    println(%s.await() + %s.await())" % (a, b))
+            out.append("    val j = launch { for (i in 0 until %d) { println(\"L\" + i); yield() } }" % r.randint(1, 4))
+            out.append("    println(\"main\")")
+            out.append("    j.join()")
+            out.append("    coroutineScope { launch { println(\"c1\") }; launch { yield(); println(\"c2\") }; println(\"cs\") }")
+            out.append("    println((1..%d).map { async { %sStep(it) } }.map { it.await() })" % (r.randint(1, 5), n))
+            out.append("    val acc = ArrayList<Int>()")
+            out.append("    val js = (0 until %d).map { i -> launch { yield(); acc.add(i * %s); yield(); acc.add(-i) } }" % (r.randint(1, 4), ex("Int", 1)))
+            out.append("    js.forEach { it.join() }")
+            out.append("    println(acc)")
+            out.append("}")
+        elif k == "b3misc" or k == "b3lim":
+            out.extend(self.limits_stmts(env))
         elif k == "ext":
             out.append(self.show("%s.%sA(%s)" % (ex("Int", 1), c["name"], ex("Int", 1))))
             out.append(self.show("%s.%sB(%s)" % (ex("String", 1), c["name"], ex("Int", 1))))
@@ -1356,6 +1655,8 @@ class Gen:
         if package:
             out.append("package %s" % package)
         out.append("import kotlin.coroutines.*")
+        if self.uses_co3:
+            out.append("import mini.coroutines.*")
         out.append("")
         if self.uses_co:
             out.extend(CO_PRELUDE)
