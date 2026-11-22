@@ -1,0 +1,18 @@
+sum=7 prod=12 cmp=true
+p=P(x=1, y=2) x=1 y=P(x=1, y=2).y
+nested in 4 side done
+if big when four
+null=null len=null elvis=dflt
+list=[1, 2, 3] size=3 first=1 sum=6 map=[2, 4, 6]
+dollar $a and ${a} and $ alone and $a
+tab[	] quote["] backslash[\] unicode[A] nl-escaped[\n]
+lambda 6 call 30
+char b 97 b str 3
+ww ws w.length 1
+raw 3 4 \n no escape \t
+123x$y
+arr 1 2 [1, 2]
+a12c1.5truenull21.5
+12a12
+9
+true

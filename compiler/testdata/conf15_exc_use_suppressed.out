@@ -1,0 +1,30 @@
+open a
+using a
+close a
+open b
+close b
+1
+open c
+close c
+body
+open d
+close d
+body2 suppressed=1
+close d
+open e
+fine
+close e
+close e
+open o
+open i
+oi
+close i
+close o
+[s1, s2]
+open x
+open y
+close y
+close x
+deep
+[close y, close x]
+[top, mid, root]

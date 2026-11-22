@@ -1,0 +1,20 @@
+// data classes: copy, destructuring, equals/hashCode/toString, nested, with defaults, componentN, in collections
+data class P(val x: Int, val y: Int = 0, val tag: String = "t")
+data class Line(val a: P, val b: P)
+data class G<T>(val v: T, val list: List<T> = emptyList())
+data class Empty(val dummy: Unit = Unit)
+data class Arr(val a: IntArray)
+fun main() {
+    val p = P(1, 2); println(p); println(p.copy(y = 5)); println(p == P(1, 2)); println(p == P(1, 3)); println(p.hashCode() == P(1, 2).hashCode()); println(p === p.copy())
+    val (x, y, t) = p; println("$x $y $t"); val (a, b) = p; println(a + b); println(p.component1() + p.component2())
+    val l = Line(P(0), P(3, 4)); println(l); val (s, e) = l; println(s.x + e.y); println(l.copy(b = P(9)).b)
+    println(G(1, listOf(2)).copy(v = 5)); println(G("s")); println(Empty()); println(setOf(P(1), P(1), P(2)).size); println(mapOf(P(1) to "a")[P(1)])
+    println(listOf(P(2), P(1)).sortedBy { it.x }); println(listOf(P(1, 2), P(1, 3)).groupBy { it.x }); println(listOf(P(1)).contains(P(1)))
+    println(Arr(intArrayOf(1)) == Arr(intArrayOf(1))); val ar = Arr(intArrayOf(1)); println(ar == ar.copy())
+    for ((i, q) in listOf(P(5, 6), P(7, 8)).withIndex()) println("$i ${q.x}"); val m = mapOf(1 to P(1)); for ((k, v) in m) println("$k ${v.tag}")
+    val (first, _, third) = P(1, 2, "z"); println(first.toString() + third); println(P(1).toString().length)
+    val pairs = listOf(1 to "a", 2 to "b"); for ((n, c) in pairs) print("$n$c"); println(); val (q, r) = 17.divmod(5); println("$q $r")
+    println(Pair(1, 2) == Pair(1, 2)); println(Triple(1, "a", null)); println(Pair(1, 2).toList()); println((1 to 2).swap())
+}
+fun Int.divmod(d: Int) = Pair(this / d, this % d)
+fun <A, B> Pair<A, B>.swap() = Pair(second, first)

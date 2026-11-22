@@ -1,0 +1,16 @@
+Ok(v=5)
+Err(e=odd: 7)
+Err(e=bad: x)
+5
+-1
+ok 8
+err bad: z
+4
+1
+6
+d
+Some(v=1)
+None
+Ok(v=1)
+Err(e=e)
+2

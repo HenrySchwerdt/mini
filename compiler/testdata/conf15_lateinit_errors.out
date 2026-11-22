@@ -1,0 +1,17 @@
+lateinit property name has not been initialized
+lateinit property items has not been initialized
+n
+lateinit property cfg has not been initialized
+lateinit property local has not been initialized
+ok
+first fails
+20
+20
+2
+false
+init
+v
+true
+v
+Property x should be initialized before get.
+3

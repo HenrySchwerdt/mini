@@ -1,0 +1,30 @@
+5
+20
+[+, -, *]
+-
+SUB
+No enum constant Op.DIV
+MID
+LOW
+false
+true
+true
+1
+[LOW, MID, HIGH]
+3
+16
+1
+HIGH
+mars#1
+[earth#0, mars#1]
+0
+true
+true
+true
+1
+{LOW=2, MID=10, HIGH=20}
+{false=[LOW], true=[MID, HIGH]}
+m
+[MID, HIGH]
+true
+HIGHHIGH

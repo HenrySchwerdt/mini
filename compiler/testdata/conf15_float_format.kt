@@ -1,0 +1,13 @@
+// Double/Float toString, special values, rounding functions, comparisons
+import kotlin.math.*
+fun main() {
+    println(1.0); println(1.5f); println(100.0); println(1e7); println(1.0E-4); println(123456789.0); println(1234567.0); println(0.001); println(0.0001); println(1e21); println(1.0E-10); println(12345678.9); println(0.1 + 0.7); println(3.0e10f); println(1.17549435E-38f)
+    println(Double.MAX_VALUE); println(Double.MIN_VALUE); println(Float.MAX_VALUE); println(Float.MIN_VALUE); println(Double.POSITIVE_INFINITY); println(Double.NEGATIVE_INFINITY); println(Double.NaN); println(-0.0); println(0.0 == -0.0)
+    println(1.0 / 3); println(2.0 / 3); println(1f / 3); println(10.0 / 3); println(100.0 / 7); println(1.1 * 1.1); println(0.1f * 3); println(1e-5 * 3); println((1 / 3.0).toFloat()); println(33.333333333333336)
+    println(floor(-1.5)); println(ceil(-1.5)); println(round(2.5)); println(round(3.5)); println(round(-2.5)); println(truncate(-1.7)); println(sqrt(2.0)); println(2.0.pow(10)); println(abs(-3.5)); println(max(1.0, 2.0)); println(min(-0.0, 0.0)); println(sign(-4.0)); println(hypot(3.0, 4.0))
+    println(sin(0.0)); println(cos(0.0)); println(atan2(1.0, 1.0)); println(exp(1.0)); println(ln(10.0)); println(log10(1000.0)); println(log2(8.0)); println(PI); println(E); println(cbrt(27.0)); println(1.5.roundToInt()); println(2.5.roundToInt()); println((-1.5).roundToInt()); println(2.5.roundToLong()); println(7.0.toInt() / 2)
+    println(5.0.compareTo(3.0)); println(Double.NaN > 1.0); println(Double.NaN != Double.NaN); println(maxOf(1.0, Double.NaN)); println(listOf(2.5, 1.5, Double.NaN, -0.0, 0.0).sorted()); println(1.0.isNaN()); println((0.0 / 0.0).isNaN()); println((1 / 0.0).isInfinite()); println(1.0.isFinite())
+    println(1.5.toString() + "|" + 1.5f.toString() + "|" + 2.0.toFloat() + "|" + 3f.toDouble() + "|" + 0.1f.toDouble()); println(1e3); println(1.0e-3f); println(12.0e0); println(5e-324); println(1.7976931348623157e308); println("3.14".toDouble() * 2); println("1e2".toDouble()); println(".5".toDouble()); println("1.".toDouble()); println(" 7 ".trim().toDouble())
+    println(4.0.toRawBits()); println(Double.fromBits(4614253070214989087L)); println(1.0f.toRawBits()); println(0.5.ulp); println(1.0.nextUp()); println(1.0.nextDown())
+    println(String.format("%.2f", 3.14159)); println(String.format("%8.3f|", 2.5)); println(String.format("%e", 12345.678)); println(String.format("%.0f", 2.5)); println(String.format("%.0f", 3.5)); println(String.format("%5.1f%%", 99.5)); println("%.3f".format(1.0005)); println("%s".format(1.0)); println("%g".format(0.0001234))
+}

@@ -1,0 +1,33 @@
+P(x=1, y=2, tag=t)
+P(x=1, y=5, tag=t)
+true
+false
+true
+false
+1 2 t
+3
+3
+Line(a=P(x=0, y=0, tag=t), b=P(x=3, y=4, tag=t))
+4
+P(x=9, y=0, tag=t)
+G(v=5, list=[2])
+G(v=s, list=[])
+Empty(dummy=kotlin.Unit)
+2
+a
+[P(x=1, y=0, tag=t), P(x=2, y=0, tag=t)]
+{1=[P(x=1, y=2, tag=t), P(x=1, y=3, tag=t)]}
+true
+false
+true
+0 5
+1 7
+1 t
+1z
+18
+1a2b
+3 2
+true
+(1, a, null)
+[1, 2]
+(2, 1)

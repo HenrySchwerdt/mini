@@ -1,0 +1,7 @@
+14
+ok 1,err x,pending
+Num(v=1)
+Zero
+[red, green, blue]
+v=3
+Add(l=Num(v=1), r=Zero)

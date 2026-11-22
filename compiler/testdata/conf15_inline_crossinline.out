@@ -1,0 +1,27 @@
+start calc
+end calc
+42
+-2
+null
+start outer
+start inner
+returned from nested
+30
+42
+A, B
+true
+false
+true
+HEY!
+-1
+5
+99
+6
+[1, 0, 3]
+last at 2
+in run
+true
+5
+2
+2
+5

@@ -1,0 +1,22 @@
+// string templates with expressions, nested templates, escapes, $ handling
+data class P(val x: Int, val y: Int)
+fun main() {
+    val a = 3; val b = 4; val p = P(1, 2); val s: String? = null; val l = listOf(1, 2, 3)
+    println("sum=${a + b} prod=${a * b} cmp=${a < b}")
+    println("p=$p x=${p.x} y=$p.y")
+    println("nested ${"in ${a + 1} side"} done")
+    println("if ${if (a > 2) "big" else "small"} when ${when (b) { 4 -> "four"; else -> "other" }}")
+    println("null=$s len=${s?.length} elvis=${s ?: "dflt"}")
+    println("list=$l size=${l.size} first=${l[0]} sum=${l.sum()} map=${l.map { it * 2 }}")
+    println("dollar \$a and \${a} and $ alone and ${'$'}a")
+    println("tab[\t] quote[\"] backslash[\\] unicode[\u0041] nl-escaped[\\n]")
+    println("lambda ${ { x: Int -> x + 1 }(5) } call ${a.let { it * 10 }}")
+    println("char ${'a' + 1} ${'a'.code} ${"abc"[1]} str ${"abc".length}")
+    val name = "w"; println("$name$name ${name}s $name.length ${name.length}")
+    println("""raw $a ${a + 1} \n no escape \t""")
+    println("${1}${2}${3}" + "${"x"}" + '$' + "y")
+    val arr = arrayOf(1, 2); println("arr ${arr[0]} ${arr.size} ${arr.contentToString()}")
+    println("a" + 1 + 2 + 'c' + 1.5 + true + null + 2L + 1.5f)
+    println("" + 1 + 2 + "a" + 1 + 2)
+    println("é ß 日本 😀".length); println("\uD83D\uDE00" == "😀")
+}

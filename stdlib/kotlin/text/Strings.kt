@@ -37,7 +37,7 @@ public fun String.substring(startIndex: Int): String = substring(startIndex, len
 
 public fun String.substring(startIndex: Int, endIndex: Int): String {
     if (startIndex < 0 || endIndex > length || startIndex > endIndex) {
-        mini.internal.throwIndexOutOfBounds("begin $startIndex, end $endIndex, length $length")
+        throw StringIndexOutOfBoundsException("begin $startIndex, end $endIndex, length $length")
     }
     return stringSubstring(this, startIndex, endIndex)
 }
@@ -45,7 +45,7 @@ public fun String.substring(startIndex: Int, endIndex: Int): String {
 // The range test of substring(startIndex, endIndex), kept where a substring is not made (compiler/backend/src/opt/SubstrKey.kt): the same exception.
 internal fun String.checkSubstringRange(startIndex: Int, endIndex: Int) {
     if (startIndex < 0 || endIndex > length || startIndex > endIndex) {
-        mini.internal.throwIndexOutOfBounds("begin $startIndex, end $endIndex, length $length")
+        throw StringIndexOutOfBoundsException("begin $startIndex, end $endIndex, length $length")
     }
 }
 
@@ -145,7 +145,7 @@ public fun String.lastIndexOf(char: Char): Int {
 }
 
 public fun String.lastIndexOf(string: String): Int {
-    var i = length - string.length
+    var i = minOf(length - string.length, length - 1) /* (startIndex defaults to lastIndex: "abc".lastIndexOf("") is 2) */
     while (i >= 0) {
         if (regionMatches(i, string, 0, string.length)) return i
         i--

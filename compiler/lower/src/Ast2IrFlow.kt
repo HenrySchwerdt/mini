@@ -115,6 +115,15 @@ fun Ast2Ir.compoundAssign(e: BinaryExpr): IrExpression {
         return callOperator(info, target, listOf(convert(e.right)), unit, origin)
     }
     if (sym is VarSym && !sym.isField) {
+        val dp = delegatedLocals[sym]
+        if (dp != null) {
+            // `local += x` of a local delegated property: getValue, the operator, setValue
+            val op = callOperator(info, convert(left), listOf(convert(e.right)), irType(info.ret ?: lr.type), origin)
+            val call = IrCall(dp.setter ?: fail(left, "delegated property without setter"), sema.unitType)
+            call.origin = origin
+            call.arguments.add(op)
+            return call
+        }
         val v = varMap[sym] ?: fail(left, "variable " + sym.name + " is not declared in the IR")
         // a smart cast target (`var i: Int? ; i = 10; i += 1`) is read with its cast
         val got: IrExpression = if (lr.smart != null) convert(left) else IrGetValue(v, v.type, origin)
@@ -263,6 +272,23 @@ fun Ast2Ir.incDec(target0: Expr, inc: Boolean, prefix: Boolean, node: Expr, r: E
         return IrBlock(stmts, t, origin)
     }
     if (sym is VarSym && !sym.isField) {
+        val dp = delegatedLocals[sym]
+        if (dp != null) {
+            // `local++` / `--local` of a local delegated property
+            val stmts = ArrayList<IrStatement>()
+            val tmp = IrVariable("<unary>", irType(tr.type), false)
+            tmp.origin = "IR_TEMPORARY_VARIABLE"
+            tmp.parent = ctx?.fn
+            tmp.initializer = convert(target)
+            stmts.add(tmp)
+            val op = callOperator(info, getValue(tmp), emptyList(), irType(info.ret ?: t), origin)
+            val call = IrCall(dp.setter ?: fail(target, "delegated property without setter"), unit)
+            call.origin = origin
+            call.arguments.add(op)
+            stmts.add(call)
+            stmts.add(if (prefix) convert(target) else getValue(tmp))
+            return IrBlock(stmts, t, origin)
+        }
         val v = varMap[sym] ?: fail(target, "variable " + sym.name + " is not declared in the IR")
         val stmts = ArrayList<IrStatement>()
         val smartTarget = tr.smart != null

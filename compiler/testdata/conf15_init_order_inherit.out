@@ -1,0 +1,14 @@
+Base init
+Derived.show n=0 len=1
+Base tag init
+Derived init n=5 s=derived
+--
+P1 v=0
+C1 v=9
+--
+Shape init
+I am circle
+--
+First(3)
+Second(1,2)
+Third
