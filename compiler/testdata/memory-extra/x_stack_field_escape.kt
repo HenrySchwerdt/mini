@@ -1,4 +1,4 @@
-// REJECT M0204 + M0102: a stack object escapes into a field of a parameter (old content unknown)
+// REJECT M0102: an object of the default allocator is stored into a field of a parameter (old content unknown)
 @file:MemoryMode(Mode.Strict)
 
 package memory.extra.x_stack_field_escape

@@ -76,23 +76,23 @@ public operator fun <T> Set<T>.minus(elements: Sequence<T>): Set<T> {
 
 // ---- MutableCollection ------------------------------------------------------------------------------------------------------
 
-public operator fun <T> MutableCollection<in T>.plusAssign(elements: Array<T>) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.plusAssign(elements: Array<T>) {
     this.addAll(elements)
 }
 
-public operator fun <T> MutableCollection<in T>.plusAssign(elements: Sequence<T>) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.plusAssign(elements: Sequence<T>) {
     this.addAll(elements)
 }
 
-public operator fun <T> MutableCollection<in T>.minusAssign(elements: Iterable<T>) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.minusAssign(elements: Iterable<T>) {
     this.removeAll(elements)
 }
 
-public operator fun <T> MutableCollection<in T>.minusAssign(elements: Array<T>) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.minusAssign(elements: Array<T>) {
     this.removeAll(elements)
 }
 
-public operator fun <T> MutableCollection<in T>.minusAssign(elements: Sequence<T>) {
+@mini.memory.Mutates public operator fun <T> MutableCollection<in T>.minusAssign(elements: Sequence<T>) {
     this.removeAll(elements)
 }
 
@@ -122,30 +122,30 @@ public operator fun <K, V> Map<out K, V>.minus(keys: Sequence<K>): Map<K, V> {
     return result
 }
 
-public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pairs: Iterable<Pair<K, V>>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pairs: Iterable<Pair<K, V>>) {
     for (p in pairs) put(p.first, p.second)
 }
 
-public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pairs: Array<out Pair<K, V>>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pairs: Array<out Pair<K, V>>) {
     for (p in pairs) put(p.first, p.second)
 }
 
-public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pairs: Sequence<Pair<K, V>>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<in K, in V>.plusAssign(pairs: Sequence<Pair<K, V>>) {
     for (p in pairs) put(p.first, p.second)
 }
 
-public operator fun <K, V> MutableMap<in K, in V>.plusAssign(map: Map<K, V>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<in K, in V>.plusAssign(map: Map<K, V>) {
     putAll(map)
 }
 
-public operator fun <K, V> MutableMap<K, V>.minusAssign(keys: Iterable<K>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<K, V>.minusAssign(keys: Iterable<K>) {
     for (k in keys) remove(k)
 }
 
-public operator fun <K, V> MutableMap<K, V>.minusAssign(keys: Array<out K>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<K, V>.minusAssign(keys: Array<out K>) {
     for (k in keys) remove(k)
 }
 
-public operator fun <K, V> MutableMap<K, V>.minusAssign(keys: Sequence<K>) {
+@mini.memory.Mutates public operator fun <K, V> MutableMap<K, V>.minusAssign(keys: Sequence<K>) {
     for (k in keys) remove(k)
 }

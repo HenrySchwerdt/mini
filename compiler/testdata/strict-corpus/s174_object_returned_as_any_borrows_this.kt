@@ -1,4 +1,4 @@
-// REJECT M0109: an anonymous object returned as `Any` borrows the receiver; `Any` may hold a Strict value, so the caller would own it
+// REJECT M0101: an anonymous object returned as `Any` borrows the receiver (strict-5d: a loan of it, no longer M0109); using it after the receiver was freed is a use after free
 @file:MemoryMode(Mode.Strict)
 
 import mini.memory.*
