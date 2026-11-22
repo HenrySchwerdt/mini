@@ -251,7 +251,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return false
     }
 
-    override fun put(@TakesOwnership key: K, @TakesOwnership value: V): V? {
+    @mini.memory.Mutates override fun put(@TakesOwnership key: K, @TakesOwnership value: V): @mini.memory.Owned V? {
         if (key != null && key === lastKey) {
             val c = lastNode!!
             val old = c.value
@@ -344,7 +344,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         table = newTab
     }
 
-    override fun remove(key: K): V? {
+    @mini.memory.Mutates override fun remove(key: K): @mini.memory.Owned V? {
         val node = removeNode(key) ?: return null
         return node.value
     }
@@ -372,6 +372,21 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         return null
     }
 
+    /** LinkedHashMap in access order: the entry of [key] becomes the youngest */
+    @Suppress("UNCHECKED_CAST")
+    internal fun moveToEnd(key: Any?) {
+        val e = findNode(key) ?: return
+        val n = e as LinkedNode<K, V>
+        if (n === tail) return
+        unlink(n)
+        val t = tail
+        if (t == null) head = n else {
+            n.before = t
+            t.after = n
+        }
+        tail = n
+    }
+
     private fun unlink(n: HashNode<K, V>) {
         val e = n as LinkedNode<K, V>
         val b = e.before
@@ -382,7 +397,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         e.after = null
     }
 
-    override fun clear() {
+    @mini.memory.Mutates override fun clear() {
         val n = refArrayLength(table)
         var i = 0
         while (i < n) {
@@ -396,7 +411,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
         lastNode = null
     }
 
-    override fun putAll(from: Map<out K, V>) {
+    @mini.memory.Mutates override fun putAll(from: Map<out K, V>) {
         // java.util.HashMap#putMapEntries: an empty table is sized from the argument, a used one doubles ahead of the insertions
         val s = from.size
         if (s > 0) {
@@ -449,7 +464,7 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             return current!! // read again: a result borrowed from this iterator, not from the local
         }
 
-        override fun remove() {
+        @mini.memory.Mutates override fun remove() {
             val c = current ?: mini.internal.throwIllegalState(null)
             current = null
             map.removeNode(c.key)
@@ -500,12 +515,12 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
                 override fun hasNext(): Boolean = it.hasNext()
                 @ReturnsBorrowed
                 override fun next(): MutableMap.MutableEntry<K, V> = it.next()
-                override fun remove() = it.remove()
+                @mini.memory.Mutates override fun remove() = it.remove()
             }
 
-        override fun add(element: MutableMap.MutableEntry<K, V>): Boolean = mini.internal.throwUnsupportedOperation(null)
+        @mini.memory.Mutates override fun add(element: MutableMap.MutableEntry<K, V>): Boolean = mini.internal.throwUnsupportedOperation(null)
 
-        override fun clear() = map.clear()
+        @mini.memory.Mutates override fun clear() = map.clear()
 
         override fun contains(element: MutableMap.MutableEntry<K, V>): Boolean {
             val n = map.findNode(element.key) ?: return false
@@ -522,16 +537,16 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             override fun hasNext(): Boolean = it.hasNext()
             @ReturnsBorrowed
             override fun next(): K = it.next().key
-            override fun remove() = it.remove()
+            @mini.memory.Mutates override fun remove() = it.remove()
         }
 
-        override fun add(element: K): Boolean = mini.internal.throwUnsupportedOperation(null)
+        @mini.memory.Mutates override fun add(element: K): Boolean = mini.internal.throwUnsupportedOperation(null)
 
-        override fun clear() = map.clear()
+        @mini.memory.Mutates override fun clear() = map.clear()
 
         override fun contains(element: K): Boolean = map.containsKey(element)
 
-        override fun remove(element: K): Boolean = map.removeNode(element) != null
+        @mini.memory.Mutates override fun remove(element: K): Boolean = map.removeNode(element) != null
     }
 
     private class ValueCollection<K, V>(private val map: HashMap<K, V>) : AbstractMutableCollection<V>() {
@@ -543,12 +558,12 @@ public open class HashMap<K, V> : AbstractMutableMap<K, V> {
             override fun hasNext(): Boolean = it.hasNext()
             @ReturnsBorrowed
             override fun next(): V = it.next().value
-            override fun remove() = it.remove()
+            @mini.memory.Mutates override fun remove() = it.remove()
         }
 
-        override fun add(element: V): Boolean = mini.internal.throwUnsupportedOperation(null)
+        @mini.memory.Mutates override fun add(element: V): Boolean = mini.internal.throwUnsupportedOperation(null)
 
-        override fun clear() = map.clear()
+        @mini.memory.Mutates override fun clear() = map.clear()
     }
 }
 
@@ -563,5 +578,37 @@ public open class LinkedHashMap<K, V> : HashMap<K, V> {
 
     public constructor(original: Map<out K, V>) : super(true, 16) {
         putAll(original)
+    }
+
+    private var accessOrder: Boolean = false
+
+    /** `LinkedHashMap(16, 0.75f, true)`: iteration order is the order of access (the least recently used entry first) */
+    public constructor(initialCapacity: Int, loadFactor: Float, accessOrder: Boolean) : this(initialCapacity, loadFactor) {
+        this.accessOrder = accessOrder
+    }
+
+    /** Called after an insertion of a new key with the eldest entry: true removes it (the LRU cache idiom). */
+    protected open fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean = false
+
+    override fun get(key: K): V? {
+        val v = super.get(key)
+        if (accessOrder && (v != null || containsKey(key))) moveToEnd(key)
+        return v
+    }
+
+    override fun put(key: K, value: V): V? {
+        val before = size
+        val old = super.put(key, value)
+        if (size > before) {
+            val eldest = head
+            if (eldest != null && removeEldestEntry(eldest)) remove(eldest.key)
+        } else if (accessOrder) {
+            moveToEnd(key)
+        }
+        return old
+    }
+
+    override fun putAll(from: Map<out K, V>) {
+        for (e in from.entries) put(e.key, e.value)
     }
 }

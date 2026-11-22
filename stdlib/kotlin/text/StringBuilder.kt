@@ -21,7 +21,7 @@ import mini.internal.sbToString
  * know it; length / get / subSequence implement the interface. Values of that type are a String or an object of a class that
  * implements the interface (runtime mk_cs_*). Everything else follows kotlin.text.StringBuilder.
  */
-public class StringBuilder : Appendable {
+public class StringBuilder : Appendable, Comparable<StringBuilder> {
     private val buf: Any = sbNew()
 
     public constructor()
@@ -143,6 +143,19 @@ public class StringBuilder : Appendable {
             i++
             j--
         }
+        // a surrogate pair stays a pair, in its original order (as java.lang.StringBuilder.reverse)
+        var k = 0
+        val n = length
+        while (k < n - 1) {
+            val lo = sbCharAt(buf, k).code
+            val hi = sbCharAt(buf, k + 1).code
+            if (lo in 0xDC00..0xDFFF && hi in 0xD800..0xDBFF) {
+                sbSetCharAt(buf, k, hi.toChar())
+                sbSetCharAt(buf, k + 1, lo.toChar())
+                k++
+            }
+            k++
+        }
         return this
     }
 
@@ -254,6 +267,8 @@ public class StringBuilder : Appendable {
     public fun toCharArray(): CharArray = toString().toCharArray()
 
     override fun toString(): String = sbToString(buf)
+
+    override fun compareTo(other: StringBuilder): Int = toString().compareTo(other.toString())
 }
 
 public fun StringBuilder.append(vararg value: String?): StringBuilder {

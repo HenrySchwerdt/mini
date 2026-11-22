@@ -91,8 +91,23 @@ static inline __attribute__((always_inline)) uintptr_t mk_sp(void) { uintptr_t s
 
 /* where the queueing starts: the middle of this thread's stack (the part below it stays free for the chain of disposes that
  * is already running), or a fixed distance below the current frame where the platform does not say */
+#if defined(__SANITIZE_THREAD__)
+#define MK_HAS_TSAN 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define MK_HAS_TSAN 1
+#endif
+#endif
 MK_NOINLINE static uintptr_t release_floor_init(void) {
     uintptr_t sp = MK_SP(), lo = 0, size = 0;
+#ifdef MK_HAS_TSAN
+    /* ThreadSanitizer records every call in a shadow stack and replays the whole of it into its event trace each time a trace part
+     * fills up: a dispose chain nested over half of an 8 MB stack (tens of thousands of frames, each larger than usual under the
+     * instrumentation) makes it quadratic (minutes) and, with several threads doing it, overflows its trace bookkeeping (SEGV inside the
+     * runtime of clang's TSan, tsan::release_deep_threads). Queue earlier there: a fixed 256 KB of nesting, as on platforms that
+     * do not report their stack. */
+    return sp > ((uintptr_t)256 << 10) ? sp - ((uintptr_t)256 << 10) : 0;
+#endif
 #if defined(_WIN32)
     ULONG_PTR l = 0, h = 0;
     GetCurrentThreadStackLimits(&l, &h);

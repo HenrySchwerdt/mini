@@ -1,0 +1,26 @@
+{a=[apple, avocado, apricot], b=[banana, blueberry], c=[cherry]}
+{5=[APPLE], 7=[AVOCADO, APRICOT], 6=[BANANA, CHERRY], 9=[BLUEBERRY]}
+{apple=5, avocado=7, banana=6, blueberry=9, cherry=6, apricot=7}
+{a=apricot, b=blueberry, c=cherry}
+{apple=e, avocado=o, banana=a, blueberry=y, cherry=y, apricot=t}
+([avocado, blueberry, apricot], [apple, banana, cherry])
+[[1, 2, 3], [4, 5, 6], [7, 8, 9], [10]]
+[[1, 2, 3], [2, 3, 4], [3, 4, 5], [4, 5, 6]]
+[[1, 2, 3], [3, 4, 5], [5, 6, 7], [7]]
+[(1, a), (2, b)]
+[a1, b2, c3]
+16
+321
+[0, 1, 3, 6, 10]
+[1, 2, 6, 24]
+-4
+{5=1, 7=2, 6=2, 9=1}
+([1, 2], [a, b])
+[(1, 2), (2, 3), (3, 4)]
+[a, p, v, b, l, c, h]
+[1, 2, 3]
+3
+(true, true)
+[avocado, apricot]
+[avocado, banana]
+2

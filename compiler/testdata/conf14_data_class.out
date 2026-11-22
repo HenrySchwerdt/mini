@@ -1,0 +1,17 @@
+User(id=1, name=ann, tags=[a], email=null)
+User(id=1, name=bob, tags=[a], email=b@x)
+true
+false
+true
+1 bob [a] b@x
+ann1
+Pt(x=1.0, y=5.0)
+false
+2
+1
+Meters(v=5.5)
+[ann, bob]
+ann
+42
+true
+User(id=4, name=n, tags=[x, y, z], email=null)

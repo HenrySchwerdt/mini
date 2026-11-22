@@ -186,6 +186,7 @@ object Summaries {
                 is MExpr.Local -> e.local.id in recvCarriers
                 is MExpr.Move -> carriesReceiver(e.target)
                 is MExpr.Lambda -> e.captures.any { it.id == rid || it.id in recvCarriers }
+                is MExpr.New -> e.captures.any { it.id == rid || it.id in recvCarriers }
                 is MExpr.Call -> {
                     val sum = of(e.fn)
                     sum != null && sum.carries.any { i ->
@@ -291,7 +292,10 @@ object Summaries {
                     // (an object of a Managed class, e.g. the `object : Sequence` of `sequence { }`, only holds the closure like a function value: the result carries it)
                     val nw = s.value as? MExpr.New
                     val owner = nw != null && (nw.cls == null || nw.cls.mode == MemMode.Strict)
-                    if (!owner && !fn.ret.type.tracked) {
+                    // strict-5d: an instance of a local or anonymous class returned directly borrows what it captures, like a returned lambda: the
+                    // caller owns the object (it is reference counted) and holds a loan of the receiver / arguments it borrows
+                    val borrowing = nw != null && nw.captures.isNotEmpty() && owner
+                    if (!owner && !fn.ret.type.tracked || borrowing) {
                         carry += cs
                         if (carriesReceiver(s.value)) carry += RECEIVER
                     } else for (i in cs) esc.putIfAbsent(i, "is captured by an object that is returned")

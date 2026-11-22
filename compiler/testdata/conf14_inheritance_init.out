@@ -1,0 +1,17 @@
+Base init d
+Base init2
+compute
+Derived init 5
+Derived.hello Base.hello derived
+Base init default
+Base init2
+Base secondary
+Third y=10
+Third secondary
+10
+Base init default
+Base init2
+Base secondary
+Base.hello base
+Shape init Sq 0
+Sq 4

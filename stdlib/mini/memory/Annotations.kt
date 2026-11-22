@@ -52,3 +52,13 @@ annotation class ThreadBoundary
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.BINARY)
 annotation class NativeSymbol(val name: String)
+
+/**
+ * The function may change the collection (or other container) it is called on so that elements that were read from it earlier are gone or
+ * replaced: `clear`, `remove`, `removeAt`, `set`, `add`, `put`, `sort`... Every loan of an element of the container (`xs[i]`, the element an
+ * iterator returned, the parameter of a lambda over it) ends at such a call, and a use of it afterwards is M0101 (docs/memory-model.md,
+ * round strict-5b). The standard library's mutating members and extensions carry it; a Strict class with a container of its own marks its mutators.
+ */
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_SETTER)
+@Retention(AnnotationRetention.BINARY)
+annotation class Mutates

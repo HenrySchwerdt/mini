@@ -44,6 +44,27 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
     private var libSummaries: Map<String, FnSummary> = emptyMap()
     private val bodies = HashMap<IrFunction, List<MStmt>?>()
 
+    // what the checker decided about the producer's own nodes, handed back to the code generation (see [publishFlags])
+    private val recLocals = ArrayList<MExpr.Local>()
+    private val recNews = ArrayList<MExpr.New>()
+    private val recCalls = ArrayList<MExpr.Call>()
+    private val recMLocals = ArrayList<MLocal>()
+
+    /**
+     * Copies the checker's results onto the IR the code generation reads (docs/memory-model.md, "Default allocator"): the reads that move an
+     * owner out of a local, the allocation sites whose object has an owner, the calls whose owned result nobody binds, the locals that own
+     * a default-allocated object. Nodes the checker did not reach keep their defaults (the old behaviour: an auto object, no drop).
+     */
+    fun publishFlags() {
+        for (l in recLocals) {
+            val g = l.origin as? IrGetValue ?: continue
+            if (l.moves) g.movedOwner = l.local.origin as? IrValueDeclaration
+        }
+        for (n in recNews) if (n.escapes) (n.origin as? IrConstructorCall)?.escapes = true
+        for (c in recCalls) if (c.ownedTemp) (c.origin as? IrCall)?.ownedTemp = true
+        for (l in recMLocals) if (l.dropOwner && !l.aliasSeen) (l.origin as? IrVariable)?.dropOwner = true
+    }
+
     /** Functions that could not be lowered (name -> reason); the checker skips them. */
     val failures = ArrayList<String>()
     val strictFailures = ArrayList<String>()
@@ -69,7 +90,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val b = memoryBodyOf(f) ?: return null
         val saved = curFile
         curFile = fileOf(f) ?: saved
-        val r = try { Lowerer(f).lowerFunctionBody(b) } catch (e: Exception) { null } finally { curFile = saved }
+        val r = try { Lowerer(f, false).lowerFunctionBody(b) } catch (e: Exception) { null } finally { curFile = saved }
         bodies[f] = r
         return r
     }
@@ -390,7 +411,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val nullable = t.isMarkedNullable()
         val fq = t.classFqName
         val cls = t.classOrNull
-        if (fq == null || cls == null) return MType(TK.Other, nullable, null, null, null, "Any")
+        if (fq == null || cls == null) {
+            val any = MType(TK.Other, nullable, null, null, null, "Any")
+            if (t is TypeParamType) any.typeParam = true
+            return any
+        }
         val prim = PRIMS[fq]
         if (prim != null) return MType(TK.Prim, nullable, null, null, null, prim)
         if (fq == "kotlin.String") return MType(TK.Str, nullable, null, null, null, "String")
@@ -408,8 +433,17 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val singleton = cls.kind == IrClassKind.ENUM_CLASS || cls.kind == IrClassKind.ENUM_ENTRY || cls.kind == IrClassKind.OBJECT
         // a value class around a plain value (`value class Id(val n: Int)`) is a value: copies have no identity to own, free or move
         val plainValue = cls.isValue && mc.fields.all { !it.type.tracked }
-        return if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton && !plainValue) MType(TK.Strict, nullable, mc, null, fq, display)
-        else MType(TK.Managed, nullable, mc, null, fq, display)
+        if (mc.mode == MemMode.Strict && fileOf(cls) != null && !singleton && !plainValue) return MType(TK.Strict, nullable, mc, null, fq, display)
+        val managed = MType(TK.Managed, nullable, mc, null, fq, display)
+        // a collection (iterator, sublist...) of tracked values: reading an element of it is a loan (strict-5b)
+        if (t is ClassType && fq.startsWith("kotlin.collections.")) {
+            for (a in t.args) {
+                val at = a.type ?: continue
+                val m = mapType(at)
+                if (m.tracked || m.holds) managed.holds = true
+            }
+        }
+        return managed
     }
 
     // ---- functions -------------------------------------------------------------------------------
@@ -423,6 +457,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val ex = paramLocals[p]
         if (ex != null) return ex
         val l = newLocal(name, mapType(type), pos(p))
+        l.origin = p
         paramLocals[p] = l
         return l
     }
@@ -481,6 +516,9 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             throwsKnown = external && name in THROWERS,
             cFree = if (f.isExternal && file != null) ownedFree(f) else null,
         )
+        m.suspendBody = f.isSuspend
+        m.mutates = mutatesOf(f)
+        m.userCode = file != null && isUserFile(file)
         funs[f] = m
         if (f.body != null) m.bodyProvider = { bodyOf(f) } else if (libSummaries.isNotEmpty()) m.storedSummary = libSummaries[summaryKey(m)]
         // the standard library marks the parameters its functions store with `@TakesOwnership`; the array-store intrinsics store their value
@@ -507,6 +545,13 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             m.virtualTargets = { overridersOf(f).map { funOf(it) } }
         }
         return m
+    }
+
+    /** `@Mutates` on [f] or on a function it overrides (the call through an interface or a base class). */
+    private fun mutatesOf(f: IrFunction): Boolean {
+        if (hasAnnotation(f.annotations, MUTATES)) return true
+        if (f is IrSimpleFunction) for (o in f.overridden) if (mutatesOf(o)) return true
+        return false
     }
 
     /** Does every `return` of [f] (and its expression body) yield the dispatch receiver itself, and is there at least one? */
@@ -546,7 +591,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val body = memoryBodyOf(f) ?: return null
         val m = funOf(f)
         return try {
-            val lw = Lowerer(f)
+            val lw = Lowerer(f, true)
             val b = lw.lowerFunctionBody(body)
             m.body = b
             MFunction(m, b, true, curFile?.path ?: "")
@@ -564,7 +609,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         val captures = LinkedHashSet<MLocal>()
     }
 
-    private inner class Lowerer(private val fn: IrFunction) {
+    private inner class Lowerer(private val fn: IrFunction, private val record: Boolean) {
         private val locals = HashMap<IrValueDeclaration, MLocal>()
         private val owner = HashMap<Int, Int>() // local id -> capture frame depth at creation
         private val subst = HashMap<IrValueDeclaration, MExpr>()
@@ -585,8 +630,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 l = paramLocals[v]
                 if (l == null) {
                     l = newLocal(v.name, mapType(v.type), pos(v))
+                    l.origin = v
                     l.isVar = (v as? IrVariable)?.isVar == true
+                    l.dropCapable = v is IrVariable
                     owner[l.id] = frames.size
+                    if (record) recMLocals.add(l)
                 }
                 locals[v] = l
             }
@@ -602,9 +650,12 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
 
         private fun declareLocal(v: IrValueDeclaration, name: String = v.name): MLocal {
             val l = paramLocals[v] ?: newLocal(name, mapType(v.type), pos(v))
+            l.origin = v
             l.isVar = (v as? IrVariable)?.isVar == true
+            l.dropCapable = v is IrVariable
             owner[l.id] = frames.size
             locals[v] = l
+            if (record && v is IrVariable) recMLocals.add(l)
             return l
         }
 
@@ -709,6 +760,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 }
             } else {
                 val res = scopeResults[id]
+                if (!isUnit && !isNothing && res == null && mapType(value.type).tracked) {
+                    // the result of an escaping lambda of its own (not an inline scope): its unit analyses the returned owner
+                    out.add(MStmt.Return(expr(value, out), id, pos(e)))
+                    return
+                }
                 if (isUnit || isNothing || res == null) {
                     stmtExpr(value, out)
                 } else {
@@ -763,7 +819,17 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 stmtExpr(e, out)
                 return
             }
-            out.add(MStmt.Assign(target, expr(e, out), pos(e)))
+            val x = expr(e, out)
+            // the last read of a compiler temporary (the left side of an elvis, `a ?: b`) hands its owner to the result of the `when`
+            if (x is MExpr.Local && x.type.tracked) {
+                val g = x.origin as? IrGetValue
+                val o = g?.owner
+                if (o is IrVariable && o.origin == "IR_TEMPORARY_VARIABLE") {
+                    out.add(MStmt.Assign(target, MExpr.Move(x, true, pos(e)), pos(e)))
+                    return
+                }
+            }
+            out.add(MStmt.Assign(target, x, pos(e)))
         }
 
         private fun whenInto(w: IrWhen, out: MutableList<MStmt>, target: MLocal?) {
@@ -819,7 +885,11 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 is IrConst -> return if (e.value == null) MExpr.Null(mapType(e.type), pos(e)) else opaque(e.type, e, lit = e.value is String)
                 is IrGetValue -> {
                     val d = e.owner
-                    return subst[d] ?: MExpr.Local(local(d), pos(e))
+                    val sub = subst[d]
+                    // every read is a node of its own (the checker records on it whether it moves the owner out)
+                    if (sub is MExpr.Local) return MExpr.Local(sub.local, sub.pos).also { it.origin = e; if (record) recLocals.add(it) }
+                    if (sub != null) return sub
+                    return MExpr.Local(local(d), pos(e)).also { it.origin = e; if (record) recLocals.add(it) }
                 }
                 is IrTypeOperatorCall -> {
                     if (e.operator == IrTypeOperator.INSTANCEOF || e.operator == IrTypeOperator.NOT_INSTANCEOF) {
@@ -954,7 +1024,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             }
             frames.removeAt(frames.size - 1)
             lambdaFns.removeAt(lambdaFns.size - 1)
-            return MExpr.Lambda(id, params, body, frame.captures.toList(), pos(fe), f in childFns)
+            return MExpr.Lambda(id, params, body, frame.captures.toList(), pos(fe), f in childFns, f.isSuspend)
         }
 
         /**
@@ -1327,7 +1397,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             if (callee.origin == "LOCAL_FUNCTION_FOR_LAMBDA" || callee.origin == "LOCAL_FUNCTION" || callee.visibility == "local") {
                 for (v in closureInfo().capturesOf(callee)) margs.add(MExpr.Local(local(v), pos(c)))
             }
-            return MExpr.Call(m, recv, margs, mapType(c.type), pos(c))
+            return MExpr.Call(m, recv, margs, mapType(c.type), pos(c)).also { it.origin = c; if (record) recCalls.add(it) }
         }
 
         private fun newExpr(c: IrConstructorCall, out: MutableList<MStmt>): MExpr {
@@ -1357,7 +1427,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             val caps = if (cls.visibility == "local") closureInfo().capturesOf(cls).map { local(it) } else emptyList()
             // an object expression may carry no position of its own: the class declaration stands in
             val np = pos(c).let { if (it.line > 0 || caps.isEmpty()) it else pos(cls) }
-            return MExpr.New(m, mc, margs, mapType(c.type), np, caps)
+            return MExpr.New(m, mc, margs, mapType(c.type), np, caps).also { it.origin = c; if (record) recNews.add(it) }
         }
 
         /** Calls with lambda arguments read like code (use, context, run, let, repeat, thread boundaries...). */
@@ -1428,14 +1498,38 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
             }
             val once = name in ONCE_INLINE
             var res: MLocal? = null
+            // `x.apply { }` / `x.also { }` return their receiver: a tracked receiver is evaluated once, into a temporary the lambda borrows and the result moves out of
+            var recvTmp: MLocal? = null
+            if ((name == "also" || name == "apply") && recvVal != null && recvVal.type.tracked) {
+                recvTmp = tmp(recvVal.type, p)
+                out.add(MStmt.Decl(recvTmp, recvVal, MAnnot.NONE, p))
+            }
             for (li in lamIdx) {
-                val binds: List<MExpr?> = if (name == "with") listOf(vals.firstOrNull())
+                var binds: List<MExpr?> = if (name == "with") listOf(vals.firstOrNull())
+                else if (recvTmp != null) listOf<MExpr?>(MExpr.Local(recvTmp, p))
                 else if (recvVal != null && name in RECEIVER_INLINE) listOf(recvVal)
                 else emptyList()
+                // `xs.forEach { b -> }`: the tracked parameters of a lambda over a collection are loans of its elements (strict-5b)
+                if (binds.isEmpty() && recvVal is MExpr.Local && recvVal.type.holds) binds = elementBinds(args[li] as IrFunctionExpression, recvVal, p)
                 res = scope(if (once) ScopeKind.Once else ScopeKind.Repeat, args[li] as IrFunctionExpression, out, null, emptyList(), binds, p)
             }
+            if (recvTmp != null) return MExpr.Move(MExpr.Local(recvTmp, p), true, p)
             if (name == "also" || name == "apply" || name == "onEach") return recvVal ?: opaque(c.type, c)
             return resultOf(if (once) res else null, c, p)
+        }
+
+        /** The values the parameters of an inline lambda over the collection [coll] are bound to: an element read for every tracked parameter. */
+        private fun elementBinds(lam: IrFunctionExpression, coll: MExpr.Local, p: Pos): List<MExpr?> {
+            val out = ArrayList<MExpr?>()
+            for (q in lam.function.parameters) {
+                if (q.kind == IrParameterKind.Context) continue
+                val qt = mapType(q.type)
+                if (qt.tracked) {
+                    val f = MFun("<element>", MemMode.Managed, emptyList(), MReturn(qt), external = true)
+                    out.add(MExpr.Call(f, coll, emptyList(), qt, p))
+                } else out.add(null)
+            }
+            return out
         }
 
         private fun resultOf(res: MLocal?, c: IrCall, p: Pos): MExpr {
@@ -1458,7 +1552,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
                 } else margs.add(v)
                 i++
             }
-            return MExpr.Call(m, recv, margs, mapType(c.type), pos(c))
+            return MExpr.Call(m, recv, margs, mapType(c.type), pos(c)).also { it.origin = c; if (record) recCalls.add(it) }
         }
     }
 
@@ -1467,6 +1561,7 @@ class MemoryFacts(private val isUserFile: (IrFile) -> Boolean) {
         private const val JAVA_PKG = "jav" + "a."
         private const val REFLECT_PREFIX = "kotlin." + "reflect"
         const val OWNED = "mini.memory.Owned"
+        const val MUTATES = "mini.memory.Mutates"
         const val BORROWED = "mini.memory.Borrowed"
         const val MEMORY_MODE = "mini.memory.MemoryMode"
         const val ALLOCATED_BY = "mini.memory.AllocatedBy"

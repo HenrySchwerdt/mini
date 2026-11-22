@@ -1,0 +1,20 @@
+finally 0
+caught zero
+finally 1
+ok1
+g finally 2
+1
+body 1
+fin 1
+fin 2
+fin 3
+0
+inner finally
+outer caught inner 7
+second cause=inner
+done
+cleanup
+a
+true
+java.lang.Exception: top
+MyEx: m

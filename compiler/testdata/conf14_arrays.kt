@@ -1,0 +1,61 @@
+fun main() {
+    val a = arrayOf(1, 2, 3)
+    println(a.size + a.sum())
+    val m = Array(3) { i -> IntArray(3) { j -> i * j } }
+    println(m.joinToString { it.joinToString("") })
+    println(m[2][2])
+    val b = a.copyOf(5)
+    println(b.toList())
+    println(a.copyOfRange(1, 3).toList())
+    println(a.reversedArray().toList())
+    println(a.contentToString())
+    println(a.contentEquals(arrayOf(1, 2, 3)))
+    println(intArrayOf(5, 3, 9).sortedArray().toList())
+    println(intArrayOf(5, 3, 9).max() to intArrayOf(5, 3, 9).min())
+    val ca = CharArray(3) { 'a' + it }
+    println(String(ca))
+    println(ca.concatToString())
+    val ba = byteArrayOf(1, 2, 3)
+    println(ba.map { it * 2 })
+    ba[0] = (ba[0] + 127).toByte()
+    println(ba[0])
+    val la = LongArray(3) { it * 1_000_000_000_000L }
+    println(la.sum())
+    val da = doubleArrayOf(1.5, 2.5)
+    println(da.average() to da.sum())
+    val ba2 = BooleanArray(3)
+    ba2[1] = true
+    println(ba2.toList())
+    val sa = arrayOfNulls<String>(2)
+    sa[0] = "x"
+    println(sa.toList())
+    println(a.indexOf(2) to a.contains(9))
+    println(a.filter { it > 1 } + a.map { it * 2 })
+    println(a.fold(0) { s, x -> s + x })
+    for ((i, x) in a.withIndex()) print("$i$x ")
+    println()
+    println(a.asList().subList(0, 2))
+    val aa = arrayOf(arrayOf(1, 2), arrayOf(3))
+    println(aa.flatten())
+    println(aa.sumOf { it.size })
+    println(a.fill2())
+    println(intArrayOf(1, 2, 3).fill(0).let { "ok" })
+    val ia = IntArray(4)
+    ia.fill(7, 1, 3)
+    println(ia.toList())
+    println(intArrayOf(1, 2, 3, 4).slice(1..2))
+    println((intArrayOf(1, 2) + intArrayOf(3)).toList())
+    println(arrayOf("b", "a").sortedArray().toList())
+    println(arrayOf("b", "a").apply { sort() }.toList())
+    println(a.take(2) + a.drop(2))
+    println(a.last() to a.first())
+    println(emptyArray<Int>().size)
+    println(IntArray(3) { it }.reversed())
+    println(intArrayOf(3, 4).asSequence().map { it + 1 }.toList())
+    val grid = Array(2) { CharArray(2) { '.' } }
+    grid[1][0] = '#'
+    println(grid.joinToString("/") { String(it) })
+    println(a.joinToString("+", "(", ")"))
+}
+
+fun Array<Int>.fill2(): Int { fill(1); return sum() }

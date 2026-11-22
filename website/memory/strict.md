@@ -47,7 +47,7 @@ The two modes mix in one program. Managed objects seen from Strict code are *bor
 | Strict passes an untracked value (`Int`, `String`, Managed object) to Managed code | allowed |
 | Strict passes a tracked value to a Managed function or a library function | allowed when the callee only borrows it: the compiler infers this from the callee's body (`println`, `toString`, `StringBuilder.append`, scope functions, your own Managed helpers) and stores the result in precompiled libraries. If the callee keeps the value (stores it in a field or collection, returns it), [M0110](/reference/diagnostics/M0110) names the reason. `@Borrowed` on the parameter is still an explicit promise |
 | Strict stores a tracked value in a field of a Managed class | [M0110](/reference/diagnostics/M0110) |
-| Strict puts a tracked value in a Kotlin collection | [M0110](/reference/diagnostics/M0110) |
+| Strict puts a tracked value in a Kotlin collection | allowed for an owner of the default allocator (the collection keeps its own count); [M0110](/reference/diagnostics/M0110) for objects of `Heap`, `Pool`, `Arena` and for borrowed parameters |
 | Managed calls a Strict function with `@Owned` parameters or an owning return | [M0110](/reference/diagnostics/M0110): Managed code cannot keep the promise. Write a Strict wrapper that frees internally |
 
 A mixed program, which is built and run natively in CI:
@@ -58,11 +58,11 @@ A mixed program, which is built and run natively in CI:
 
 `Counter` is Managed, so it has no obligations; `Vec` is a Strict class, but it never escapes and is only passed to a borrowed parameter, so no allocator is needed.
 
-Putting tracked values into collections is rejected today:
+Putting a value of an explicit allocator into a collection is rejected:
 
 <<< @/samples/memory/collection_boundary.kt{kotlin}
 
-This is [M0110](/reference/diagnostics/M0110). Collections of owned values are not supported yet; see [Fields and containers](./fields).
+This is [M0110](/reference/diagnostics/M0110): the `Heap` object is freed by `free()` whatever the list holds. An object of the default allocator would be counted by the list; see [Fields and containers](./fields).
 
 ## Strict code that is not allocator-heavy
 

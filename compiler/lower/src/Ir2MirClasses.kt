@@ -537,9 +537,9 @@ private fun Ir2Mir.buildClass0(info: ClassInfo): MirClass {
         }
         for (n in functionSupertypes(c)) {
             val impl = invokeImpl(c, n)
-            if (impl == null && c.modality != IrModality.ABSTRACT) unsupported(c, "class '${c.name}' implements a function type without an invoke function")
+            if (impl == null && c.modality != IrModality.ABSTRACT && c.kind != IrClassKind.ENUM_CLASS) unsupported(c, "class '${c.name}' implements a function type without an invoke function")
             funIfaces += functionInterface(n).cName
-            // an abstract class leaves the invoke to its subclasses
+            // an abstract class (or an enum whose entries have bodies) leaves the invoke to its subclasses
             itables = itables + MirItable(functionInterface(n).cName, listOf(if (impl == null) null else erasedInvoke(impl, n)))
         }
         // `class C : suspend () -> Unit`: `c is SuspendFunction0<*>` holds (the marker of the function objects of suspend lambdas)

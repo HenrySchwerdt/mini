@@ -1,0 +1,18 @@
+[RED, GREEN, BLUE]
+[RED, GREEN, BLUE]
+#00ff00
+2
+true
+-1
+BLUEBLUE
+no PINK
+[+7, *12]
+[LOW, MID, HIGH]
+MID
+{LOW=0, MID=10, HIGH=20}
+true
+[MID, HIGH]
+true
+{LOW=3, MID=3, HIGH=4}
+2
+RED

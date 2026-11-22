@@ -418,6 +418,12 @@ internal class NamedPred(val kind: String, val negate: Boolean, val ignoreCase: 
         return if (negate) !r else r
     }
 
+    /** False for a property name `base` does not know: the parser rejects it when the pattern is compiled, as the JVM does. */
+    fun isKnown(): Boolean {
+        try { base('a') } catch (e: IllegalArgumentException) { return false }
+        return true
+    }
+
     private fun base(c: Char): Boolean {
         return when (kind) {
             "d", "Digit", "Nd", "N", "IsDigit" -> c in '0'..'9'
@@ -1174,7 +1180,9 @@ internal class RegexParser(val pattern: String, options: Set<RegexOption>) {
         if (name.startsWith("Is") && name != "IsAlphabetic" && name != "IsLetter" && name != "IsDigit" && name != "IsUppercase" &&
             name != "IsLowercase" && name != "IsPunctuation" && name != "IsWhite_Space") name = name.substring(2)
         if (name.startsWith("In")) name = name.substring(2)
-        return NamedPred(name, negate, ignoreCase)
+        val pred = NamedPred(name, negate, ignoreCase)
+        if (!pred.isKnown()) fail("Unknown character property name {" + name + "}")
+        return pred
     }
 
     private fun parseClass(): CharPred {

@@ -335,8 +335,18 @@ size_t mk_cycles_collect(void) {
 
 /* ---- candidates ---- */
 
+/* A test-and-test-and-set spin lock that gives up the processor after a short spin: with more runnable threads than processors (a thread pool
+ * of hundreds of threads releasing objects, or any thread preempted while it holds the lock) a plain exchange loop burns whole time slices
+ * and, under ThreadSanitizer where every exchange takes a global slot lock, starves the holder for minutes (tsan::threads_stress). */
 static inline void roots_lock_acquire(void) {
-    while (__atomic_exchange_n(&roots_lock, 1, __ATOMIC_ACQUIRE) != 0) {}
+    unsigned spins = 0;
+    for (;;) {
+        if (__atomic_load_n(&roots_lock, __ATOMIC_RELAXED) == 0 && __atomic_exchange_n(&roots_lock, 1, __ATOMIC_ACQUIRE) == 0) return;
+        if (++spins >= 32) {
+            mk_sys_thread_yield();
+            spins = 0;
+        }
+    }
 }
 static inline void roots_lock_release(void) { __atomic_store_n(&roots_lock, 0, __ATOMIC_RELEASE); }
 

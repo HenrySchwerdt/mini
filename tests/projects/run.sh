@@ -69,7 +69,7 @@ if [ -f "$src/packages" ]; then
         done
     fi
     "$NATIVE/bin/minic-native" -o "$W/$name.c" "${appsrcs[@]}" --lib "$NATIVE/lib/stdlib.mlib" "${libs[@]}" --compiler-id "$V" > "$W/$name.mc" 2>&1 || { echo "app against the .mlib files failed:"; head -20 "$W/$name.mc"; exit 1; }
-    "${CC:-clang}" -std=c17 -O1 -w -I "$ROOT/runtime/include" "$W/$name.c" "$NATIVE/lib/libminirt.a" -o "$W/$name.exe" -lm > "$W/$name.cc" 2>&1 || { echo "C compiler failed:"; head "$W/$name.cc"; exit 1; }
+    "${MINI_CC:-${CC:-clang}}" -std=c17 -O1 -w -I "$ROOT/runtime/include" "$W/$name.c" "$NATIVE/lib/libminirt.a" -o "$W/$name.exe" -lm > "$W/$name.cc" 2>&1 || { echo "C compiler failed:"; head "$W/$name.cc"; exit 1; }
     # shellcheck disable=SC2086
     "$W/$name.exe" $args > "$W/$name.out2" 2> /dev/null
     cmp -s "$src/expected.out" "$W/$name.out2" || { echo "$name: output against the .mlib files differs"; diff "$src/expected.out" "$W/$name.out2" | head -10; exit 1; }

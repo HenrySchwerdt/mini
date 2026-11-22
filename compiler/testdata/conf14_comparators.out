@@ -1,0 +1,16 @@
+[Bob, Dan, Ann, Cid]
+[Bob, Dan, Cid, Ann]
+[Ann, Cid, Bob, Dan]
+[Bob, Cid, Dan, Ann]
+Ann
+Ann
+[0.9, 1.2, 1.10]
+1.10
+[1.10, 1.2, 0.9]
+true
+(9, 2)
+[ccc, bb, a]
+[A, b, c]
+[null, a, b]
+[3, 2, 1]
+-1
