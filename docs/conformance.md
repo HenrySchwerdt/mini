@@ -893,7 +893,19 @@ Not the box tests: 47 small programs of the kind found in everyday Kotlin, each 
 
 Merged with stdlib-3 (`String.format`, regex, IO) without conflicts. No documented open gap from this round: all 47 programs print what the JVM prints (C backend).
 
+## Sixteenth round (branch claude/conformance-16): the long-open groups
+
+The table in "Results" below is the state of round 5 and is historical: its big groups (suspension points inside lambdas of `inline` functions, adapted callable references with defaults / `vararg` / Unit coercion / suspend conversion, `tailrec suspend`, `coroutineContext`, classes that extend `Number`, generic value classes, `CharSequence` iteration, builder inference, `unresolved call` long tail) were closed by rounds 6 to 13; the box corpus stands at 5945 / 5953 (`tools/conformance/results/summary.md`). This round re-checked every group with own programs against kotlinc 2.1.20 and added them as regression tests (all print what the JVM prints, C, LLVM and wasm): `conf16_suspend_inline` / `conf16_suspend_more` (`forEach` / `map` / `run` / `with` / `repeat` / `sumOf` / `buildList` with suspend calls, own `suspend inline`, `tailrec suspend` with 10^5 / 10^6 steps, `coroutineContext`, references to suspend functions), `conf16_adapted_refs` / `conf16_refs_more` (defaults, `vararg`, coercion to Unit, `suspend` conversion, constructors, bound and extension references), `conf16_number_value_cs` (`Number` subclass, generic and plain value classes, `CharSequence` `for` / `indices` / `withIndex`, builder inference).
+
+| gap | fix |
+|---|---|
+| `"""...""".trimIndent()` / `.trimMargin()` of a literal without templates is a constant in K2, so two evaluations are the same instance (`stringTrim`) | folded when lowering a call (`foldTrim`, lower/Ast2IrCalls.kt); templated literals stay calls (`conf16_trim_const`) |
+
+Still open (7 of 5953, all JVM-specific or experimental): `kt51247` (context-receiver references), `kt42042` (old-inference leniency for violated bounds), `anonymousObjectInExtension` (`this` in the super call of an anonymous object resolves to the companion of the super class, a K1 quirk), `enumEntriesNameClashes` (an enum entry named `entries`), `objectToPrimitiveWithAssertion` (an erased `Long as T` read as Int), `signedToUnsignedConversions` (`@ImplicitIntegerCoercion`, internal), boxed small-value identity (`static_smallIntIdentity`).
+
 ## Results
+
+(historical, round 5; see the thirteenth to sixteenth round for the current state)
 
 Toolchain of origin/main (821ef51) against the final state of this branch, both with the same harness:
 
