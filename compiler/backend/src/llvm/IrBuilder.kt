@@ -129,6 +129,9 @@ interface IrBuilder<V : Any, B : Any> {
     /** `getelementptr i8, ptr base, i64 offset`. */
     fun gep(base: V, offset: V, inbounds: Boolean, name: String): V
 
+    /** `getelementptr inbounds <elem>, ptr base, i64 index`: the address of element `index` of an array of `elem` (an element size of 1, 2, 4, 8 or pointer width). */
+    fun gepElem(base: V, elem: IrType, index: V, name: String): V
+
     fun bin(op: IrOp, a: V, b: V, name: String): V
     fun cmp(pred: IrCmp, a: V, b: V, name: String): V
     fun fneg(a: V): V
