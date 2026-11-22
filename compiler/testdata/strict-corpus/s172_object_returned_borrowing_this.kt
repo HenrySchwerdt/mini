@@ -1,4 +1,4 @@
-// REJECT M0109: a method returns an anonymous object (of a Strict interface type) that borrows its receiver; the caller would own it and free the receiver first
+// REJECT M0101+M0107: a method returns an anonymous object that borrows its receiver: the receiver is freed first (M0101), and the caller cannot free the object (M0107)
 @file:MemoryMode(Mode.Strict)
 
 import mini.memory.*

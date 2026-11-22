@@ -71,20 +71,20 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
 
     public fun lastOrNull(): E? = if (isEmpty()) null else internalGet(internalIndex(size - 1))
 
-    public fun addFirst(@kotlin.internal.TakesOwnership element: E) {
+    @mini.memory.Mutates public fun addFirst(@kotlin.internal.TakesOwnership element: E) {
         ensureCapacity(size + 1)
         head = decremented(head)
         refArraySet(elementData, head, element)
         size += 1
     }
 
-    public fun addLast(@kotlin.internal.TakesOwnership element: E) {
+    @mini.memory.Mutates public fun addLast(@kotlin.internal.TakesOwnership element: E) {
         ensureCapacity(size + 1)
         refArraySet(elementData, internalIndex(size), element)
         size += 1
     }
 
-    public fun removeFirst(): E {
+    @mini.memory.Mutates public fun removeFirst(): @mini.memory.Owned E {
         if (isEmpty()) throw NoSuchElementException("ArrayDeque is empty.")
         val element = internalGet(head)
         refArraySet(elementData, head, null)
@@ -93,9 +93,9 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         return element
     }
 
-    public fun removeFirstOrNull(): E? = if (isEmpty()) null else removeFirst()
+    @mini.memory.Mutates public fun removeFirstOrNull(): @mini.memory.Owned E? = if (isEmpty()) null else removeFirst()
 
-    public fun removeLast(): E {
+    @mini.memory.Mutates public fun removeLast(): @mini.memory.Owned E {
         if (isEmpty()) throw NoSuchElementException("ArrayDeque is empty.")
         val internalLastIndex = internalIndex(size - 1)
         val element = internalGet(internalLastIndex)
@@ -104,14 +104,14 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         return element
     }
 
-    public fun removeLastOrNull(): E? = if (isEmpty()) null else removeLast()
+    @mini.memory.Mutates public fun removeLastOrNull(): @mini.memory.Owned E? = if (isEmpty()) null else removeLast()
 
-    public override fun add(@kotlin.internal.TakesOwnership element: E): Boolean {
+    @mini.memory.Mutates public override fun add(@kotlin.internal.TakesOwnership element: E): Boolean {
         addLast(element)
         return true
     }
 
-    public override fun add(index: Int, @kotlin.internal.TakesOwnership element: E) {
+    @mini.memory.Mutates public override fun add(index: Int, @kotlin.internal.TakesOwnership element: E) {
         if (index < 0 || index > size) throw IndexOutOfBoundsException("index: $index, size: $size")
         if (index == size) {
             addLast(element)
@@ -131,7 +131,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         size += 1
     }
 
-    public override fun addAll(elements: Collection<E>): Boolean {
+    @mini.memory.Mutates public override fun addAll(elements: Collection<E>): Boolean {
         if (elements.isEmpty()) return false
         ensureCapacity(size + elements.size)
         for (e in elements) addLast(e)
@@ -143,7 +143,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         return internalGet(internalIndex(index))
     }
 
-    public override fun set(index: Int, element: E): E {
+    @mini.memory.Mutates public override fun set(index: Int, element: E): @mini.memory.Owned E {
         if (index < 0 || index >= size) throw IndexOutOfBoundsException("index: $index, size: $size")
         val internalIndex = internalIndex(index)
         val oldElement = internalGet(internalIndex)
@@ -171,14 +171,14 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         return -1
     }
 
-    public override fun remove(element: E): Boolean {
+    @mini.memory.Mutates public override fun remove(element: E): Boolean {
         val index = indexOf(element)
         if (index == -1) return false
         removeAt(index)
         return true
     }
 
-    public override fun removeAt(index: Int): E {
+    @mini.memory.Mutates public override fun removeAt(index: Int): @mini.memory.Owned E {
         if (index < 0 || index >= size) throw IndexOutOfBoundsException("index: $index, size: $size")
         if (index == size - 1) return removeLast()
         if (index == 0) return removeFirst()
@@ -193,7 +193,7 @@ public class ArrayDeque<E> : AbstractMutableList<E> {
         return element
     }
 
-    public override fun clear() {
+    @mini.memory.Mutates public override fun clear() {
         var i = 0
         while (i < size) {
             refArraySet(elementData, internalIndex(i), null)

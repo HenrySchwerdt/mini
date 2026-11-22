@@ -17,6 +17,12 @@ internal const val F = 4
 internal const val M = 8
 internal const val B = 16
 internal const val X = 32
+/**
+ * The slot holds a Managed collection (or a view of one: an iterator, a sublist) whose elements are tracked values (docs/memory-model.md, strict-5b).
+ * Alone: the collection itself; with B: a view of the collection in [Slot.refs]. Reading an element of it is a loan that ends at the next
+ * mutating call (the loan has a pseudo slot of its own, see Interp.elementLoan).
+ */
+internal const val C = 128
 /** With B: the slot holds a closure (lambda, anonymous object, local class instance) that borrows its captured owners ([Slot.refs]). */
 internal const val K = 64
 
@@ -28,7 +34,12 @@ internal enum class SK(val obligation: Boolean, val label: String) {
     Unknown(true, "owned value"),
     /** Result of an `@Owned(free = "fn")` C function: released by calling `fn` (C interop). */
     Extern(true, "C allocation"),
-    Arena(false, "Arena"), Stack(false, "stack"),
+    Arena(false, "Arena"),
+    /**
+     * The implicit default allocator (docs/memory-model.md 2.2, rule 3): a Strict class without `@AllocatedBy` and without a visible
+     * allocator. No release obligation: whoever owns the value releases it when its owner ends (or earlier with `free()`).
+     */
+    Default(false, "default allocator"),
 }
 
 internal data class Site(val pos: Pos, val kind: SK, val id: Int)
@@ -106,6 +117,10 @@ internal class AVal(
     val caps: Boolean = false,
     /** The closure is a [MExpr.Lambda.child]. */
     val child: Boolean = false,
+    /** The read of a local this value is (a move of the owner is recorded on it for the code generation). */
+    val node: MExpr.Local? = null,
+    /** The call that produced this fresh value (a result nobody binds is released after its statement). */
+    val call: MExpr.Call? = null,
 ) {
     val tracked: Boolean get() = type.tracked
 

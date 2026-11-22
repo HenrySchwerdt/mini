@@ -143,7 +143,13 @@ class MirLocal(
     /** Kotlin name; only used to make the C identifier readable. */
     val name: String,
     val type: MirType,
-)
+) {
+    /**
+     * Strict code: the local owns an object of the default allocator (docs/memory-model.md, "Default allocator"). The producer releases
+     * it (`mk_drop`) when the local's scope ends, on every path; a moved or freed local is set to null first. Not part of the MIR text.
+     */
+    var dropOwner: Boolean = false
+}
 
 class MirLabel(val id: Int)
 

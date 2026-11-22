@@ -57,7 +57,7 @@ public operator fun <V, V1 : V> MutableMap<in String, out V>.getValue(thisRef: A
 }
 
 /** Removes the entry for [key] only if it is mapped to [value] (`MutableMap.remove(key, value)` of the JVM). */
-public fun <K, V> MutableMap<K, V>.remove(key: K, value: V): Boolean {
+@mini.memory.Mutates public fun <K, V> MutableMap<K, V>.remove(key: K, value: V): Boolean {
     if (containsKey(key) && this[key] == value) {
         remove(key)
         return true
