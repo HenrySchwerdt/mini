@@ -20,8 +20,12 @@ Assigning to an owning field whose old content is unknown is a leak ([M0102](/re
 
 `@Borrowed var parent: Node?` marks an unchecked back reference. Assignment is allowed and the compiler does not check the lifetime. Ownership is a tree, so graphs with cycles need an arena or `@Borrowed` links.
 
-## Collections of owned values (not supported yet)
+## Collections of owned values
 
-Tracked values must not be put into Kotlin collections: `list.add(box)` is [M0110](/reference/diagnostics/M0110). Types like `List<@Owned T>` and arrays of owned elements are planned. For now you build your own container class from owning fields, like the linked list above. Managed classes can still go into collections, as the [Managed page](./managed) shows.
+An object of the **default allocator** (a Strict class without `@AllocatedBy`, built where no allocator is visible) can be put into a Kotlin collection, a `vararg`, a map, a set or a pair: `val xs = mutableListOf(Box(1), Box(2)); xs.add(b)`. The collection keeps a reference count of its own and the owner keeps its ownership, so the object lives until both are done and nothing can dangle. `removeAt`, `set`, `put` and `remove` hand the element back as a new owner.
+
+An element you read from a collection (`xs[0]`, an iterator, the variable of a `for` loop, the parameter of a `forEach` lambda) is a *loan*. Every call that may change the collection (`clear`, `remove`, `set`, `add`, `sort`... they carry `@Mutates` in the library) ends it, and using it afterwards is [M0101](/reference/diagnostics/M0101).
+
+Objects of an explicit allocator (`Heap`, `Pool`, `Arena`) are not reference counted, so `list.add(box)` with one of them is still [M0110](/reference/diagnostics/M0110); so is a borrowed parameter, whose allocator is unknown. For those you build your own container class from owning fields, like the linked list above. Managed classes can go into collections as before, as the [Managed page](./managed) shows.
 
 Next: [Lambdas and captures](./lambdas).

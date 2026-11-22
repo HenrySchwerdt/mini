@@ -54,6 +54,8 @@ class Ir2Mir {
     internal var currentFunction: IrFunction? = null
     internal var currentReturn: MirType = TUnit
     internal val ownedTemps = HashSet<MirLocal>()
+    /** The assignments of null that end an owner's life in a local (after a move or a `free()`): they do not release the old value ([DropPass]). */
+    internal val moveNulls = HashSet<MirStmt>()
     /** The current function returns the erased Unit (null) instead of void (closure `invoke`). */
     internal var unitAsNull = false
 

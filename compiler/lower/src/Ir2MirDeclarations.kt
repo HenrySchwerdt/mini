@@ -134,7 +134,7 @@ private fun Ir2Mir.convertFunctionOrThrow(f: IrFunction, cName: String, qualifie
         if (ret == TUnit) inner += MirStmt.Break(label)
         out += MirStmt.Loop(label, inner)
     } else convertBody(f, ret, out)
-    return MirFunction(qualifiedName, cName, params, ret, out, ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
+    return MirFunction(qualifiedName, cName, params, ret, withDrops(out), ctorOf, isStrictFunction(f), returnsBorrowedAnnotation(f), ownedParamIndexes(f, params), noHeapEffectsAnnotation(f))
 }
 
 private fun Ir2Mir.convertBody(f: IrFunction, ret: MirType, out: ArrayList<MirStmt>) {
@@ -231,8 +231,11 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
                 out += MirStmt.Declare(l, MirExpr.New(rc.ctor, listOf(cell ?: zeroOf(t)), rc.type))
             } else {
                 val l = MirLocal(localCounter++, s.name, t)
+                // the owner of an object of the default allocator (the checker's result): released when its scope ends
+                if (s.dropOwner && currentStrict && t.isRef) l.dropOwner = true
                 locals[s] = l
                 out += MirStmt.Declare(l, init)
+                if (l.dropOwner && init != null) retainIfCounted(l, init, out)
             }
         }
         is IrComposite -> for (x in s.statements) stmt(x, out)
@@ -253,7 +256,11 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
             if (owner in closure.boxed) {
                 val rc = cellFor(owner)
                 out += MirStmt.SetField(MirExpr.Local(l), rc.cName, "value", rc.valueType, bindValue(s.value, rc.valueType, out))
-            } else out += MirStmt.Assign(l, bindValue(s.value, l.type, out))
+            } else {
+                val nv = bindValue(s.value, l.type, out)
+                out += MirStmt.Assign(l, nv)
+                if (l.dropOwner) retainIfCounted(l, nv, out)
+            }
         }
         is IrSimpleFunction -> liftLocalFunction(s)
         is IrLocalDelegatedProperty -> {
@@ -273,7 +280,7 @@ private fun Ir2Mir.stmtBody(s: IrStatement, out: MutableList<MirStmt>) {
         is IrGetObjectValue -> {
             if (s.classOwner.kotlinFqName != "kotlin.Unit") discard(value(s, out), out)
         }
-        is IrCall -> if (isNoWhenBranch(s)) out += MirStmt.Panic("NoWhenBranchMatchedException") else call(s, out).let { out += MirStmt.Eval(erasedChecks[it] ?: it) } // (a discarded result is not checked: the JVM casts where a value is used)
+        is IrCall -> if (isNoWhenBranch(s)) out += MirStmt.Panic("NoWhenBranchMatchedException") else if (s.ownedTemp) ownedCallStmt(s, out) else call(s, out).let { out += MirStmt.Eval(erasedChecks[it] ?: it) } // (a discarded result is not checked: the JVM casts where a value is used)
         is IrExpression -> discard(value(s, out), out)
         else -> unsupported(s, describe(s))
     }
@@ -423,8 +430,9 @@ internal fun Ir2Mir.constructorCall(c: IrConstructorCall, out: MutableList<MirSt
     if (cls.modality == IrModality.ABSTRACT || cls.modality == IrModality.SEALED) unsupported(c, "construction of abstract class '${cls.name}'")
     val args = callArgs(c, k, out) + captureArgsFor(cls, c)
     if (cls.kotlinFqName == "mini.memory.Pool") return poolNew(c, cName, cls, args, out)
-    val (alloc, auto) = resolveAllocation(cls)
-    return MirExpr.New(cName, args, typeOf(cls), alloc, auto)
+    val (alloc, auto0) = resolveAllocation(cls)
+    // an object of the default allocator that has an owner (the checker's result) is no temporary of its own: the owner releases it
+    return MirExpr.New(cName, args, typeOf(cls), alloc, auto0 && !c.escapes)
 }
 
 /**
